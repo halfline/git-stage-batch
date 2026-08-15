@@ -2247,15 +2247,6 @@ msgstr "включение"
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "Не удалось включить изменения из пакета «{name}»: {error}"
 
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr ""
-"{label} изменился во время вычисления include: {file}. Повторите команду "
-"include."
-
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
 msgid ""
@@ -7885,87 +7876,6 @@ msgstr "Все изменения рабочего дерева сейчас с�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Состояние применённых пакетов повреждено: {path}. Удалите этот файл, чтобы забыть происхождение проверки восстановленных изменений."
-#: src/git_stage_batch/batch/merge/legacy_intent.py:147
-#, python-brace-format
-msgid ""
-"Cannot safely replay legacy batch metadata for {file}: the batch does not "
-"record whether adjacent historical source content was an alternative that "
-"should be replaced. Recreate this batch with the current version of git-"
-"stage-batch before replaying it."
-msgstr ""
-"Невозможно безопасно воспроизвести устаревшие метаданные пакета для {file}: "
-"пакет не содержит сведений о том, было ли соседнее историческое содержимое "
-"источника альтернативой, которую следовало заменить. Перед воспроизведением "
-"заново создайте этот пакет с помощью текущей версии git-stage-batch."
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:737
-msgid ""
-"files[{path!r}] has a source alternative without an owned replacement side"
-msgstr ""
-"files[{path!r}] содержит альтернативу источника без собственной стороны "
-"замены"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:497
-msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
-msgstr ""
-"Запись нетекстового файла для {path!r} содержит устаревший маркер "
-"альтернативы источника"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:648
-msgid "files[{path!r}] has an invalid source-alternative flag"
-msgstr "files[{path!r}] содержит недопустимый флаг альтернативы источника"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:664
-msgid "files[{path!r}] has a source alternative without a live boundary"
-msgstr ""
-"files[{path!r}] содержит альтернативу источника без границы в текущем "
-"содержимом"
-
-# Apply/discard target integrity translations.
-#: src/git_stage_batch/commands/batch_source/apply_action.py:811
-#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
-#, python-brace-format
-msgid ""
-"Index changed while apply was being calculated: {file}. Retry the apply "
-"command."
-msgstr ""
-"Индекс изменён во время вычисления apply: {file}. Повторите команду apply."
-
-#: src/git_stage_batch/commands/batch_source/discard_action.py:547
-#, python-brace-format
-msgid ""
-"Index changed while discard was being calculated: {file}. Retry the discard "
-"command."
-msgstr ""
-"Индекс изменён во время вычисления отбрасывания: {file}. Повторите команду "
-"discard."
-
-#: src/git_stage_batch/commands/batch_source/discard_action.py:553
-#, python-brace-format
-msgid ""
-"Working tree file changed while discard was being calculated: {file}. Retry "
-"the discard command."
-msgstr ""
-"Файл рабочего дерева изменился во время вычисления discard: {file}. "
-"Повторите команду discard."
-
-#: src/git_stage_batch/batch/submodule_pointer.py:280
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index has unmerged "
-"entries."
-msgstr ""
-"Невозможно отменить добавленный указатель подмодуля для {file}: индекс "
-"содержит неслитые записи."
-
-#: src/git_stage_batch/batch/submodule_pointer.py:287
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index already "
-"contains staged content."
-msgstr ""
-"Невозможно отменить добавленный указатель подмодуля для {file}: индекс уже "
-"содержит подготовленное содержимое."
 
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
@@ -7988,6 +7898,115 @@ msgstr ""
 "Невозможно отбросить блок замены базовой версии, в котором применённые "
 "строки смешаны с владением без независимой старой стороны (строки исходника "
 "{start}-{end})"
+
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"Невозможно безопасно воспроизвести устаревшие метаданные пакета для {file}: "
+"пакет не содержит сведений о том, было ли соседнее историческое содержимое "
+"источника альтернативой, которую следовало заменить. Перед воспроизведением "
+"заново создайте этот пакет с помощью текущей версии git-stage-batch."
+
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr ""
+"Запись файла для {path!r} содержит недопустимый устаревший флаг альтернативы "
+"источника"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"Запись нетекстового файла для {path!r} содержит устаревший маркер "
+"альтернативы источника"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}] содержит недопустимый флаг альтернативы источника"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"files[{path!r}] содержит альтернативу источника без границы в текущем "
+"содержимом"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr ""
+"files[{path!r}] содержит альтернативу источника без собственной стороны "
+"замены"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Невозможно отменить добавленный указатель подмодуля для {file}: индекс "
+"содержит неслитые записи."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"Невозможно отменить добавленный указатель подмодуля для {file}: индекс уже "
+"содержит подготовленное содержимое."
+
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"Индекс изменён во время вычисления apply: {file}. Повторите команду apply."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr ""
+"Индекс изменился во время вычисления include: {file}. Повторите команду "
+"include."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr ""
+"Файл рабочего дерева изменился во время вычисления include: {file}. "
+"Повторите команду include."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"Индекс изменён во время вычисления отбрасывания: {file}. Повторите команду "
+"discard."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"Файл рабочего дерева изменился во время вычисления discard: {file}. "
+"Повторите команду discard."
 
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format

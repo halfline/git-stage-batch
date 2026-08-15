@@ -2194,13 +2194,6 @@ msgstr "zahrnutí"
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "Zahrnutí z dávky „{name}“ selhalo: {error}"
 
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr "Během výpočtu zahrnutí se změnil {label}: {file}. Zopakujte příkaz include."
-
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
 msgid ""
@@ -7779,6 +7772,26 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr ""
+"Přesně použitou náhradu nelze zahodit, protože její aktuální výskyt je "
+"nejednoznačný"
+
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"Nelze zahodit blok náhrady základní verze, který mísí použité řádky s "
 "vlastnictvím bez nezávislé staré strany (zdrojové řádky {start}-{end})"
 
 #: src/git_stage_batch/batch/merge/legacy_intent.py:147
@@ -7791,11 +7804,6 @@ msgid ""
 msgstr ""
 "Starší metadata dávky pro {file} nelze bezpečně přehrát: dávka "
 "nezaznamenává, zda sousední historický obsah zdroje představoval "
-#: src/git_stage_batch/batch/state/metadata_schema.py:664
-msgid "files[{path!r}] has a source alternative without a live boundary"
-msgstr ""
-"Položka files[{path!r}] má alternativu zdroje bez hranice v aktuálním obsahu"
-
 "alternativu, která se má nahradit. Před přehráním tuto dávku znovu vytvořte "
 "pomocí aktuální verze git-stage-batch."
 
@@ -7814,6 +7822,30 @@ msgstr ""
 msgid "files[{path!r}] has an invalid source-alternative flag"
 msgstr "Položka files[{path!r}] má neplatný příznak alternativy zdroje"
 
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"Položka files[{path!r}] má alternativu zdroje bez hranice v aktuálním obsahu"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr ""
+"Položka files[{path!r}] má alternativu zdroje bez vlastněné strany náhrady"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Nelze zahodit přidaný ukazatel submodulu pro {file}: index obsahuje "
+"nesloučené položky."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
 "contains staged content."
 msgstr ""
 "Nelze zahodit přidaný ukazatel submodulu pro {file}: index již obsahuje "
@@ -7822,6 +7854,22 @@ msgstr ""
 # Apply/discard target integrity translations.
 #: src/git_stage_batch/commands/batch_source/apply_action.py:811
 #: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr "Index se během výpočtu použití změnil: {file}. Zopakujte příkaz apply."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr ""
+"Index se během výpočtu include změnil: {file}. Zopakujte příkaz include."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
 #: src/git_stage_batch/commands/batch_source/include_action.py:702
 #, python-brace-format
 msgid ""
@@ -7848,45 +7896,6 @@ msgstr ""
 "Soubor pracovního stromu se během výpočtu zahození změnil: {file}. Zopakujte "
 "příkaz discard."
 
-#: src/git_stage_batch/batch/state/metadata_schema.py:737
-msgid ""
-"files[{path!r}] has a source alternative without an owned replacement side"
-msgstr ""
-"Položka files[{path!r}] má alternativu zdroje bez vlastněné strany náhrady"
-
-#: src/git_stage_batch/batch/submodule_pointer.py:280
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index has unmerged "
-"entries."
-msgstr ""
-"Nelze zahodit přidaný ukazatel submodulu pro {file}: index obsahuje "
-"nesloučené položky."
-
-#: src/git_stage_batch/batch/submodule_pointer.py:287
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index already "
-
-# Applied replacement rollback translations.
-#: src/git_stage_batch/batch/discard.py:869
-#: src/git_stage_batch/batch/discard.py:884
-#: src/git_stage_batch/batch/discard.py:910
-#: src/git_stage_batch/batch/discard.py:989
-msgid ""
-"Cannot discard an exact applied replacement because its live occurrence is "
-"ambiguous"
-msgstr ""
-"Přesně použitou náhradu nelze zahodit, protože její aktuální výskyt je "
-"nejednoznačný"
-
-#: src/git_stage_batch/batch/discard_reversal.py:121
-#, python-brace-format
-msgid ""
-"Cannot discard a baseline replacement hunk that mixes applied lines with "
-"ownership lacking an independent old side (source lines {start}-{end})"
-msgstr ""
-"Nelze zahodit blok náhrady základní verze, který mísí použité řádky s "
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

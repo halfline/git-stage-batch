@@ -2200,15 +2200,6 @@ msgstr "dahil etme"
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "«{name}» grubundaki değişiklikler dahil edilemedi: {error}"
 
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr ""
-"include hesaplanırken {label} değişti: {file}. include komutunu yeniden "
-"deneyin."
-
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
 msgid ""
@@ -7728,88 +7719,6 @@ msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde ka
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."
-#: src/git_stage_batch/batch/merge/legacy_intent.py:147
-#, python-brace-format
-msgid ""
-"Cannot safely replay legacy batch metadata for {file}: the batch does not "
-"record whether adjacent historical source content was an alternative that "
-"should be replaced. Recreate this batch with the current version of git-"
-"stage-batch before replaying it."
-msgstr ""
-"{file} için eski toplu iş meta verileri güvenle yeniden oynatılamıyor: toplu "
-"iş, bitişik geçmiş kaynak içeriğinin değiştirilmesi gereken bir alternatif "
-"olup olmadığını kaydetmiyor. Yeniden oynatmadan önce bu toplu işi git-stage-"
-"batch'in geçerli sürümüyle yeniden oluşturun."
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:737
-msgid ""
-"files[{path!r}] has a source alternative without an owned replacement side"
-msgstr ""
-"files[{path!r}] sahip olunan bir değiştirme tarafı olmayan kaynak "
-"alternatifi içeriyor"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:497
-msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
-msgstr ""
-"{path!r} için metin olmayan dosya girdisinde eski bir kaynak alternatifi "
-"işareti var"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:648
-msgid "files[{path!r}] has an invalid source-alternative flag"
-msgstr "files[{path!r}] geçersiz bir kaynak alternatifi bayrağı içeriyor"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:664
-msgid "files[{path!r}] has a source alternative without a live boundary"
-msgstr ""
-"files[{path!r}] geçerli içerikte sınırı olmayan bir kaynak alternatifi "
-"içeriyor"
-
-# Apply/discard target integrity translations.
-#: src/git_stage_batch/commands/batch_source/apply_action.py:811
-#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
-#, python-brace-format
-msgid ""
-"Index changed while apply was being calculated: {file}. Retry the apply "
-"command."
-msgstr ""
-"apply hesaplanırken indeks değişti: {file}. apply komutunu yeniden "
-"çalıştırın."
-
-#: src/git_stage_batch/commands/batch_source/discard_action.py:547
-#, python-brace-format
-msgid ""
-"Index changed while discard was being calculated: {file}. Retry the discard "
-"command."
-msgstr ""
-"Atma hesaplanırken indeks değişti: {file}. discard komutunu yeniden "
-"çalıştırın."
-
-#: src/git_stage_batch/commands/batch_source/discard_action.py:553
-#, python-brace-format
-msgid ""
-"Working tree file changed while discard was being calculated: {file}. Retry "
-"the discard command."
-msgstr ""
-"discard hesaplanırken çalışma ağacı dosyası değişti: {file}. discard "
-"komutunu yeniden deneyin."
-
-#: src/git_stage_batch/batch/submodule_pointer.py:280
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index has unmerged "
-"entries."
-msgstr ""
-"{file} için eklenen alt modül işaretçisi atılamıyor: dizinde "
-"birleştirilmemiş girdiler var."
-
-#: src/git_stage_batch/batch/submodule_pointer.py:287
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index already "
-"contains staged content."
-msgstr ""
-"{file} için eklenen alt modül işaretçisi atılamıyor: dizin zaten hazırlanmış "
-"içerik barındırıyor."
 
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
@@ -7830,6 +7739,116 @@ msgid ""
 msgstr ""
 "Uygulanan satırları bağımsız bir eski tarafı olmayan sahiplikle karıştıran "
 "temel çizgi değiştirme öbeği atılamıyor (kaynak satırları {start}-{end})"
+
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"{file} için eski toplu iş meta verileri güvenle yeniden oynatılamıyor: toplu "
+"iş, bitişik geçmiş kaynak içeriğinin değiştirilmesi gereken bir alternatif "
+"olup olmadığını kaydetmiyor. Yeniden oynatmadan önce bu toplu işi git-stage-"
+"batch'in geçerli sürümüyle yeniden oluşturun."
+
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr ""
+"{path!r} için dosya girdisinde geçersiz bir eski kaynak alternatifi bayrağı "
+"var"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"{path!r} için metin olmayan dosya girdisinde eski bir kaynak alternatifi "
+"işareti var"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}] geçersiz bir kaynak alternatifi bayrağı içeriyor"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"files[{path!r}] geçerli içerikte sınırı olmayan bir kaynak alternatifi "
+"içeriyor"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr ""
+"files[{path!r}] sahip olunan bir değiştirme tarafı olmayan kaynak "
+"alternatifi içeriyor"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"{file} için eklenen alt modül işaretçisi atılamıyor: dizinde "
+"birleştirilmemiş girdiler var."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"{file} için eklenen alt modül işaretçisi atılamıyor: dizin zaten hazırlanmış "
+"içerik barındırıyor."
+
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"apply hesaplanırken indeks değişti: {file}. apply komutunu yeniden "
+"çalıştırın."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr ""
+"include hesaplanırken dizin değişti: {file}. include komutunu yeniden "
+"deneyin."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr ""
+"include hesaplanırken çalışma ağacı dosyası değişti: {file}. include "
+"komutunu yeniden deneyin."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"Atma hesaplanırken indeks değişti: {file}. discard komutunu yeniden "
+"çalıştırın."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"discard hesaplanırken çalışma ağacı dosyası değişti: {file}. discard "
+"komutunu yeniden deneyin."
 
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format

@@ -2253,15 +2253,6 @@ msgstr "Aufnehmen"
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "Änderungen aus Stapel '{name}' konnten nicht aufgenommen werden: {error}"
 
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr ""
-"{label} wurde während der Berechnung der Aufnahme geändert: {file}. "
-"Wiederholen Sie den include-Befehl."
-
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
 msgid ""
@@ -7921,6 +7912,25 @@ msgstr "Alle Änderungen im Arbeitsbaum sind derzeit in {locations} gespeichert.
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Der Zustand angewendeter Stapel ist beschädigt: {path}. Entfernen Sie diese Datei, um die Prüfherkunft wiederhergestellter Änderungen zu vergessen."
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr ""
+"Ein exakt angewendeter Ersatz kann nicht verworfen werden, da sein aktuelles "
+"Vorkommen mehrdeutig ist"
+
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
 "Ein Baseline-Ersatzblock, der angewendete Zeilen mit Eigentum ohne "
 "unabhängige alte Seite vermischt, kann nicht verworfen werden (Quellzeilen "
 "{start}-{end})"
@@ -7932,12 +7942,6 @@ msgid ""
 "record whether adjacent historical source content was an alternative that "
 "should be replaced. Recreate this batch with the current version of git-"
 "stage-batch before replaying it."
-
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:648
-msgid "files[{path!r}] has an invalid source-alternative flag"
-msgstr "files[{path!r}] hat ein ungültiges Quellalternativ-Flag"
-
 msgstr ""
 "Veraltete Stapelmetadaten für {file} können nicht sicher wiedergegeben "
 "werden: Der Stapel zeichnet nicht auf, ob benachbarter historischer "
@@ -7957,6 +7961,30 @@ msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
 msgstr ""
 "Der Eintrag der Nicht-Textdatei für {path!r} hat eine veraltete "
 "Quellalternativ-Markierung"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}] hat ein ungültiges Quellalternativ-Flag"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"files[{path!r}] hat eine Quellalternative ohne Grenze im aktuellen Inhalt"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr "files[{path!r}] hat eine Quellalternative ohne eigene Ersatzseite"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Der hinzugefügte Submodul-Zeiger für {file} kann nicht verworfen werden: Der "
+"Index enthält nicht zusammengeführte Einträge."
+
 #: src/git_stage_batch/batch/submodule_pointer.py:287
 #, python-brace-format
 msgid ""
@@ -7965,6 +7993,22 @@ msgid ""
 msgstr ""
 "Der hinzugefügte Submodul-Zeiger für {file} kann nicht verworfen werden: Der "
 "Index enthält bereits bereitgestellten Inhalt."
+
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"Der Index wurde während der Berechnung der Anwendung geändert: {file}. "
+"Führen Sie den apply-Befehl erneut aus."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
 "Index changed while include was being calculated: {file}. Retry the include "
 "command."
 msgstr ""
@@ -7989,6 +8033,7 @@ msgid ""
 msgstr ""
 "Der Index wurde geändert, während das Verwerfen berechnet wurde: {file}. "
 "Führen Sie den discard-Befehl erneut aus."
+
 #: src/git_stage_batch/commands/batch_source/discard_action.py:553
 #, python-brace-format
 msgid ""
@@ -7998,42 +8043,6 @@ msgstr ""
 "Die Datei {file} im Arbeitsverzeichnis wurde während der Berechnung des "
 "Verwerfens geändert. Wiederholen Sie den discard-Befehl."
 
-#: src/git_stage_batch/batch/state/metadata_schema.py:664
-msgid "files[{path!r}] has a source alternative without a live boundary"
-msgstr ""
-"files[{path!r}] hat eine Quellalternative ohne Grenze im aktuellen Inhalt"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:737
-msgid ""
-"files[{path!r}] has a source alternative without an owned replacement side"
-msgstr "files[{path!r}] hat eine Quellalternative ohne eigene Ersatzseite"
-
-#: src/git_stage_batch/batch/submodule_pointer.py:280
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index has unmerged "
-"entries."
-msgstr ""
-"Der hinzugefügte Submodul-Zeiger für {file} kann nicht verworfen werden: Der "
-"Index enthält nicht zusammengeführte Einträge."
-
-# Applied replacement rollback translations.
-#: src/git_stage_batch/batch/discard.py:869
-#: src/git_stage_batch/batch/discard.py:884
-#: src/git_stage_batch/batch/discard.py:910
-#: src/git_stage_batch/batch/discard.py:989
-msgid ""
-"Cannot discard an exact applied replacement because its live occurrence is "
-"ambiguous"
-msgstr ""
-"Ein exakt angewendeter Ersatz kann nicht verworfen werden, da sein aktuelles "
-"Vorkommen mehrdeutig ist"
-#: src/git_stage_batch/batch/discard_reversal.py:121
-#, python-brace-format
-msgid ""
-"Cannot discard a baseline replacement hunk that mixes applied lines with "
-"ownership lacking an independent old side (source lines {start}-{end})"
-msgstr ""
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

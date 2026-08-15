@@ -2225,15 +2225,6 @@ msgstr "включення"
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "Не вдалося включити зміни з пакета «{name}»: {error}"
 
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr ""
-"{label} змінився під час обчислення include: {file}. Повторіть команду "
-"include."
-
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
 msgid ""
@@ -7838,6 +7829,28 @@ msgstr "Усі зміни робочого дерева зараз збереж�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Стан застосованих пакетів пошкоджено: {path}. Видаліть цей файл, щоб забути походження перевірки відновлених змін."
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr ""
+"Неможливо відкинути точно застосовану заміну, оскільки її поточне входження "
+"неоднозначне"
+
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"Неможливо відкинути блок заміни базової версії, що поєднує застосовані рядки "
+"з володінням без незалежної старої сторони (рядки джерела {start}-{end})"
+
 #: src/git_stage_batch/batch/merge/legacy_intent.py:147
 #, python-brace-format
 msgid ""
@@ -7850,12 +7863,6 @@ msgstr ""
 "записує, чи був сусідній історичний вміст джерела альтернативою, яку слід "
 "було замінити. Перед відтворенням заново створіть цей пакет за допомогою "
 "поточної версії git-stage-batch."
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:737
-msgid ""
-"files[{path!r}] has a source alternative without an owned replacement side"
-msgstr ""
-"files[{path!r}] містить альтернативу джерела без власної сторони заміни"
 
 # Legacy source-alternative metadata translations.
 #: src/git_stage_batch/batch/state/metadata_schema.py:486
@@ -7879,24 +7886,11 @@ msgid "files[{path!r}] has a source alternative without a live boundary"
 msgstr ""
 "files[{path!r}] містить альтернативу джерела без межі в поточному вмісті"
 
-# Apply/discard target integrity translations.
-#: src/git_stage_batch/commands/batch_source/apply_action.py:811
-#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
-#, python-brace-format
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
 msgid ""
-"Index changed while apply was being calculated: {file}. Retry the apply "
-"command."
+"files[{path!r}] has a source alternative without an owned replacement side"
 msgstr ""
-"Індекс змінено під час обчислення apply: {file}. Повторіть команду apply."
-
-#: src/git_stage_batch/commands/batch_source/discard_action.py:547
-#, python-brace-format
-msgid ""
-"Index changed while discard was being calculated: {file}. Retry the discard "
-"command."
-msgstr ""
-"Індекс змінено під час обчислення відкидання: {file}. Повторіть команду "
-"discard."
+"files[{path!r}] містить альтернативу джерела без власної сторони заміни"
 
 #: src/git_stage_batch/batch/submodule_pointer.py:280
 #, python-brace-format
@@ -7916,27 +7910,44 @@ msgstr ""
 "Не можна відкинути доданий вказівник підмодуля для {file}: індекс уже "
 "містить підготовлений вміст."
 
-
-# Applied replacement rollback translations.
-#: src/git_stage_batch/batch/discard.py:869
-#: src/git_stage_batch/batch/discard.py:884
-#: src/git_stage_batch/batch/discard.py:910
-#: src/git_stage_batch/batch/discard.py:989
-msgid ""
-"Cannot discard an exact applied replacement because its live occurrence is "
-"ambiguous"
-msgstr ""
-"Неможливо відкинути точно застосовану заміну, оскільки її поточне входження "
-"неоднозначне"
-
-#: src/git_stage_batch/batch/discard_reversal.py:121
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
 #, python-brace-format
 msgid ""
-"Cannot discard a baseline replacement hunk that mixes applied lines with "
-"ownership lacking an independent old side (source lines {start}-{end})"
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
 msgstr ""
-"Неможливо відкинути блок заміни базової версії, що поєднує застосовані рядки "
-"з володінням без незалежної старої сторони (рядки джерела {start}-{end})"
+"Індекс змінено під час обчислення apply: {file}. Повторіть команду apply."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr ""
+"Індекс змінився під час обчислення include: {file}. Повторіть команду "
+"include."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr ""
+"Файл робочого дерева змінився під час обчислення include: {file}. Повторіть "
+"команду include."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"Індекс змінено під час обчислення відкидання: {file}. Повторіть команду "
+"discard."
 
 #: src/git_stage_batch/commands/batch_source/discard_action.py:553
 #, python-brace-format

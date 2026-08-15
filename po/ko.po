@@ -2035,13 +2035,6 @@ msgstr "포함"
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "배치 '{name}'의 변경을 포함하지 못했습니다: {error}"
 
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr "include를 계산하는 동안 {label} 항목이 변경되었습니다: {file}. include 명령을 다시 시도하세요."
-
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
 msgid ""
@@ -7324,81 +7317,6 @@ msgstr "모든 작업 트리 변경 사항은 현재 {locations}에 저장되어
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "적용된 배치 상태가 손상되었습니다: {path}. 복원된 변경 사항의 검토 출처를 잊으려면 이 파일을 제거하십시오."
-#: src/git_stage_batch/batch/merge/legacy_intent.py:147
-#, python-brace-format
-msgid ""
-"Cannot safely replay legacy batch metadata for {file}: the batch does not "
-"record whether adjacent historical source content was an alternative that "
-"should be replaced. Recreate this batch with the current version of git-"
-"stage-batch before replaying it."
-msgstr ""
-"{file}의 레거시 배치 메타데이터를 안전하게 재생할 수 없습니다. 배치에는 인접"
-"한 과거 소스 내용이 교체되어야 할 대안이었는지 기록되어 있지 않습니다. 재생하"
-"기 전에 현재 버전의 git-stage-batch로 이 배치를 다시 만드십시오."
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:737
-msgid ""
-"files[{path!r}] has a source alternative without an owned replacement side"
-msgstr "files[{path!r}]에 소유된 교체 측이 없는 소스 대안이 있습니다"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:497
-msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
-msgstr "{path!r}의 비텍스트 파일 항목에 레거시 소스 대안 마커가 있습니다"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:648
-msgid "files[{path!r}] has an invalid source-alternative flag"
-msgstr "files[{path!r}]에 잘못된 소스 대안 플래그가 있습니다"
-
-#: src/git_stage_batch/batch/state/metadata_schema.py:664
-msgid "files[{path!r}] has a source alternative without a live boundary"
-msgstr "files[{path!r}]에 현재 내용과의 경계가 없는 소스 대안이 있습니다"
-
-# Apply/discard target integrity translations.
-#: src/git_stage_batch/commands/batch_source/apply_action.py:811
-#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
-#, python-brace-format
-msgid ""
-"Index changed while apply was being calculated: {file}. Retry the apply "
-"command."
-msgstr ""
-"apply를 계산하는 동안 인덱스가 변경되었습니다: {file}. apply 명령을 다시 실행"
-"하십시오."
-
-#: src/git_stage_batch/commands/batch_source/discard_action.py:547
-#, python-brace-format
-msgid ""
-"Index changed while discard was being calculated: {file}. Retry the discard "
-"command."
-msgstr ""
-"폐기를 계산하는 동안 인덱스가 변경되었습니다: {file}. discard 명령을 다시 실"
-"행하십시오."
-
-#: src/git_stage_batch/commands/batch_source/discard_action.py:553
-#, python-brace-format
-msgid ""
-"Working tree file changed while discard was being calculated: {file}. Retry "
-"the discard command."
-msgstr ""
-"discard를 계산하는 동안 작업 트리 파일이 변경되었습니다: {file}. discard 명령"
-"을 다시 시도하십시오."
-
-#: src/git_stage_batch/batch/submodule_pointer.py:280
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index has unmerged "
-"entries."
-msgstr ""
-"{file}에 추가된 서브모듈 포인터를 버릴 수 없습니다. 인덱스에 병합되지 않은 항"
-"목이 있습니다."
-
-#: src/git_stage_batch/batch/submodule_pointer.py:287
-#, python-brace-format
-msgid ""
-"Cannot discard added submodule pointer for {file}: the index already "
-"contains staged content."
-msgstr ""
-"{file}에 추가된 서브모듈 포인터를 버릴 수 없습니다. 인덱스에 이미 스테이징된 "
-"내용이 있습니다."
 
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
@@ -7418,6 +7336,107 @@ msgid ""
 msgstr ""
 "적용된 줄과 독립적인 이전 쪽이 없는 소유권이 섞인 기준선 대체 헝크를 폐기할 "
 "수 없습니다(소스 줄 {start}-{end})"
+
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"{file}의 레거시 배치 메타데이터를 안전하게 재생할 수 없습니다. 배치에는 인접"
+"한 과거 소스 내용이 교체되어야 할 대안이었는지 기록되어 있지 않습니다. 재생하"
+"기 전에 현재 버전의 git-stage-batch로 이 배치를 다시 만드십시오."
+
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr "{path!r}의 파일 항목에 잘못된 레거시 소스 대안 플래그가 있습니다"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr "{path!r}의 비텍스트 파일 항목에 레거시 소스 대안 마커가 있습니다"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}]에 잘못된 소스 대안 플래그가 있습니다"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr "files[{path!r}]에 현재 내용과의 경계가 없는 소스 대안이 있습니다"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr "files[{path!r}]에 소유된 교체 측이 없는 소스 대안이 있습니다"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"{file}에 추가된 서브모듈 포인터를 버릴 수 없습니다. 인덱스에 병합되지 않은 항"
+"목이 있습니다."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"{file}에 추가된 서브모듈 포인터를 버릴 수 없습니다. 인덱스에 이미 스테이징된 "
+"내용이 있습니다."
+
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"apply를 계산하는 동안 인덱스가 변경되었습니다: {file}. apply 명령을 다시 실행"
+"하십시오."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr ""
+"include를 계산하는 동안 인덱스가 변경되었습니다: {file}. include 명령을 다시 "
+"시도하세요."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr ""
+"include를 계산하는 동안 작업 트리 파일이 변경되었습니다: {file}. include 명령"
+"을 다시 시도하세요."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"폐기를 계산하는 동안 인덱스가 변경되었습니다: {file}. discard 명령을 다시 실"
+"행하십시오."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"discard를 계산하는 동안 작업 트리 파일이 변경되었습니다: {file}. discard 명령"
+"을 다시 시도하십시오."
 
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format

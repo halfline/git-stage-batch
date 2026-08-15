@@ -321,6 +321,41 @@ class LineRanges:
         return [spec] if spec else []
 
 
+@dataclass
+class LineRangeBuilder:
+    """Build a normalized line selection from mostly ordered additions."""
+
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+    pending_start: int | None = None
+    pending_end: int | None = None
+
+    def add_line(self, line_number: int) -> None:
+        self.add_range(line_number, line_number)
+
+    def add_range(self, start: int, end: int) -> None:
+        """Add one inclusive range without expanding it into individual lines."""
+        if self.pending_start is None or self.pending_end is None:
+            self.pending_start = start
+            self.pending_end = end
+            return
+
+        if self.pending_start <= start <= self.pending_end + 1:
+            self.pending_end = max(self.pending_end, end)
+            return
+
+        self.ranges.append((self.pending_start, self.pending_end))
+        self.pending_start = start
+        self.pending_end = end
+
+    def finish(self) -> LineRanges:
+        pending = (
+            ((self.pending_start, self.pending_end),)
+            if self.pending_start is not None and self.pending_end is not None
+            else ()
+        )
+        return LineRanges.from_ranges(chain(self.ranges, pending))
+
+
 def parse_positive_selection(
     selection: str,
     *,

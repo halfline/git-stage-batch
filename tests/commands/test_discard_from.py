@@ -524,3 +524,47 @@ static void reset_state(void)
             command_discard_from_batch("stale-batch")
 
         assert file_path.read_text() == "concurrent\n"
+    def test_plan_cleanup_cancellation_rolls_back_discard_without_session(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Discard plan teardown must finish before transient commit."""
+        path = temp_git_repo / "file.txt"
+        path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        path.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("cleanup", file="file.txt", quiet=True)
+        command_stop()
+
+        real_close = discard_action._action_plans.close_resources
+
+        def close_then_cancel(resources):
+            real_close(resources)
+            raise KeyboardInterrupt("discard cleanup cancelled")
+
+        monkeypatch.setattr(
+            discard_action._action_plans,
+            "close_resources",
+            close_then_cancel,
+        )
+        capsys.readouterr()
+
+        with pytest.raises(KeyboardInterrupt, match="discard cleanup cancelled"):
+            command_discard_from_batch("cleanup", file="file.txt")
+
+        assert path.read_text() == "batch\n"
+        assert "✓ Discarded" not in capsys.readouterr().err

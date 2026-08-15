@@ -105,3 +105,30 @@ def command_include_from_batch(
         )
     else:
         print(_("✓ Staged changes from batch '{name}'").format(name=batch_name), file=sys.stderr)
+
+
+def _print_include_success(
+    *,
+    batch_name: str,
+    file_paths: tuple[str, ...],
+    replacement: bool,
+    selected_lines: bool,
+    selected_file: bool,
+) -> None:
+    """Print include success only after the outermost transaction commits."""
+    if replacement:
+        message = _(
+            "✓ Staged selected lines as replacement from batch '{name}'"
+        ).format(name=batch_name)
+    elif selected_lines:
+        message = _("✓ Staged selected lines from batch '{name}'").format(
+            name=batch_name
+        )
+    elif selected_file:
+        message = _("✓ Staged changes for {file} from batch '{name}'").format(
+            file=display_path(file_paths[0]),
+            name=batch_name,
+        )
+    else:
+        message = _("✓ Staged changes from batch '{name}'").format(name=batch_name)
+    print(message, file=sys.stderr)

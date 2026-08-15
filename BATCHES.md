@@ -332,6 +332,11 @@ It selects every claimed source line, removes baseline sequences described by
 applicable absence claims, and preserves the source line-ending style. The
 result becomes the file stored in the batch content commit.
 
+Source-alternative claims are omitted from this baseline-derived realization:
+their old side was never baseline content. Their presence side is still
+realized normally, while live apply and include operations enforce the coupled
+replacement against the retained alternative.
+
 Building stored content is less strict than merging into a current working
 file. If an absence claim does not match its expected boundary while the stored
 view is being built, the builder leaves the non-matching bytes alone. The
@@ -657,6 +662,7 @@ An applied overlay is accepted only while all of these still match its record:
 - `HEAD`
 - the path's index entry (an absent entry and `start`'s intent-to-add sentinel
   are equivalent)
+  are equivalent; unresolved higher-stage entries never match either state)
 - the exact worktree path kind, mode, size, and streamed content digest
 
 Any external worktree edit, pre-session staging operation, commit, or batch

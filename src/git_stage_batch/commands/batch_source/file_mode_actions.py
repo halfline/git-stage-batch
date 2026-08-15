@@ -43,18 +43,14 @@ def apply_new_file_mode(file_path: str, file_meta: BatchFileMetadataDict) -> Non
     _apply(file_path, _mode(file_meta, "new_mode"))
 
 
-def apply_old_file_mode(file_path: str, file_meta: BatchFileMetadataDict) -> None:
-    _apply(file_path, _mode(file_meta, "old_mode"))
+def old_file_mode(file_meta: BatchFileMetadataDict) -> str:
+    """Return a validated baseline mode for a deferred discard action."""
+    return _mode(file_meta, "old_mode")
 
 
 def apply_file_mode(file_path: str, mode: str) -> None:
     """Apply one already validated executable mode to a worktree path."""
     _apply(file_path, mode)
-
-
-def old_file_mode(file_meta: BatchFileMetadataDict) -> str:
-    """Return a validated baseline mode for a deferred discard action."""
-    return _mode(file_meta, "old_mode")
 
 
 def _apply(file_path: str, mode: str) -> None:

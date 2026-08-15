@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 import sys
 
@@ -20,8 +21,9 @@ from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     validate_discard_submodule_pointer,
 )
+from ...core.line_selection import LineRanges
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo.checkpoints import undo_checkpoint
+from ...data.session_marker import session_is_active
 from ...batch.state.metadata_types import (
     BatchFileMetadataDict,
     BatchMetadataDict,
@@ -144,108 +146,60 @@ def execute_discard_action(
         exit_with_error(str(e))
 
     files = selection.files
-    selected_ids = selection.selected_ids
-    selection_ids_to_discard = selection.selection_ids
-    rendered = selection.rendered
-    operation_parts = list(selection.operation_parts)
+    operation = terminal_safe_shell_join(selection.operation_parts)
+    applied_overlay_snapshot = load_applied_batch_overlay_snapshot()
+    overlay_batch_metadata = _load_overlay_batch_metadata(
+        files,
+        applied_overlay_snapshot,
+    )
 
-    with undo_checkpoint(
-        terminal_safe_shell_join(operation_parts),
-        worktree_paths=list(files),
-        rollback_on_error=True,
-    ):
-        failed_files = []
-
-        for file_path, file_meta in files.items():
-            try:
-                if _file_mode_actions.is_file_mode_action(file_meta):
-                    _file_mode_actions.apply_old_file_mode(file_path, file_meta)
-                    continue
-                if file_meta.get("file_type") == "binary":
-                    snapshot_file_if_untracked(file_path)
-                    binary_action = (
-                        _binary_file_actions.discard_binary_file_to_worktree(
-                            file_path,
-                            baseline_commit,
-                        )
-                    )
-                    _print_binary_discard_result(file_path, binary_action)
-                    continue
-
-                if is_batch_submodule_pointer(file_meta):
-                    discard_submodule_pointer_from_batch(file_path, file_meta)
-                    continue
-
-                snapshot_file_if_untracked(file_path)
-
-                try:
-                    text_plan_result = (
-                        _text_plan_builders.build_discard_text_file_action_plan(
-                            file_path=file_path,
-                            file_meta=file_meta,
-                            baseline_commit=baseline_commit,
-                            selected_ids=selected_ids,
-                            selection_ids_to_discard=selection_ids_to_discard,
-                        )
-                    )
-                except AtomicUnitError as e:
-                    if rendered:
-                        _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
-                            e,
-                            rendered,
-                            pgettext("batch failure operation", "discard from"),
-                            batch_name,
-                        )
-                    exit_with_error(
-                        _("Failed to discard from batch '{name}': {error}").format(
-                            name=batch_name,
-                            error=str(e),
-                        )
-                    )
-
-                if text_plan_result.missing_source:
-                    failed_files.append(file_path)
-                    continue
-                if text_plan_result.plan is None:
-                    continue
-
-                try:
-                    _text_file_actions.write_discarded_text_file_to_worktree(
-                        text_plan_result.plan.file_path,
-                        text_plan_result.plan.buffer,
-                        text_plan_result.plan.file_mode,
-                        text_plan_result.plan.change_type,
-                    )
-                finally:
-                    text_plan_result.plan.close()
-
-            except CommandError:
-                raise
-            except MergeError as e:
-                print(
-                    _("Error discarding {file}: {error}").format(
-                        file=display_path(file_path),
-                        error=str(e),
-                    ),
-                    file=sys.stderr,
-                )
-                failed_files.append(file_path)
-            except Exception as e:
-                print(
-                    _("Error discarding {file}: {error}").format(
-                        file=display_path(file_path),
-                        error=str(e),
-                    ),
-                    file=sys.stderr,
-                )
-                failed_files.append(file_path)
-
-        if failed_files:
-            exit_with_error(
-                _("Failed to discard changes for some files: {files}").format(
-                    files=", ".join(display_path(path) for path in failed_files),
-                )
+    workspace = FileJobWorkspace()
+    capture = _build_discard_action_plans(
+        batch_name=batch_name,
+        baseline_commit=baseline_commit,
+        selection=selection,
+        applied_overlay_snapshot=applied_overlay_snapshot,
+        overlay_batch_metadata=overlay_batch_metadata,
+        workspace=workspace,
+    )
+    if not capture.plans:
+        return
+    _require_unchanged_discard_targets(
+        capture.index_identities,
+        capture.worktree_identities,
+    )
+    with transaction_checkpoint(
+        operation,
+        worktree_paths=list(
+            dict.fromkeys(plan.file_path for plan in capture.plans)
+        ),
+        index_paths=list(capture.index_mutation_paths),
+    ) as checkpoint_status:
+        _require_unchanged_discard_targets(
+            capture.index_identities,
+            capture.worktree_identities,
+        )
+        checkpoint_status.arm_rollback()
+        binary_worktree_results: list[
+            tuple[
+                str,
+                _binary_file_actions.BinaryWorktreeAction | None,
+            ]
+        ] = []
+        for plan in capture.plans:
+            action = _publish_discard_action_plan(plan)
+            if isinstance(
+                plan,
+                _action_plans.BinaryFileActionPlan,
+            ):
+                binary_worktree_results.append((plan.file_path, action))
+    if binary_worktree_results:
+        checkpoint_status.defer_success(
+            partial(
+                _print_binary_discard_results,
+                tuple(binary_worktree_results),
             )
+        )
 def _capture_discard_targets(
     files: dict[str, BatchFileMetadataDict],
     applied_overlay_snapshot: AppliedBatchOverlaySnapshot,
@@ -406,3 +360,216 @@ def _build_discard_binary_action_plan(
         if buffer is not None:
             buffer.close()
         raise
+
+
+def _build_discard_action_plans(
+    *,
+    batch_name: str,
+    baseline_commit: str,
+    selection: _action_selection.BatchSourceActionSelection,
+    applied_overlay_snapshot: AppliedBatchOverlaySnapshot,
+    overlay_batch_metadata: dict[str, BatchMetadataDict],
+    workspace: FileJobWorkspace,
+) -> _DiscardPlanCapture:
+    """Plan every selected discard before opening its transaction."""
+    files = selection.files
+    (
+        text_inputs,
+        worktree_identities,
+        index_identities,
+        capture_errors,
+    ) = _capture_discard_targets(
+        files,
+        applied_overlay_snapshot,
+        workspace,
+    )
+    text_inputs_by_path = {
+        text_input.file_path: text_input for text_input in text_inputs
+    }
+    plans: list[_action_plans.BatchSourceActionPlan] = []
+    failed_files: list[str] = []
+    for file_path, error in capture_errors:
+        print(
+            _("Error discarding {file}: {error}").format(
+                file=display_path(file_path),
+                error=error,
+            ),
+            file=sys.stderr,
+        )
+        failed_files.append(file_path)
+    index_validation_paths: list[str] = []
+    index_mutation_paths: list[str] = []
+    try:
+        for ordinal, (file_path, file_meta) in enumerate(files.items()):
+            if file_path not in worktree_identities:
+                continue
+            try:
+                if _file_mode_actions.is_file_mode_action(file_meta):
+                    plans.append(
+                        _DiscardModeActionPlan(
+                            file_path,
+                            _file_mode_actions.old_file_mode(file_meta),
+                        )
+                    )
+                    continue
+                if file_meta.get("file_type") == "binary":
+                    plans.append(
+                        _build_discard_binary_action_plan(
+                            ordinal=ordinal,
+                            file_path=file_path,
+                            baseline_commit=baseline_commit,
+                            workspace=workspace,
+                        )
+                    )
+                    continue
+                if is_batch_submodule_pointer(file_meta):
+                    _validate_discard_submodule_pointer_target(
+                        file_path,
+                        file_meta,
+                        index_identities[file_path],
+                    )
+                    plans.append(
+                        _action_plans.SubmodulePointerActionPlan(
+                            file_path,
+                            file_meta,
+                        )
+                    )
+                    if file_meta.get("change_type") == "added":
+                        index_validation_paths.append(file_path)
+                        index_mutation_paths.append(file_path)
+                    continue
+
+                text_input = text_inputs_by_path[file_path]
+                applied_overlay = fresh_applied_batch_overlay_for_path(
+                    file_path,
+                    batch_metadata_by_name=overlay_batch_metadata,
+                    snapshot=applied_overlay_snapshot,
+                    worktree_identity=text_input.identity,
+                )
+                trusted_presence_lines = LineRanges.from_ranges(
+                    applied_overlay.source_line_ranges_by_batch.get(
+                        batch_name,
+                        (),
+                    )
+                )
+                applied_presence_lines = LineRanges.from_ranges(
+                    applied_overlay.applied_source_line_ranges_by_batch.get(
+                        batch_name,
+                        (),
+                    )
+                )
+                index_preimage_presence_lines = LineRanges.from_ranges(
+                    applied_overlay.index_preimage_source_line_ranges_by_batch.get(
+                        batch_name,
+                        (),
+                    )
+                )
+                uses_index_preimage = bool(
+                    applied_presence_lines or index_preimage_presence_lines
+                )
+                if uses_index_preimage:
+                    index_validation_paths.append(file_path)
+                text_plan_result = (
+                    _text_plan_builders.build_discard_text_file_action_plan(
+                        file_path=file_path,
+                        file_meta=file_meta,
+                        baseline_commit=baseline_commit,
+                        selected_ids=selection.selected_ids,
+                        selection_ids_to_discard=selection.selection_ids,
+                        trusted_presence_lines=trusted_presence_lines,
+                        applied_presence_lines=applied_presence_lines,
+                        index_preimage_presence_lines=(index_preimage_presence_lines),
+                        captured_index_identity=index_identities[file_path],
+                        working_tree_artifact_path=(text_input.worktree_artifact),
+                        captured_working_tree_exists=(text_input.identity.exists),
+                        spool_dir=text_input.scratch_directory,
+                    )
+                )
+                if text_plan_result.missing_source:
+                    failed_files.append(file_path)
+                elif text_plan_result.plan is not None:
+                    plans.append(text_plan_result.plan)
+            except AtomicUnitError as error:
+                if selection.rendered:
+                    _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
+                        error,
+                        selection.rendered,
+                        pgettext("batch failure operation", "discard from"),
+                        batch_name,
+                    )
+                exit_with_error(
+                    _("Failed to discard from batch '{name}': {error}").format(
+                        name=batch_name,
+                        error=str(error),
+                    )
+                )
+            except CommandError:
+                raise
+            except Exception as error:
+                print(
+                    _("Error discarding {file}: {error}").format(
+                        file=display_path(file_path),
+                        error=str(error),
+                    ),
+                    file=sys.stderr,
+                )
+                failed_files.append(file_path)
+        if failed_files:
+            exit_with_error(
+                _("Failed to discard changes for some files: {files}").format(
+                    files=", ".join(display_path(path) for path in failed_files),
+                )
+            )
+        return _DiscardPlanCapture(
+            plans=plans,
+            worktree_identities=worktree_identities,
+            index_identities={
+                path: index_identities[path]
+                for path in dict.fromkeys(index_validation_paths)
+            },
+            index_mutation_paths=tuple(dict.fromkeys(index_mutation_paths)),
+        )
+    except BaseException:
+        _action_plans.close_action_plans(plans)
+        raise
+
+
+def _publish_discard_action_plan(
+    plan: _action_plans.BatchSourceActionPlan | _DiscardModeActionPlan,
+) -> _binary_file_actions.BinaryWorktreeAction | None:
+    """Publish one already planned discard action."""
+    try:
+        if session_is_active():
+            snapshot_file_if_untracked(plan.file_path)
+        if isinstance(plan, _DiscardModeActionPlan):
+            _file_mode_actions.apply_file_mode(plan.file_path, plan.file_mode)
+        elif isinstance(plan, _action_plans.DiscardTextFileActionPlan):
+            _text_file_actions.write_discarded_text_file_to_worktree(
+                plan.file_path,
+                plan.buffer,
+                plan.file_mode,
+                plan.change_type,
+            )
+        elif isinstance(plan, _action_plans.BinaryFileActionPlan):
+            return _binary_file_actions.write_binary_file_to_worktree(
+                plan.file_path,
+                plan.file_meta,
+                plan.buffer,
+            )
+        elif isinstance(plan, _action_plans.SubmodulePointerActionPlan):
+            discard_submodule_pointer_from_batch(
+                plan.file_path,
+                plan.file_meta,
+            )
+        else:
+            raise TypeError("unsupported discard action plan")
+        return None
+    except CommandError:
+        raise
+    except Exception as error:
+        raise CommandError(
+            _("Error discarding {file}: {error}").format(
+                file=display_path(plan.file_path),
+                error=str(error),
+            )
+        ) from error

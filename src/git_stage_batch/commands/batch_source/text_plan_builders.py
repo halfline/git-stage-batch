@@ -19,6 +19,7 @@ from ...batch.ownership.attribution_metadata import (
     compact_ownership_metadata_for_attribution,
 )
 from ...core.buffer import LineBuffer
+from ...core.line_selection import LineRanges
 from ...core.replacement import ReplacementPayload
 from ...core.text_lifecycle import (
     TextFileChangeType,
@@ -411,6 +412,13 @@ def build_discard_text_file_action_plan(
     baseline_commit: str,
     selected_ids: set[int] | None,
     selection_ids_to_discard: set[int] | None,
+    trusted_presence_lines: LineRanges | None = None,
+    applied_presence_lines: LineRanges | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
+    captured_index_identity: IndexIdentity | None = None,
+    working_tree_artifact_path: str | Path | None = None,
+    captured_working_tree_exists: bool | None = None,
+    spool_dir: str | Path | None = None,
 ) -> DiscardTextPlanBuildResult:
     """Build one deferred discard-from text action plan."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
@@ -422,50 +430,107 @@ def build_discard_text_file_action_plan(
             plan=_build_baseline_restore_text_plan(
                 file_path=file_path,
                 baseline_commit=baseline_commit,
+                spool_dir=spool_dir,
             )
         )
 
-    batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = read_git_object_buffer_or_none(
-        f"{batch_source_commit}:{file_path}"
-    )
-    if batch_source_buffer is None:
-        return DiscardTextPlanBuildResult(missing_source=True)
-
-    baseline_buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
-    baseline_exists = baseline_buffer is not None
-    if baseline_buffer is None:
-        baseline_buffer = LineBuffer.from_bytes(b"")
-
-    repo_root = get_git_repository_root_path()
-    working_exists = (repo_root / file_path).exists()
-    baseline_mode = detect_file_mode_in_commit(baseline_commit, file_path)
-    restore_mode = mode_for_text_materialization(
-        baseline_mode,
-        selected_ids,
-        destination_exists=working_exists,
-    )
-
     discarded_buffer = None
     try:
-        with (
-            batch_source_buffer as batch_source_lines,
-            baseline_buffer as baseline_lines,
-            load_working_tree_file_as_buffer(file_path) as working_lines,
-        ):
+        with ExitStack() as stack:
+            batch_source_commit = file_meta["batch_source_commit"]
+            batch_source_buffer = read_git_object_buffer_or_none(
+                f"{batch_source_commit}:{file_path}",
+                **_spool_dir_options(spool_dir),
+            )
+            if batch_source_buffer is None:
+                return DiscardTextPlanBuildResult(missing_source=True)
+            batch_source_lines = stack.enter_context(batch_source_buffer)
+
+            baseline_buffer = read_git_object_buffer_or_none(
+                f"{baseline_commit}:{file_path}",
+                **_spool_dir_options(spool_dir),
+            )
+            baseline_exists = baseline_buffer is not None
+            if baseline_buffer is None:
+                baseline_buffer = LineBuffer.from_bytes(
+                    b"",
+                    spool_dir=spool_dir,
+                )
+            baseline_lines = stack.enter_context(baseline_buffer)
+
+            if captured_working_tree_exists is None:
+                repo_root = get_git_repository_root_path()
+                working_exists = (repo_root / file_path).exists()
+            else:
+                working_exists = captured_working_tree_exists
+            baseline_mode = detect_file_mode_in_commit(
+                baseline_commit,
+                file_path,
+            )
+            restore_mode = mode_for_text_materialization(
+                baseline_mode,
+                selected_ids,
+                destination_exists=working_exists,
+            )
+
+            working_tree_buffer = (
+                load_working_tree_file_as_buffer(
+                    file_path,
+                    **_spool_dir_options(spool_dir),
+                )
+                if working_tree_artifact_path is None
+                else LineBuffer.from_path(
+                    working_tree_artifact_path,
+                    spool_dir=spool_dir,
+                )
+            )
+            working_lines = stack.enter_context(working_tree_buffer)
+            needs_trusted_target = bool(
+                applied_presence_lines or index_preimage_presence_lines
+            )
+            if not needs_trusted_target:
+                trusted_target_buffer = None
+            elif captured_index_identity is None:
+                trusted_target_buffer = read_git_object_buffer_or_none(
+                    f":{file_path}",
+                    **_spool_dir_options(spool_dir),
+                )
+            elif captured_index_identity.content_object_id is None:
+                trusted_target_buffer = None
+            else:
+                trusted_target_buffer = load_git_blob_as_buffer(
+                    captured_index_identity.content_object_id,
+                    spool_dir=spool_dir,
+                )
+            trusted_target_lines = (
+                None
+                if trusted_target_buffer is None
+                else stack.enter_context(trusted_target_buffer)
+            )
             with acquire_batch_ownership_for_display_ids_from_lines(
                 file_meta,
                 batch_source_lines,
                 selection_ids_to_discard,
+                **_spool_dir_options(spool_dir),
             ) as ownership:
                 if ownership.is_empty():
                     return DiscardTextPlanBuildResult()
 
+                discard_options = (
+                    {}
+                    if not trusted_presence_lines
+                    else {"trusted_presence_lines": trusted_presence_lines}
+                )
+                if applied_presence_lines:
+                    discard_options["applied_presence_lines"] = applied_presence_lines
                 discarded_buffer = discard_batch_from_line_sequences_as_buffer(
                     batch_source_lines,
                     ownership,
                     working_lines,
                     baseline_lines,
+                    trusted_target_lines=trusted_target_lines,
+                    index_preimage_presence_lines=(index_preimage_presence_lines),
+                    **discard_options,
                 )
 
         effective_change_type = selected_text_discard_change_type(
@@ -485,7 +550,7 @@ def build_discard_text_file_action_plan(
         )
         discarded_buffer = None
         return DiscardTextPlanBuildResult(plan=plan)
-    except Exception:
+    except BaseException:
         if discarded_buffer is not None:
             discarded_buffer.close()
         raise
@@ -495,8 +560,12 @@ def _build_baseline_restore_text_plan(
     *,
     file_path: str,
     baseline_commit: str,
+    spool_dir: str | Path | None = None,
 ) -> _action_plans.DiscardTextFileActionPlan:
-    baseline_buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
+    baseline_buffer = read_git_object_buffer_or_none(
+        f"{baseline_commit}:{file_path}",
+        **_spool_dir_options(spool_dir),
+    )
     if baseline_buffer is None:
         return _action_plans.DiscardTextFileActionPlan(
             file_path,
@@ -504,9 +573,13 @@ def _build_baseline_restore_text_plan(
             None,
             TextFileChangeType.DELETED,
         )
-    return _action_plans.DiscardTextFileActionPlan(
-        file_path,
-        baseline_buffer,
-        detect_file_mode_in_commit(baseline_commit, file_path),
-        TextFileChangeType.MODIFIED,
-    )
+    try:
+        return _action_plans.DiscardTextFileActionPlan(
+            file_path,
+            baseline_buffer,
+            detect_file_mode_in_commit(baseline_commit, file_path),
+            TextFileChangeType.MODIFIED,
+        )
+    except BaseException:
+        baseline_buffer.close()
+        raise

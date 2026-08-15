@@ -18,11 +18,21 @@ class LineRangeView(Sequence[bytes]):
         if start < 0 or end < start:
             raise ValueError("invalid line range")
         self._lines = lines
-        self._start = start
-        self._end = end
+        self._indices = range(start, end)
+
+    @classmethod
+    def _from_indices(
+        cls,
+        lines: Sequence[bytes],
+        indices: range,
+    ) -> LineRangeView:
+        view = cls.__new__(cls)
+        view._lines = lines
+        view._indices = indices
+        return view
 
     def __len__(self) -> int:
-        return self._end - self._start
+        return len(self._indices)
 
     @overload
     def __getitem__(self, index: int) -> bytes: ...
@@ -32,23 +42,19 @@ class LineRangeView(Sequence[bytes]):
 
     def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):
-            start, stop, step = index.indices(len(self))
-            if step == 1:
-                return LineRangeView(
-                    self._lines,
-                    self._start + start,
-                    self._start + stop,
-                )
-            return tuple(
-                self[child_index]
-                for child_index in range(start, stop, step)
+            return self._from_indices(
+                self._lines,
+                self._indices[index],
             )
 
-        if index < 0:
-            index += len(self)
-        if index < 0 or index >= len(self):
-            raise IndexError(index)
-        return self._lines[self._start + index]
+        try:
+            line_index = self._indices[index]
+        except IndexError as error:
+            raise IndexError(index) from error
+        # Acquired line buffers expose scoped no-copy views even though their
+        # public sequence contract is bytes.  Materialize one requested line
+        # so a range value cannot outlive that acquisition scope.
+        return bytes(self._lines[line_index])
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Sequence):

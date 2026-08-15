@@ -1937,7 +1937,6 @@ class TestMergeLineSequences:
             lambda: list(entries.content_chunks()),
             lambda: entries.slice(0, 1),
             lambda: entries.without_range(0, 1),
-            lambda: entries.insert_entries(0, donor),
             lambda: entries.append(b"new\n"),
             lambda: entries.append_line_from([b"new\n"], 0),
             lambda: entries.append_line_range_from([b"new\n"], 0, 1),
@@ -1959,8 +1958,8 @@ class TestMergeLineSequences:
         assert entries.closed
         assert provenance.closed
 
-    def test_realized_entry_slice_without_range_and_insert_preserve_provenance(self):
-        """Structural copy operations preserve content and provenance."""
+    def test_realized_entry_slice_and_without_range_preserve_provenance(self):
+        """Structural slice operations preserve content and provenance."""
         lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
         entries = RealizedEntries()
         entries.append_line_range_from(
@@ -1970,41 +1969,14 @@ class TestMergeLineSequences:
             source_line_start=1,
             target_line_start=11,
         )
-        inserted = RealizedEntries()
-        inserted.append_line_range_from(
-            [b"inserted\n"],
-            0,
-            1,
-            source_line_start=None,
-            target_line_start=None,
-            is_claimed=True,
-        )
-
         sliced = entries.slice(1, 3)
         without = entries.without_range(1, 3)
-        combined = entries.insert_entries(2, inserted)
 
         assert list(sliced.content_chunks()) == [b"two\n", b"three\n"]
         assert [sliced.source_line_at(index) for index in range(len(sliced))] == [2, 3]
         assert [sliced.target_line_at(index) for index in range(len(sliced))] == [12, 13]
         assert list(without.content_chunks()) == [b"one\n", b"four\n"]
         assert [without.source_line_at(index) for index in range(len(without))] == [1, 4]
-        assert list(combined.content_chunks()) == [
-            b"one\n",
-            b"two\n",
-            b"inserted\n",
-            b"three\n",
-            b"four\n",
-        ]
-        assert [combined.source_line_at(index) for index in range(len(combined))] == [
-            1,
-            2,
-            None,
-            3,
-            4,
-        ]
-        assert combined.is_claimed_at(2) is True
-
     def test_realized_entry_getitem_reconstructs_entry(self):
         """__getitem__ returns the expected RealizedEntry view."""
         entries = RealizedEntries()

@@ -469,6 +469,26 @@ objects.
 
 
 
+Reversal restores a replacement's old side only when at least one selected
+new-side line actually maps into the working tree. Thus a whole-file discard can
+remove a partially replayed batch without inserting historical old content for
+replacement units that were never replayed. Deletion-only claims are unaffected.
+
+For a complete replacement that apply proved was overwriting an index-matched
+worktree span, the applied overlay also records its compact source-line range.
+If the overlay, index, worktree boundaries, and exact applied source lines are
+still fresh at discard time, reversal restores the exact current-index span.
+This preserves committed or staged transformations of the historical old side
+instead of reconstructing stale bytes from the batch's older deletion claim.
+The in-memory overlay view also derives every application's selected presence
+ranges from its already stored compact attribution claims. If a selected line
+was a no-op because the identical source line already existed in the captured
+index, discard preserves it only when source-to-index, source-to-worktree, and
+index-to-worktree mappings identify the same line and all three byte sequences
+agree. The selected ranges are reconstructed rather than duplicated. One
+optional application boolean records that the overlay is still bound to its
+original apply-time index target; index drift or session rebinding removes that
+authority. This changes no canonical batch metadata.
 The same refusal rule applies: when the current file no longer provides one
 safe reversal, the command stops without guessing.
 

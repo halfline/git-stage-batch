@@ -152,6 +152,13 @@ def try_apply_baseline_coordinate_edits(
             max_resolution_choices=max_resolution_choices,
             trust_baseline_coordinates=trust_baseline_coordinates,
             source_to_working_mapping=source_to_working_mapping,
+            trusted_target_lines=trusted_target_lines,
+            source_to_trusted_target_mapping=(
+                source_to_trusted_target_mapping
+            ),
+            trusted_target_to_working_mapping=(
+                trusted_target_to_working_mapping
+            ),
             spool_dir=spool_dir,
         )
         if plan is None:
@@ -190,6 +197,9 @@ def _build_baseline_edit_plan(
     max_resolution_choices: int,
     trust_baseline_coordinates: bool,
     source_to_working_mapping: LineMapping | None,
+    trusted_target_lines: Sequence[bytes] | None,
+    source_to_trusted_target_mapping: LineMapping | None,
+    trusted_target_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
 ) -> _BaselineEditPlan | None:
     """Build and validate one storage-backed exact-coordinate edit plan."""
@@ -221,7 +231,7 @@ def _build_baseline_edit_plan(
     if not _plan_replacement_unit_edits(
         workspace,
         plan,
-        len(source_lines),
+        source_lines,
         working_lines,
         replacement_units,
         deletion_claims,
@@ -230,7 +240,14 @@ def _build_baseline_edit_plan(
         mapped_replacement_target_lines,
         resolution,
         max_resolution_choices=max_resolution_choices,
+        selected_presence=presence_lines,
         source_to_working_mapping=source_to_working_mapping,
+        trusted_target_lines=trusted_target_lines,
+        source_to_trusted_target_mapping=source_to_trusted_target_mapping,
+        trusted_target_to_working_mapping=(
+            trusted_target_to_working_mapping
+        ),
+        trust_baseline_coordinates=trust_baseline_coordinates,
         spool_dir=spool_dir,
     ):
         return None

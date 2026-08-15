@@ -17,6 +17,7 @@ from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
 )
 from git_stage_batch.batch.ownership.detachment import acquire_detached_batch_ownership
+import git_stage_batch.batch.ownership.detachment as detachment_module
 from git_stage_batch.batch.ownership.merging import (
     _absence_signature,
     merge_batch_ownership,
@@ -26,6 +27,7 @@ from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
+from git_stage_batch.batch.realization.entry_storage import RealizedEntries
 import git_stage_batch.batch.ownership.absence_content as absence_content_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
@@ -252,6 +254,59 @@ def test_acquire_detached_batch_ownership_streams_buffer_content(monkeypatch):
 
     with pytest.raises(ValueError, match="buffer is closed"):
         detached_content.to_bytes()
+
+
+def test_acquire_detached_batch_ownership_closes_on_base_exception(monkeypatch):
+    """A cancelled detach should close copies completed before cancellation."""
+    copied_buffer = LineBuffer.from_bytes(b"old one\n")
+    calls = 0
+
+    def interrupt_second_copy(_content_lines):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return copied_buffer
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        detachment_module,
+        "_copy_absence_content",
+        interrupt_second_copy,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
+            AbsenceClaim(anchor_line=None, content_lines=[b"old one\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old two\n"]),
+        ],
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        acquire_detached_batch_ownership(ownership)
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        copied_buffer.to_bytes()
+
+
+def test_realized_entries_propagates_owned_resource_close_failure():
+    """A backing resource failure must not look like deferred lease closure."""
+
+    class FailingLineBuffer(LineBuffer):
+        def close(self):
+            super().close()
+            raise ValueError("backing resource close failed")
+
+    entries = RealizedEntries()
+    resource = FailingLineBuffer.from_bytes(b"line\n")
+    entries.retain_line_buffer(resource)
+
+    with pytest.raises(ValueError, match="backing resource close failed"):
+        entries.close()
+
+    with pytest.raises(ValueError, match="realized entries are closed"):
+        len(entries)
+    with pytest.raises(ValueError, match="buffer is closed"):
+        resource.to_bytes()
 
 
 def test_absence_signature_streams_line_buffer_chunks(monkeypatch):

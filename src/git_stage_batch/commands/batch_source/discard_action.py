@@ -24,6 +24,11 @@ from ...data.undo.checkpoints import undo_checkpoint
 from ...batch.state.metadata_types import (
     BatchFileMetadataDict,
 )
+from ...data.applied_batch_overlays import (
+    AppliedBatchOverlaySnapshot,
+    fresh_applied_batch_overlay_for_path,
+    load_applied_batch_overlay_snapshot,
+)
 from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
@@ -31,6 +36,7 @@ from ...data.file_target_identity import (
     capture_worktree_identity,
     read_index_identities,
 )
+from ...data.undo.checkpoints import transaction_checkpoint, undo_checkpoint
 from ...exceptions import (
     AtomicUnitError,
     BatchMetadataError,
@@ -40,6 +46,7 @@ from ...exceptions import (
 )
 from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
+from ...utils.file_job_workspace import FileJobWorkspace
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,3 +242,107 @@ def execute_discard_action(
                     files=", ".join(display_path(path) for path in failed_files),
                 )
             )
+def _capture_discard_targets(
+    files: dict[str, BatchFileMetadataDict],
+    applied_overlay_snapshot: AppliedBatchOverlaySnapshot,
+    workspace: FileJobWorkspace,
+) -> tuple[
+    tuple[_DiscardTextInput, ...],
+    dict[str, WorktreeIdentity],
+    dict[str, IndexIdentity],
+    tuple[tuple[str, str], ...],
+]:
+    """Capture every selected target before any discard planning begins."""
+    overlay_paths = applied_overlay_snapshot.state["files"]
+    uncaptured_paths = tuple(
+        file_path for file_path in files if file_path not in overlay_paths
+    )
+    current_index_identities = read_index_identities(uncaptured_paths)
+    index_identities = {
+        file_path: (
+            applied_overlay_snapshot.index_identities[file_path]
+            if file_path in overlay_paths
+            else current_index_identities[file_path]
+        )
+        for file_path in files
+    }
+    worktree_identities: dict[str, WorktreeIdentity] = {}
+    text_inputs: list[_DiscardTextInput] = []
+    capture_errors: list[tuple[str, str]] = []
+    for ordinal, (file_path, file_meta) in enumerate(files.items()):
+        try:
+            if (
+                _file_mode_actions.is_file_mode_action(file_meta)
+                or file_meta.get("file_type") == "binary"
+                or is_batch_submodule_pointer(file_meta)
+            ):
+                worktree_identities[file_path] = capture_worktree_identity(file_path)
+                continue
+            worktree_artifact = workspace.artifact_path(
+                ordinal,
+                "worktree-input",
+            )
+            identity = capture_worktree_identity(
+                file_path,
+                content_artifact_path=worktree_artifact,
+            )
+            worktree_identities[file_path] = identity
+            text_inputs.append(
+                _DiscardTextInput(
+                    ordinal=ordinal,
+                    file_path=file_path,
+                    file_meta=file_meta,
+                    identity=identity,
+                    worktree_artifact=worktree_artifact,
+                    scratch_directory=workspace.scratch_directory(ordinal),
+                )
+            )
+        except CommandError:
+            raise
+        except Exception as error:
+            capture_errors.append((file_path, str(error)))
+    return (
+        tuple(text_inputs),
+        worktree_identities,
+        index_identities,
+        tuple(capture_errors),
+    )
+def _require_unchanged_discard_targets(
+    expected_index_identities: dict[str, IndexIdentity],
+    expected_worktree_identities: dict[str, WorktreeIdentity],
+) -> None:
+    """Refuse every plan when any captured publication target changed."""
+    current_index_identities = read_index_identities(expected_index_identities)
+    for file_path, expected_index_identity in expected_index_identities.items():
+        if (
+            expected_index_identity.unmerged_entries
+            or current_index_identities[file_path] != expected_index_identity
+        ):
+            raise _discard_target_changed_error(file_path, target="index")
+    current_worktree_identities = capture_worktree_identities(
+        expected_worktree_identities
+    )
+    for file_path, expected_worktree_identity in expected_worktree_identities.items():
+        if current_worktree_identities[file_path] != expected_worktree_identity:
+            raise _discard_target_changed_error(file_path, target="worktree")
+
+
+def _discard_target_changed_error(
+    file_path: str,
+    *,
+    target: str,
+) -> CommandError:
+    """Return the established complete stale-discard refusal message."""
+    if target == "index":
+        return CommandError(
+            _(
+                "Index changed while discard was being calculated: "
+                "{file}. Retry the discard command."
+            ).format(file=display_path(file_path))
+        )
+    return CommandError(
+        _(
+            "Working tree file changed while discard was being "
+            "calculated: {file}. Retry the discard command."
+        ).format(file=display_path(file_path))
+    )

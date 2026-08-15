@@ -7735,6 +7735,17 @@ msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde ka
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr ""
+"Canlı oluşumu belirsiz olduğundan tam olarak uygulanmış değiştirme atılamıyor"
+
 #: src/git_stage_batch/batch/discard_reversal.py:121
 #, python-brace-format
 msgid ""

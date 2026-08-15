@@ -7819,6 +7819,18 @@ msgstr "Todas as alterações da árvore de trabalho estão salvas atualmente em
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "O estado dos lotes aplicados está corrompido: {path}. Remova este arquivo para esquecer a procedência de revisão das alterações restauradas."
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr ""
+"Não é possível descartar uma substituição aplicada exata porque sua "
+"ocorrência ativa é ambígua"
+
 #: src/git_stage_batch/batch/discard_reversal.py:121
 #, python-brace-format
 msgid ""

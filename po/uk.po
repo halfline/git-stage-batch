@@ -7845,6 +7845,19 @@ msgstr "Усі зміни робочого дерева зараз збереж�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Стан застосованих пакетів пошкоджено: {path}. Видаліть цей файл, щоб забути походження перевірки відновлених змін."
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr ""
+"Неможливо відкинути точно застосовану заміну, оскільки її поточне входження "
+"неоднозначне"
+
 #: src/git_stage_batch/batch/discard_reversal.py:121
 #, python-brace-format
 msgid ""

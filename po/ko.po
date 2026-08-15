@@ -7329,6 +7329,16 @@ msgstr "모든 작업 트리 변경 사항은 현재 {locations}에 저장되어
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "적용된 배치 상태가 손상되었습니다: {path}. 복원된 변경 사항의 검토 출처를 잊으려면 이 파일을 제거하십시오."
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr "현재 위치가 모호하므로 정확히 적용된 대체를 폐기할 수 없습니다"
+
 #: src/git_stage_batch/batch/discard_reversal.py:121
 #, python-brace-format
 msgid ""

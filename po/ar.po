@@ -8020,6 +8020,17 @@ msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr "لا يمكن تجاهل استبدال مطبّق بدقة لأن موضعه الحالي ملتبس"
+
 #: src/git_stage_batch/batch/discard_reversal.py:121
 #, python-brace-format
 msgid ""

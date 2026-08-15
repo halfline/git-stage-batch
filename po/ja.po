@@ -7318,6 +7318,17 @@ msgstr "作業ツリーのすべての変更は現在 {locations} に保存さ�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "適用済みバッチの状態が破損しています: {path}。復元された変更のレビュー来歴を破棄するには、このファイルを削除してください。"
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr "現在の出現箇所が曖昧なため、正確に適用された置換を破棄できません"
+
 #: src/git_stage_batch/batch/discard_reversal.py:121
 #, python-brace-format
 msgid ""

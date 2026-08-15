@@ -68,6 +68,34 @@ def test_byte_storage_from_path_uses_mapped_storage_at_threshold(tmp_path):
         file_handle.close()
 
 
+def test_byte_storage_from_path_closes_handle_on_cancellation(
+    tmp_path,
+    monkeypatch,
+):
+    """Cancellation during path inspection must release the opened handle."""
+    file_path = tmp_path / "cancelled.txt"
+    file_path.write_bytes(b"content\n")
+    file_handle = file_path.open("rb")
+
+    class CancellingPath:
+        def open(self, _mode):
+            return file_handle
+
+        def stat(self):
+            raise KeyboardInterrupt("path inspection cancelled")
+
+    monkeypatch.setattr(
+        mapped_storage_module,
+        "Path",
+        lambda _path: CancellingPath(),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="inspection cancelled"):
+        byte_storage_from_path(file_path)
+
+    assert file_handle.closed is True
+
+
 def test_byte_storage_from_chunks_copies_small_mutable_chunks():
     """Small chunk byte storage should copy mutable chunks."""
     chunk = bytearray(b"alpha\n")
@@ -101,6 +129,29 @@ def test_byte_storage_from_chunks_streams_large_chunks_without_copying():
         data.close()
         assert file_handle is not None
         file_handle.close()
+
+
+def test_byte_storage_from_chunks_closes_spill_handle_on_cancellation(
+    tmp_path,
+    monkeypatch,
+):
+    """Cancellation while streaming chunks must release mapped spill state."""
+    file_handle = (tmp_path / "spill").open("w+b")
+
+    def chunks():
+        yield b"x" * mmap.PAGESIZE
+        raise KeyboardInterrupt("chunk stream cancelled")
+
+    monkeypatch.setattr(
+        mapped_storage_module,
+        "_temporary_file",
+        lambda _spool_dir=None: file_handle,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="stream cancelled"):
+        byte_storage_from_chunks(chunks())
+
+    assert file_handle.closed is True
 
 
 def test_mapped_int_vector_get_set_fill_and_close():
@@ -162,6 +213,34 @@ def test_page_sized_mapped_int_vector_uses_mmap(monkeypatch):
         assert vector[0] == 3
 
     assert calls == 1
+
+
+def test_mapped_vector_closes_spill_handle_when_mmap_is_cancelled(
+    tmp_path,
+    monkeypatch,
+):
+    """Cancellation during mmap setup must release the allocated spill file."""
+    file_handle = (tmp_path / "vector-spill").open("w+b")
+
+    monkeypatch.setattr(
+        mapped_storage_module,
+        "_temporary_file",
+        lambda _spool_dir=None: file_handle,
+    )
+
+    def cancel_mmap(*_args, **_kwargs):
+        raise KeyboardInterrupt("mmap cancelled")
+
+    monkeypatch.setattr(
+        mapped_storage_module.mmap,
+        "mmap",
+        cancel_mmap,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="mmap cancelled"):
+        MappedIntVector(mmap.PAGESIZE // 8)
+
+    assert file_handle.closed is True
 
 
 def test_mapped_storage_uses_dynamic_default_scratch_parent(

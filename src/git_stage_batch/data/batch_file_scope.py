@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Optional
 
 from ..batch.state.metadata_types import BatchFileMetadataDict
@@ -53,6 +54,8 @@ def resolve_batch_file_scope(
     all_files: dict[str, BatchFileMetadataDict],
     file: Optional[str] = None,
     patterns: Optional[list[str]] = None,
+    *,
+    resolved_file_paths: Sequence[str] | None = None,
 ) -> dict[str, BatchFileMetadataDict]:
     """Resolve which files from a batch to operate on.
 
@@ -64,6 +67,8 @@ def resolve_batch_file_scope(
             - "": use currently selected hunk's file
             - path: specific file path
         patterns: Optional gitignore-style file patterns to resolve against batch files
+        resolved_file_paths: Optional pre-resolved literal paths to select. This is
+            mutually exclusive with ``file`` and ``patterns``.
 
     Returns:
         Dictionary of file paths to file metadata for selected files
@@ -71,6 +76,24 @@ def resolve_batch_file_scope(
     Raises:
         CommandError: If file not found or no hunk selected when using ""
     """
+    if resolved_file_paths is not None:
+        if file is not None or patterns is not None:
+            raise ValueError(
+                "resolved batch file paths cannot be combined with file or patterns"
+            )
+        unique_paths = tuple(dict.fromkeys(resolved_file_paths))
+        if not unique_paths:
+            raise ValueError("resolved batch file paths cannot be empty")
+        exact_files = {}
+        for file_path in unique_paths:
+            target_file = _get_batch_file_for_line_operation(
+                batch_name,
+                all_files,
+                file_path,
+            )
+            exact_files[target_file] = all_files[target_file]
+        return exact_files
+
     if file is not None:
         if file == "":
             if not selected_batch_change_matches_batch(batch_name):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -367,19 +368,37 @@ def _merge_batch_line_chunks(
     working_lines: AcquirableLineSequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    trusted_target_lines: AcquirableLineSequence[bytes] | None = None,
+    source_to_trusted_target_mapping: LineMapping | None = None,
+    trusted_target_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes]:
     """Merge normalized byte-line sequences and yield normalized chunks."""
-    with (
-        source_lines.acquire_lines() as acquired_source_lines,
-        working_lines.acquire_lines() as acquired_working_lines,
-    ):
+    with ExitStack() as stack:
+        acquired_source_lines = stack.enter_context(
+            source_lines.acquire_lines()
+        )
+        acquired_working_lines = stack.enter_context(
+            working_lines.acquire_lines()
+        )
+        acquired_trusted_target_lines = (
+            None
+            if trusted_target_lines is None
+            else stack.enter_context(trusted_target_lines.acquire_lines())
+        )
         yield from _merge_batch_acquired_line_chunks(
             acquired_source_lines,
             ownership,
             acquired_working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            trusted_target_lines=acquired_trusted_target_lines,
+            source_to_trusted_target_mapping=(
+                source_to_trusted_target_mapping
+            ),
+            trusted_target_to_working_mapping=(
+                trusted_target_to_working_mapping
+            ),
             resolution=resolution,
             spool_dir=spool_dir,
         )
@@ -391,6 +410,9 @@ def _merge_batch_acquired_line_chunks(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    source_to_trusted_target_mapping: LineMapping | None = None,
+    trusted_target_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes]:
@@ -450,6 +472,34 @@ def _merge_batch_acquired_line_chunks(
         )
         shared_mapping = owned_shared_mapping
 
+    owned_source_to_trusted_target_mapping = None
+    trusted_source_mapping = source_to_trusted_target_mapping
+    owned_trusted_target_to_working_mapping = None
+    trusted_working_mapping = trusted_target_to_working_mapping
+    if trusted_target_lines is not None and ownership.replacement_units:
+        if trusted_source_mapping is None:
+            owned_source_to_trusted_target_mapping = match_lines(
+                source_lines,
+                trusted_target_lines,
+                spool_dir=spool_dir,
+            )
+            trusted_source_mapping = (
+                owned_source_to_trusted_target_mapping
+            )
+    if (
+        trusted_target_lines is not None
+        and (ownership.replacement_units or deletion_claims)
+    ):
+        if trusted_working_mapping is None:
+            owned_trusted_target_to_working_mapping = match_lines(
+                trusted_target_lines,
+                working_lines,
+                spool_dir=spool_dir,
+            )
+            trusted_working_mapping = (
+                owned_trusted_target_to_working_mapping
+            )
+
     try:
         if needs_origin_resolution_preflight:
             assert shared_mapping is not None
@@ -499,6 +549,9 @@ def _merge_batch_acquired_line_chunks(
                     max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
                     trust_baseline_coordinates=True,
                     source_to_working_mapping=shared_mapping,
+                    trusted_target_lines=trusted_target_lines,
+                    source_to_trusted_target_mapping=trusted_source_mapping,
+                    trusted_target_to_working_mapping=trusted_working_mapping,
                     spool_dir=spool_dir,
                 )
             )
@@ -537,6 +590,9 @@ def _merge_batch_acquired_line_chunks(
                 resolution=effective_resolution,
                 max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
                 source_to_working_mapping=shared_mapping,
+                trusted_target_lines=trusted_target_lines,
+                source_to_trusted_target_mapping=trusted_source_mapping,
+                trusted_target_to_working_mapping=trusted_working_mapping,
                 spool_dir=spool_dir,
             )
             if fallback_chunks is not None:
@@ -567,6 +623,9 @@ def _merge_batch_acquired_line_chunks(
                     max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
                     trust_baseline_coordinates=True,
                     source_to_working_mapping=shared_mapping,
+                    trusted_target_lines=trusted_target_lines,
+                    source_to_trusted_target_mapping=trusted_source_mapping,
+                    trusted_target_to_working_mapping=trusted_working_mapping,
                     spool_dir=spool_dir,
                 )
             )
@@ -597,6 +656,10 @@ def _merge_batch_acquired_line_chunks(
         finally:
             _close_candidate(coordinate_candidate)
     finally:
+        if owned_trusted_target_to_working_mapping is not None:
+            owned_trusted_target_to_working_mapping.close()
+        if owned_source_to_trusted_target_mapping is not None:
+            owned_source_to_trusted_target_mapping.close()
         if owned_shared_mapping is not None:
             owned_shared_mapping.close()
 

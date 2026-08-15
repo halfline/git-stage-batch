@@ -81,6 +81,9 @@ def try_apply_baseline_coordinate_edits(
     max_resolution_choices: int = _DEFAULT_RESOLUTION_CHOICE_LIMIT,
     trust_baseline_coordinates: bool = False,
     source_to_working_mapping: LineMapping | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    source_to_trusted_target_mapping: LineMapping | None = None,
+    trusted_target_to_working_mapping: LineMapping | None = None,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes] | None:
     """Return content edited at recorded baseline coordinates, if safe.

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import shlex
 
 from ..commands.apply_from import command_apply_from_batch
 from ..commands.file_scope.multi_file_actions import run_for_each_resolved_file
@@ -22,6 +21,13 @@ def dispatch_apply_command(args: argparse.Namespace) -> None:
         command_name="apply",
         line_ids=line_ids,
     )
+    if resolved_file_scope.is_multiple and line_ids is None:
+        command_apply_from_batch(
+            args.from_batch,
+            line_ids=line_ids,
+            file_paths=resolved_file_scope.files,
+        )
+        return
     run_for_each_resolved_file(
         resolved_file_scope,
         lambda file: command_apply_from_batch(
@@ -30,6 +36,4 @@ def dispatch_apply_command(args: argparse.Namespace) -> None:
             file=file,
         ),
         line_ids=line_ids,
-        undo_operation=f"apply --from {shlex.quote(args.from_batch)}",
-        worktree_paths=resolved_file_scope.files,
     )

@@ -449,6 +449,40 @@ def test_discard_same_anchor_claims_preserve_metadata_order() -> None:
             ]
         finally:
             result.close()
+def test_discard_trust_is_limited_to_exact_selected_anchors() -> None:
+    """Trusted by-hunk reversal is limited to exact selected matches."""
+    with discard_module._acquire_trusted_discard_presence_anchors(
+        [b"present\n", b"missing\n"],
+        [b"present\n"],
+        LineRanges.from_ranges([(1, 2)]),
+        LineRanges.from_ranges([(1, 2)]),
+    ) as (anchors, trusted_lines):
+        assert list(anchors) == [(1, 1)]
+        assert trusted_lines == LineRanges.from_ranges([(1, 1)])
+
+
+def test_discard_trusted_anchor_ranges_do_not_expand_contiguous_lines(
+    monkeypatch,
+) -> None:
+    """A large contiguous trusted selection stays range-backed."""
+    line_count = 4096
+    lines = [f"unique line {line_number}\n".encode() for line_number in range(line_count)]
+
+    def fail_line_expansion(*_args, **_kwargs):
+        raise AssertionError("trusted anchors expanded into Python line tuples")
+
+    monkeypatch.setattr(LineRanges, "from_lines", fail_line_expansion)
+
+    with discard_module._acquire_trusted_discard_presence_anchors(
+        lines,
+        lines,
+        LineRanges.from_ranges(((1, line_count),)),
+        LineRanges.from_ranges(((1, line_count),)),
+    ) as (anchors, trusted_lines):
+        assert len(anchors) == line_count
+        assert trusted_lines.ranges() == ((1, line_count),)
+
+
 def test_candidate_comparison_preserves_structural_chunk_boundaries():
     """Stream comparison must not fragment the selected structural output."""
     structural_chunks = [b"alpha\n", b"beta\n", b"gamma\n"]

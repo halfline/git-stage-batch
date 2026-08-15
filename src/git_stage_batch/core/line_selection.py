@@ -13,14 +13,11 @@ from ..i18n import _
 class LineSelection(Protocol):
     """Positive 1-based line selection with cheap range operations."""
 
-    def __contains__(self, line_number: object) -> bool:
-        ...
+    def __contains__(self, line_number: object) -> bool: ...
 
-    def __bool__(self) -> bool:
-        ...
+    def __bool__(self) -> bool: ...
 
-    def __iter__(self) -> Iterator[int]:
-        ...
+    def __iter__(self) -> Iterator[int]: ...
 
     def ranges(self) -> tuple[tuple[int, int], ...]:
         """Return normalized inclusive ranges."""
@@ -49,15 +46,11 @@ def _normalize_line_ranges(
     for start, end in sorted_ranges:
         if start <= 0 or end <= 0:
             raise ValueError(
-                _("Line IDs must be positive: {value}").format(
-                    value=f"{start}-{end}"
-                )
+                _("Line IDs must be positive: {value}").format(value=f"{start}-{end}")
             )
         if start > end:
             raise ValueError(
-                _("Range start must be <= end: {value}").format(
-                    value=f"{start}-{end}"
-                )
+                _("Range start must be <= end: {value}").format(value=f"{start}-{end}")
             )
 
         if current_start is None or current_end is None:
@@ -121,9 +114,7 @@ def scan_line_range_specs(
                         ) from error
                     if start <= 0:
                         raise ValueError(
-                            _("Line ID must be positive: {value}").format(
-                                value=item
-                            )
+                            _("Line ID must be positive: {value}").format(value=item)
                         )
                 else:
                     try:
@@ -135,15 +126,11 @@ def scan_line_range_specs(
                         ) from error
                     if start <= 0 or end <= 0:
                         raise ValueError(
-                            _("Line IDs must be positive: {value}").format(
-                                value=item
-                            )
+                            _("Line IDs must be positive: {value}").format(value=item)
                         )
                 if start > end:
                     raise ValueError(
-                        _("Range start must be <= end: {value}").format(
-                            value=item
-                        )
+                        _("Range start must be <= end: {value}").format(value=item)
                     )
                 yield start, end
 
@@ -242,6 +229,48 @@ class LineRanges:
             total += max(0, min(range_end, end) - max(range_start, start) + 1)
         return total
 
+    def contains_range(self, start: int, end: int) -> bool:
+        """Return whether one normalized range covers both inclusive bounds."""
+        if start > end:
+            return False
+        index = bisect_right(self._starts, start) - 1
+        if index < 0:
+            return False
+        range_start, range_end = self._ranges[index]
+        return range_start <= start and end <= range_end
+
+    def intersects_range(self, start: int, end: int) -> bool:
+        """Return whether any selected line intersects the inclusive range."""
+        if start > end:
+            return False
+        index = bisect_right(self._starts, end) - 1
+        if index < 0:
+            return False
+        _range_start, range_end = self._ranges[index]
+        return start <= range_end
+
+    def intersection_with_range(self, start: int, end: int) -> LineRanges:
+        """Return selected lines inside one inclusive range."""
+        if start > end:
+            return LineRanges.empty()
+
+        def intersections() -> Iterator[tuple[int, int]]:
+            range_index = max(
+                bisect_right(self._starts, start) - 1,
+                0,
+            )
+            while range_index < len(self._ranges):
+                range_start, range_end = self._ranges[range_index]
+                if range_start > end:
+                    break
+                intersection_start = max(start, range_start)
+                intersection_end = min(end, range_end)
+                if intersection_start <= intersection_end:
+                    yield intersection_start, intersection_end
+                range_index += 1
+
+        return LineRanges.from_ranges(intersections())
+
     def intersection(
         self,
         other: LineSelection | Iterable[int],
@@ -279,7 +308,10 @@ class LineRanges:
         for start, end in self._ranges:
             current_start = start
 
-            while other_index < len(other_ranges) and other_ranges[other_index][1] < current_start:
+            while (
+                other_index < len(other_ranges)
+                and other_ranges[other_index][1] < current_start
+            ):
                 other_index += 1
 
             scan_index = other_index
@@ -411,15 +443,13 @@ def parse_positive_selection(
             # Handle range (e.g., "5-7" or "-5-7")
             # Split only at the found separator position
             start_str = part[:range_separator_pos]
-            end_str = part[range_separator_pos + 1:]
+            end_str = part[range_separator_pos + 1 :]
 
             try:
                 start = int(start_str.strip())
                 end = int(end_str.strip())
             except ValueError as e:
-                raise ValueError(
-                    _("Invalid range: {value}").format(value=part)
-                ) from e
+                raise ValueError(_("Invalid range: {value}").format(value=part)) from e
 
             if start <= 0 or end <= 0:
                 raise ValueError(

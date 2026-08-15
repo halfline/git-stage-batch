@@ -52,6 +52,11 @@ def apply_file_mode(file_path: str, mode: str) -> None:
     _apply(file_path, mode)
 
 
+def old_file_mode(file_meta: BatchFileMetadataDict) -> str:
+    """Return a validated baseline mode for a deferred discard action."""
+    return _mode(file_meta, "old_mode")
+
+
 def _apply(file_path: str, mode: str) -> None:
     path: Path = get_git_repository_root_path() / file_path
     if not path.exists() or path.is_symlink():

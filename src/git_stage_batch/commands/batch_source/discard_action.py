@@ -13,6 +13,7 @@ from . import binary_file_actions as _binary_file_actions
 from . import file_mode_actions as _file_mode_actions
 from . import text_file_actions as _text_file_actions
 from . import text_plan_builders as _text_plan_builders
+from ...batch.state.query import read_batch_metadata_for_batches
 from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.submodule_pointer import (
     discard_submodule_pointer_from_batch,
@@ -23,6 +24,7 @@ from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
 from ...batch.state.metadata_types import (
     BatchFileMetadataDict,
+    BatchMetadataDict,
 )
 from ...data.applied_batch_overlays import (
     AppliedBatchOverlaySnapshot,
@@ -36,6 +38,7 @@ from ...data.file_target_identity import (
     capture_worktree_identity,
     read_index_identities,
 )
+from ...data.file_modes import detect_file_mode_in_commit
 from ...data.undo.checkpoints import transaction_checkpoint, undo_checkpoint
 from ...exceptions import (
     AtomicUnitError,
@@ -47,6 +50,7 @@ from ...exceptions import (
 from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
 from ...utils.file_job_workspace import FileJobWorkspace
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,3 +350,59 @@ def _discard_target_changed_error(
             "calculated: {file}. Retry the discard command."
         ).format(file=display_path(file_path))
     )
+
+
+def _print_binary_discard_results(
+    results: tuple[
+        tuple[str, _binary_file_actions.BinaryWorktreeAction | None],
+        ...,
+    ],
+) -> None:
+    """Print binary discard results after the outer transaction commits."""
+    for file_path, action in results:
+        _print_binary_discard_result(file_path, action)
+
+
+def _load_overlay_batch_metadata(
+    files: dict[str, BatchFileMetadataDict],
+    applied_overlay_snapshot: AppliedBatchOverlaySnapshot,
+) -> dict[str, BatchMetadataDict]:
+    """Load metadata for overlay owners relevant to selected paths."""
+    overlay_batch_names: set[str] = set()
+    for file_path in files:
+        overlay_entry = applied_overlay_snapshot.state["files"].get(file_path)
+        if overlay_entry is None:
+            continue
+        overlay_batch_names.update(
+            application["batch"] for application in overlay_entry["applications"]
+        )
+    return read_batch_metadata_for_batches(sorted(overlay_batch_names))
+
+
+def _build_discard_binary_action_plan(
+    *,
+    ordinal: int,
+    file_path: str,
+    baseline_commit: str,
+    workspace: FileJobWorkspace,
+) -> _action_plans.BinaryFileActionPlan:
+    """Load a binary baseline into a deferred worktree action."""
+    buffer = read_git_object_buffer_or_none(
+        f"{baseline_commit}:{file_path}",
+        spool_dir=workspace.scratch_directory(ordinal),
+    )
+    try:
+        metadata: BatchFileMetadataDict = {
+            "file_type": "binary",
+            "change_type": "deleted" if buffer is None else "modified",
+        }
+        if buffer is not None:
+            mode = detect_file_mode_in_commit(baseline_commit, file_path)
+            if mode is None:
+                raise ValueError("binary baseline object omitted its file mode")
+            metadata["mode"] = mode
+        return _action_plans.BinaryFileActionPlan(file_path, metadata, buffer)
+    except BaseException:
+        if buffer is not None:
+            buffer.close()
+        raise

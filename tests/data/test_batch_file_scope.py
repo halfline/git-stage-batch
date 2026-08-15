@@ -94,3 +94,20 @@ def test_pathless_batch_scope_uses_matching_selected_path(monkeypatch):
     )
 
     assert list(resolved) == ["selected.txt"]
+
+
+def test_resolved_batch_file_paths_remain_literal_and_ordered():
+    """Pre-resolved paths must not be reinterpreted as ignore patterns."""
+    all_files = {
+        "literal[1].txt": {},
+        "literal1.txt": {},
+        "other.txt": {},
+    }
+
+    resolved = batch_file_scope.resolve_batch_file_scope(
+        "requested",
+        all_files,
+        resolved_file_paths=("other.txt", "literal[1].txt", "other.txt"),
+    )
+
+    assert list(resolved) == ["other.txt", "literal[1].txt"]

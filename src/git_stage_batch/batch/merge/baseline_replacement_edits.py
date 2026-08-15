@@ -256,6 +256,58 @@ def _replacement_baseline_edit(
     return reviewed_edit, True
 
 
+
+
+def _edit_consumes_adjacent_mapped_source_alternative(
+    edit: _BaselineRemovalEdit,
+    claim: AbsenceClaim,
+    claimed_ranges: Sequence[tuple[int, ...]],
+    source_lines: Sequence[bytes] | None,
+    mapping: LineMapping,
+) -> bool:
+    """Prove an edit consumes the explicit old side stored after its new side.
+
+    A transformed replacement stores both alternatives next to each other in
+    the batch source while marking the retained live side as a
+    ``source_alternative`` absence claim.  That old side can consequently be a
+    mapped source neighbor of the owned new side.  It is safe to consume that
+    neighbor only when the exact recorded payload occupies the immediately
+    following source span and every source line maps consecutively onto the
+    proposed removal span.
+    """
+    if not claim.source_alternative or source_lines is None or len(claimed_ranges) != 1:
+        return False
+
+    target_start, target_end = edit
+    alternative_lines = normalize_line_sequence_endings(claim.content_lines)
+    alternative_line_count = len(alternative_lines)
+    if (
+        alternative_line_count == 0
+        or target_end - target_start != alternative_line_count
+    ):
+        return False
+
+    alternative_source_start = claimed_ranges[0][1] + 1
+    alternative_source_end = alternative_source_start + alternative_line_count - 1
+    if alternative_source_end > len(source_lines):
+        return False
+
+    for offset, expected_line in enumerate(alternative_lines):
+        source_line = alternative_source_start + offset
+        target_line = target_start + offset + 1
+        if (
+            source_lines[source_line - 1] != expected_line
+            or mapping.get_target_line_from_source_line(source_line) != target_line
+            or mapping.get_source_line_from_target_line(target_line) != source_line
+        ):
+            return False
+    return True
+
+
+
+
+
+
 def plan_replacement_unit_edits(
     workspace: MatcherWorkspace,
     plan: BaselineEditPlan,

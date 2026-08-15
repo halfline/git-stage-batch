@@ -8020,6 +8020,14 @@ msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr "تغيّر الفهرس أثناء حساب التطبيق: {file}. أعد تنفيذ أمر التطبيق."
+
 #: src/git_stage_batch/commands/batch_source/discard_action.py:547
 #, python-brace-format
 msgid ""

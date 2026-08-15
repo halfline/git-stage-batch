@@ -7839,6 +7839,17 @@ msgstr "Alle wijzigingen in de werkboom zijn momenteel opgeslagen in {locations}
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "De status van toegepaste batches is beschadigd: {path}. Verwijder dit bestand om de beoordelingsherkomst van herstelde wijzigingen te vergeten."
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"De index veranderde tijdens het berekenen van apply: {file}. Probeer de "
+"apply-opdracht opnieuw."
+
 #: src/git_stage_batch/commands/batch_source/discard_action.py:547
 #, python-brace-format
 msgid ""

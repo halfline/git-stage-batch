@@ -7920,6 +7920,17 @@ msgstr "Toutes les modifications de l’arbre de travail sont actuellement enreg
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "L’état des lots appliqués est endommagé : {path}. Supprimez ce fichier pour oublier la provenance de révision des modifications restaurées."
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"L'index a changé pendant le calcul de l'application : {file}. Relancez la "
+"commande apply."
+
 #: src/git_stage_batch/commands/batch_source/discard_action.py:547
 #, python-brace-format
 msgid ""

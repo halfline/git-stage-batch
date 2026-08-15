@@ -7892,6 +7892,17 @@ msgstr "Wszystkie zmiany drzewa roboczego są obecnie zapisane w {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stan zastosowanych partii jest uszkodzony: {path}. Usuń ten plik, aby zapomnieć pochodzenie przeglądu przywróconych zmian."
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"Indeks zmienił się podczas obliczania operacji zastosowania: {file}. Ponów "
+"polecenie apply."
+
 #: src/git_stage_batch/commands/batch_source/discard_action.py:547
 #, python-brace-format
 msgid ""

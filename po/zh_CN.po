@@ -7287,6 +7287,15 @@ msgstr "所有工作树更改当前都已保存在 {locations} 中。"
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "已应用批次状态已损坏：{path}。请删除此文件以忘记已恢复更改的审查来源。"
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr "计算 apply 时索引已更改：{file}。请重试 apply 命令。"
+
 #: src/git_stage_batch/commands/batch_source/discard_action.py:547
 #, python-brace-format
 msgid ""

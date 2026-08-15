@@ -7928,6 +7928,14 @@ msgstr "Alle Änderungen im Arbeitsbaum sind derzeit in {locations} gespeichert.
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Der Zustand angewendeter Stapel ist beschädigt: {path}. Entfernen Sie diese Datei, um die Prüfherkunft wiederhergestellter Änderungen zu vergessen."
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"Der hinzugefügte Submodul-Zeiger für {file} kann nicht verworfen werden: Der "
+"Index enthält bereits bereitgestellten Inhalt."
 "Index changed while include was being calculated: {file}. Retry the include "
 "command."
 msgstr ""

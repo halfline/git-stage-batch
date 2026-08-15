@@ -7735,6 +7735,17 @@ msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde ka
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"apply hesaplanırken indeks değişti: {file}. apply komutunu yeniden "
+"çalıştırın."
+
 #: src/git_stage_batch/commands/batch_source/discard_action.py:547
 #, python-brace-format
 msgid ""

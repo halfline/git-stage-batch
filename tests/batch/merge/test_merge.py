@@ -144,6 +144,195 @@ def test_contextual_presence_coalesces_overlapping_removal_spans() -> None:
     assert [placement.gap_index for placement in placements] == [0]
 
 
+def test_contextual_presence_joins_split_runs_in_collapsed_source_island() -> None:
+    """Selected siblings may omit a stale line at one exact target gap."""
+    source = b"""header
+
+first one
+first two
+first three
+stale sibling
+second one
+second two
+second three
+second four
+
+footer
+"""
+    target = b"""header
+
+
+footer
+"""
+    ownership = BatchOwnership.from_presence_lines(["3-5,7-10"])
+
+    result = merge_batch(source, ownership, target)
+
+    assert result == b"""header
+
+first one
+first two
+first three
+second one
+second two
+second three
+second four
+
+footer
+"""
+
+
+def test_contextual_presence_split_runs_do_not_cross_live_target_content() -> None:
+    """Split source siblings cannot silently choose a side of live content."""
+    source = b"""header
+
+first one
+first two
+first three
+stale sibling
+second one
+second two
+second three
+second four
+
+footer
+"""
+    target = b"""header
+
+live sibling
+
+footer
+"""
+    ownership = BatchOwnership.from_presence_lines(["3-5,7-10"])
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(source, ownership, target)
+
+
+def test_contextual_presence_split_runs_keep_broad_source_skew_ambiguous() -> None:
+    """A collapsed target does not excuse a broad unowned source gap."""
+    source = b"""header
+
+first one
+first two
+first three
+stale one
+stale two
+stale three
+second one
+second two
+second three
+second four
+
+footer
+"""
+    target = b"""header
+
+
+footer
+"""
+    ownership = BatchOwnership.from_presence_lines(["3-5,9-12"])
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(source, ownership, target)
+
+
+def test_contextual_presence_split_run_cluster_scan_stays_linear(
+    monkeypatch,
+) -> None:
+    """Many exact split islands must not rescan earlier source islands."""
+    cluster_count = 256
+    source: list[bytes] = []
+    target: list[bytes] = []
+    selected_lines: list[int] = []
+    for cluster_index in range(cluster_count):
+        source_start = len(source) + 1
+        source.extend((
+            f"before-{cluster_index}\n".encode(),
+            f"first-{cluster_index}\n".encode(),
+            f"stale-{cluster_index}\n".encode(),
+            f"second-{cluster_index}\n".encode(),
+            f"after-{cluster_index}\n".encode(),
+        ))
+        target.extend((source[-5], source[-1]))
+        selected_lines.extend((source_start + 1, source_start + 3))
+    selected = LineRanges.from_lines(selected_lines)
+    mapping_lookups = 0
+
+    with match_lines(source, target) as mapping:
+        original_lookup = mapping.get_target_line_from_source_line
+
+        def count_mapping_lookup(source_line):
+            nonlocal mapping_lookups
+            mapping_lookups += 1
+            return original_lookup(source_line)
+
+        monkeypatch.setattr(
+            mapping,
+            "get_target_line_from_source_line",
+            count_mapping_lookup,
+        )
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            selected,
+            mapping,
+            require_distinctive_context=True,
+        )
+
+    assert len(placements) == cluster_count * 2
+    assert mapping_lookups < cluster_count * 10
+
+
+def test_distinctive_context_queries_share_linear_neighbor_indexes(
+    monkeypatch,
+) -> None:
+    """Overlapping broad context searches must scan source mappings once."""
+    run_count = 256
+    gap_lines = [
+        f"gap-{line_index}\n".encode()
+        for line_index in range(run_count * 2)
+    ]
+    source = [b"unique before\n", b"common\n"]
+    source.extend(gap_lines)
+    source.extend((b"common\n", b"unique after\n"))
+    target = [
+        b"unique before\n",
+        b"common\n",
+        b"common\n",
+        b"unique after\n",
+    ]
+    selected = LineRanges.from_ranges(
+        (source_line, source_line)
+        for source_line in range(3, 3 + len(gap_lines), 2)
+    )
+    mapping_lookups = 0
+
+    with match_lines(source, target) as mapping:
+        original_lookup = mapping.get_target_line_from_source_line
+
+        def count_mapping_lookup(source_line):
+            nonlocal mapping_lookups
+            mapping_lookups += 1
+            return original_lookup(source_line)
+
+        monkeypatch.setattr(
+            mapping,
+            "get_target_line_from_source_line",
+            count_mapping_lookup,
+        )
+        with pytest.raises(MergeError, match="different version"):
+            contextual_presence_placements(
+                source,
+                target,
+                selected,
+                mapping,
+                require_distinctive_context=True,
+            )
+
+    assert mapping_lookups < len(source) * 8
+
+
 def test_realization_fallback_tracks_target_coordinates_after_removal() -> None:
     """Earlier removals must not stale a later baseline target coordinate."""
     lines = [b"head\n", b"old a\n", b"middle\n", b"old b\n", b"tail\n"]

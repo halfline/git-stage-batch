@@ -7,252 +7,6 @@ from pathlib import Path
 from .conftest import git_stage_batch, get_staged_diff, get_unstaged_diff
 
 
-def _install_castkms_ptrdiff_replay_fixture(
-    functional_repo,
-    *,
-    corrected_source_alternative: bool = True,
-):
-    fixture_root = Path(__file__).parent / "fixtures"
-    fixture_packs = [
-        next(fixture_root.glob("castkms_ptrdiff_replay_exact-*.pack")),
-    ]
-    if corrected_source_alternative:
-        fixture_packs.append(
-            fixture_root / "castkms_ptrdiff_source_alternative_exact.pack"
-        )
-    for fixture_pack in fixture_packs:
-        subprocess.run(
-            ["git", "index-pack", "--stdin"], cwd=functional_repo,
-            input=fixture_pack.read_bytes(), check=True, capture_output=True,
-        )
-    subprocess.run(
-        [
-            "git", "checkout", "--detach",
-            "a59c3b7e422482f654186b79c87236c825d75741",
-        ],
-        cwd=functional_repo, check=True, capture_output=True,
-    )
-    refs = {
-        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission":
-            "7f312fe101f4dc2dd9f55c2fadd07b005907009a",
-        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission":
-            (
-                "2f333bc3c08d6e10fa70d3fe1396057d0e2882f3"
-                if corrected_source_alternative
-                else "1ddc2c96e04556d24fd7216884127803fd28c333"
-            ),
-        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission-repair":
-            "6f9cf6498bc0e51f6491de71fe8725a7b592b7ab",
-        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission-repair":
-            "d71f3b3c44de3df9326a27d627ad99d191e02887",
-    }
-    for ref, oid in refs.items():
-        subprocess.run(
-            ["git", "update-ref", ref, oid], cwd=functional_repo,
-            check=True, capture_output=True,
-        )
-    return "decompose-22-ptrdiff-stride-admission"
-
-
-
-def _install_castkms_wide_offset_replay_fixture(functional_repo):
-    fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_wide_offset_replay_exact-*.pack")
-    )
-    subprocess.run(
-        ["git", "index-pack", "--stdin"],
-        cwd=functional_repo,
-        input=fixture_pack.read_bytes(),
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        [
-            "git",
-            "checkout",
-            "--detach",
-            "7922200aaa5bc27b29b38ff8f607593d31e38827",
-        ],
-        cwd=functional_repo,
-        check=True,
-        capture_output=True,
-    )
-    batch_name = "decompose-24-wide-framebuffer-offsets"
-    persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "1d2cd693967c909301b0dc9ced537f2c9aa012b5",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "caa757d3b5bdd3ae7838714254bea0c3ce54c112",
-    }
-    for ref, object_id in persisted_refs.items():
-        subprocess.run(
-            ["git", "update-ref", ref, object_id],
-            cwd=functional_repo,
-            check=True,
-            capture_output=True,
-        )
-    return batch_name
-
-
-def _install_castkms_raw_map_replay_fixture(functional_repo):
-    fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_raw_map_replay_exact-*.pack")
-    )
-    subprocess.run(
-        ["git", "index-pack", "--stdin"],
-        cwd=functional_repo,
-        input=fixture_pack.read_bytes(),
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        [
-            "git",
-            "checkout",
-            "--detach",
-            "ca977563d0480499285a739838df53df46d012db",
-        ],
-        cwd=functional_repo,
-        check=True,
-        capture_output=True,
-    )
-    batch_name = "decompose-31-raw-framebuffer-maps"
-    persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "68a98e92d69295c1a80b340fc97e5e74984fa167",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "ede272733ba7bff86d383059581cf1b73d976a53",
-    }
-    for ref, object_id in persisted_refs.items():
-        subprocess.run(
-            ["git", "update-ref", ref, object_id],
-            cwd=functional_repo,
-            check=True,
-            capture_output=True,
-        )
-    return batch_name
-
-
-def _install_castkms_primary_replay_fixture(functional_repo):
-    fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(fixture_root.glob("castkms_primary_replay_exact-*.pack"))
-    subprocess.run(
-        ["git", "index-pack", "--stdin"],
-        cwd=functional_repo,
-        input=fixture_pack.read_bytes(),
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        [
-            "git",
-            "checkout",
-            "--detach",
-            "73ab324457aa97fc118e8406b973a8050e6e1cd2",
-        ],
-        cwd=functional_repo,
-        check=True,
-        capture_output=True,
-    )
-    batch_name = "decompose-36-primary-plane-lookup-ownership"
-    persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "ad3641debe9fcba69b6018d096cf97f2969fd730",
-    }
-    for ref, object_id in persisted_refs.items():
-        subprocess.run(
-            ["git", "update-ref", ref, object_id],
-            cwd=functional_repo,
-            check=True,
-            capture_output=True,
-        )
-    return batch_name
-
-
-def _install_castkms_primary_replay_fixture(functional_repo):
-    fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(fixture_root.glob("castkms_primary_replay_exact-*.pack"))
-    subprocess.run(
-        ["git", "index-pack", "--stdin"],
-        cwd=functional_repo,
-        input=fixture_pack.read_bytes(),
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        [
-            "git",
-            "checkout",
-            "--detach",
-            "73ab324457aa97fc118e8406b973a8050e6e1cd2",
-        ],
-        cwd=functional_repo,
-        check=True,
-        capture_output=True,
-    )
-    batch_name = "decompose-36-primary-plane-lookup-ownership"
-    persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "ad3641debe9fcba69b6018d096cf97f2969fd730",
-    }
-    for ref, object_id in persisted_refs.items():
-        subprocess.run(
-            ["git", "update-ref", ref, object_id],
-            cwd=functional_repo,
-            check=True,
-            capture_output=True,
-        )
-    return batch_name
-
-
-
-
-def _install_castkms_hot_unplug_replay_fixture(functional_repo):
-    fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_hot_unplug_replay_exact-*.pack")
-    )
-    subprocess.run(
-        ["git", "index-pack", "--stdin"],
-        cwd=functional_repo,
-        input=fixture_pack.read_bytes(),
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        [
-            "git",
-            "checkout",
-            "--detach",
-            "9e0e83db0bd289ab6f2a26debfb03bca90a10937",
-        ],
-        cwd=functional_repo,
-        check=True,
-        capture_output=True,
-    )
-    batch_name = "decompose-32-config-hot-unplug"
-    persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "6e6ab7224e6fcfef38a980c4cc2871ae5190f457",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "1b0d99b0092653263a4c64bcdc27a882b0242422",
-    }
-    for ref, object_id in persisted_refs.items():
-        subprocess.run(
-            ["git", "update-ref", ref, object_id],
-            cwd=functional_repo,
-            check=True,
-            capture_output=True,
-        )
-    return batch_name
-
-
 def _install_castkms_primary_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
     fixture_pack = next(fixture_root.glob("castkms_primary_replay_exact-*.pack"))
@@ -327,6 +81,255 @@ def _install_castkms_cursor_replay_fixture(functional_repo):
             capture_output=True,
         )
     return batch_name
+
+
+def _install_castkms_hot_unplug_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_hot_unplug_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "9e0e83db0bd289ab6f2a26debfb03bca90a10937",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-32-config-hot-unplug"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "6e6ab7224e6fcfef38a980c4cc2871ae5190f457",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "1b0d99b0092653263a4c64bcdc27a882b0242422",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_raw_map_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_raw_map_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "ca977563d0480499285a739838df53df46d012db",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-31-raw-framebuffer-maps"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "68a98e92d69295c1a80b340fc97e5e74984fa167",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "ede272733ba7bff86d383059581cf1b73d976a53",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_packed_bit_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_packed_bit_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "f108ceab14ee3175e13312a83b899011a8c52edc",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-28-packed-bit-final-sample"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "f019f94fbad93c8c379c5c165b3f50c7a2d3eac1",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "cac5c82acdd60b43456eb02c82b561d79e93dfde",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_wide_offset_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_wide_offset_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "7922200aaa5bc27b29b38ff8f607593d31e38827",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-24-wide-framebuffer-offsets"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "1d2cd693967c909301b0dc9ced537f2c9aa012b5",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "caa757d3b5bdd3ae7838714254bea0c3ce54c112",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_stride_guard_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_stride_guard_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "812d4beb9592b12048524b6f59049eec25dc03d3",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-23-int-range-scanout-guard"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "b2de98e6c965ea6e22945b0f13043c3a1072f033",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "f714d3d0af9cb864401fe2ee2b8eb3253645d539",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_ptrdiff_replay_fixture(
+    functional_repo,
+    *,
+    corrected_source_alternative: bool = True,
+):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_packs = [
+        next(fixture_root.glob("castkms_ptrdiff_replay_exact-*.pack")),
+    ]
+    if corrected_source_alternative:
+        fixture_packs.append(
+            fixture_root / "castkms_ptrdiff_source_alternative_exact.pack"
+        )
+    for fixture_pack in fixture_packs:
+        subprocess.run(
+            ["git", "index-pack", "--stdin"], cwd=functional_repo,
+            input=fixture_pack.read_bytes(), check=True, capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git", "checkout", "--detach",
+            "a59c3b7e422482f654186b79c87236c825d75741",
+        ],
+        cwd=functional_repo, check=True, capture_output=True,
+    )
+    refs = {
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission":
+            "7f312fe101f4dc2dd9f55c2fadd07b005907009a",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission":
+            (
+                "2f333bc3c08d6e10fa70d3fe1396057d0e2882f3"
+                if corrected_source_alternative
+                else "1ddc2c96e04556d24fd7216884127803fd28c333"
+            ),
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission-repair":
+            "6f9cf6498bc0e51f6491de71fe8725a7b592b7ab",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission-repair":
+            "d71f3b3c44de3df9326a27d627ad99d191e02887",
+    }
+    for ref, oid in refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, oid], cwd=functional_repo,
+            check=True, capture_output=True,
+        )
+    return "decompose-22-ptrdiff-stride-admission"
+
+
 class TestCreateBatch:
     """Test creating batches."""
 
@@ -491,163 +494,6 @@ class TestShowFromBatch:
 
 class TestApplyFromBatch:
     """Test applying changes from a batch."""
-
-    def test_apply_ptrdiff_stride_migration_before_companion_repair(
-        self,
-        functional_repo,
-    ):
-        """The stride migration must replay before its companion is inverted."""
-        batch_name = _install_castkms_ptrdiff_replay_fixture(functional_repo)
-        path = functional_repo / "src" / "castkms_formats.c"
-
-        result = git_stage_batch(
-            "apply", "--from", batch_name, check=False,
-        )
-        assert result.returncode == 0, result.stderr
-
-        git_stage_batch(
-            "discard", "--from", f"{batch_name}-repair",
-        )
-        source = path.read_text()
-        assert "static ptrdiff_t get_block_step_bytes" in source
-        assert "if (block_stride > SSIZE_MAX)" in source
-        assert "if (block_stride > INT_MAX)" not in source
-        assert "drm_format_info_block_height(fb->format" in source
-
-    def test_apply_wide_offset_helper_and_both_callers(self, functional_repo):
-        """A selected helper migration must carry continuation lines."""
-        batch_name = _install_castkms_wide_offset_replay_fixture(functional_repo)
-        relative_path = "src/castkms_formats.c"
-        path = functional_repo / relative_path
-        committed = path.read_text()
-
-        git_stage_batch(
-            "show",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            "--pages",
-            "all",
-        )
-        result = git_stage_batch(
-            "apply",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            "--line",
-            "1-24,26-32,34-36",
-            check=False,
-        )
-
-        assert result.returncode == 0, result.stderr
-        source = path.read_text()
-        assert source.count("offset = castkms_packed_pixels_offset(") == 2
-        assert "\n\tpacked_pixels_offset(frame_info" not in source
-
-        result = git_stage_batch(
-            "discard",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            check=False,
-        )
-        assert result.returncode == 0, result.stderr
-        assert path.read_text() == committed
-
-    def test_legacy_ptrdiff_stride_migration_fails_without_semantic_intent(
-        self,
-        functional_repo,
-    ):
-        """An ambiguous legacy insertion must not preserve both alternatives."""
-        batch_name = _install_castkms_ptrdiff_replay_fixture(
-            functional_repo,
-            corrected_source_alternative=False,
-        )
-        path = functional_repo / "src" / "castkms_formats.c"
-        before = path.read_bytes()
-
-        result = git_stage_batch("apply", "--from", batch_name, check=False)
-
-        assert result.returncode != 0
-        assert "does not record whether adjacent historical source content" in (
-            result.stderr
-        )
-        assert path.read_bytes() == before
-
-    def test_apply_batch_after_committing_neighboring_replacements(
-        self,
-        functional_repo,
-    ):
-        """Committed neighboring replacements must not block batch replay."""
-        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
-
-        result = git_stage_batch("apply", "--from", batch_name, check=False)
-
-        assert result.returncode == 0, result.stderr
-        header = (functional_repo / "src" / "castkms_config.h").read_text()
-        tests = (
-            functional_repo / "src" / "tests" / "castkms_config_test.c"
-        ).read_text()
-        assert (
-            "castkms_config_crtc_primary_plane(struct castkms_config_crtc"
-            in header
-        )
-        assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
-
-    def test_apply_hot_unplug_guard_after_recommended_adopters(
-        self,
-        functional_repo,
-    ):
-        """Applying recommended adopters must leave their guard replayable."""
-        batch_name = _install_castkms_hot_unplug_replay_fixture(functional_repo)
-        path = functional_repo / "src" / "castkms_config.c"
-
-        git_stage_batch(
-            "show",
-            "--from",
-            batch_name,
-            "--file",
-            "src/castkms_config.c",
-            "--pages",
-            "all",
-        )
-        git_stage_batch(
-            "apply",
-            "--from",
-            batch_name,
-            "--file",
-            "src/castkms_config.c",
-            "--line",
-            "1-2,15-22,24",
-        )
-        git_stage_batch(
-            "show",
-            "--from",
-            batch_name,
-            "--file",
-            "src/castkms_config.c",
-            "--pages",
-            "all",
-        )
-        result = git_stage_batch(
-            "apply",
-            "--from",
-            batch_name,
-            "--file",
-            "src/castkms_config.c",
-            "--line",
-            "3-14,23",
-            check=False,
-        )
-
-        assert result.returncode == 0, result.stderr
-        source = path.read_text()
-        assert "if (!drm_dev_enter(dev, &idx))" in source
-        assert "drm_dev_exit(idx);" in source
-        assert "config = castkmsdev->config;" in source
 
     def test_apply_batch_after_committing_neighboring_replacements(
         self,
@@ -938,6 +784,274 @@ class TestApplyFromBatch:
             "castkms_config_crtc_cursor_plane(config, crtc_cfg)"
             not in source
         )
+
+    def test_apply_hot_unplug_guard_after_recommended_adopters(
+        self,
+        functional_repo,
+    ):
+        """Applying recommended adopters must leave their guard replayable."""
+        batch_name = _install_castkms_hot_unplug_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--pages",
+            "all",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-2,15-22,24",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "3-14,23",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert "if (!drm_dev_enter(dev, &idx))" in source
+        assert "drm_dev_exit(idx);" in source
+        assert "config = castkmsdev->config;" in source
+
+    def test_apply_raw_map_tests_after_case_entries(self, functional_repo):
+        """Applying case entries must leave their test functions replayable."""
+        batch_name = _install_castkms_raw_map_replay_fixture(functional_repo)
+        relative_path = "src/tests/castkms_format_test.c"
+        path = functional_repo / relative_path
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "80-81",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count(
+            "static void castkms_format_test_framebuffer_offset"
+        ) == 1
+        assert source.count(
+            "static void castkms_format_test_distinct_multiplane_maps"
+        ) == 1
+        assert source.count(
+            "KUNIT_CASE(castkms_format_test_framebuffer_offset)"
+        ) == 1
+        assert source.count(
+            "KUNIT_CASE(castkms_format_test_distinct_multiplane_maps)"
+        ) == 1
+
+        git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+        )
+        assert path.read_text() == committed
+
+    def test_apply_packed_bit_boundary_after_one_plane_boundary(
+        self,
+        functional_repo,
+    ):
+        """An adjacent reader fix should replay through an explicit selection."""
+        batch_name = _install_castkms_packed_bit_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--page",
+            "1",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "1-8",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count("if (out_pixel < end)") == 3
+        assert "\t\t\tout_pixel += 1;\n\n\t\t\tbit_offset" in source
+
+    def test_apply_wide_offset_helper_and_both_callers(self, functional_repo):
+        """A selected helper migration must carry continuation lines."""
+        batch_name = _install_castkms_wide_offset_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "1-24,26-32,34-36",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count("offset = castkms_packed_pixels_offset(") == 2
+        assert "\n\tpacked_pixels_offset(frame_info" not in source
+
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_apply_stride_guard_after_wide_offset_helper(self, functional_repo):
+        """An adjacent helper insertion must replay after its predecessor."""
+        batch_name = _install_castkms_stride_guard_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert "bool castkms_framebuffer_read_strides_are_valid" in source
+        assert "if (block_stride > INT_MAX)" in source
+        assert "if (block_stride > SSIZE_MAX)" not in source
+
+    def test_apply_ptrdiff_stride_migration_before_companion_repair(
+        self,
+        functional_repo,
+    ):
+        """The stride migration must replay before its companion is inverted."""
+        batch_name = _install_castkms_ptrdiff_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_formats.c"
+
+        result = git_stage_batch(
+            "apply", "--from", batch_name, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+        git_stage_batch(
+            "discard", "--from", f"{batch_name}-repair",
+        )
+        source = path.read_text()
+        assert "static ptrdiff_t get_block_step_bytes" in source
+        assert "if (block_stride > SSIZE_MAX)" in source
+        assert "if (block_stride > INT_MAX)" not in source
+        assert "drm_format_info_block_height(fb->format" in source
+
+    def test_legacy_ptrdiff_stride_migration_fails_without_semantic_intent(
+        self,
+        functional_repo,
+    ):
+        """An ambiguous legacy insertion must not preserve both alternatives."""
+        batch_name = _install_castkms_ptrdiff_replay_fixture(
+            functional_repo,
+            corrected_source_alternative=False,
+        )
+        path = functional_repo / "src" / "castkms_formats.c"
+        before = path.read_bytes()
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode != 0
+        assert "does not record whether adjacent historical source content" in (
+            result.stderr
+        )
+        assert path.read_bytes() == before
 
     def test_start_reviews_changes_restored_from_batch(self, functional_repo):
         """A restored batch should remain available to a fresh staging pass."""
@@ -1336,125 +1450,6 @@ class TestApplyFromBatch:
 
         unstaged = get_unstaged_diff()
         assert unstaged
-
-
-    def test_apply_raw_map_tests_after_case_entries(self, functional_repo):
-        """Applying case entries must leave their test functions replayable."""
-        batch_name = _install_castkms_raw_map_replay_fixture(functional_repo)
-        relative_path = "src/tests/castkms_format_test.c"
-        path = functional_repo / relative_path
-        committed = path.read_text()
-
-        git_stage_batch(
-            "show",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            "--pages",
-            "all",
-        )
-        git_stage_batch(
-            "apply",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            "--line",
-            "80-81",
-        )
-        git_stage_batch(
-            "show",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            "--pages",
-            "all",
-        )
-        result = git_stage_batch(
-            "apply",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            check=False,
-        )
-
-        assert result.returncode == 0, result.stderr
-        source = path.read_text()
-        assert source.count(
-            "static void castkms_format_test_framebuffer_offset"
-        ) == 1
-        assert source.count(
-            "static void castkms_format_test_distinct_multiplane_maps"
-        ) == 1
-        assert source.count(
-            "KUNIT_CASE(castkms_format_test_framebuffer_offset)"
-        ) == 1
-        assert source.count(
-            "KUNIT_CASE(castkms_format_test_distinct_multiplane_maps)"
-        ) == 1
-
-        git_stage_batch(
-            "discard",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-        )
-        assert path.read_text() == committed
-
-
-    def test_apply_batch_after_committing_neighboring_replacements(
-        self,
-        functional_repo,
-    ):
-        """Committed neighboring replacements must not block batch replay."""
-        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
-
-        result = git_stage_batch("apply", "--from", batch_name, check=False)
-
-        assert result.returncode == 0, result.stderr
-        header = (functional_repo / "src" / "castkms_config.h").read_text()
-        tests = (
-            functional_repo / "src" / "tests" / "castkms_config_test.c"
-        ).read_text()
-        assert (
-            "castkms_config_crtc_primary_plane(struct castkms_config_crtc"
-            in header
-        )
-        assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
-
-    def test_apply_stride_guard_after_wide_offset_helper(self, functional_repo):
-        """An adjacent helper insertion must replay after its predecessor."""
-        batch_name = _install_castkms_stride_guard_replay_fixture(functional_repo)
-        relative_path = "src/castkms_formats.c"
-        path = functional_repo / relative_path
-
-        git_stage_batch(
-            "show",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            "--pages",
-            "all",
-        )
-        result = git_stage_batch(
-            "apply",
-            "--from",
-            batch_name,
-            "--file",
-            relative_path,
-            check=False,
-        )
-
-        assert result.returncode == 0, result.stderr
-        source = path.read_text()
-        assert "bool castkms_framebuffer_read_strides_are_valid" in source
-        assert "if (block_stride > INT_MAX)" in source
-        assert "if (block_stride > SSIZE_MAX)" not in source
 
 
 class TestBatchList:
@@ -2024,43 +2019,3 @@ class TestBatchRebaseWorkflow:
         # Batch should still exist
         result = git_stage_batch("list")
         assert "improvements" in result.stdout
-
-
-def _install_castkms_stride_guard_replay_fixture(functional_repo):
-    fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_stride_guard_replay_exact-*.pack")
-    )
-    subprocess.run(
-        ["git", "index-pack", "--stdin"],
-        cwd=functional_repo,
-        input=fixture_pack.read_bytes(),
-        check=True,
-        capture_output=True,
-    )
-    subprocess.run(
-        [
-            "git",
-            "checkout",
-            "--detach",
-            "812d4beb9592b12048524b6f59049eec25dc03d3",
-        ],
-        cwd=functional_repo,
-        check=True,
-        capture_output=True,
-    )
-    batch_name = "decompose-23-int-range-scanout-guard"
-    persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "b2de98e6c965ea6e22945b0f13043c3a1072f033",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "f714d3d0af9cb864401fe2ee2b8eb3253645d539",
-    }
-    for ref, object_id in persisted_refs.items():
-        subprocess.run(
-            ["git", "update-ref", ref, object_id],
-            cwd=functional_repo,
-            check=True,
-            capture_output=True,
-        )
-    return batch_name

@@ -50,12 +50,40 @@ def _v1_metadata() -> dict:
     }
 
 
-def test_v1_round_trip_is_deterministic_and_immutable():
+def _current_source_alternative_metadata() -> dict:
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    file_metadata = data["files"]["src/example.py"]
+    file_metadata["deletions"] = [
+        {
+            "after_source_line": 1,
+            "blob": _oid("d"),
+            "baseline_reference": {
+                "after_line": 1,
+                "after_blob": _oid("e"),
+                "before_line": 2,
+                "before_blob": _oid("f"),
+            },
+            "source_alternative": True,
+        }
+    ]
+    file_metadata["replacement_units"] = [
+        {"presence_lines": ["1"], "deletion_indices": [0]},
+    ]
+    return data
+
+
+def test_v1_migrates_to_current_schema_deterministically_and_immutably():
     model = decode_batch_metadata(_v1_metadata(), expected_batch="feature")
 
     encoded = encode_batch_metadata(model)
     reparsed = decode_batch_metadata(encoded, expected_batch="feature")
 
+    assert json.loads(encoded)["schema_version"] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    assert (
+        model.files[0].values["legacy_unmarked_source_alternatives"]
+        is True
+    )
     assert reparsed == model
     assert encoded == encode_batch_metadata(reparsed)
     with pytest.raises(FrozenInstanceError):
@@ -151,7 +179,9 @@ def test_file_backed_v0_migration_keeps_recovery_copy(tmp_path, monkeypatch):
     )
 
     assert metadata_path.with_name("metadata.v0.json").read_text() == original
-    assert json.loads(metadata_path.read_text())["schema_version"] == 1
+    assert json.loads(metadata_path.read_text())[
+        "schema_version"
+    ] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
 
 
 def test_file_backed_writer_refuses_to_replace_future_schema(tmp_path, monkeypatch):

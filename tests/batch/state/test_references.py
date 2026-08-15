@@ -10,6 +10,9 @@ from git_stage_batch.batch.state.compatibility_metadata import write_file_backed
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.ownership.model import BatchOwnership
 import git_stage_batch.batch.state.references as state_refs_module
+from git_stage_batch.batch.state.metadata_schema import (
+    CURRENT_BATCH_METADATA_SCHEMA_VERSION,
+)
 from git_stage_batch.batch.state.references import (
     get_batch_content_ref_name,
     get_legacy_batch_ref_name,
@@ -102,7 +105,9 @@ def test_state_ref_contains_batch_json_and_source_snapshot(temp_git_repo):
     content_commit = _git_rev_parse(content_ref)
 
     batch_json = json.loads(_git_show(f"{state_ref}:batch.json"))
-    assert batch_json["schema_version"] == 1
+    assert batch_json[
+        "schema_version"
+    ] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
     assert batch_json["revision"]
     assert batch_json["batch"] == "test-batch"
     assert batch_json["note"] == "Test note"

@@ -124,6 +124,31 @@ def plan_include_candidate_previews(
             source_for_candidates = replacement_view.source_buffer
             candidate_ownership = replacement_view.ownership
 
+        legacy_unmarked_source_alternatives = (
+            file_meta.get("legacy_unmarked_source_alternatives") is True
+            and selection_ids is None
+        )
+        reject_ambiguous_legacy_presence_replay(
+            file_path,
+            source_for_candidates,
+            candidate_ownership,
+            index_lines,
+            legacy_unmarked_source_alternatives=(
+                legacy_unmarked_source_alternatives
+            ),
+            spool_dir=spool_dir,
+        )
+        reject_ambiguous_legacy_presence_replay(
+            file_path,
+            source_for_candidates,
+            candidate_ownership,
+            worktree_lines,
+            legacy_unmarked_source_alternatives=(
+                legacy_unmarked_source_alternatives
+            ),
+            spool_dir=spool_dir,
+        )
+
         return _build_include_candidate_previews(
             batch_name=batch_name,
             file_path=file_path,

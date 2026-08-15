@@ -20,6 +20,7 @@ from .baseline_reference_positions import (
 from .baseline_replacement_ranges import (
     collect_replacement_source_ranges as _collect_replacement_source_ranges,
 )
+from .presence_reference_index import EffectivePresenceReferenceIndex
 from ..line_matching.match_workspace import MatcherWorkspace
 from ..line_matching.occurrence_index import (
     LinePayloadOccurrenceIndex,
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
 
 
 BaselineRemovalEdit = tuple[int, int]
+_BOUNDARY_IDENTITY_CANDIDATE_LIMIT = 16
 
 
 def _sort_and_validate_anchor_pairs(
@@ -300,20 +302,14 @@ def _append_pure_insertion_anchor_pairs(
     ):
         return
 
-    try:
-        references = ownership.presence_baseline_references()
-    except (AttributeError, TypeError, ValueError):
-        return
-
+    references = EffectivePresenceReferenceIndex(workspace, ownership)
     positioned_lines = workspace.record_vector(len(references), "QQ")
     source_occurrences: LinePayloadOccurrenceIndex | None = None
     working_occurrences: LinePayloadOccurrenceIndex | None = None
     try:
         for source_line, reference in references.items():
             if (
-                type(source_line) is not int
-                or source_line < 1
-                or source_line > len(source_lines)
+                source_line > len(source_lines)
                 or source_line not in independent_presence_lines
             ):
                 continue
@@ -737,6 +733,7 @@ def _boundary_identity_occurs_once(
     before_content: bytes | None,
     before_delta: int,
     identity_matches_at: Callable[[int], bool],
+    candidate_limit: int | None = _BOUNDARY_IDENTITY_CANDIDATE_LIMIT,
 ) -> bool:
     """Return whether indexed boundary content identifies one full identity."""
     rarest_content: bytes | None = None
@@ -861,6 +858,62 @@ def _insertion_boundary_identity_matches_at(
     return position == len(target_lines)
 
 
+def unique_live_insertion_boundary_position(
+    reference: BaselineReference | None,
+    target_lines: Sequence[bytes],
+    occurrence_index: LinePayloadOccurrenceIndex | None,
+) -> int | None:
+    """Return a shifted insertion boundary with one unique boundary line.
+
+    File-edge references are intrinsically positioned.  Interior references
+    are relocated only when either saved neighbor occurs once in the target;
+    the other neighbor must still complete the saved boundary identity.  This
+    keeps repeated-reference planning linear after one storage-backed index is
+    built instead of scanning every occurrence for every claimed line.
+    """
+    if reference is None or not reference.has_after_line:
+        return None
+
+    if reference.after_line is None:
+        position = 0
+    elif not reference.has_before_line or reference.before_line is None:
+        position = len(target_lines)
+    else:
+        if occurrence_index is None:
+            return None
+        candidates = (
+            (reference.after_content, 1),
+            (reference.before_content, 0),
+        )
+        unique_content: bytes | None = None
+        boundary_delta = 0
+        for content, delta in candidates:
+            if (
+                content is not None
+                and occurrence_index.occurrence_count(content) == 1
+            ):
+                unique_content = content
+                boundary_delta = delta
+                break
+        if unique_content is None:
+            return None
+        line_index = next(
+            occurrence_index.matching_line_indexes(unique_content),
+            None,
+        )
+        if line_index is None:
+            return None
+        position = line_index + boundary_delta
+
+    if _insertion_boundary_identity_matches_at(
+        reference,
+        target_lines,
+        position,
+    ):
+        return position
+    return None
+
+
 def _live_insertion_boundary_is_unique(
     reference: BaselineReference | None,
     target_lines: Sequence[bytes],
@@ -907,6 +960,38 @@ def _live_insertion_boundary_is_unique(
             target_lines,
             position,
         ),
+        candidate_limit=None,
+    )
+
+
+def _source_mapping_identifies_missing_insertion_run(
+    mapping: LineMapping,
+    reference: BaselineReference | None,
+    target_lines: Sequence[bytes],
+    run_start: int,
+    run_end: int,
+    position: int,
+) -> bool:
+    """Return whether a mapped predecessor proves one missing run's boundary."""
+    source_line_count = len(mapping.source_to_target)
+    if (
+        run_start <= 1
+        or run_end < run_start
+        or run_end > source_line_count
+        or not _insertion_boundary_identity_matches_at(
+            reference,
+            target_lines,
+            position,
+        )
+    ):
+        return False
+    for source_line in range(run_start, run_end + 1):
+        if mapping.get_target_line_from_source_line(source_line) is not None:
+            return False
+
+    return (
+        mapping.get_target_line_from_source_line(run_start - 1)
+        == position
     )
 
 

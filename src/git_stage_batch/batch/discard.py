@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING
+from collections.abc import Container, Iterator, Sequence
+from typing import TYPE_CHECKING, cast
 
 from .merge.baseline_correspondence import (
     build_baseline_correspondence as _build_discard_baseline_correspondence,
@@ -11,6 +11,11 @@ from .merge.baseline_correspondence import (
 from .merge.baseline_anchor_matching import (
     acquire_discard_baseline_anchor_pairs as _acquire_discard_baseline_anchor_pairs,
 )
+from .merge.baseline_replacement_ranges import (
+    collect_replacement_source_ranges as _collect_replacement_source_ranges,
+    replacement_source_range_capacity as _replacement_source_range_capacity,
+)
+from .ownership.replacement_units import replacement_counts_cover_origin
 from .discard_reversal import (
     reverse_presence_constraints as _reverse_batch_presence_constraints,
 )
@@ -350,6 +355,606 @@ def _append_realized_range_from_buffer(
             target_line_start=run.target_line_at(run.dest_start),
             is_claimed=run.is_claimed,
         )
+
+
+def _trusted_index_replacement_restore_bounds(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    unit_index: int,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    source_to_working: LineMapping,
+    trusted_target_lines: Sequence[bytes] | None,
+    source_to_trusted_target: LineMapping | None,
+    trusted_target_to_working: LineMapping | None,
+    trusted_anchored_lines: LineRanges,
+    index_preimage_presence_lines: LineRanges | None,
+) -> tuple[int, int] | None:
+    """Return the exact index preimage for one freshly applied replacement."""
+    if (
+        trusted_target_lines is None
+        or source_to_trusted_target is None
+        or trusted_target_to_working is None
+        or not index_preimage_presence_lines
+    ):
+        return None
+    unit = ownership.replacement_units[unit_index]
+    origin = unit.origin
+    if origin is None or len(unit.deletion_indices) != 1:
+        return None
+    deletion_index = unit.deletion_indices[0]
+    if (
+        type(deletion_index) is not int
+        or deletion_index < 0
+        or deletion_index >= len(ownership.deletions)
+    ):
+        return None
+    claim = ownership.deletions[deletion_index]
+    if claim.baseline_reference != origin.baseline_reference:
+        return None
+
+    claimed_ranges = _collect_replacement_source_ranges(
+        workspace,
+        unit.presence_lines,
+    )
+    if claimed_ranges is None:
+        return None
+    try:
+        if len(claimed_ranges) != 1:
+            return None
+        source_start, source_end = claimed_ranges[0]
+        selected_count = source_end - source_start + 1
+        if (
+            source_start <= 1
+            or source_end >= len(source_lines)
+            or not replacement_counts_cover_origin(
+                origin,
+                selected_count,
+                len(claim.content_lines),
+            )
+            or any(
+                source_line not in trusted_anchored_lines
+                or source_line not in index_preimage_presence_lines
+                for source_line in range(source_start, source_end + 1)
+            )
+        ):
+            return None
+
+        before_source_line = source_start - 1
+        after_source_line = source_end + 1
+        working_before = source_to_working.get_target_line_from_source_line(
+            before_source_line
+        )
+        working_after = source_to_working.get_target_line_from_source_line(
+            after_source_line
+        )
+        trusted_before = (
+            source_to_trusted_target.get_target_line_from_source_line(
+                before_source_line
+            )
+        )
+        trusted_after = (
+            source_to_trusted_target.get_target_line_from_source_line(
+                after_source_line
+            )
+        )
+        if (
+            working_before is None
+            or working_after is None
+            or trusted_before is None
+            or trusted_after is None
+            or working_after - working_before - 1 != selected_count
+            or trusted_after <= trusted_before
+            or trusted_target_to_working.get_target_line_from_source_line(
+                trusted_before
+            )
+            != working_before
+            or trusted_target_to_working.get_target_line_from_source_line(
+                trusted_after
+            )
+            != working_after
+        ):
+            return None
+        working_start = working_before
+        for offset, source_line in enumerate(
+            range(source_start, source_end + 1)
+        ):
+            working_line = working_start + offset + 1
+            if (
+                source_to_working.get_target_line_from_source_line(
+                    source_line
+                )
+                != working_line
+                or source_lines[source_line - 1]
+                != working_lines[working_line - 1]
+            ):
+                return None
+        return trusted_before, trusted_after - 1
+    finally:
+        workspace.close_resource(claimed_ranges)
+
+
+def _trusted_index_replacement_group_restore_bounds(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    group_start: int,
+    group_end: int,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    source_to_working: LineMapping,
+    trusted_target_lines: Sequence[bytes] | None,
+    source_to_trusted_target: LineMapping | None,
+    trusted_target_to_working: LineMapping | None,
+    index_preimage_presence_lines: LineRanges | None,
+) -> tuple[bool, tuple[int, int] | None]:
+    """Verify and locate one collectively authorized index preimage group."""
+    if (
+        trusted_target_lines is None
+        or source_to_trusted_target is None
+        or trusted_target_to_working is None
+        or not index_preimage_presence_lines
+    ):
+        return False, None
+
+    first_source_line: int | None = None
+    next_source_line: int | None = None
+    selected_line_count = 0
+    deletion_line_count = 0
+    next_baseline_after_line: int | None = None
+    for unit_index in range(group_start, group_end):
+        unit = ownership.replacement_units[unit_index]
+        if len(unit.deletion_indices) != 1:
+            return False, None
+        deletion_index = unit.deletion_indices[0]
+        if (
+            type(deletion_index) is not int
+            or deletion_index < 0
+            or deletion_index >= len(ownership.deletions)
+        ):
+            return False, None
+        claim = ownership.deletions[deletion_index]
+        claim_reference = claim.baseline_reference
+        if (
+            not claim.content_lines
+            or claim_reference is None
+            or not claim_reference.has_after_line
+            or claim_reference.after_line is None
+            or (
+                next_baseline_after_line is not None
+                and claim_reference.after_line != next_baseline_after_line
+            )
+        ):
+            return False, None
+
+        claimed_ranges = _collect_replacement_source_ranges(
+            workspace,
+            unit.presence_lines,
+        )
+        if claimed_ranges is None:
+            return False, None
+        try:
+            if len(claimed_ranges) != 1:
+                return False, None
+            source_start, source_end = claimed_ranges[0]
+            if (
+                source_end > len(source_lines)
+                or (
+                    next_source_line is not None
+                    and source_start != next_source_line
+                )
+                or any(
+                    source_line not in index_preimage_presence_lines
+                    for source_line in range(source_start, source_end + 1)
+                )
+            ):
+                return False, None
+            if first_source_line is None:
+                first_source_line = source_start
+            next_source_line = source_end + 1
+            selected_line_count += source_end - source_start + 1
+        finally:
+            workspace.close_resource(claimed_ranges)
+
+        deletion_line_count += len(claim.content_lines)
+        next_baseline_after_line = (
+            claim_reference.after_line + len(claim.content_lines)
+        )
+
+    if (
+        first_source_line is None
+        or next_source_line is None
+        or first_source_line <= 1
+        or next_source_line > len(source_lines)
+    ):
+        return False, None
+
+    before_source_line = first_source_line - 1
+    after_source_line = next_source_line
+    working_before = source_to_working.get_target_line_from_source_line(
+        before_source_line
+    )
+    working_after = source_to_working.get_target_line_from_source_line(
+        after_source_line
+    )
+    trusted_before = source_to_trusted_target.get_target_line_from_source_line(
+        before_source_line
+    )
+    trusted_after = source_to_trusted_target.get_target_line_from_source_line(
+        after_source_line
+    )
+    if (
+        working_before is None
+        or working_after is None
+        or trusted_before is None
+        or trusted_after is None
+        or working_after - working_before - 1 != selected_line_count
+        or trusted_after - trusted_before - 1 != deletion_line_count
+        or trusted_target_to_working.get_target_line_from_source_line(
+            trusted_before
+        ) != working_before
+        or trusted_target_to_working.get_target_line_from_source_line(
+            trusted_after
+        ) != working_after
+    ):
+        return True, None
+
+    working_start = working_before
+    source_line = first_source_line
+    for offset in range(selected_line_count):
+        working_line = working_start + offset + 1
+        if (
+            source_to_working.get_target_line_from_source_line(source_line)
+            != working_line
+            or source_to_trusted_target.get_target_line_from_source_line(
+                source_line
+            ) is not None
+            or source_lines[source_line - 1]
+            != working_lines[working_line - 1]
+        ):
+            return True, None
+        source_line += 1
+    return True, (trusted_before, trusted_after - 1)
+
+
+def _replacement_deletion_restore_records(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    deletion_count: int,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    source_to_working: LineMapping,
+    trusted_target_lines: Sequence[bytes] | None,
+    source_to_trusted_target: LineMapping | None,
+    trusted_target_to_working: LineMapping | None,
+    trusted_anchored_lines: LineRanges,
+    index_preimage_presence_lines: LineRanges | None,
+    preserved_presence_lines: Container[int] | None,
+) -> tuple[Sequence[tuple[int, ...]], Sequence[tuple[int, ...]]]:
+    """Mark replacement old sides whose selected new side is realized.
+
+    Zero denotes a non-replacement claim, one a replacement that is not live,
+    two a replacement whose historical old side should be restored, and three
+    a freshly applied replacement whose exact index preimage should be restored.
+    """
+    records = workspace.record_vector(
+        deletion_count,
+        "BQQ",
+        length=deletion_count,
+    )
+    separately_restored_ranges = workspace.record_vector(
+        deletion_count + sum(
+            _replacement_source_range_capacity(unit.presence_lines)
+            for unit in ownership.replacement_units
+        ),
+        "QQ",
+    )
+    handled_units = workspace.record_vector(
+        len(ownership.replacement_units),
+        "B",
+        length=len(ownership.replacement_units),
+    )
+    unit_index = 0
+    while unit_index < len(ownership.replacement_units):
+        group_end = unit_index + 1
+        origin = ownership.replacement_units[unit_index].origin
+        if origin is not None:
+            while (
+                group_end < len(ownership.replacement_units)
+                and ownership.replacement_units[group_end].origin == origin
+            ):
+                group_end += 1
+        if origin is not None and group_end == unit_index + 1:
+            unit_index = group_end
+            continue
+
+        has_authorization, restore_bounds = (
+            _trusted_index_replacement_group_restore_bounds(
+                workspace,
+                ownership,
+                unit_index,
+                group_end,
+                source_lines,
+                working_lines,
+                source_to_working,
+                trusted_target_lines,
+                source_to_trusted_target,
+                trusted_target_to_working,
+                index_preimage_presence_lines,
+            )
+        )
+        if has_authorization:
+            if restore_bounds is None:
+                raise _AmbiguousAnchorError(
+                    _(
+                        "Cannot discard an exact applied replacement "
+                        "because its live occurrence is ambiguous"
+                    )
+                )
+            restore_position, restore_end = restore_bounds
+            for group_unit_index in range(unit_index, group_end):
+                unit = ownership.replacement_units[group_unit_index]
+                deletion_index = unit.deletion_indices[0]
+                claim_line_count = len(
+                    ownership.deletions[deletion_index].content_lines
+                )
+                next_restore_position = restore_position + claim_line_count
+                if next_restore_position > restore_end:
+                    raise _AmbiguousAnchorError(
+                        _(
+                            "Cannot discard an exact applied replacement "
+                            "because its live occurrence is ambiguous"
+                        )
+                    )
+                records[deletion_index] = (
+                    3,
+                    restore_position,
+                    next_restore_position,
+                )
+                handled_units[group_unit_index] = (1,)
+                claimed_ranges = _collect_replacement_source_ranges(
+                    workspace,
+                    unit.presence_lines,
+                )
+                assert claimed_ranges is not None
+                try:
+                    for source_start, source_end in claimed_ranges:
+                        separately_restored_ranges.append(
+                            (source_start, source_end)
+                        )
+                finally:
+                    workspace.close_resource(claimed_ranges)
+                restore_position = next_restore_position
+            if restore_position != restore_end:
+                raise _AmbiguousAnchorError(
+                    _(
+                        "Cannot discard an exact applied replacement "
+                        "because its live occurrence is ambiguous"
+                    )
+                )
+        unit_index = group_end
+
+    for unit_index, unit in enumerate(ownership.replacement_units):
+        if handled_units[unit_index][0]:
+            continue
+        claimed_ranges = _collect_replacement_source_ranges(
+            workspace,
+            unit.presence_lines,
+        )
+        has_mapped_presence = False
+        has_exact_preimage_authorization = False
+        try:
+            if claimed_ranges is not None:
+                has_mapped_presence = any(
+                    source_to_working.get_target_line_from_source_line(
+                        source_line
+                    )
+                    is not None
+                    and (
+                        preserved_presence_lines is None
+                        or source_line not in preserved_presence_lines
+                    )
+                    for source_start, source_end in claimed_ranges
+                    for source_line in range(source_start, source_end + 1)
+                )
+                if (
+                    index_preimage_presence_lines
+                    and len(claimed_ranges) == 1
+                    and unit.origin is not None
+                    and len(unit.deletion_indices) == 1
+                ):
+                    deletion_index = unit.deletion_indices[0]
+                    source_start, source_end = claimed_ranges[0]
+                    has_exact_preimage_authorization = (
+                        type(deletion_index) is int
+                        and 0 <= deletion_index < len(ownership.deletions)
+                        and replacement_counts_cover_origin(
+                            unit.origin,
+                            source_end - source_start + 1,
+                            len(
+                                ownership.deletions[
+                                    deletion_index
+                                ].content_lines
+                            ),
+                        )
+                        and all(
+                            source_line in index_preimage_presence_lines
+                            for source_line in range(
+                                source_start,
+                                source_end + 1,
+                            )
+                        )
+                    )
+            flag = 2 if has_mapped_presence else 1
+            trusted_restore_bounds = (
+                None
+                if not has_exact_preimage_authorization
+                else _trusted_index_replacement_restore_bounds(
+                    workspace,
+                    ownership,
+                    unit_index,
+                    source_lines,
+                    working_lines,
+                    source_to_working,
+                    trusted_target_lines,
+                    source_to_trusted_target,
+                    trusted_target_to_working,
+                    trusted_anchored_lines,
+                    index_preimage_presence_lines,
+                )
+            )
+            if has_exact_preimage_authorization:
+                if trusted_restore_bounds is None:
+                    raise _AmbiguousAnchorError(
+                        _(
+                            "Cannot discard an exact applied replacement "
+                            "because its live occurrence is ambiguous"
+                        )
+                    )
+                flag = 3
+            restore_start, restore_end = trusted_restore_bounds or (0, 0)
+            for deletion_index in unit.deletion_indices:
+                if (
+                    type(deletion_index) is int
+                    and 0 <= deletion_index < deletion_count
+                    and (
+                        flag == 3
+                        or (
+                            records[deletion_index][0] != 3
+                            and (
+                                flag == 2
+                                or records[deletion_index][0] == 0
+                            )
+                        )
+                    )
+                ):
+                    records[deletion_index] = (
+                        flag,
+                        restore_start,
+                        restore_end,
+                    )
+
+            has_restored_deletion = any(
+                type(deletion_index) is int
+                and 0 <= deletion_index < deletion_count
+                and records[deletion_index][0] in (2, 3)
+                for deletion_index in unit.deletion_indices
+            )
+            if (
+                has_mapped_presence
+                and has_restored_deletion
+                and claimed_ranges is not None
+            ):
+                for source_start, source_end in claimed_ranges:
+                    separately_restored_ranges.append(
+                        (source_start, source_end)
+                    )
+        finally:
+            if claimed_ranges is not None:
+                workspace.close_resource(claimed_ranges)
+
+    _append_live_legacy_replacement_restore_records(
+        workspace,
+        ownership,
+        source_to_working,
+        preserved_presence_lines,
+        records,
+        separately_restored_ranges,
+    )
+    _normalize_mapped_line_ranges(separately_restored_ranges)
+    workspace.close_resource(handled_units)
+    return (
+        cast(Sequence[tuple[int, ...]], records),
+        cast(Sequence[tuple[int, ...]], separately_restored_ranges),
+    )
+
+
+def _append_live_legacy_replacement_restore_records(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    source_to_working: LineMapping,
+    preserved_presence_lines: Container[int] | None,
+    records: MappedRecordVector,
+    separately_restored_ranges: MappedRecordVector,
+) -> None:
+    """Couple live immediate-source replacements absent from old metadata.
+
+    Legacy batches represented a replacement as a deletion anchored directly
+    before a contiguous presence range.  Candidate suffixes within each
+    disjoint presence range are scanned together from right to left, so even
+    adversarial overlapping legacy claims inspect each source line at most
+    once per range.
+    """
+    presence_ranges = ownership.presence_line_set().ranges()
+    if not presence_ranges:
+        return
+
+    candidates = workspace.record_vector(len(ownership.deletions), "QQQ")
+    try:
+        for deletion_index, claim in enumerate(ownership.deletions):
+            if records[deletion_index][0] or not claim.content_lines:
+                continue
+            anchor_line = claim.anchor_line
+            if anchor_line is None:
+                replacement_start = 1
+            elif type(anchor_line) is int and anchor_line >= 0:
+                replacement_start = anchor_line + 1
+            else:
+                continue
+
+            range_index = _containing_source_range_index(
+                presence_ranges,
+                replacement_start,
+            )
+            if range_index is None:
+                continue
+            range_start, range_end = presence_ranges[range_index]
+            if not range_start <= replacement_start <= range_end:
+                continue
+            candidates.append((
+                range_index,
+                replacement_start,
+                deletion_index,
+            ))
+
+        if not candidates:
+            return
+        sort_mapped_records(candidates)
+
+        candidate_index = len(candidates) - 1
+        while candidate_index >= 0:
+            range_index = candidates[candidate_index][0]
+            _range_start, range_end = presence_ranges[range_index]
+            next_source_line = range_end
+            suffix_is_live = False
+            while (
+                candidate_index >= 0
+                and candidates[candidate_index][0] == range_index
+            ):
+                _, replacement_start, deletion_index = candidates[
+                    candidate_index
+                ]
+                while next_source_line >= replacement_start:
+                    if source_to_working.get_target_line_from_source_line(
+                        next_source_line
+                    ) is not None and (
+                        preserved_presence_lines is None
+                        or next_source_line not in preserved_presence_lines
+                    ):
+                        suffix_is_live = True
+                    next_source_line -= 1
+                records[deletion_index] = (
+                    2 if suffix_is_live else 1,
+                    0,
+                    0,
+                )
+                if suffix_is_live:
+                    separately_restored_ranges.append((
+                        replacement_start,
+                        range_end,
+                    ))
+                candidate_index -= 1
+    finally:
+        workspace.close_resource(candidates)
 
 
 def _restore_absence_constraints(

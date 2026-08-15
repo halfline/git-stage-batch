@@ -274,15 +274,13 @@ def prepare_discard_line_replacement_selection(
         exit_with_error(str(error))
 
     with rewritten_working_buffer as rewritten_working_lines:
-        replacement_new_start, replacement_new_end = (
-            _rewritten_replacement_new_range(
-                line_changes,
-                effective_ids,
-                rewritten_working_lines,
-                original_working_line_count=original_working_line_count,
-                replacement_start=replacement_start,
-                replacement_end=replacement_end,
-            )
+        replacement_new_start, replacement_new_end = _rewritten_replacement_new_range(
+            line_changes,
+            effective_ids,
+            rewritten_working_lines,
+            original_working_line_count=original_working_line_count,
+            replacement_start=replacement_start,
+            replacement_end=replacement_end,
         )
         owned_replacement_new_end = replacement_new_end
         if replacement_owned_prefix_count is not None:
@@ -340,10 +338,7 @@ def prepare_discard_line_replacement_selection(
             rewritten_line_changes,
         )
         explicit_replacement_parent = None
-        if (
-            replacement_owned_prefix_count is not None
-            and baseline_start < baseline_end
-        ):
+        if replacement_owned_prefix_count is not None and baseline_start < baseline_end:
             explicit_replacement_parent = ReplacementLineRun(
                 old_start=baseline_start + 1,
                 old_end=baseline_end,
@@ -397,29 +392,30 @@ def build_discard_line_replacement_target_buffer(
     prefix_start = selection.explicit_rewritten_prefix_start
     prefix_end = selection.explicit_rewritten_prefix_end
     discard_prefix_end = selection.explicit_rewritten_discard_prefix_end
-    if (
-        prefix_start is not None
-        and discard_prefix_end is not None
-    ):
-        return LineBuffer.from_chunks(chain(
-            LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
-            LineRangeView(
-                selection.rewritten_working_lines,
-                discard_prefix_end,
-                len(selection.rewritten_working_lines),
-            ),
-        ))
+    if prefix_start is not None and discard_prefix_end is not None:
+        return LineBuffer.from_chunks(
+            chain(
+                LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
+                LineRangeView(
+                    selection.rewritten_working_lines,
+                    discard_prefix_end,
+                    len(selection.rewritten_working_lines),
+                ),
+            )
+        )
     if selection.discard_exact_rewritten_prefix:
         if prefix_start is None or prefix_end is None:
             raise ValueError("exact replacement prefix has no rewritten range")
-        return LineBuffer.from_chunks(chain(
-            LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
-            LineRangeView(
-                selection.rewritten_working_lines,
-                prefix_end,
-                len(selection.rewritten_working_lines),
-            ),
-        ))
+        return LineBuffer.from_chunks(
+            chain(
+                LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
+                LineRangeView(
+                    selection.rewritten_working_lines,
+                    prefix_end,
+                    len(selection.rewritten_working_lines),
+                ),
+            )
+        )
     return build_target_working_tree_buffer_from_lines(
         selection.rewritten_line_changes,
         selection.rewritten_worktree_discard_ids,
@@ -458,9 +454,7 @@ def add_discard_line_replacement_to_batch(
                     batch_source_commit,
                 )
                 reference_source_lines = ownership_stack.enter_context(
-                    read_git_object_buffer_or_empty(
-                        f"HEAD:{selection.file_path}"
-                    )
+                    read_git_object_buffer_or_empty(f"HEAD:{selection.file_path}")
                 )
                 batch_baseline_commit = metadata.get("baseline")
                 if not isinstance(batch_baseline_commit, str) or not (
@@ -483,9 +477,7 @@ def add_discard_line_replacement_to_batch(
                         baseline_lines=reference_source_lines,
                         original_working_lines=original_working_lines,
                         rewritten_lines=selection.rewritten_working_lines,
-                        exact_presence_range=(
-                            _explicit_owned_prefix_range(selection)
-                        ),
+                        exact_presence_range=(_explicit_owned_prefix_range(selection)),
                     )
                 translate_ownership_baseline_references(
                     ownership,
@@ -690,18 +682,18 @@ def _temporarily_refresh_rewritten_source_lines(
                 )
                 if not line_is_selected:
                     continue
-                original_coordinates.append((
-                    index,
-                    0 if line.source_line is None else line.source_line + 1,
-                ))
+                original_coordinates.append(
+                    (
+                        index,
+                        0 if line.source_line is None else line.source_line + 1,
+                    )
+                )
                 line.source_line = source_line
             yield
         finally:
             for index, encoded_source_line in original_coordinates:
                 coordinate_lines[index].source_line = (
-                    encoded_source_line - 1
-                    if encoded_source_line > 0
-                    else None
+                    encoded_source_line - 1 if encoded_source_line > 0 else None
                 )
 
 
@@ -724,9 +716,7 @@ def _translate_rewritten_selection_ownership(
         for parent in expanded_parents
         for range_pair in parent.rewritten_deletion_ids.ranges()
     )
-    selected_ids = selection.rewritten_selected_ids.difference(
-        expanded_deletion_ids
-    )
+    selected_ids = selection.rewritten_selected_ids.difference(expanded_deletion_ids)
     replacement_runs = stream_replacement_line_runs_from_lines(
         old_file_lines=baseline_lines,
         new_file_lines=rewritten_lines,
@@ -755,10 +745,7 @@ def _translate_rewritten_selection_ownership(
         )
     if exact_presence_range is not None and (
         selection.discard_exact_rewritten_prefix
-        or (
-            not ownership.deletions
-            and not ownership.replacement_units
-        )
+        or (not ownership.deletions and not ownership.replacement_units)
     ):
         exact_presence_lines = LineRanges.from_ranges((exact_presence_range,))
         if ownership.presence_line_set() != exact_presence_lines:
@@ -957,8 +944,7 @@ def _rewritten_replacement_new_range(
 ) -> tuple[int, int]:
     """Return the rewritten-file line range occupied by replacement payload."""
     if not any(
-        line.id is not None and line.id in selected_ids
-        for line in line_changes.lines
+        line.id is not None and line.id in selected_ids for line in line_changes.lines
     ):
         raise ValueError("replacement selection has no file coordinates")
     replacement_line_count = (
@@ -993,10 +979,7 @@ def _matching_discard_prefix_context_count(
     payload_index = prefix_count
     working_index = working_suffix_start
     matched = 0
-    while (
-        payload_index < len(payload_lines) - 1
-        and working_index < len(working_lines)
-    ):
+    while payload_index < len(payload_lines) - 1 and working_index < len(working_lines):
         payload_line = payload_lines[payload_index]
         if (
             not payload_line.strip()
@@ -1071,10 +1054,7 @@ def _contiguous_selected_addition_count(
         if (
             line.kind != "+"
             or new_line is None
-            or (
-                previous_new_line is not None
-                and new_line != previous_new_line + 1
-            )
+            or (previous_new_line is not None and new_line != previous_new_line + 1)
         ):
             return None
         selected_count += 1
@@ -1106,10 +1086,7 @@ def _selected_additions_cover_working_span(
             if addition_seen:
                 return False
             continue
-        if (
-            line.kind != "+"
-            or line.new_line_number != expected_new_line
-        ):
+        if line.kind != "+" or line.new_line_number != expected_new_line:
             return False
         addition_seen = True
         expected_new_line += 1
@@ -1188,18 +1165,13 @@ def _select_rewritten_span_ids(
                     line.new_line_number,
                 )
             )
-        if line.kind != " " and (
-            old_coordinate_selected or new_coordinate_selected
-        ):
+        if line.kind != " " and (old_coordinate_selected or new_coordinate_selected):
             if coordinate_envelope_start is None:
                 coordinate_envelope_start = index
             coordinate_envelope_end = index
 
     coordinate_addition_builder = LineRangeBuilder()
-    if (
-        coordinate_envelope_start is not None
-        and coordinate_envelope_end is not None
-    ):
+    if coordinate_envelope_start is not None and coordinate_envelope_end is not None:
         for index in range(
             coordinate_envelope_start,
             coordinate_envelope_end + 1,
@@ -1209,9 +1181,7 @@ def _select_rewritten_span_ids(
                 line.kind == "+"
                 and line.id is not None
                 and line.new_line_number is not None
-                and replacement_new_start
-                <= line.new_line_number
-                <= replacement_new_end
+                and replacement_new_start <= line.new_line_number <= replacement_new_end
             ):
                 coordinate_addition_builder.add_line(line.id)
     coordinate_addition_ids = coordinate_addition_builder.finish()
@@ -1279,19 +1249,11 @@ def _select_rewritten_span_ids(
         elif (
             line.kind == "+"
             and line.new_line_number is not None
-            and replacement_new_start
-            <= line.new_line_number
-            <= replacement_new_end
+            and replacement_new_start <= line.new_line_number <= replacement_new_end
             and (
-                (
-                    owned_prefix_remaining is not None
-                    and owned_prefix_remaining > 0
-                )
+                (owned_prefix_remaining is not None and owned_prefix_remaining > 0)
                 or addition_is_in_envelope
-                or (
-                    not addition_is_mapped
-                    and remaining_additions > 0
-                )
+                or (not addition_is_mapped and remaining_additions > 0)
             )
         ):
             selected_ids_builder.add_line(line_id)
@@ -1355,19 +1317,19 @@ def _map_rewritten_selection_runs(
         nonlocal selected_addition_count
         nonlocal block_has_selection
         if block_has_selection:
-            projections.append(_SelectionRunProjection(
-                original_old_lines=original_old_builder.finish(),
-                original_new_lines=original_new_builder.finish(),
-                addition_anchor=selected_addition_anchor,
-                addition_limit=(
-                    selected_addition_count
-                    if selected_addition_count > 0
-                    else None
-                ),
-                rewritten_old_lines=LineRangeBuilder(),
-                rewritten_deletion_ids=LineRangeBuilder(),
-                rewritten_addition_ids=LineRangeBuilder(),
-            ))
+            projections.append(
+                _SelectionRunProjection(
+                    original_old_lines=original_old_builder.finish(),
+                    original_new_lines=original_new_builder.finish(),
+                    addition_anchor=selected_addition_anchor,
+                    addition_limit=(
+                        selected_addition_count if selected_addition_count > 0 else None
+                    ),
+                    rewritten_old_lines=LineRangeBuilder(),
+                    rewritten_deletion_ids=LineRangeBuilder(),
+                    rewritten_addition_ids=LineRangeBuilder(),
+                )
+            )
         original_old_builder = LineRangeBuilder()
         original_new_builder = LineRangeBuilder()
         selected_addition_anchor = None
@@ -1438,9 +1400,7 @@ def _map_rewritten_selection_runs(
             continue
         old_anchor = line.new_line_number - 1 + rewritten_coordinate_delta
         rewritten_coordinate_delta -= 1
-        if not (
-            replacement_new_start <= line.new_line_number <= replacement_new_end
-        ):
+        if not (replacement_new_start <= line.new_line_number <= replacement_new_end):
             continue
         while addition_projection_index < len(projections):
             projection = projections[addition_projection_index]
@@ -1448,13 +1408,9 @@ def _map_rewritten_selection_runs(
             if window is None or window[1] < old_anchor:
                 addition_projection_index += 1
                 continue
-            if (
-                window[0] <= old_anchor <= window[1]
-                and (
-                    projection.addition_limit is None
-                    or projection.rewritten_addition_count
-                    < projection.addition_limit
-                )
+            if window[0] <= old_anchor <= window[1] and (
+                projection.addition_limit is None
+                or projection.rewritten_addition_count < projection.addition_limit
             ):
                 if line.id is not None:
                     projection.rewritten_addition_ids.add_line(line.id)
@@ -1468,8 +1424,7 @@ def _map_rewritten_selection_runs(
             rewritten_deletion_ids=projection.rewritten_deletion_ids.finish(),
             rewritten_addition_ids=projection.rewritten_addition_ids.finish(),
             restore_deletions=(
-                projection.rewritten_old_lines.finish()
-                == projection.original_old_lines
+                projection.rewritten_old_lines.finish() == projection.original_old_lines
             ),
         )
         for projection in projections
@@ -1523,12 +1478,10 @@ def _rewritten_worktree_discard_ids(
         line_id = line.id
         if line_id is None:
             continue
-        selected_range_index, line_is_selected = (
-            _advance_ordered_range_membership(
-                all_selected_ranges,
-                selected_range_index,
-                line_id,
-            )
+        selected_range_index, line_is_selected = _advance_ordered_range_membership(
+            all_selected_ranges,
+            selected_range_index,
+            line_id,
         )
         if not line_is_selected:
             continue
@@ -1541,9 +1494,7 @@ def _rewritten_worktree_discard_ids(
                     line.old_line_number,
                 )
             )
-        if line.kind == "+" or (
-            line.kind == "-" and not old_line_is_protected
-        ):
+        if line.kind == "+" or (line.kind == "-" and not old_line_is_protected):
             discard_builder.add_line(line_id)
     return discard_builder.finish()
 
@@ -1586,15 +1537,17 @@ def _expansion_candidates(
             )
         ):
             continue
-        candidates.append(_ExpansionCandidate(
-            old_start=original_old_lines.ranges()[0][0],
-            old_end=original_old_lines.ranges()[-1][1],
-            new_start=original_new_lines.ranges()[0][0],
-            new_end=original_new_lines.ranges()[-1][1],
-            original_old_count=original_old_lines.count(),
-            rewritten_deletion_ids=rewritten_deletion_ids,
-            rewritten_addition_ids=selection_run.rewritten_addition_ids,
-        ))
+        candidates.append(
+            _ExpansionCandidate(
+                old_start=original_old_lines.ranges()[0][0],
+                old_end=original_old_lines.ranges()[-1][1],
+                new_start=original_new_lines.ranges()[0][0],
+                new_end=original_new_lines.ranges()[-1][1],
+                original_old_count=original_old_lines.count(),
+                rewritten_deletion_ids=rewritten_deletion_ids,
+                rewritten_addition_ids=selection_run.rewritten_addition_ids,
+            )
+        )
     return tuple(candidates)
 
 
@@ -1636,12 +1589,10 @@ def _merged_explicit_replacement_parent(
         line_id = line.id
         if line_id is None:
             continue
-        selected_range_index, line_is_selected = (
-            _advance_ordered_range_membership(
-                selected_ranges,
-                selected_range_index,
-                line_id,
-            )
+        selected_range_index, line_is_selected = _advance_ordered_range_membership(
+            selected_ranges,
+            selected_range_index,
+            line_id,
         )
         if not line_is_selected:
             continue
@@ -1714,7 +1665,8 @@ def _expand_parent_through_relocated_prefix_context(
             target_line = alignment.get_target_line_from_source_line(source_line)
             prefix_count = prefix_occurrences.occurrence_count(content)
             if (
-                content.strip() and prefix_count == 1
+                content.strip()
+                and prefix_count == 1
                 and target_line is not None
                 and target_line > parent.new_end
             ):
@@ -1847,18 +1799,19 @@ def _expanded_selected_replacement_parents(
             )
             if (
                 visible_parent_old_line_count == original_old_count
-                and len(rewritten_deletion_ids)
-                < parent.old_end - parent.old_start + 1
+                and len(rewritten_deletion_ids) < parent.old_end - parent.old_start + 1
             ):
-                parents.append(_ExpandedReplacementParent(
-                    parent=parent,
-                    rewritten_deletion_ids=rewritten_deletion_ids,
-                    rewritten_addition_ids=LineRanges.from_ranges(
-                        range_pair
-                        for candidate in matched
-                        for range_pair in candidate.rewritten_addition_ids.ranges()
-                    ),
-                ))
+                parents.append(
+                    _ExpandedReplacementParent(
+                        parent=parent,
+                        rewritten_deletion_ids=rewritten_deletion_ids,
+                        rewritten_addition_ids=LineRanges.from_ranges(
+                            range_pair
+                            for candidate in matched
+                            for range_pair in candidate.rewritten_addition_ids.ranges()
+                        ),
+                    )
+                )
     finally:
         close = getattr(semantic_parents, "close", None)
         if close is not None:
@@ -1931,27 +1884,21 @@ def _add_expanded_replacement_parents(
                 continue
             if last_id is not None and line_id > last_id:
                 break
-            deletion_range_index, line_is_deletion = (
-                _advance_ordered_range_membership(
-                    deletion_ranges,
-                    deletion_range_index,
-                    line_id,
-                )
+            deletion_range_index, line_is_deletion = _advance_ordered_range_membership(
+                deletion_ranges,
+                deletion_range_index,
+                line_id,
             )
-            addition_range_index, line_is_addition = (
-                _advance_ordered_range_membership(
-                    addition_ranges,
-                    addition_range_index,
-                    line_id,
-                )
+            addition_range_index, line_is_addition = _advance_ordered_range_membership(
+                addition_ranges,
+                addition_range_index,
+                line_id,
             )
             if line_is_deletion:
                 if not found_deletion:
                     deletion_anchor = line.source_line
                     found_deletion = True
-            if (
-                line_is_addition and line.source_line is not None
-            ):
+            if line_is_addition and line.source_line is not None:
                 presence_builder.add_line(line.source_line)
             hunk_index += 1
         parent = expanded_parent.parent
@@ -1977,28 +1924,32 @@ def _add_expanded_replacement_parents(
         if not found_deletion:
             continue
         presence_lines = presence_builder.finish()
-        deletions.append(AbsenceClaim(
-            anchor_line=deletion_anchor,
-            content_lines=LineRangeView(
-                baseline_lines,
-                parent.old_start - 1,
-                parent.old_end,
-            ),
-            baseline_reference=baseline_reference_for_file_line_range(
-                parent.old_start,
-                parent.old_end,
-                baseline_lines,
-            ),
-        ))
-        if presence_lines:
-            replacement_units.append(ReplacementUnit(
-                presence_lines=presence_lines.to_range_strings(),
-                deletion_indices=[len(deletions) - 1],
-                origin=replacement_unit_origin_for_line_run(
-                    parent,
-                    old_file_lines=baseline_lines,
+        deletions.append(
+            AbsenceClaim(
+                anchor_line=deletion_anchor,
+                content_lines=LineRangeView(
+                    baseline_lines,
+                    parent.old_start - 1,
+                    parent.old_end,
                 ),
-            ))
+                baseline_reference=baseline_reference_for_file_line_range(
+                    parent.old_start,
+                    parent.old_end,
+                    baseline_lines,
+                ),
+            )
+        )
+        if presence_lines:
+            replacement_units.append(
+                ReplacementUnit(
+                    presence_lines=presence_lines.to_range_strings(),
+                    deletion_indices=[len(deletions) - 1],
+                    origin=replacement_unit_origin_for_line_run(
+                        parent,
+                        old_file_lines=baseline_lines,
+                    ),
+                )
+            )
     return BatchOwnership(
         presence_claims=ownership.presence_claims,
         deletions=deletions,

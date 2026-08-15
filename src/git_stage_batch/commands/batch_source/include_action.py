@@ -36,7 +36,6 @@ from ...data.file_target_identity import (
     read_index_identities,
 )
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo.checkpoints import undo_checkpoint
 from ...data.session_marker import session_is_active
 from ...data.undo.checkpoints import transaction_checkpoint
 from ...exceptions import AtomicUnitError, CommandError, exit_with_error
@@ -113,6 +112,7 @@ def execute_include_action(
                 with transaction_checkpoint(
                     terminal_safe_shell_join(selection.operation_parts),
                     worktree_paths=list(files),
+                    index_paths=list(files),
                 ) as checkpoint_status:
                     _require_unchanged_include_targets(
                         expected_index_identities,

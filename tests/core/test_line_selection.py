@@ -305,9 +305,7 @@ class TestLineRanges:
             scan_specs,
         )
 
-        selection = LineRanges.from_specs(
-            specification for specification in ("3", "1")
-        )
+        selection = LineRanges.from_specs(specification for specification in ("3", "1"))
 
         assert scanned_specs == ["3", "1"]
         assert selection.ranges() == ((1, 1), (3, 3))
@@ -317,11 +315,28 @@ class TestLineRanges:
 
         assert selection.count() == 21
         assert selection.count(5, 22) == 9
+        assert selection.contains_range(2, 9)
+        assert selection.contains_range(8, 20) is False
+        assert selection.contains_range(31, 31) is False
+        assert selection.contains_range(5, 4) is False
+        assert selection.intersects_range(0, 1)
+        assert selection.intersects_range(10, 20)
+        assert selection.intersects_range(30, 31)
+        assert selection.intersects_range(11, 19) is False
+        assert selection.intersects_range(20, 19) is False
+        assert selection.intersection_with_range(5, 22).ranges() == (
+            (5, 10),
+            (20, 22),
+        )
+        assert not selection.intersection_with_range(11, 19)
+        assert not selection.intersection_with_range(20, 19)
         assert selection.intersection(LineRanges.from_ranges([(8, 25)])).ranges() == (
             (8, 10),
             (20, 25),
         )
-        assert selection.difference(LineRanges.from_ranges([(3, 8), (25, 40)])).ranges() == (
+        assert selection.difference(
+            LineRanges.from_ranges([(3, 8), (25, 40)])
+        ).ranges() == (
             (1, 2),
             (9, 10),
             (20, 24),

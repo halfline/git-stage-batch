@@ -4,6 +4,7 @@ import os
 import sys
 
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
@@ -218,6 +219,78 @@ class TestCommandApplyFromBatch:
         assert journal_events[-1][0] == "apply_from_batch_failed"
         assert journal_events[-1][1]["stage"] == "publication"
         assert journal_events[-1][1]["rollback"] == "completed"
+
+    @pytest.mark.parametrize(
+        "active_session",
+        (True, False),
+        ids=("active-session", "outside-session"),
+    )
+    @pytest.mark.parametrize(
+        "cleanup_target",
+        ("plans", "workspace"),
+        ids=("plan-cleanup", "workspace-cleanup"),
+    )
+    def test_cleanup_cancellation_rolls_back_apply(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+        active_session,
+        cleanup_target,
+    ):
+        """A teardown failure must occur before the apply transaction commits."""
+        path = temp_git_repo / "file.txt"
+        path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        path.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("cleanup", file="file.txt", quiet=True)
+        path.write_text("base\n")
+        if not active_session:
+            command_stop()
+
+        if cleanup_target == "plans":
+            real_close = apply_action._action_plans.close_resources
+
+            def close_then_cancel(resources):
+                real_close(resources)
+                raise KeyboardInterrupt("cleanup cancelled")
+
+            monkeypatch.setattr(
+                apply_action._action_plans,
+                "close_resources",
+                close_then_cancel,
+            )
+        else:
+            real_workspace_close = apply_action.FileJobWorkspace.close
+
+            def close_workspace_then_cancel(workspace):
+                real_workspace_close(workspace)
+                raise KeyboardInterrupt("cleanup cancelled")
+
+            monkeypatch.setattr(
+                apply_action.FileJobWorkspace,
+                "close",
+                close_workspace_then_cancel,
+            )
+        capsys.readouterr()
+
+        with pytest.raises(KeyboardInterrupt, match="cleanup cancelled"):
+            command_apply_from_batch("cleanup", file="file.txt")
+
+        assert path.read_text() == "base\n"
+        assert "✓ Applied" not in capsys.readouterr().err
 
     def test_apply_from_batch_does_not_stage(self, temp_git_repo):
         """Test that apply does not stage changes to index."""
@@ -484,7 +557,7 @@ class TestCommandApplyFromBatch:
         )
         monkeypatch.setattr(
             apply_action,
-            "undo_checkpoint",
+            "transaction_checkpoint",
             checkpoint_must_not_start,
         )
 

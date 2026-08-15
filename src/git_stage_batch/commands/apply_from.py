@@ -12,6 +12,9 @@ from .batch_source import action_selection as _action_selection
 from .batch_source import apply_action as _apply_action
 from .batch_source import candidate_execution as _candidate_execution
 from ..data.file_review.records import FileReviewAction
+from ..data.undo.checkpoints import (
+    RollbackStatus,
+)
 from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
@@ -146,3 +149,69 @@ def command_apply_from_batch(
         )
     else:
         print(_("✓ Applied changes from batch '{name}' to working tree").format(name=batch_name), file=sys.stderr)
+
+
+def _report_apply_success(
+    *,
+    operation_id: str,
+    raw_selector: str,
+    batch_name: str,
+    file_paths: tuple[str, ...],
+    selected_lines: bool,
+    selected_file: bool,
+    is_candidate: bool,
+    journal_state: _ApplyJournalState,
+) -> None:
+    """Publish journal and terminal success after the outermost commit."""
+    journal_state.update("complete", journal_state.rollback)
+    log_journal(
+        "apply_from_batch_success",
+        operation_id=operation_id,
+        batch_name=batch_name,
+        batch_selector=raw_selector,
+        resolved_batch_name=batch_name,
+        files=list(file_paths),
+        stage=journal_state.stage,
+        rollback=journal_state.rollback,
+    )
+
+    if is_candidate:
+        return
+    if selected_lines:
+        message = _(
+            "✓ Applied selected lines from batch '{name}' to working tree"
+        ).format(name=batch_name)
+    elif selected_file:
+        message = _(
+            "✓ Applied changes for {file} from batch '{name}' to working tree"
+        ).format(
+            file=display_path(file_paths[0]),
+            name=batch_name,
+        )
+    else:
+        message = _("✓ Applied changes from batch '{name}' to working tree").format(
+            name=batch_name
+        )
+    print(message, file=sys.stderr)
+
+
+def _report_apply_rollback(
+    *,
+    operation_id: str,
+    raw_selector: str,
+    resolved_batch_name: str,
+    rollback: RollbackStatus,
+    journal_state: _ApplyJournalState,
+) -> None:
+    """Close a locally successful apply journal after enclosing rollback."""
+    journal_state.update(journal_state.stage, rollback)
+    log_journal(
+        "apply_from_batch_failed",
+        operation_id=operation_id,
+        batch_name=raw_selector,
+        batch_selector=raw_selector,
+        resolved_batch_name=resolved_batch_name,
+        stage=journal_state.stage,
+        rollback=journal_state.rollback,
+        error_type="EnclosingTransactionRollback",
+    )

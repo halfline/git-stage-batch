@@ -56,7 +56,7 @@ def byte_storage_from_path(path: str | Path) -> tuple[_ByteStorage, BinaryIO | N
             mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
             file_handle,
         )
-    except Exception:
+    except BaseException:
         file_handle.close()
         raise
 
@@ -127,7 +127,7 @@ def _byte_storage_from_chunk_prefix_and_remainder(
             mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
             file_handle,
         )
-    except Exception:
+    except BaseException:
         file_handle.close()
         raise
 
@@ -178,7 +178,7 @@ def _allocate_storage(
     try:
         file_handle.truncate(byte_count)
         return mmap.mmap(file_handle.fileno(), byte_count), file_handle
-    except Exception:
+    except BaseException:
         file_handle.close()
         raise
 

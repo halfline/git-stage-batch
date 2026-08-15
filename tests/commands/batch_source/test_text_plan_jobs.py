@@ -73,6 +73,7 @@ def _job(
             4,
             "digest",
         ),
+        expected_index_identity=IndexIdentity("100644", "c" * 40),
     )
 
 
@@ -388,6 +389,10 @@ def test_compute_streams_plan_output_to_the_workspace(tmp_path, monkeypatch):
         assert Path(job.output_path).read_bytes() == b"merged\n"
         assert captured["batch_source_object_id"] == "a" * 40
         assert captured["working_tree_artifact_path"].endswith("worktree")
+        assert captured["captured_index_identity"] == IndexIdentity(
+            "100644",
+            "c" * 40,
+        )
         assert captured["spool_dir"] == str(workspace.scratch_directory(0))
 
 
@@ -618,6 +623,33 @@ def test_parent_builds_whole_file_deletion_without_resolving_source(
             assert expected_identities == {"file.txt": identity}
         finally:
             plans[0].close()
+
+
+def test_parent_rejects_index_changed_after_apply_planning(monkeypatch):
+    """Apply must not publish a plan built against an older index blob."""
+    expected_index_identities = {
+        "file.txt": IndexIdentity("100644", "a" * 40),
+    }
+    monkeypatch.setattr(
+        apply_action,
+        "read_index_identities",
+        lambda _paths: {
+            "file.txt": IndexIdentity("100644", "b" * 40),
+        },
+    )
+    monkeypatch.setattr(
+        apply_action,
+        "capture_worktree_identities",
+        lambda _paths: (_ for _ in ()).throw(
+            AssertionError("worktree read should not precede stale index")
+        ),
+    )
+
+    with pytest.raises(CommandError, match="Index changed.*file.txt"):
+        apply_action._require_unchanged_apply_targets(
+            expected_index_identities,
+            {},
+        )
 
 
 def test_parent_reduces_earlier_text_refusal_before_reading_later_binary(

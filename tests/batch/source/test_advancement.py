@@ -397,7 +397,7 @@ def test_merge_presence_claims_keeps_strongest_baseline_reference_sides():
 
     merged = merge_batch_ownership(existing, new)
 
-    assert merged.presence_baseline_reference(1) == BaselineReference(
+    assert merged.presence_baseline_references()[1] == BaselineReference(
         after_line=7,
         after_content=b"after\n",
         before_line=11,

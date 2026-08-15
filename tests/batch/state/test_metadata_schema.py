@@ -311,6 +311,23 @@ def test_current_schema_rejects_source_alternative_with_empty_live_boundary():
         decode_batch_metadata(data, expected_batch="feature")
 
 
+def test_current_schema_rejects_uncoupled_source_alternative():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["replacement_units"] = []
+
+    with pytest.raises(BatchMetadataError, match="without an owned replacement"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_source_alternative_with_unowned_replacement_side():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["replacement_units"][0][
+        "presence_lines"
+    ] = ["4"]
+
+    with pytest.raises(BatchMetadataError, match="without an owned replacement"):
+        decode_batch_metadata(data, expected_batch="feature")
+
 
 def test_current_schema_rejects_non_boolean_legacy_alternative_marker():
     data = _v1_metadata()

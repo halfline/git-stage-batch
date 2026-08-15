@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Container, Iterator, Sequence
+from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING, cast
 
 from .merge.baseline_correspondence import (
@@ -23,6 +24,7 @@ from .line_matching.line_mapping import LineMapping
 from .line_matching.line_range_view import LineRangeView
 from .line_matching.match import match_lines
 from .line_matching.match_workspace import MatcherWorkspace
+from .line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from .realization.entries import RealizedEntry as _RealizedEntry
 from .realization.entry_storage import (
     RealizedEntries,
@@ -123,26 +125,93 @@ def _discard_batch_acquired_line_chunks(
     ownership: 'BatchOwnership',
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
+    *,
+    trusted_presence_lines: LineRanges | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    applied_presence_lines: LineRanges | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
 ) -> Iterator[bytes]:
     """Discard ownership from acquired normalized byte-line sequences."""
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    with (
-        match_lines(source_lines, working_lines) as source_to_working,
-        _acquire_discard_baseline_anchor_pairs(
+    with ExitStack() as stack:
+        discard_workspace = stack.enter_context(MatcherWorkspace())
+        source_to_trusted_target = (
+            None
+            if trusted_target_lines is None
+            else stack.enter_context(
+                match_lines(source_lines, trusted_target_lines)
+            )
+        )
+        trusted_target_to_working = (
+            None
+            if trusted_target_lines is None
+            else stack.enter_context(
+                match_lines(trusted_target_lines, working_lines)
+            )
+        )
+        trusted_anchor_result = stack.enter_context(
+            _acquire_trusted_discard_presence_anchors(
+                source_lines,
+                working_lines,
+                presence_line_set,
+                trusted_presence_lines,
+                trusted_target_to_working=trusted_target_to_working,
+                index_preimage_presence_lines=(
+                    index_preimage_presence_lines
+                ),
+            )
+        )
+        source_to_working = stack.enter_context(
+            match_lines(
+                source_lines,
+                working_lines,
+                anchor_pairs=trusted_anchor_result[0],
+            )
+        )
+        preexisting_applied_presence = (
+            _trusted_preexisting_applied_presence(
+                source_lines,
+                working_lines,
+                trusted_target_lines,
+                presence_line_set,
+                applied_presence_lines,
+                source_to_working,
+                source_to_trusted_target,
+                trusted_target_to_working,
+            )
+        )
+        with _acquire_discard_baseline_anchor_pairs(
             source_lines,
             baseline_lines,
             ownership,
             source_to_working_mapping=source_to_working,
             working_lines=working_lines,
-        ) as baseline_anchor_pairs,
-    ):
-        correspondence = _build_discard_baseline_correspondence(
-            baseline_lines,
+        ) as baseline_anchor_pairs:
+            correspondence = _build_discard_baseline_correspondence(
+                baseline_lines,
+                source_lines,
+                anchor_pairs=baseline_anchor_pairs,
+            )
+
+        (
+            replacement_restore_records,
+            separately_restored_presence_ranges,
+        ) = _replacement_deletion_restore_records(
+            discard_workspace,
+            ownership,
+            len(deletion_claims),
             source_lines,
-            anchor_pairs=baseline_anchor_pairs,
+            working_lines,
+            source_to_working,
+            trusted_target_lines,
+            source_to_trusted_target,
+            trusted_target_to_working,
+            trusted_anchor_result[1],
+            index_preimage_presence_lines,
+            preexisting_applied_presence,
         )
 
         realized_entries = _build_realized_entries_for_discard(
@@ -151,28 +220,224 @@ def _discard_batch_acquired_line_chunks(
             source_to_working,
         )
 
+        try:
+            updated_entries = _reverse_batch_presence_constraints(
+                realized_entries,
+                presence_line_set,
+                correspondence,
+                trusted_insertion_lines=trusted_anchor_result[1],
+                preserved_presence_lines=(
+                    preexisting_applied_presence
+                ),
+                separately_restored_ranges=(
+                    separately_restored_presence_ranges
+                ),
+            )
+            if updated_entries is not realized_entries:
+                realized_entries.close()
+            realized_entries = updated_entries
+
+            updated_entries = _restore_absence_constraints(
+                realized_entries,
+                deletion_claims,
+                replacement_restore_records,
+                trusted_target_lines,
+            )
+            if updated_entries is not realized_entries:
+                realized_entries.close()
+            realized_entries = updated_entries
+
+            yield from _realized_entry_content_chunks(realized_entries)
+        finally:
+            realized_entries.close()
+
+
+
+@contextmanager
+def _acquire_trusted_discard_presence_anchors(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_lines: LineRanges,
+    trusted_presence_lines: LineRanges | None,
+    *,
+    trusted_target_to_working: LineMapping | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
+) -> Iterator[tuple[Sequence[tuple[int, int]], LineRanges]]:
+    """Return exact equal-line anchors authorized by fresh apply provenance."""
+    workspace = MatcherWorkspace()
     try:
-        updated_entries = _reverse_batch_presence_constraints(
-            realized_entries,
-            presence_line_set,
-            correspondence,
-        )
-        if updated_entries is not realized_entries:
-            realized_entries.close()
-        realized_entries = updated_entries
+        anchors = workspace.record_vector(presence_lines.count(), "QQ")
+        if not trusted_presence_lines:
+            yield cast(Sequence[tuple[int, int]], anchors), LineRanges.empty()
+            return
 
-        updated_entries = _restore_absence_constraints(
-            realized_entries,
-            deletion_claims,
+        trusted = presence_lines.intersection(trusted_presence_lines)
+        occurrence_index: LinePayloadOccurrenceIndex | None = None
+        introduced_occurrence_index: LinePayloadOccurrenceIndex | None = None
+        for start, end in trusted.ranges():
+            for source_line in range(start, end + 1):
+                if source_line > len(source_lines):
+                    continue
+                content = source_lines[source_line - 1]
+                effective_occurrence_index = occurrence_index
+                if (
+                    index_preimage_presence_lines is not None
+                    and source_line in index_preimage_presence_lines
+                    and trusted_target_to_working is not None
+                ):
+                    if introduced_occurrence_index is None:
+                        introduced_occurrence_index = (
+                            LinePayloadOccurrenceIndex(
+                                workspace,
+                                working_lines,
+                                normalize_payloads=False,
+                                target_indexes=(
+                                    target_index
+                                    for target_index in range(
+                                        len(working_lines)
+                                    )
+                                    if trusted_target_to_working.get_source_line_from_target_line(
+                                        target_index + 1
+                                    )
+                                    is None
+                                ),
+                            )
+                        )
+                    effective_occurrence_index = introduced_occurrence_index
+                elif effective_occurrence_index is None:
+                    occurrence_index = LinePayloadOccurrenceIndex(
+                        workspace,
+                        working_lines,
+                        normalize_payloads=False,
+                    )
+                    effective_occurrence_index = occurrence_index
+                assert effective_occurrence_index is not None
+                if effective_occurrence_index.occurrence_count(content) != 1:
+                    continue
+                target_index = next(
+                    effective_occurrence_index.matching_line_indexes(content)
+                )
+                anchors.append((source_line, target_index + 1))
+        sort_mapped_records(anchors)
+        if not _strictly_increasing_anchor_pairs(anchors):
+            anchors.truncate(0)
+        anchored_lines = LineRanges.from_ranges(
+            _source_ranges_from_sorted_anchors(anchors)
         )
-        if updated_entries is not realized_entries:
-            realized_entries.close()
-        realized_entries = updated_entries
-
-        yield from _realized_entry_content_chunks(realized_entries)
+        yield cast(Sequence[tuple[int, int]], anchors), anchored_lines
     finally:
-        realized_entries.close()
+        workspace.close()
 
+def _strictly_increasing_anchor_pairs(
+    anchors: Sequence[tuple[int, ...]],
+) -> bool:
+    previous_source = 0
+    previous_target = 0
+    for source_line, target_line in anchors:
+        if source_line <= previous_source or target_line <= previous_target:
+            return False
+        previous_source = source_line
+        previous_target = target_line
+    return True
+
+def _source_ranges_from_sorted_anchors(
+    anchors: Sequence[tuple[int, ...]],
+) -> Iterator[tuple[int, int]]:
+    """Yield compact source ranges from source-ordered anchor pairs."""
+    pending_start: int | None = None
+    pending_end: int | None = None
+    for source_line, _target_line in anchors:
+        if pending_start is None or pending_end is None:
+            pending_start = pending_end = source_line
+            continue
+        if source_line == pending_end + 1:
+            pending_end = source_line
+            continue
+        yield pending_start, pending_end
+        pending_start = pending_end = source_line
+    if pending_start is not None and pending_end is not None:
+        yield pending_start, pending_end
+
+class _TrustedPreexistingAppliedPresence(Container[int]):
+    """Membership proof for applied source lines inherited from the index."""
+
+    def __init__(
+        self,
+        source_lines: Sequence[bytes],
+        working_lines: Sequence[bytes],
+        trusted_target_lines: Sequence[bytes],
+        owned_presence_lines: LineRanges,
+        applied_presence_lines: LineRanges,
+        source_to_working: LineMapping,
+        source_to_trusted_target: LineMapping,
+        trusted_target_to_working: LineMapping,
+    ) -> None:
+        self._source_lines = source_lines
+        self._working_lines = working_lines
+        self._trusted_target_lines = trusted_target_lines
+        self._owned_presence_lines = owned_presence_lines
+        self._applied_presence_lines = applied_presence_lines
+        self._source_to_working = source_to_working
+        self._source_to_trusted_target = source_to_trusted_target
+        self._trusted_target_to_working = trusted_target_to_working
+
+    def __contains__(self, source_line: object) -> bool:
+        if (
+            type(source_line) is not int
+            or source_line not in self._owned_presence_lines
+            or source_line not in self._applied_presence_lines
+        ):
+            return False
+        trusted_line = (
+            self._source_to_trusted_target.get_target_line_from_source_line(
+                source_line
+            )
+        )
+        working_line = (
+            self._source_to_working.get_target_line_from_source_line(
+                source_line
+            )
+        )
+        return (
+            trusted_line is not None
+            and working_line is not None
+            and self._trusted_target_to_working.get_target_line_from_source_line(
+                trusted_line
+            )
+            == working_line
+            and self._source_lines[source_line - 1]
+            == self._trusted_target_lines[trusted_line - 1]
+            == self._working_lines[working_line - 1]
+        )
+
+def _trusted_preexisting_applied_presence(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    trusted_target_lines: Sequence[bytes] | None,
+    presence_lines: LineRanges,
+    applied_presence_lines: LineRanges | None,
+    source_to_working: LineMapping,
+    source_to_trusted_target: LineMapping | None,
+    trusted_target_to_working: LineMapping | None,
+) -> Container[int] | None:
+    """Return a storage-bounded proof for presence inherited from the index."""
+    if (
+        trusted_target_lines is None
+        or not applied_presence_lines
+        or source_to_trusted_target is None
+        or trusted_target_to_working is None
+    ):
+        return None
+    return _TrustedPreexistingAppliedPresence(
+        source_lines,
+        working_lines,
+        trusted_target_lines,
+        presence_lines,
+        applied_presence_lines,
+        source_to_working,
+        source_to_trusted_target,
+        trusted_target_to_working,
+    )
 
 def _build_realized_entries_for_discard(
     source_lines: Sequence[bytes],

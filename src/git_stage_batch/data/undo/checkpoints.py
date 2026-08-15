@@ -177,6 +177,14 @@ def _create_undo_checkpoint(
         tracked_worktree_paths,
         index_paths=tracked_index_paths,
     )
+    session_files = _undo_snapshots.filesystem_directory_state(session_dir)
+    batches_files = _undo_snapshots.filesystem_directory_state(
+        get_batches_directory_path()
+    )
+    repository_files = _undo_snapshots.filesystem_directory_state(
+        get_git_directory_path(),
+        relative_paths=tracked_repository_paths,
+    )
     recovery_anchors = anchor_recovery_state(before)
 
     manifest: CheckpointState = {
@@ -192,6 +200,9 @@ def _create_undo_checkpoint(
         "tracked_worktree_paths": tracked_worktree_paths,
         "tracked_index_paths": tracked_index_paths,
         "tracked_repository_paths": tracked_repository_paths,
+        "session_files": session_files,
+        "batches_files": batches_files,
+        "repository_files": repository_files,
         "worktree_path_scope": worktree_path_scope,
         "recovery_anchors": recovery_anchors,
     }
@@ -206,11 +217,13 @@ def _create_undo_checkpoint(
             env,
             source_dir=session_dir,
             tree_prefix="session",
+            filesystem_state=session_files,
         )
         _undo_snapshots.add_directory_to_index(
             env,
             source_dir=get_batches_directory_path(),
             tree_prefix="batches",
+            filesystem_state=batches_files,
         )
         if tracked_repository_paths:
             _undo_snapshots.add_directory_to_index(
@@ -218,6 +231,7 @@ def _create_undo_checkpoint(
                 source_dir=get_git_directory_path(),
                 tree_prefix="repository",
                 relative_paths=tracked_repository_paths,
+                filesystem_state=repository_files,
             )
 
         git_update_index_entries(
@@ -502,12 +516,17 @@ def finalize_pending_checkpoint() -> None:
         if ref_name in after_refs
     }
     metadata_scopes = (
-        ("session", get_session_directory_path()),
-        ("batches", get_batches_directory_path()),
+        ("session", "session_files", get_session_directory_path()),
+        ("batches", "batches_files", get_batches_directory_path()),
     )
     tree_removals: list[GitIndexEntryUpdate] = []
-    for prefix, source_dir in metadata_scopes:
-        before_files = _undo_restore.tree_prefix_state(checkpoint, prefix)
+    for prefix, state_field, source_dir in metadata_scopes:
+        saved_files = manifest.get(state_field)
+        before_files = (
+            saved_files
+            if isinstance(saved_files, dict)
+            else _undo_restore.tree_prefix_state(checkpoint, prefix)
+        )
         after_files = _undo_snapshots.filesystem_directory_state(source_dir)
         metadata_tracked_paths = sorted(
             relative_path
@@ -519,11 +538,18 @@ def finalize_pending_checkpoint() -> None:
             for relative_path in metadata_tracked_paths
             if relative_path in after_files
         }
+        before_metadata_files = {
+            relative_path: before_files[relative_path]
+            for relative_path in metadata_tracked_paths
+            if relative_path in before_files
+        }
         if prefix == "session":
+            manifest["session_files"] = before_metadata_files
             manifest["tracked_session_paths"] = metadata_tracked_paths
             after["tracked_session_paths"] = metadata_tracked_paths
             after["session_files"] = metadata_files
         else:
+            manifest["batches_files"] = before_metadata_files
             manifest["tracked_batches_paths"] = metadata_tracked_paths
             after["tracked_batches_paths"] = metadata_tracked_paths
             after["batches_files"] = metadata_files
@@ -603,6 +629,24 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     )
     redo_target["tracked_index_paths"] = redo_index_paths
     redo_target["tracked_refs"] = redo_refs
+    session_paths = list(manifest.get("tracked_session_paths", []))
+    batch_paths = list(manifest.get("tracked_batches_paths", []))
+    repository_paths = list(manifest.get("tracked_repository_paths", []))
+    redo_target["tracked_session_paths"] = session_paths
+    redo_target["tracked_batches_paths"] = batch_paths
+    redo_target["tracked_repository_paths"] = repository_paths
+    redo_target["session_files"] = _undo_snapshots.filesystem_directory_state(
+        get_session_directory_path(),
+        relative_paths=session_paths,
+    )
+    redo_target["batches_files"] = _undo_snapshots.filesystem_directory_state(
+        get_batches_directory_path(),
+        relative_paths=batch_paths,
+    )
+    redo_target["repository_files"] = _undo_snapshots.filesystem_directory_state(
+        get_git_directory_path(),
+        relative_paths=repository_paths,
+    )
     redo_worktree_entries = _undo_worktree.snapshot_worktree_paths(redo_paths)
 
     redo_session_dir = tempfile.mkdtemp(prefix="gsb-redo-session-")
@@ -615,7 +659,6 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
             shutil.copytree(live_session_dir, redo_session_dir, dirs_exist_ok=True)
         if live_batches_dir.exists():
             shutil.copytree(live_batches_dir, redo_batches_dir, dirs_exist_ok=True)
-        repository_paths = list(manifest.get("tracked_repository_paths", []))
         _undo_snapshots.copy_tracked_repository_files(
             get_git_directory_path(),
             Path(redo_repository_dir),
@@ -631,8 +674,6 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         )
         after_undo["tracked_index_paths"] = redo_index_paths
         after_undo["tracked_refs"] = redo_refs
-        session_paths = list(manifest.get("tracked_session_paths", []))
-        batch_paths = list(manifest.get("tracked_batches_paths", []))
         after_undo["tracked_session_paths"] = session_paths
         after_undo["tracked_batches_paths"] = batch_paths
         after_undo["tracked_repository_paths"] = repository_paths

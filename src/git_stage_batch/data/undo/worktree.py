@@ -161,9 +161,7 @@ def _snapshot_gitlink_path(
     if worktree_exists:
         entry["archive"] = True
         entry["storage_mode"] = "100644"
-        entry["blob"] = _create_directory_archive_blob(
-            full_path
-        )
+        entry["blob"] = _create_directory_archive_blob(full_path)
     return entry
 
 
@@ -181,9 +179,7 @@ def _snapshot_embedded_repo_path(path: str) -> WorktreePathState:
         "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
         "archive": True,
         "storage_mode": "100644",
-        "blob": _create_directory_archive_blob(
-            full_path
-        ),
+        "blob": _create_directory_archive_blob(full_path),
     }
 
 
@@ -237,18 +233,19 @@ def snapshot_worktree_paths(paths: list[str]) -> list[WorktreePathState]:
             continue
         if os.path.lexists(full_path):
             mode = modes_by_path[file_path]
-            worktree_paths.append(
-                {
-                    "path": file_path,
-                    "exists": True,
-                    "mode": mode,
-                    "blob": (
-                        create_blob_from_worktree_path(full_path, mode=mode)
-                        if mode == "120000"
-                        else normal_blobs[full_path]
-                    ),
-                }
-            )
+            entry: WorktreePathState = {
+                "path": file_path,
+                "exists": True,
+                "mode": mode,
+                "blob": (
+                    create_blob_from_worktree_path(full_path, mode=mode)
+                    if mode == "120000"
+                    else normal_blobs[full_path]
+                ),
+            }
+            if mode != "120000":
+                entry["permissions"] = file_permissions_for_path(full_path)
+            worktree_paths.append(entry)
         else:
             worktree_paths.append(
                 {

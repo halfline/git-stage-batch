@@ -54,6 +54,47 @@ def _install_castkms_ptrdiff_replay_fixture(
     return "decompose-22-ptrdiff-stride-admission"
 
 
+
+def _install_castkms_wide_offset_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_wide_offset_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "7922200aaa5bc27b29b38ff8f607593d31e38827",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-24-wide-framebuffer-offsets"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "1d2cd693967c909301b0dc9ced537f2c9aa012b5",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "caa757d3b5bdd3ae7838714254bea0c3ce54c112",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
 class TestCreateBatch:
     """Test creating batches."""
 
@@ -240,6 +281,49 @@ class TestApplyFromBatch:
         assert "if (block_stride > SSIZE_MAX)" in source
         assert "if (block_stride > INT_MAX)" not in source
         assert "drm_format_info_block_height(fb->format" in source
+
+    def test_apply_wide_offset_helper_and_both_callers(self, functional_repo):
+        """A selected helper migration must carry continuation lines."""
+        batch_name = _install_castkms_wide_offset_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "1-24,26-32,34-36",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count("offset = castkms_packed_pixels_offset(") == 2
+        assert "\n\tpacked_pixels_offset(frame_info" not in source
+
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
 
     def test_start_reviews_changes_restored_from_batch(self, functional_repo):
         """A restored batch should remain available to a fresh staging pass."""

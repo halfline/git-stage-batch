@@ -6,7 +6,10 @@ from collections.abc import Sequence
 
 import pytest
 
-from git_stage_batch.batch.merge import baseline_edits
+from git_stage_batch.batch.merge import (
+    baseline_anchor_matching,
+    baseline_edits,
+)
 from git_stage_batch.batch.merge.baseline_replacement_choices import (
     replacement_origin_choices_for_unit,
 )
@@ -234,6 +237,110 @@ def test_baseline_edit_planning_places_presence_after_replacement_anchor() -> No
         b"}\n",
         b"suffix\n",
     ]
+
+
+def test_live_planning_tracks_one_shifted_insertion_boundary() -> None:
+    """A unique saved insertion boundary may move in the live target."""
+    source_lines = [b"head\n", b"added\n", b"tail\n"]
+    working_lines = [b"staged\n", b"head\n", b"tail\n"]
+    reference = _boundary_reference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=2,
+        before_content=b"tail\n",
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        baseline_references={2: reference},
+    )
+
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((2, 2),)),
+        [],
+    )
+
+    assert result is not None
+    assert list(result) == [
+        b"staged\n",
+        b"head\n",
+        b"added\n",
+        b"tail\n",
+    ]
+    assert baseline_edits.try_apply_baseline_coordinate_edits(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((2, 2),)),
+        [],
+        trust_baseline_coordinates=True,
+    ) is None
+
+
+def test_shifted_insertion_lookup_checks_one_indexed_boundary_per_line(
+    monkeypatch,
+) -> None:
+    """Many shifted unique insertions must not rescan the target per claim."""
+    insertion_count = 1000
+    anchors = [
+        f"anchor-{index}\n".encode()
+        for index in range(insertion_count)
+    ]
+    source_lines: list[bytes] = []
+    claimed_lines = []
+    references = {}
+    for index, anchor in enumerate(anchors):
+        source_lines.extend((anchor, f"added-{index}\n".encode()))
+        claimed_line = len(source_lines)
+        claimed_lines.append(claimed_line)
+        references[claimed_line] = _boundary_reference(
+            after_line=index + 1,
+            after_content=anchor,
+            before_line=(
+                index + 2
+                if index + 1 < insertion_count
+                else None
+            ),
+            before_content=(
+                anchors[index + 1]
+                if index + 1 < insertion_count
+                else None
+            ),
+        )
+    working_lines = [b"staged\n", *anchors]
+    ownership = BatchOwnership.from_presence_lines(
+        [LineRanges.from_lines(claimed_lines).to_line_spec()],
+        baseline_references=references,
+    )
+    identity_checks = 0
+    original_check = (
+        baseline_anchor_matching._insertion_boundary_identity_matches_at
+    )
+
+    def count_identity_checks(*args, **kwargs):
+        nonlocal identity_checks
+        identity_checks += 1
+        return original_check(*args, **kwargs)
+
+    monkeypatch.setattr(
+        baseline_anchor_matching,
+        "_insertion_boundary_identity_matches_at",
+        count_identity_checks,
+    )
+
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_lines(claimed_lines),
+        [],
+    )
+
+    assert result is not None
+    assert list(result) == [b"staged\n", *source_lines]
+    assert identity_checks <= insertion_count * 3
 
 
 def test_trusted_plan_composes_partial_replacement_and_repeated_insertion() -> None:

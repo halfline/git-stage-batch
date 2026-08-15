@@ -58,6 +58,34 @@ def temp_git_repo(tmp_path, monkeypatch):
 class TestCommandApplyFromBatch:
     """Tests for apply from batch command."""
 
+    @pytest.mark.parametrize(
+        ("target", "message"),
+        (
+            (
+                "index",
+                "Index changed while apply was being calculated: file.txt. "
+                "Retry the apply command.",
+            ),
+            (
+                "worktree",
+                "Working tree file changed while apply was being calculated: "
+                "file.txt. Retry the apply command.",
+            ),
+        ),
+    )
+    def test_apply_target_change_messages_are_complete_translatable_sentences(
+        self,
+        target,
+        message,
+    ):
+        """Target-specific stale-plan errors should not interpolate labels."""
+        error = apply_action._apply_target_changed_error(
+            "file.txt",
+            target=target,
+        )
+
+        assert error.message == message
+
     def test_apply_from_batch_added_symlink_creates_symlink_not_regular_file(
         self,
         temp_git_repo,

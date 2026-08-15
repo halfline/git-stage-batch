@@ -471,6 +471,16 @@ line with every target line. It is a live-target fallback only; the explicit
 recorded-coordinate candidate remains fixed at the stored positions so reviewed
 strategy choices stay distinct.
 
+Structural presence placement also reconciles split owned insertions as one
+missing source island when the same nearest mapped source boundaries surround
+them. The target boundary lines must be consecutive, so there is no live target
+content whose ordering would be guessed, and fewer than three unowned source
+lines may be omitted from the island. This permits a later batch to insert next
+to a committed predecessor even when one stale, unowned source line split its
+saved presence ranges. A nonempty target gap or broader unowned source skew
+still requires distinctive context and otherwise fails closed. The island scan
+uses compact missing ranges and does not construct a per-line Python index.
+
 A batch may own only one child of a historical parent whose unowned sibling was
 already committed and reordered. In a multi-unit replay, the coordinate planner
 may remove that child's exact old bytes and insert its new bytes separately when
@@ -506,6 +516,9 @@ exact-coordinate responsibilities:
   resolves which matching baseline bytes an absence claim may suppress.
 - [`batch/merge/presence_constraints.py`](src/git_stage_batch/batch/merge/presence_constraints.py)
   places missing claimed content.
+- [`batch/merge/presence_context.py`](src/git_stage_batch/batch/merge/presence_context.py)
+  proves one unambiguous target gap for each missing presence run or compatible
+  split-run island.
 
 If the required boundary is missing or several placements are possible, the
 operation refuses. It does not choose the first similar text. That refusal

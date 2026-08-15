@@ -447,6 +447,15 @@ Start with these files when following that reversal:
 - [`batch/realization/boundaries.py`](src/git_stage_batch/batch/realization/boundaries.py)
   checks exact boundaries in the current realized sequence.
 
+When selectable children divide one historical replacement, consecutive
+children may share the same source anchor. Reversal restores those absence
+claims in recorded order at successive offsets from that anchor. The queued
+insertions remain in mapped storage and are materialized through one line
+buffer, avoiding repeated whole-result rebuilding and line-scale Python
+objects.
+
+
+
 The same refusal rule applies: when the current file no longer provides one
 safe reversal, the command stops without guessing.
 

@@ -126,3 +126,27 @@ def test_resource_cleanup_preserves_primary_error_when_close_is_cancelled():
             raise RuntimeError("publication failed")
 
     assert buffer.close_count == 1
+
+
+def test_close_action_plans_closes_later_plans_after_failure():
+    """Aggregate cleanup must close every plan after an earlier failure."""
+    first_buffer = _CloseCountingBuffer(error=RuntimeError("close failed"))
+    second_buffer = _CloseCountingBuffer()
+    plans = [
+        action_plans.ApplyTextFileActionPlan(
+            "first.txt", first_buffer, "100644", "modified"
+        ),
+        action_plans.ApplyTextFileActionPlan(
+            "second.txt", second_buffer, "100644", "modified"
+        ),
+    ]
+
+    try:
+        action_plans.close_action_plans(plans)
+    except RuntimeError as error:
+        assert str(error) == "close failed"
+    else:
+        raise AssertionError("expected close failure")
+
+    assert first_buffer.close_count == 1
+    assert second_buffer.close_count == 1

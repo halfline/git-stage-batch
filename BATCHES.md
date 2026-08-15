@@ -371,6 +371,11 @@ single-file review permits only action groups completely shown on the selected
 pages. These checks prevent an identifier from acting on an unseen or stale
 line.
 
+The renderer may join adjacent additions into one visual change even when they
+remain separate ownership units. The saved review retains each unit's complete
+action set, so selecting one independently reviewed unit is not mistaken for a
+partial selection of the larger visual run.
+
 Legacy metadata can lack an explicit replacement unit for a multi-line new
 side. When a merge action selects the inferred deletion/first-line pair, the
 transient selected ownership carries the rest of that contiguous presence run

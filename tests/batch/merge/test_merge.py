@@ -1120,17 +1120,26 @@ def merge_batch(
     working_content: bytes,
     *,
     source_to_working_mapping=None,
+    trusted_target_content: bytes | None = None,
     resolution=None,
 ) -> bytes:
     """Return merged bytes through the buffer-returning production API."""
     with (
         LineBuffer.from_bytes(batch_source_content) as source_lines,
         LineBuffer.from_bytes(working_content) as working_lines,
+        LineBuffer.from_bytes(
+            trusted_target_content or b""
+        ) as trusted_target_lines,
         merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
             working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            trusted_target_lines=(
+                None
+                if trusted_target_content is None
+                else trusted_target_lines
+            ),
             resolution=resolution,
         ) as buffer,
     ):
@@ -4840,3 +4849,325 @@ class TestDiscardBatch:
 
         # Working tree unchanged
         assert result == b"line1\nline2\n"
+
+
+def test_trusted_target_refuses_changed_transformed_replacement() -> None:
+    """Index trust cannot authorize a worktree-modified replacement span."""
+    source = b"head\nnew-a\nmid\nnew-b1\nnew-b2\ntail\n"
+    trusted = (
+        b"head\ntransformed-a1\ntransformed-a2\nmid\n"
+        b"old-b1\nold-b2\ntail\n"
+    )
+    working = trusted.replace(b"transformed-a2", b"worktree-edit")
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            source,
+            _mixed_transformed_and_split_replacement_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )
+
+
+def test_trusted_target_replays_legacy_replacement_past_duplicate_source() -> None:
+    """Saved context and index identity may place a transformed legacy span."""
+    source = (
+        b"start\nmarker\nnew one\nnew two\nlegacy sibling\n"
+        b"marker\nhistorical old\ntail\n"
+    )
+    trusted = b"start\nlegacy sibling\nmarker\ntransformed old\ntail\n"
+
+    assert merge_batch(
+        source,
+        _legacy_reordered_replacement_ownership(),
+        trusted,
+        trusted_target_content=trusted,
+    ) == b"start\nlegacy sibling\nmarker\nnew one\nnew two\ntail\n"
+
+
+def test_trusted_target_places_only_selected_replacement_after_sibling() -> None:
+    """A reviewed lone child must retain its source order with a sibling."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=4,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    child_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"new-sibling\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-owned\n"],
+                baseline_reference=child_reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["3"],
+                [0],
+                ReplacementUnitOrigin(
+                    2,
+                    3,
+                    2,
+                    3,
+                    parent_reference,
+                ),
+            )
+        ],
+    )
+    source = b"head\nnew-sibling\nnew-owned\ntail\n"
+    trusted = b"head\nold-owned\nnew-sibling\ntail\n"
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            source,
+            ownership,
+            trusted,
+            trusted_target_content=trusted,
+        )
+
+    candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+        source.splitlines(keepends=True),
+        ownership,
+        trusted.splitlines(keepends=True),
+    )
+
+    assert candidate_set.outcome is MergeCandidateSetOutcome.REVIEW_REQUIRED
+    assert len(candidate_set.candidates) == 1
+    assert merge_batch(
+        source,
+        ownership,
+        trusted,
+        trusted_target_content=trusted,
+        resolution=candidate_set.candidates[0].resolution,
+    ) == source
+
+
+def test_trusted_target_removes_shifted_historical_source_duplicate() -> None:
+    """Deletion-only replay also builds the trusted worktree mapping it needs."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical old\n"],
+                baseline_reference=reference,
+            )
+        ],
+    )
+    source = b"head\nhistorical old\ntail\n"
+    trusted = b"staged\nhead\nhistorical old\ntail\n"
+
+    assert merge_batch(
+        source,
+        ownership,
+        trusted,
+        trusted_target_content=trusted,
+    ) == b"staged\nhead\ntail\n"
+
+
+def _mixed_transformed_and_split_replacement_ownership() -> BatchOwnership:
+    first_origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=2,
+        new_start=2,
+        new_end=2,
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=3,
+            before_content=b"mid\n",
+            has_before_line=True,
+        ),
+    )
+    split_origin = ReplacementUnitOrigin(
+        old_start=4,
+        old_end=5,
+        new_start=4,
+        new_end=5,
+        baseline_reference=BaselineReference(
+            after_line=3,
+            after_content=b"mid\n",
+            before_line=6,
+            before_content=b"tail\n",
+            has_before_line=True,
+        ),
+    )
+    return BatchOwnership.from_presence_lines(
+        ["2", "4-5"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-a\n"],
+                baseline_reference=first_origin.baseline_reference,
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b"old-b1\n"],
+                baseline_reference=BaselineReference(
+                    after_line=3,
+                    after_content=b"mid\n",
+                    before_line=5,
+                    before_content=b"old-b2\n",
+                    has_before_line=True,
+                ),
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b"old-b2\n"],
+                baseline_reference=BaselineReference(
+                    after_line=4,
+                    after_content=b"old-b1\n",
+                    before_line=6,
+                    before_content=b"tail\n",
+                    has_before_line=True,
+                ),
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(["2"], [0], origin=first_origin),
+            ReplacementUnit(["4"], [1], origin=split_origin),
+            ReplacementUnit(["5"], [2], origin=split_origin),
+        ],
+    )
+
+
+def test_trusted_target_replays_group_before_mapped_shared_boundary() -> None:
+    """A transformed old side is replaceable inside exact trusted mappings."""
+    source = b"head\nnew one\nnew two\nshared\ntail\n"
+    trusted = b"head\ntransformed one\ntransformed two\nshared\ntail\n"
+
+    assert merge_batch(
+        source,
+        _trusted_shared_boundary_replacement_ownership(),
+        trusted,
+        trusted_target_content=trusted,
+    ) == source
+
+
+def test_trusted_target_composes_transformed_and_split_replacements() -> None:
+    """One plan may combine a trusted transform and an exact split parent."""
+    source = b"head\nnew-a\nmid\nnew-b1\nnew-b2\ntail\n"
+    working = (
+        b"head\ntransformed-a1\ntransformed-a2\nmid\n"
+        b"old-b1\nold-b2\ntail\n"
+    )
+    ownership = _mixed_transformed_and_split_replacement_ownership()
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(source, ownership, working)
+
+    assert merge_batch(
+        source,
+        ownership,
+        working,
+        trusted_target_content=working,
+    ) == source
+
+
+def test_trusted_legacy_replacement_requires_one_unchanged_span(
+    trusted: bytes,
+    working: bytes,
+) -> None:
+    """Legacy replay refuses an edited span or repeated saved boundary."""
+    source = (
+        b"start\nmarker\nnew one\nnew two\nlegacy sibling\n"
+        b"marker\nhistorical old\ntail\n"
+    )
+
+    with pytest.raises(MergeError):
+        merge_batch(
+            source,
+            _legacy_reordered_replacement_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )
+
+
+def _legacy_reordered_replacement_ownership() -> BatchOwnership:
+    """Build a legacy replacement behind a duplicate historical boundary."""
+    reference = BaselineReference(
+        after_line=3,
+        after_content=b"marker\n",
+        before_line=5,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    return BatchOwnership.from_presence_lines(
+        ["3-4"],
+        [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"historical old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["3-4"], [0])],
+    )
+
+
+def _trusted_shared_boundary_replacement_ownership() -> BatchOwnership:
+    """Build a split replacement whose parent includes one shared boundary."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=5,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=4,
+        new_start=2,
+        new_end=4,
+        baseline_reference=parent_reference,
+    )
+    deletions = [
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"historical old one\n"],
+            baseline_reference=BaselineReference(after_line=1),
+        ),
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"historical old two\n"],
+            baseline_reference=BaselineReference(after_line=2),
+        ),
+    ]
+    return BatchOwnership.from_presence_lines(
+        ["2-3"],
+        deletions,
+        replacement_units=[
+            ReplacementUnit(["2"], [0], origin),
+            ReplacementUnit(["3"], [1], origin),
+        ],
+    )
+
+
+def test_trusted_target_group_requires_exact_unchanged_gap(working: bytes) -> None:
+    """Trusted group replay refuses changed or oversized target gaps."""
+    trusted = b"head\ntransformed one\ntransformed two\nshared\ntail\n"
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew one\nnew two\nshared\ntail\n",
+            _trusted_shared_boundary_replacement_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )

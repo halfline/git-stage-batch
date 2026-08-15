@@ -1238,3 +1238,116 @@ def test_baseline_edit_stream_closes_workspace_on_base_exception(
     with pytest.raises(KeyboardInterrupt):
         next(result)
     assert workspaces[0].was_closed is True
+
+
+def test_source_alternative_can_consume_its_exact_mapped_neighbor() -> None:
+    """An explicit old side may be the mapped line after its owned new side."""
+    source_lines = [b"head\n", b"new\n", b"old\n", b"tail\n"]
+    working_lines = [b"head\n", b"old\n", b"tail\n"]
+    claim = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"old\n"],
+        source_alternative=True,
+    )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        mapped_source_lines = tuple(
+            (source_line,)
+            for source_line, _target_line in mapping.mapped_line_pairs()
+        )
+        assert baseline_replacement_edits._replacement_edit_fits_mapped_source_neighbors(
+            (1, 2),
+            claim,
+            ((2, 2),),
+            source_lines,
+            len(working_lines),
+            mapping,
+            mapped_source_lines,
+        )
+
+
+def test_source_alternative_does_not_consume_unrelated_mapped_neighbor() -> None:
+    """The source-alternative exception requires exact source adjacency."""
+    source_lines = [
+        b"head\n",
+        b"new\n",
+        b"unrelated\n",
+        b"old\n",
+        b"tail\n",
+    ]
+    working_lines = [b"head\n", b"unrelated\n", b"old\n", b"tail\n"]
+    claim = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"old\n"],
+        source_alternative=True,
+    )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        mapped_source_lines = tuple(
+            (source_line,)
+            for source_line, _target_line in mapping.mapped_line_pairs()
+        )
+        assert not baseline_replacement_edits._replacement_edit_fits_mapped_source_neighbors(
+            (2, 3),
+            claim,
+            ((2, 2),),
+            source_lines,
+            len(working_lines),
+            mapping,
+            mapped_source_lines,
+        )
+
+
+def test_trusted_target_replacement_ranges_stay_streamed(
+    monkeypatch,
+) -> None:
+    """Trusted replacement provenance must not collect one tuple per child."""
+    source_lines = [b"head\n", b"new\n", b"tail\n"]
+    trusted_lines = [b"head\n", b"transformed\n", b"tail\n"]
+    reference = _boundary_reference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["2"], [0])],
+    )
+    original_from_ranges = LineRanges.from_ranges
+
+    def reject_heap_range_list(cls, ranges):
+        assert not isinstance(ranges, list)
+        return original_from_ranges(ranges)
+
+    monkeypatch.setattr(
+        LineRanges,
+        "from_ranges",
+        classmethod(reject_heap_range_list),
+    )
+
+    with (
+        match_lines(source_lines, trusted_lines) as source_mapping,
+        match_lines(source_lines, trusted_lines) as source_trusted_mapping,
+        match_lines(trusted_lines, trusted_lines) as trusted_mapping,
+    ):
+        trusted_ranges = (
+            baseline_replacement_edits.trusted_target_replacement_source_ranges(
+                source_lines,
+                ownership,
+                trusted_lines,
+                trusted_lines,
+                source_mapping,
+                source_trusted_mapping,
+                trusted_mapping,
+            )
+        )
+
+    assert trusted_ranges.ranges() == ((2, 2),)

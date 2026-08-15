@@ -95,6 +95,46 @@ def _install_castkms_wide_offset_replay_fixture(functional_repo):
     return batch_name
 
 
+def _install_castkms_raw_map_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_raw_map_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "ca977563d0480499285a739838df53df46d012db",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-31-raw-framebuffer-maps"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "68a98e92d69295c1a80b340fc97e5e74984fa167",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "ede272733ba7bff86d383059581cf1b73d976a53",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
 class TestCreateBatch:
     """Test creating batches."""
 
@@ -722,6 +762,74 @@ class TestApplyFromBatch:
 
         unstaged = get_unstaged_diff()
         assert unstaged
+
+
+    def test_apply_raw_map_tests_after_case_entries(self, functional_repo):
+        """Applying case entries must leave their test functions replayable."""
+        batch_name = _install_castkms_raw_map_replay_fixture(functional_repo)
+        relative_path = "src/tests/castkms_format_test.c"
+        path = functional_repo / relative_path
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "80-81",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count(
+            "static void castkms_format_test_framebuffer_offset"
+        ) == 1
+        assert source.count(
+            "static void castkms_format_test_distinct_multiplane_maps"
+        ) == 1
+        assert source.count(
+            "KUNIT_CASE(castkms_format_test_framebuffer_offset)"
+        ) == 1
+        assert source.count(
+            "KUNIT_CASE(castkms_format_test_distinct_multiplane_maps)"
+        ) == 1
+
+        git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+        )
+        assert path.read_text() == committed
 
 
 class TestBatchList:

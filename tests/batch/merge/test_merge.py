@@ -358,6 +358,69 @@ def test_discard_restoration_closes_converted_predecessor(
 
 
 
+def test_discard_same_anchor_claims_avoids_line_scale_python_heap() -> None:
+    """Ordered same-anchor restoration retains only constant Python state."""
+    claim_count = 8192
+    claims = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+        for _ in range(claim_count)
+    ]
+
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        gc.collect()
+        tracemalloc.start()
+        try:
+            result = discard_module._restore_absence_constraints(
+                entries,
+                claims,
+            )
+            try:
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                result.close()
+        finally:
+            tracemalloc.stop()
+
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+
+def test_discard_same_anchor_claims_preserve_unterminated_boundaries() -> None:
+    """Adjacent restored claims must not collapse when one lacks a newline."""
+    claims = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"first"]),
+        AbsenceClaim(anchor_line=1, content_lines=[b"second\n"]),
+    ]
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        result = discard_module._restore_absence_constraints(entries, claims)
+        try:
+            assert len(result) == 3
+            assert result.content_at(1) == b"first"
+            assert result.content_at(2) == b"second\n"
+        finally:
+            result.close()
+
+
+def test_discard_same_anchor_claims_preserve_metadata_order() -> None:
+    """Queued restorations follow claim order, not blob or payload order."""
+    claims = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"z-first\n"]),
+        AbsenceClaim(anchor_line=1, content_lines=[b"a-second\n"]),
+    ]
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        entries.append(b"tail\n", source_line=2)
+        result = discard_module._restore_absence_constraints(entries, claims)
+        try:
+            assert list(result.content_chunks()) == [
+                b"head\n",
+                b"z-first\n",
+                b"a-second\n",
+                b"tail\n",
+            ]
+        finally:
+            result.close()
 def test_candidate_comparison_preserves_structural_chunk_boundaries():
     """Stream comparison must not fragment the selected structural output."""
     structural_chunks = [b"alpha\n", b"beta\n", b"gamma\n"]

@@ -7892,6 +7892,24 @@ msgstr "Wszystkie zmiany drzewa roboczego są obecnie zapisane w {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stan zastosowanych partii jest uszkodzony: {path}. Usuń ten plik, aby zapomnieć pochodzenie przeglądu przywróconych zmian."
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"Indeks zmienił się podczas obliczania odrzucenia: {file}. Ponownie uruchom "
+"polecenie discard."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"Plik w drzewie roboczym zmienił się podczas obliczania operacji odrzucenia: "
+"{file}. Ponów polecenie discard."
+
 #: src/git_stage_batch/batch/submodule_pointer.py:280
 #, python-brace-format
 msgid ""

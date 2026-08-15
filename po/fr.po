@@ -7920,6 +7920,23 @@ msgstr "Toutes les modifications de l’arbre de travail sont actuellement enreg
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "L’état des lots appliqués est endommagé : {path}. Supprimez ce fichier pour oublier la provenance de révision des modifications restaurées."
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"L'index a changé pendant le calcul du rejet : {file}. Relancez la commande "
+"discard."
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"Le fichier de l'arbre de travail a changé pendant le calcul du rejet : "
+"{file}. Relancez la commande discard."
+
 #: src/git_stage_batch/batch/submodule_pointer.py:280
 #, python-brace-format
 msgid ""

@@ -7784,6 +7784,32 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr ""
+"Soubor pracovního stromu se během výpočtu include změnil: {file}. Zopakujte "
+"příkaz include."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"Index se změnil během výpočtu zahození: {file}. Spusťte znovu příkaz discard."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"Soubor pracovního stromu se během výpočtu zahození změnil: {file}. Zopakujte "
+"příkaz discard."
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:737
 msgid ""
 "files[{path!r}] has a source alternative without an owned replacement side"

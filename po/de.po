@@ -7928,6 +7928,39 @@ msgstr "Alle Änderungen im Arbeitsbaum sind derzeit in {locations} gespeichert.
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Der Zustand angewendeter Stapel ist beschädigt: {path}. Entfernen Sie diese Datei, um die Prüfherkunft wiederhergestellter Änderungen zu vergessen."
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr ""
+"Der Index wurde während der Berechnung von include geändert: {file}. "
+"Wiederholen Sie den include-Befehl."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr ""
+"Die Datei im Arbeitsverzeichnis wurde während der Berechnung von include "
+"geändert: {file}. Wiederholen Sie den include-Befehl."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"Der Index wurde geändert, während das Verwerfen berechnet wurde: {file}. "
+"Führen Sie den discard-Befehl erneut aus."
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"Die Datei {file} im Arbeitsverzeichnis wurde während der Berechnung des "
+"Verwerfens geändert. Wiederholen Sie den discard-Befehl."
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:664
 msgid "files[{path!r}] has a source alternative without a live boundary"
 msgstr ""

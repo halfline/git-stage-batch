@@ -8020,6 +8020,22 @@ msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr "تغيّر الفهرس أثناء حساب التجاهل: {file}. أعد تنفيذ أمر التجاهل."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"تغيّر ملف شجرة العمل بينما كان يجري حساب التجاهل: {file}. أعد تنفيذ أمر "
+"التجاهل."
+
 #: src/git_stage_batch/batch/submodule_pointer.py:280
 #, python-brace-format
 msgid ""

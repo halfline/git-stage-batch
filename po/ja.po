@@ -7318,6 +7318,23 @@ msgstr "作業ツリーのすべての変更は現在 {locations} に保存さ�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "適用済みバッチの状態が破損しています: {path}。復元された変更のレビュー来歴を破棄するには、このファイルを削除してください。"
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"discard の計算中にインデックスが変更されました: {file}。discard コマンドを再"
+"実行してください。"
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"discard の計算中に作業ツリーのファイルが変更されました: {file}。discard コマ"
+"ンドを再試行してください。"
+
 #: src/git_stage_batch/batch/submodule_pointer.py:280
 #, python-brace-format
 msgid ""

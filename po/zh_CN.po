@@ -7287,6 +7287,20 @@ msgstr "所有工作树更改当前都已保存在 {locations} 中。"
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "已应用批次状态已损坏：{path}。请删除此文件以忘记已恢复更改的审查来源。"
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr "计算 discard 时索引已更改：{file}。请重试 discard 命令。"
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr "计算 discard 时工作树文件已更改：{file}。请重试 discard 命令。"
+
 #: src/git_stage_batch/batch/submodule_pointer.py:280
 #, python-brace-format
 msgid ""

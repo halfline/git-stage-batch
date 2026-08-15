@@ -7845,6 +7845,19 @@ msgstr "Усі зміни робочого дерева зараз збереж�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Стан застосованих пакетів пошкоджено: {path}. Видаліть цей файл, щоб забути походження перевірки відновлених змін."
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"Неможливо безпечно відтворити застарілі метадані пакета для {file}: пакет не "
+"записує, чи був сусідній історичний вміст джерела альтернативою, яку слід "
+"було замінити. Перед відтворенням заново створіть цей пакет за допомогою "
+"поточної версії git-stage-batch."
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:737
 msgid ""
 "files[{path!r}] has a source alternative without an owned replacement side"

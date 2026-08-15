@@ -7784,6 +7784,18 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+"vlastnictvím bez nezávislé staré strany (zdrojové řádky {start}-{end})"
+
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"Starší metadata dávky pro {file} nelze bezpečně přehrát: dávka "
+"nezaznamenává, zda sousední historický obsah zdroje představoval "
 #: src/git_stage_batch/batch/state/metadata_schema.py:664
 msgid "files[{path!r}] has a source alternative without a live boundary"
 msgstr ""

@@ -7839,6 +7839,19 @@ msgstr "Alle wijzigingen in de werkboom zijn momenteel opgeslagen in {locations}
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "De status van toegepaste batches is beschadigd: {path}. Verwijder dit bestand om de beoordelingsherkomst van herstelde wijzigingen te vergeten."
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"Verouderde batchmetadata voor {file} kunnen niet veilig worden afgespeeld: "
+"de batch legt niet vast of aangrenzende historische broninhoud een "
+"alternatief was dat vervangen moest worden. Maak deze batch opnieuw met de "
+"huidige versie van git-stage-batch voordat u deze afspeelt."
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:737
 msgid ""
 "files[{path!r}] has a source alternative without an owned replacement side"

@@ -419,6 +419,13 @@ live span, at most a small bounded number of context candidates are inspected,
 and that span plus both boundaries must map unchanged from the index. This is a
 runtime compatibility proof: it does not rewrite the batch metadata.
 
+A batch may own only one child of a historical parent whose unowned sibling was
+already committed and reordered. In a multi-unit replay, the coordinate planner
+may remove that child's exact old bytes and insert its new bytes separately when
+the index and worktree agree on the complete parent, a unique line proves the
+old child's location inside that bounded parent, and the immediate mapped source
+neighbors agree on one insertion boundary. A lone reordered child remains a
+reviewed candidate rather than silently changing the existing review workflow.
 [`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. The merge helpers separate these structural and
 exact-coordinate responsibilities:

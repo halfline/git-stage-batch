@@ -272,8 +272,8 @@ discard modules under `commands/selection/` and `commands/file_scope/`.
 `BatchOwnership` with three fields:
 
 - `presence_claims`: source line ranges and optional baseline references
-- `deletions`: separate `AbsenceClaim` values containing an anchor and removed
-  baseline bytes
+- `deletions`: separate `AbsenceClaim` values containing an anchor and exact
+  old-side bytes
 - `replacement_units`: optional links between presence ranges and entries in
   `deletions`
 

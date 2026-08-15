@@ -32,6 +32,7 @@ from ...batch.ownership.line_entries import (
     baseline_reference_for_file_line_range,
     replacement_unit_origin_for_line_run,
 )
+from ...batch.ownership.references import BaselineReference
 from ...batch.ownership.replacement_units import ReplacementUnit
 from ...batch.ownership.replacement_units import normalize_replacement_units
 from ...batch.ownership.claims import (
@@ -104,6 +105,7 @@ class DiscardLineReplacementSelection:
     explicit_replacement_parent: ReplacementLineRun | None = None
     explicit_rewritten_prefix_start: int | None = None
     explicit_rewritten_prefix_end: int | None = None
+    explicit_rewritten_alternative_end: int | None = None
     explicit_rewritten_discard_prefix_end: int | None = None
     discard_exact_rewritten_prefix: bool = False
 
@@ -368,6 +370,14 @@ def prepare_discard_line_replacement_selection(
                 if replacement_owned_prefix_count is not None
                 else None
             ),
+            explicit_rewritten_alternative_end=(
+                replacement_new_end
+                if (
+                    replacement_owned_prefix_count is not None
+                    and owned_replacement_new_end < replacement_new_end
+                )
+                else None
+            ),
             explicit_rewritten_discard_prefix_end=(
                 owned_replacement_new_end
                 if replacement_discard_prefix_context_count > 0
@@ -483,6 +493,22 @@ def add_discard_line_replacement_to_batch(
                     reference_target_lines,
                     replacement_origin_source_lines=reference_source_lines,
                 )
+                explicit_alternative_range = _explicit_alternative_range(selection)
+                if (
+                    selection.discard_exact_rewritten_prefix
+                    and explicit_alternative_range is not None
+                ):
+                    explicit_presence_range = _explicit_owned_prefix_range(selection)
+                    if explicit_presence_range is None:
+                        raise ValueError(
+                            "explicit replacement prefix has no source range"
+                        )
+                    ownership = _add_explicit_source_alternative_replacement(
+                        ownership,
+                        selection=selection,
+                        presence_range=explicit_presence_range,
+                        alternative_range=explicit_alternative_range,
+                    )
             else:
                 ownership, batch_source_commit = _merge_replacement_with_batch(
                     selection,
@@ -574,13 +600,23 @@ def _merge_replacement_with_batch(
                     source_with_provenance.lineage.translate_working_range
                 ),
             )
-            if (
-                selection.discard_exact_rewritten_prefix
-                and exact_prefix_range is None
+            exact_alternative_range = _exact_alternative_source_range(
+                selection,
+                source_with_provenance.source_buffer,
+                translate_working_range=(
+                    source_with_provenance.lineage.translate_working_range
+                ),
+            )
+            if selection.discard_exact_rewritten_prefix and (
+                exact_prefix_range is None
+                or (
+                    _explicit_alternative_range(selection) is not None
+                    and exact_alternative_range is None
+                )
             ):
                 raise ValueError(
                     "advanced batch source does not preserve the replacement "
-                    "prefix as one contiguous range"
+                    "alternatives as contiguous ranges"
                 )
             new_ownership = _translate_rewritten_selection_ownership(
                 selection,
@@ -595,6 +631,17 @@ def _merge_replacement_with_batch(
             reference_target_lines,
             replacement_origin_source_lines=reference_source_lines,
         )
+        if (
+            selection.discard_exact_rewritten_prefix
+            and exact_prefix_range is not None
+            and exact_alternative_range is not None
+        ):
+            new_ownership = _add_explicit_source_alternative_replacement(
+                new_ownership,
+                selection=selection,
+                presence_range=exact_prefix_range,
+                alternative_range=exact_alternative_range,
+            )
         batch_source_commit = create_batch_source_commit(
             selection.file_path,
             file_buffer_override=source_with_provenance.source_buffer,
@@ -750,6 +797,37 @@ def _exact_owned_prefix_source_range(
     return source_start, source_end
 
 
+def _exact_alternative_source_range(
+    selection: DiscardLineReplacementSelection,
+    source_lines: LineBuffer,
+    *,
+    translate_working_range: Callable[
+        [int, int],
+        tuple[int, int] | None,
+    ],
+) -> tuple[int, int] | None:
+    """Translate and verify the live alternative in the advanced source."""
+    alternative_range = _explicit_alternative_range(selection)
+    if alternative_range is None:
+        return None
+    alternative_start, alternative_end = alternative_range
+    source_range = translate_working_range(
+        alternative_start,
+        alternative_end,
+    )
+    if source_range is None:
+        return None
+    source_start, source_end = source_range
+    alternative_lines = LineRangeView(
+        selection.rewritten_working_lines,
+        alternative_start - 1,
+        alternative_end,
+    )
+    if not line_slice_equals(source_lines, source_start - 1, alternative_lines):
+        return None
+    return source_start, source_end
+
+
 def _explicit_owned_prefix_range(
     selection: DiscardLineReplacementSelection,
 ) -> tuple[int, int] | None:
@@ -759,6 +837,113 @@ def _explicit_owned_prefix_range(
     if prefix_start is None or prefix_end is None or prefix_end < prefix_start:
         return None
     return prefix_start, prefix_end
+
+
+def _explicit_alternative_range(
+    selection: DiscardLineReplacementSelection,
+) -> tuple[int, int] | None:
+    """Return the rewritten range retained as the live alternative."""
+    prefix_end = selection.explicit_rewritten_prefix_end
+    alternative_end = selection.explicit_rewritten_alternative_end
+    if prefix_end is None or alternative_end is None or alternative_end <= prefix_end:
+        return None
+    return prefix_end + 1, alternative_end
+
+
+def _explicit_source_alternative_reference(
+    selection: DiscardLineReplacementSelection,
+) -> BaselineReference:
+    """Describe the live alternative after the owned prefix is removed."""
+    prefix_range = _explicit_owned_prefix_range(selection)
+    alternative_range = _explicit_alternative_range(selection)
+    if prefix_range is None or alternative_range is None:
+        raise ValueError("explicit source alternative has incomplete coordinates")
+
+    prefix_start, prefix_end = prefix_range
+    alternative_start, alternative_end = alternative_range
+    if alternative_start != prefix_end + 1:
+        raise ValueError("explicit source alternatives are not contiguous")
+
+    prefix_line_count = prefix_end - prefix_start + 1
+    target_alternative_start = alternative_start - prefix_line_count
+    target_alternative_end = alternative_end - prefix_line_count
+    after_line = target_alternative_start - 1 if target_alternative_start > 1 else None
+    before_line = (
+        target_alternative_end + 1
+        if alternative_end < len(selection.rewritten_working_lines)
+        else None
+    )
+    return BaselineReference(
+        after_line=after_line,
+        after_content=(
+            bytes(selection.rewritten_working_lines[prefix_start - 2])
+            if after_line is not None
+            else None
+        ),
+        has_after_line=True,
+        before_line=before_line,
+        before_content=(
+            bytes(selection.rewritten_working_lines[alternative_end])
+            if before_line is not None
+            else None
+        ),
+        has_before_line=True,
+    )
+
+
+def _add_explicit_source_alternative_replacement(
+    ownership: BatchOwnership,
+    *,
+    selection: DiscardLineReplacementSelection,
+    presence_range: tuple[int, int],
+    alternative_range: tuple[int, int],
+) -> BatchOwnership:
+    """Couple an owned explicit prefix to its retained source alternative."""
+    presence_start, presence_end = presence_range
+    alternative_start, alternative_end = alternative_range
+    explicit_alternative_range = _explicit_alternative_range(selection)
+    if explicit_alternative_range is None:
+        raise ValueError("explicit source alternative has no rewritten range")
+    explicit_alternative_start, explicit_alternative_end = explicit_alternative_range
+    if (
+        alternative_start != presence_end + 1
+        or alternative_end - alternative_start
+        != explicit_alternative_end - explicit_alternative_start
+    ):
+        raise ValueError(
+            "advanced batch source split the explicit replacement alternatives"
+        )
+
+    deletions = list(ownership.deletions)
+    deletions.append(
+        AbsenceClaim(
+            anchor_line=presence_start - 1 if presence_start > 1 else None,
+            content_lines=LineRangeView(
+                selection.rewritten_working_lines,
+                explicit_alternative_start - 1,
+                explicit_alternative_end,
+            ),
+            baseline_reference=_explicit_source_alternative_reference(selection),
+            source_alternative=True,
+        )
+    )
+    replacement_units = list(ownership.replacement_units)
+    replacement_units.append(
+        ReplacementUnit(
+            presence_lines=(
+                LineRanges.from_ranges((presence_range,)).to_range_strings()
+            ),
+            deletion_indices=[len(deletions) - 1],
+        )
+    )
+    return BatchOwnership(
+        presence_claims=ownership.presence_claims,
+        deletions=deletions,
+        replacement_units=normalize_replacement_units(
+            replacement_units,
+            deletion_count=len(deletions),
+        ),
+    )
 
 
 def _rewritten_replacement_new_range(

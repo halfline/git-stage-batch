@@ -49,7 +49,6 @@ from ...data.file_target_identity import (
 from ...data.undo.checkpoints import (
     UndoCheckpointStatus,
     transaction_checkpoint,
-    undo_checkpoint,
 )
 from ...exceptions import (
     AtomicUnitError,
@@ -102,23 +101,17 @@ def _print_binary_worktree_result(
 
     if action is _binary_file_actions.BinaryWorktreeAction.DELETED:
         print(
-            _("✓ Deleted binary file: {file}").format(
-                file=display_path(file_path)
-            ),
+            _("✓ Deleted binary file: {file}").format(file=display_path(file_path)),
             file=sys.stderr,
         )
     elif action is _binary_file_actions.BinaryWorktreeAction.ADDED:
         print(
-            _("✓ Applied new binary file: {file}").format(
-                file=display_path(file_path)
-            ),
+            _("✓ Applied new binary file: {file}").format(file=display_path(file_path)),
             file=sys.stderr,
         )
     else:
         print(
-            _("✓ Replaced binary file: {file}").format(
-                file=display_path(file_path)
-            ),
+            _("✓ Replaced binary file: {file}").format(file=display_path(file_path)),
             file=sys.stderr,
         )
 
@@ -174,11 +167,29 @@ def execute_apply_action(
                         plan,
                         (
                             _action_plans.ApplyTextFileActionPlan,
+                            _action_plans.SubmodulePointerActionPlan,
                         ),
                     )
                     and plan.expected_index_identity is not None
                 )
             }
+            index_mutation_paths = [
+                plan.file_path
+                for plan in apply_plans
+                if (
+                    isinstance(
+                        plan,
+                        _action_plans.SubmodulePointerActionPlan,
+                    )
+                    and plan.file_meta.get("change_type") == "added"
+                )
+            ]
+            publication_worktree_paths = list(
+                dict.fromkeys(
+                    [plan.file_path for plan in apply_plans]
+                    + [file_path for file_path, _file_meta in mode_actions]
+                )
+            )
             selected_metadata_by_path = {
                 plan.file_path: plan.selected_file_metadata
                 for plan in apply_plans
@@ -228,7 +239,8 @@ def execute_apply_action(
             try:
                 with transaction_checkpoint(
                     terminal_safe_shell_join(operation_parts),
-                    worktree_paths=list(files),
+                    worktree_paths=publication_worktree_paths,
+                    index_paths=index_mutation_paths,
                     repository_paths=[applied_batch_overlays_repository_path()],
                 ) as checkpoint_status:
                     _require_unchanged_apply_targets(
@@ -286,6 +298,7 @@ def execute_apply_action(
                         batch_revision=revision,
                         files=applied_file_provenance,
                         before_worktree_identities=expected_worktree_identities,
+                        expected_index_identities=expected_index_identities,
                     )
                     close_apply_plans()
                     close_workspace()
@@ -388,6 +401,26 @@ def _capture_apply_plan_inputs(
     binary_metadata_by_ordinal: dict[int, BatchFileMetadataDict] = {}
     worktree_identities: dict[str, WorktreeIdentity] = {}
     text_inputs: list[_ApplyTextInput] = []
+    index_paths = tuple(
+        file_path
+        for file_path, file_meta in files.items()
+        if (
+            (
+                is_batch_submodule_pointer(file_meta)
+                and file_meta.get("change_type") == "added"
+            )
+            or (
+                not _file_mode_actions.is_file_mode_action(file_meta)
+                and file_meta.get("file_type") != "binary"
+                and not is_batch_submodule_pointer(file_meta)
+                and _text_plan_jobs.apply_text_plan_requires_source(
+                    file_meta,
+                    selected_ids,
+                )
+            )
+        )
+    )
+    index_identities = read_index_identities(index_paths)
 
     for ordinal, (file_path, file_meta) in enumerate(files.items()):
         try:
@@ -402,7 +435,13 @@ def _capture_apply_plan_inputs(
             if is_batch_submodule_pointer(file_meta):
                 worktree_identities[file_path] = capture_worktree_identity(file_path)
                 plans_by_ordinal[ordinal] = _action_plans.SubmodulePointerActionPlan(
-                    file_path, file_meta
+                    file_path,
+                    file_meta,
+                    (
+                        index_identities[file_path]
+                        if file_meta.get("change_type") == "added"
+                        else None
+                    ),
                 )
                 continue
 
@@ -517,6 +556,7 @@ def _build_apply_text_jobs(
                 output_path=str(output_path),
                 details_artifact_path=str(details_path),
                 expected_worktree_identity=text_input.identity,
+                expected_index_identity=text_input.index_identity,
             )
             jobs.append(
                 OrderedFileJob(
@@ -656,6 +696,9 @@ def _reduce_apply_action_plans(
                 result.file_mode,
                 TextFileChangeType(result.change_type),
                 selected_metadata,
+                result.introduced_selected_presence,
+                result.index_preimage_source_ranges,
+                result.expected_index_identity,
             )
         elif result.outcome == "noop":
             continue

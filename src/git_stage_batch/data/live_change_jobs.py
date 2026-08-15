@@ -251,6 +251,9 @@ def count_eligible_live_text_file(
                 lifecycle_change_types=frozenset(
                     input_manifest.get("applied_lifecycle_change_types", [])
                 ),
+                applied_source_line_ranges_by_batch={},
+                source_line_ranges_by_batch={},
+                index_preimage_source_line_ranges_by_batch={},
             )
             attribution = build_file_attribution_from_lines(
                 job.file_path,

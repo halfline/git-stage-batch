@@ -193,6 +193,19 @@ class UndoCheckpointStatus:
 
 
 
+def _active_transaction_boundary() -> _TransactionBoundary | None:
+    """Return the process-local transaction boundary, when one is active."""
+    if _ACTIVE_TRANSIENT_TRANSACTION is not None:
+        return _ACTIVE_TRANSIENT_TRANSACTION.boundary
+    if (
+        _PENDING_CHECKPOINT is not None
+        and _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
+        and _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None
+    ):
+        return _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
+    return None
+
+
 def _clear_pending_checkpoint() -> None:
     """Forget process-local state for the pending checkpoint."""
     global _PENDING_CHECKPOINT, _PENDING_CHECKPOINT_REPOSITORY
@@ -215,7 +228,29 @@ def _validate_nested_checkpoint(
 ) -> None:
     """Require a nested operation to fit inside the active transaction."""
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
-    requested_index_paths = worktree_paths if index_paths is None else index_paths
+    _validate_transaction_scope(
+        manifest,
+        worktree_paths=worktree_paths,
+        index_paths=(worktree_paths if index_paths is None else index_paths),
+        repository_paths=repository_paths,
+    )
+
+    if rollback_on_error and not _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR:
+        raise CommandError(
+            _(
+                "Cannot start nested transactional operation because the outer "
+                "checkpoint does not roll back on error."
+            )
+        )
+
+def _validate_transaction_scope(
+    manifest: CheckpointState,
+    *,
+    worktree_paths: list[str],
+    index_paths: list[str],
+    repository_paths: list[str] | None,
+) -> None:
+    """Require a nested transaction to fit in one captured before-image."""
     scope_pairs = (
         (
             _("worktree"),
@@ -224,7 +259,7 @@ def _validate_nested_checkpoint(
         ),
         (
             _("index"),
-            set(requested_index_paths),
+            set(index_paths),
             set(
                 manifest.get(
                     "tracked_index_paths",
@@ -254,13 +289,7 @@ def _validate_nested_checkpoint(
                 )
             )
 
-    if rollback_on_error and not _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR:
-        raise CommandError(
-            _(
-                "Cannot start nested transactional operation because the outer "
-                "checkpoint does not roll back on error."
-            )
-        )
+
 
 
 def _checkpoint_worktree_scope(
@@ -484,6 +513,26 @@ def transaction_checkpoint(
     """
     global _ACTIVE_TRANSIENT_TRANSACTION
     requested_index_paths = [] if index_paths is None else index_paths
+    if _ACTIVE_TRANSIENT_TRANSACTION is not None:
+        transaction = _ACTIVE_TRANSIENT_TRANSACTION
+        _validate_transaction_scope(
+            transaction.manifest,
+            worktree_paths=worktree_paths,
+            index_paths=requested_index_paths,
+            repository_paths=repository_paths,
+        )
+        status = UndoCheckpointStatus(
+            rollback="delegated",
+            _transaction_boundary=transaction.boundary,
+            _context_rollback_armed=False,
+        )
+        try:
+            yield status
+        except BaseException as nested_error:
+            if status._context_rollback_armed:
+                transaction.rollback_cause = nested_error
+            raise
+        return
 
     if _PENDING_CHECKPOINT is not None:
         current_repository = get_git_directory_path()
@@ -568,6 +617,7 @@ def transaction_checkpoint(
 
 
 
+
 @contextmanager
 def undo_checkpoint(
     operation: str,
@@ -609,6 +659,11 @@ def undo_checkpoint(
                 repository_paths=repository_paths,
                 rollback_on_error=rollback_on_error,
             )
+            nested_started_armed = status._context_rollback_armed
+            if _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None:
+                status._transaction_boundary = _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
+                if nested_started_armed:
+                    status.arm_rollback()
             if rollback_on_error:
                 # The enclosing transaction owns the shared before-image and
                 # will decide whether rollback succeeds.  Do not report this
@@ -617,7 +672,7 @@ def undo_checkpoint(
             try:
                 yield status
             except BaseException as nested_error:
-                if rollback_on_error:
+                if rollback_on_error and status._context_rollback_armed:
                     _PENDING_CHECKPOINT_ROLLBACK_CAUSE = nested_error
                 raise
             return
@@ -757,6 +812,7 @@ def undo_checkpoint(
             if rollback_on_error:
                 status.rollback = "not-needed"
                 status._transaction_boundary.commit()
+
 
 
 def _rollback_transaction_checkpoint(

@@ -1632,8 +1632,8 @@ def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkey
     )
 
 
-def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
-    """Apply should dispatch once per file resolved from --files."""
+def test_parse_command_line_apply_with_files_dispatches_aggregate_scope(monkeypatch):
+    """Apply should preserve a resolved multi-file scope as one transaction."""
     mock_command = Mock()
     monkeypatch.setattr(apply_dispatch, "command_apply_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
@@ -1645,10 +1645,11 @@ def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("batch", line_ids=None, file="foo.py"),
-        call("batch", line_ids=None, file="bar.py"),
-    ]
+    mock_command.assert_called_once_with(
+        "batch",
+        line_ids=None,
+        file_paths=("foo.py", "bar.py"),
+    )
 
 
 def test_parse_command_line_show_with_files_uses_file_list(monkeypatch):

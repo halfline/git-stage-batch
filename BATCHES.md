@@ -407,6 +407,8 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
+capture the complete scoped index identity, including intent-to-add and every
+unmerged stage, before merge planning. They repeat that check inside the
 unarmed transaction, then arm rollback immediately before the first write. A
 pre-existing conflict or an index/worktree change introduced after capture is
 therefore refused without overwriting concurrent state. Their review-complete

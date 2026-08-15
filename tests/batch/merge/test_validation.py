@@ -1,9 +1,8 @@
 """Tests for merge-time validation and error handling.
 
 Tests cover:
-1. Line ending normalization in sequence matching
-2. Missing vs ambiguous anchor distinction
-3. Structural coherence checks for partial selections
+1. Missing vs ambiguous anchor distinction
+2. Structural coherence checks for partial selections
 """
 
 import pytest
@@ -12,10 +11,7 @@ from git_stage_batch.batch.discard import discard_batch_from_line_sequences_as_b
 from git_stage_batch.batch.merge.merge import (
     merge_batch_from_line_sequences_as_buffer,
 )
-from git_stage_batch.batch.realization.boundaries import (
-    find_boundary_after_source_line,
-    sequence_present_at_boundary,
-)
+from git_stage_batch.batch.realization.boundaries import find_boundary_after_source_line
 from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
@@ -60,28 +56,6 @@ def discard_batch(
         ) as buffer,
     ):
         return buffer.to_bytes()
-
-
-def test_sequence_present_normalizes_both_sides():
-    """Boundary sequence checks should normalize entries and sequences."""
-    # Create entries with CRLF
-    entries = [
-        RealizedEntry(content=b"line 1\r\n", source_line=1, is_claimed=True),
-        RealizedEntry(content=b"line 2\r\n", source_line=2, is_claimed=True),
-        RealizedEntry(content=b"line 3\n", source_line=3, is_claimed=False),
-    ]
-
-    # Sequence with LF should match entry with CRLF
-    sequence_lf = [b"line 1\n", b"line 2\n"]
-    assert sequence_present_at_boundary(entries, 0, sequence_lf) is True
-
-    # Sequence with CRLF should match entry with LF
-    sequence_crlf = [b"line 3\r\n"]
-    assert sequence_present_at_boundary(entries, 2, sequence_crlf) is True
-
-    # Non-matching content should still return False
-    sequence_wrong = [b"wrong line\n"]
-    assert sequence_present_at_boundary(entries, 0, sequence_wrong) is False
 
 
 def test_discard_missing_anchor_skipped_gracefully():

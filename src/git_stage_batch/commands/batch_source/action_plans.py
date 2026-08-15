@@ -22,11 +22,7 @@ class BatchSourceActionPlan(CloseableResource, Protocol):
     """Plan record that may hold resources until command execution."""
 
     @property
-    def file_path(self) -> str:
-        ...
-
-    def close(self) -> None:
-        ...
+    def file_path(self) -> str: ...
 
 
 def close_resources(resources: Iterable[CloseableResource]) -> None:
@@ -150,5 +146,4 @@ class SubmodulePointerActionPlan:
 
 def close_action_plans(plans: Iterable[BatchSourceActionPlan]) -> None:
     """Close any resources owned by deferred batch-source action plans."""
-    for plan in plans:
-        plan.close()
+    close_resources(plans)

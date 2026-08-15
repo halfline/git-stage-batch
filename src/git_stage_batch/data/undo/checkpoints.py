@@ -31,6 +31,7 @@ from ..recovery_anchors import (
     state_recovery_objects,
     validate_recovery_state,
 )
+from ..session_marker import session_is_active
 from ...utils.session_start_point import current_head_commit
 from ...exceptions import CommandError
 from ...git_paths import display_path
@@ -58,6 +59,7 @@ _PENDING_CHECKPOINT: str | None = None
 _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 _PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
+_PENDING_CHECKPOINT_TRANSACTION_BOUNDARY: _TransactionBoundary | None = None
 _TRANSIENT_TRANSACTION_REF_PREFIX = "refs/git-stage-batch/transactions/"
 _ACTIVE_TRANSIENT_TRANSACTION: _TransientTransaction | None = None
 
@@ -483,6 +485,25 @@ def transaction_checkpoint(
     global _ACTIVE_TRANSIENT_TRANSACTION
     requested_index_paths = [] if index_paths is None else index_paths
 
+    if _PENDING_CHECKPOINT is not None:
+        current_repository = get_git_directory_path()
+        if (
+            _PENDING_CHECKPOINT_REPOSITORY is not None
+            and current_repository != _PENDING_CHECKPOINT_REPOSITORY
+        ):
+            _clear_pending_checkpoint()
+
+    if session_is_active() or _PENDING_CHECKPOINT is not None:
+        with undo_checkpoint(
+            operation,
+            worktree_paths=worktree_paths,
+            index_paths=requested_index_paths,
+            repository_paths=repository_paths,
+            rollback_on_error=True,
+            defer_rollback_until_armed=True,
+        ) as status:
+            yield status
+        return
 
     ref_name, checkpoint, manifest = _create_transient_transaction_checkpoint(
         operation,

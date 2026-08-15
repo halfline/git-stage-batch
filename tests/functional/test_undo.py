@@ -148,6 +148,66 @@ def test_undo_include_files_restores_entire_multi_file_operation(functional_repo
     assert beta.read_text() == "beta\nbeta change\n"
 
 
+def test_undo_apply_from_files_restores_entire_multi_file_operation(
+    functional_repo,
+):
+    """Applying a resolved file set should create one complete checkpoint."""
+    alpha, beta = _create_two_changed_text_files(functional_repo)
+
+    git_stage_batch("start")
+    git_stage_batch("discard", "--to", "saved", "--files", "*.txt")
+    assert alpha.read_text() == "alpha\n"
+    assert beta.read_text() == "beta\n"
+    overlay_path = (
+        functional_repo
+        / ".git"
+        / "git-stage-batch"
+        / "applied-batch-overlays.json"
+    )
+    assert not overlay_path.exists()
+
+    git_stage_batch("apply", "--from", "saved", "--files", "*.txt")
+    assert alpha.read_text() == "alpha\nalpha change\n"
+    assert beta.read_text() == "beta\nbeta change\n"
+    assert overlay_path.exists()
+
+    git_stage_batch("undo")
+    assert alpha.read_text() == "alpha\n"
+    assert beta.read_text() == "beta\n"
+    assert not overlay_path.exists()
+
+
+def test_apply_from_files_plans_every_file_before_publication(functional_repo):
+    """A rejected later file must not publish an earlier compatible apply."""
+    alpha, beta = _create_two_changed_text_files(functional_repo)
+
+    git_stage_batch("start")
+    git_stage_batch("discard", "--to", "saved", "--files", "*.txt")
+    beta.write_text("incompatible worktree\n")
+    overlay_path = (
+        functional_repo
+        / ".git"
+        / "git-stage-batch"
+        / "applied-batch-overlays.json"
+    )
+    assert not overlay_path.exists()
+
+    result = git_stage_batch(
+        "apply",
+        "--from",
+        "saved",
+        "--files",
+        "*.txt",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "beta.txt" in result.stderr
+    assert alpha.read_text() == "alpha\n"
+    assert beta.read_text() == "incompatible worktree\n"
+    assert not overlay_path.exists()
+
+
 def test_undo_include_files_restores_unmatched_rename_source(functional_repo):
     """The multi-file checkpoint must include both sides of a staged rename."""
     old_path = functional_repo / "old.txt"

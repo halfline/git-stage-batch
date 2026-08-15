@@ -16,6 +16,7 @@ import pytest
 
 import git_stage_batch.commands.batch_source.apply_action as apply_action
 import git_stage_batch.commands.apply_from as apply_from_command
+import git_stage_batch.data.undo.checkpoints as undo_checkpoints
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.redo import command_redo
@@ -41,13 +42,30 @@ def temp_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
 
     subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     # Create initial commit
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     # Initialize session for batch operations
     ensure_state_directory_exists()
@@ -110,8 +128,15 @@ class TestCommandApplyFromBatch:
         """Applying a symlink batch should not chmod the symlink referent."""
         link_path = temp_git_repo / "link"
         os.symlink("oldtarget", link_path)
-        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add link"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "link"], check=True, cwd=temp_git_repo, capture_output=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         link_path.unlink()
         os.symlink("newtarget", link_path)
         command_start(quiet=True)
@@ -129,8 +154,18 @@ class TestCommandApplyFromBatch:
 
         # Commit a file with multiple lines
         (temp_git_repo / "file.txt").write_text("line 1\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Add a new line and save to batch
         (temp_git_repo / "file.txt").write_text("line 1\nline 2\nnew line\nline 3\n")
@@ -158,12 +193,18 @@ class TestCommandApplyFromBatch:
         ],
         ids=("write-error", "cancellation"),
     )
+    @pytest.mark.parametrize(
+        "active_session",
+        (True, False),
+        ids=("active-session", "outside-session"),
+    )
     def test_multi_file_write_failure_rolls_back_earlier_applies(
         self,
         temp_git_repo,
         monkeypatch,
         failure_type,
         expected_type,
+        active_session,
     ):
         """A failed later file should roll back every worktree write."""
         for name in ("a.txt", "b.txt"):
@@ -188,6 +229,13 @@ class TestCommandApplyFromBatch:
         command_include_to_batch("test-batch", file="b.txt", quiet=True)
         for name in ("a.txt", "b.txt"):
             (temp_git_repo / name).write_text(f"{name} base\n")
+        if not active_session:
+            command_stop()
+
+        overlay_path = (
+            temp_git_repo / ".git" / "git-stage-batch" / "applied-batch-overlays.json"
+        )
+        overlay_before = overlay_path.read_bytes() if overlay_path.exists() else None
 
         original_write = apply_action._text_file_actions.write_text_file_to_worktree
         journal_events = []
@@ -216,6 +264,9 @@ class TestCommandApplyFromBatch:
 
         assert (temp_git_repo / "a.txt").read_text() == "a.txt base\n"
         assert (temp_git_repo / "b.txt").read_text() == "b.txt base\n"
+        assert (
+            overlay_path.read_bytes() if overlay_path.exists() else None
+        ) == overlay_before
         assert journal_events[-1][0] == "apply_from_batch_failed"
         assert journal_events[-1][1]["stage"] == "publication"
         assert journal_events[-1][1]["rollback"] == "completed"
@@ -297,8 +348,18 @@ class TestCommandApplyFromBatch:
 
         # Commit a file with multiple lines
         (temp_git_repo / "file.txt").write_text("line 1\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Add a new line and save to batch
         (temp_git_repo / "file.txt").write_text("line 1\nline 2\nnew line\nline 3\n")
@@ -315,7 +376,7 @@ class TestCommandApplyFromBatch:
             ["git", "diff", "--cached"],
             cwd=temp_git_repo,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert result.stdout == ""
 
@@ -347,8 +408,15 @@ class TestCommandApplyFromBatch:
         # Create two files and commit them
         (temp_git_repo / "file1.txt").write_text("line 1\nline 2\n")
         (temp_git_repo / "file2.txt").write_text("line A\nline B\n")
-        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Create batch with both files
         create_batch("multi-file-batch")
@@ -356,8 +424,15 @@ class TestCommandApplyFromBatch:
         # Modify both files and add to batch
         (temp_git_repo / "file1.txt").write_text("line 1\nnew line\nline 2\n")
         (temp_git_repo / "file2.txt").write_text("line A\nnew line\nline B\n")
-        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modified state"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Modified state"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Add both files to batch manually
         ownership1 = BatchOwnership.from_presence_lines(["2"], [])
@@ -366,10 +441,17 @@ class TestCommandApplyFromBatch:
         add_file_to_batch("multi-file-batch", "file2.txt", ownership2, "100644")
 
         # Reset to old state
-        subprocess.run(["git", "reset", "--hard", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD~1"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Try line-level apply without file context - should fail
-        with pytest.raises(CommandError, match="Line-level apply.*requires single-file context"):
+        with pytest.raises(
+            CommandError, match="Line-level apply.*requires single-file context"
+        ):
             command_apply_from_batch("multi-file-batch", line_ids="1")
 
     def test_apply_line_level_with_file_context_succeeds(self, temp_git_repo):
@@ -378,8 +460,15 @@ class TestCommandApplyFromBatch:
         # Create two files
         (temp_git_repo / "file1.txt").write_text("line 1\nline 2\n")
         (temp_git_repo / "file2.txt").write_text("line A\nline B\n")
-        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Create batch
         create_batch("multi-file-batch")
@@ -387,8 +476,15 @@ class TestCommandApplyFromBatch:
         # Modify both files
         (temp_git_repo / "file1.txt").write_text("line 1\nnew line\nline 2\n")
         (temp_git_repo / "file2.txt").write_text("line A\nnew line\nline B\n")
-        subprocess.run(["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modified"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "."], check=True, cwd=temp_git_repo, capture_output=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Modified"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Add both files to batch - claiming the "new line" (line 2 in batch source)
         ownership1 = BatchOwnership.from_presence_lines(["2"], [])
@@ -397,7 +493,12 @@ class TestCommandApplyFromBatch:
         add_file_to_batch("multi-file-batch", "file2.txt", ownership2, "100644")
 
         # Reset to old state
-        subprocess.run(["git", "reset", "--hard", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD~1"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Apply only file1 with line filtering (line 1 is the claimed line "new line")
         command_apply_from_batch("multi-file-batch", line_ids="1", file="file1.txt")
@@ -413,20 +514,45 @@ class TestCommandApplyFromBatch:
     def test_apply_line_level_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
         """apply --from --line should reject when any ID is not shown."""
         (temp_git_repo / "file.txt").write_text("line 1\nline 2\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         create_batch("line-batch")
         (temp_git_repo / "file.txt").write_text("line 1\nnew line\nline 2\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add batch content"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add batch content"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         add_file_to_batch(
             "line-batch",
             "file.txt",
             BatchOwnership.from_presence_lines(["2"], []),
             "100644",
         )
-        subprocess.run(["git", "reset", "--hard", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD~1"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         with pytest.raises(CommandError) as exc_info:
             command_apply_from_batch("line-batch", line_ids="1,99", file="file.txt")
@@ -439,8 +565,18 @@ class TestCommandApplyFromBatch:
 
         # Commit initial file
         (temp_git_repo / "file.txt").write_text("old line\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Create a batch with replacement-style ownership
         # (claimed line 1 + deletion of "old line")
@@ -453,14 +589,31 @@ class TestCommandApplyFromBatch:
         (temp_git_repo / "file.txt").write_text("new line\nline 2\nline 3\n")
 
         # Save current state as batch source
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "New state for batch"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "New state for batch"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
-        ownership = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"old line\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"old line\n"])]
+        )
         add_file_to_batch("replacement-batch", "file.txt", ownership, "100644")
 
         # Reset working tree to old state
-        subprocess.run(["git", "reset", "--hard", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD~1"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Verify we're back at old state
         content_before = (temp_git_repo / "file.txt").read_text()
@@ -482,20 +635,47 @@ class TestCommandApplyFromBatch:
 
         # Commit initial file
         (temp_git_repo / "file.txt").write_text("old line\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Create batch with replacement unit
         create_batch("atomic-batch")
         (temp_git_repo / "file.txt").write_text("new line\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "New state"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "New state"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
-        ownership = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"old line\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"], [AbsenceClaim(anchor_line=None, content_lines=[b"old line\n"])]
+        )
         add_file_to_batch("atomic-batch", "file.txt", ownership, "100644")
 
         # Reset to old state
-        subprocess.run(["git", "reset", "--hard", "HEAD~1"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "reset", "--hard", "HEAD~1"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Try to apply only the deletion (line 1) without the claimed line (line 2)
         # This should fail because it's a partial selection of a replacement
@@ -567,6 +747,63 @@ class TestCommandApplyFromBatch:
         assert file_path.read_text() == "concurrent\n"
         assert workspace_roots
         assert all(not root.exists() for root in workspace_roots)
+
+    def test_apply_refusal_after_snapshot_preserves_concurrent_edit(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """The checkpoint must remain unarmed through the final target check."""
+        file_path = temp_git_repo / "file.txt"
+        file_path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("stale-batch", quiet=True)
+        file_path.write_text("base\n")
+        command_stop()
+
+        real_create = undo_checkpoints._create_transient_transaction_checkpoint
+
+        def mutate_after_snapshot(*args, **kwargs):
+            checkpoint = real_create(*args, **kwargs)
+            file_path.write_text("concurrent\n")
+            return checkpoint
+
+        monkeypatch.setattr(
+            undo_checkpoints,
+            "_create_transient_transaction_checkpoint",
+            mutate_after_snapshot,
+        )
+
+        with pytest.raises(CommandError, match="Retry the apply command"):
+            command_apply_from_batch("stale-batch")
+
+        assert file_path.read_text() == "concurrent\n"
+        transient_refs = subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/git-stage-batch/transactions/",
+            ],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert transient_refs == ""
 
     @_PROCESS_TEST
     def test_forced_process_apply_matches_inline_order_and_output(

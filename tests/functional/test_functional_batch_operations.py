@@ -173,6 +173,86 @@ def _install_castkms_primary_replay_fixture(functional_repo):
     return batch_name
 
 
+def _install_castkms_primary_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_primary_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "73ab324457aa97fc118e8406b973a8050e6e1cd2",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-36-primary-plane-lookup-ownership"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "ad3641debe9fcba69b6018d096cf97f2969fd730",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+
+
+def _install_castkms_hot_unplug_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_hot_unplug_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "9e0e83db0bd289ab6f2a26debfb03bca90a10937",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-32-config-hot-unplug"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "6e6ab7224e6fcfef38a980c4cc2871ae5190f457",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "1b0d99b0092653263a4c64bcdc27a882b0242422",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
 class TestCreateBatch:
     """Test creating batches."""
 
@@ -422,6 +502,78 @@ class TestApplyFromBatch:
             result.stderr
         )
         assert path.read_bytes() == before
+
+    def test_apply_batch_after_committing_neighboring_replacements(
+        self,
+        functional_repo,
+    ):
+        """Committed neighboring replacements must not block batch replay."""
+        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode == 0, result.stderr
+        header = (functional_repo / "src" / "castkms_config.h").read_text()
+        tests = (
+            functional_repo / "src" / "tests" / "castkms_config_test.c"
+        ).read_text()
+        assert (
+            "castkms_config_crtc_primary_plane(struct castkms_config_crtc"
+            in header
+        )
+        assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
+
+    def test_apply_hot_unplug_guard_after_recommended_adopters(
+        self,
+        functional_repo,
+    ):
+        """Applying recommended adopters must leave their guard replayable."""
+        batch_name = _install_castkms_hot_unplug_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--pages",
+            "all",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-2,15-22,24",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "3-14,23",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert "if (!drm_dev_enter(dev, &idx))" in source
+        assert "drm_dev_exit(idx);" in source
+        assert "config = castkmsdev->config;" in source
 
     def test_start_reviews_changes_restored_from_batch(self, functional_repo):
         """A restored batch should remain available to a fresh staging pass."""

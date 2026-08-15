@@ -29,6 +29,7 @@ from .baseline_replacement_edits import (
 from .baseline_replacement_ranges import (
     replacement_source_range_capacity as _replacement_source_range_capacity,
 )
+from .presence_reference_index import EffectivePresenceReferenceIndex
 from ..line_matching.sequence_equality import (
     line_sequences_equal as _line_sequences_match,
 )
@@ -52,12 +53,12 @@ def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
 
 
 def _has_complete_baseline_references(
-    ownership: BatchOwnership,
+    presence_references: EffectivePresenceReferenceIndex,
     presence_line_set: LineSelection,
     deletion_claims: list[AbsenceClaim],
 ) -> bool:
     for claimed_line in presence_line_set:
-        reference = ownership.presence_baseline_reference(claimed_line)
+        reference = presence_references.reference_for(claimed_line)
         if reference is None or not reference.has_after_line:
             return False
     for claim in deletion_claims:
@@ -107,20 +108,25 @@ def try_apply_baseline_coordinate_edits(
     if _selection_outside_bounds(presence_line_set, len(source_lines)):
         return None
 
-    if _line_sequences_match(
-        source_lines, working_lines
-    ) and _has_complete_baseline_references(
-        ownership,
-        presence_line_set,
-        deletion_claims,
-    ) and _all_deletions_are_already_absent(
-        deletion_claims,
-        working_lines,
-    ):
-        return iter(working_lines)
-
     workspace = MatcherWorkspace(spool_dir=spool_dir)
     try:
+        presence_references = EffectivePresenceReferenceIndex(
+            workspace,
+            ownership,
+        )
+        if _line_sequences_match(
+            source_lines, working_lines
+        ) and _has_complete_baseline_references(
+            presence_references,
+            presence_line_set,
+            deletion_claims,
+        ) and _all_deletions_are_already_absent(
+            deletion_claims,
+            working_lines,
+        ):
+            workspace.close()
+            return iter(working_lines)
+
         deletion_edit_bounds = workspace.record_vector(
             len(deletion_claims),
             "QQQQ",
@@ -134,6 +140,7 @@ def try_apply_baseline_coordinate_edits(
             presence_line_set,
             deletion_claims,
             deletion_edit_bounds,
+            presence_references,
             allow_adjacent_unmapped_presence=allow_adjacent_unmapped_presence,
             prefer_source_mapping_for_presence=(
                 prefer_source_mapping_for_presence
@@ -172,6 +179,7 @@ def _build_baseline_edit_plan(
     presence_line_set: LineSelection,
     deletion_claims: list[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
+    presence_references: EffectivePresenceReferenceIndex,
     *,
     allow_adjacent_unmapped_presence: bool,
     prefer_source_mapping_for_presence: bool,
@@ -266,10 +274,12 @@ def _build_baseline_edit_plan(
         not trust_baseline_coordinates
         and not _live_coordinate_edits_are_safe(
             ownership,
+            presence_references,
             working_lines,
             deletion_claims,
             deletion_edit_bounds,
             positioned_insertion_lines,
+            source_to_working_mapping=source_to_working_mapping,
             spool_dir=spool_dir,
         )
     ):

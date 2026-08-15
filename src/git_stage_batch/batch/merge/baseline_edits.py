@@ -35,6 +35,9 @@ from ..line_matching.sequence_equality import (
 )
 from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
+from .validation import (
+    build_mapped_source_line_index as _build_mapped_source_line_index,
+)
 
 if TYPE_CHECKING:
     from ..line_matching.line_mapping import LineMapping
@@ -228,6 +231,14 @@ def _build_baseline_edit_plan(
         len(presence_lines),
         "Q",
     )
+    mapped_source_lines = (
+        None
+        if source_to_working_mapping is None
+        else _build_mapped_source_line_index(
+            workspace,
+            source_to_working_mapping,
+        )
+    )
     if not _plan_replacement_unit_edits(
         workspace,
         plan,
@@ -248,6 +259,7 @@ def _build_baseline_edit_plan(
             trusted_target_to_working_mapping
         ),
         trust_baseline_coordinates=trust_baseline_coordinates,
+        mapped_source_lines=mapped_source_lines,
         spool_dir=spool_dir,
     ):
         return None
@@ -257,10 +269,20 @@ def _build_baseline_edit_plan(
     ):
         return None
     if not _plan_independent_removal_edits(
+        workspace,
         plan,
         working_lines,
         deletion_claims,
         deletion_edit_bounds,
+        selected_presence=presence_lines,
+        source_to_working_mapping=source_to_working_mapping,
+        mapped_source_lines=mapped_source_lines,
+        trusted_target_lines=trusted_target_lines,
+        trusted_target_to_working_mapping=(
+            trusted_target_to_working_mapping
+        ),
+        allow_mapped_fallback=not trust_baseline_coordinates,
+        spool_dir=spool_dir,
     ):
         return None
     if mapped_replacement_target_lines:
@@ -289,21 +311,26 @@ def _build_baseline_edit_plan(
     if positioned_insertion_lines is None:
         return None
 
-    workspace.close_resource(replacement_source_ranges)
-    if (
-        not trust_baseline_coordinates
-        and not _live_coordinate_edits_are_safe(
-            ownership,
-            presence_references,
-            working_lines,
-            deletion_claims,
-            deletion_edit_bounds,
-            positioned_insertion_lines,
-            source_to_working_mapping=source_to_working_mapping,
-            spool_dir=spool_dir,
-        )
-    ):
-        return None
+    try:
+        workspace.close_resource(replacement_source_ranges)
+        if (
+            not trust_baseline_coordinates
+            and not _live_coordinate_edits_are_safe(
+                ownership,
+                presence_references,
+                working_lines,
+                deletion_claims,
+                deletion_edit_bounds,
+                positioned_insertion_lines,
+                source_to_working_mapping=source_to_working_mapping,
+                mapped_source_lines=mapped_source_lines,
+                spool_dir=spool_dir,
+            )
+        ):
+            return None
+    finally:
+        if mapped_source_lines is not None:
+            workspace.close_resource(mapped_source_lines)
 
     workspace.close_resource(positioned_insertion_lines)
     if not plan.sort_and_validate():

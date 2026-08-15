@@ -103,7 +103,9 @@ def test_pending_checkpoint_from_another_repository_is_cleared(monkeypatch):
         lambda: Path("/new/.git"),
     )
     monkeypatch.setattr(undo_checkpoints, "current_redo_commit", lambda: None)
-    monkeypatch.setattr(undo_checkpoints, "_create_undo_checkpoint", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        undo_checkpoints, "_create_undo_checkpoint", lambda *args, **kwargs: None
+    )
 
     with undo_checkpoints.undo_checkpoint("new operation", worktree_paths=[]):
         pass

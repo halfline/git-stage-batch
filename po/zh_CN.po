@@ -7287,6 +7287,11 @@ msgstr "所有工作树更改当前都已保存在 {locations} 中。"
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "已应用批次状态已损坏：{path}。请删除此文件以忘记已恢复更改的审查来源。"
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr "files[{path!r}] 包含没有自有替换侧的源替代项"
+
 # Legacy source-alternative metadata translations.
 #: src/git_stage_batch/batch/state/metadata_schema.py:486
 msgid "file entry for {path!r} has an invalid legacy source-alternative flag"

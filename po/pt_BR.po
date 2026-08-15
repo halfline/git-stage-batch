@@ -7819,6 +7819,13 @@ msgstr "Todas as alterações da árvore de trabalho estão salvas atualmente em
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "O estado dos lotes aplicados está corrompido: {path}. Remova este arquivo para esquecer a procedência de revisão das alterações restauradas."
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr ""
+"files[{path!r}] tem uma alternativa de origem sem um lado de substituição "
+"próprio"
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:497
 msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
 msgstr ""

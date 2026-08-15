@@ -7928,6 +7928,11 @@ msgstr "Alle Änderungen im Arbeitsbaum sind derzeit in {locations} gespeichert.
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Der Zustand angewendeter Stapel ist beschädigt: {path}. Entfernen Sie diese Datei, um die Prüfherkunft wiederhergestellter Änderungen zu vergessen."
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}] hat ein ungültiges Quellalternativ-Flag"
+
 msgstr ""
 "Veraltete Stapelmetadaten für {file} können nicht sicher wiedergegeben "
 "werden: Der Stapel zeichnet nicht auf, ob benachbarter historischer "

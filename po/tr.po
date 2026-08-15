@@ -7735,6 +7735,13 @@ msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde ka
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr ""
+"files[{path!r}] sahip olunan bir değiştirme tarafı olmayan kaynak "
+"alternatifi içeriyor"
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:497
 msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
 msgstr ""

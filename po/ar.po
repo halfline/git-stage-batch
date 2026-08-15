@@ -8020,6 +8020,11 @@ msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr "يحتوي إدخال الملفات[{path!r}] على بديل مصدر بلا جانب استبدال مملوك"
+
 # Legacy source-alternative metadata translations.
 #: src/git_stage_batch/batch/state/metadata_schema.py:486
 msgid "file entry for {path!r} has an invalid legacy source-alternative flag"

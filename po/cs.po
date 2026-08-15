@@ -7784,6 +7784,11 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"Položka files[{path!r}] má alternativu zdroje bez hranice v aktuálním obsahu"
+
 "alternativu, která se má nahradit. Před přehráním tuto dávku znovu vytvořte "
 "pomocí aktuální verze git-stage-batch."
 

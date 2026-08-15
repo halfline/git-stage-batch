@@ -7329,6 +7329,11 @@ msgstr "모든 작업 트리 변경 사항은 현재 {locations}에 저장되어
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "적용된 배치 상태가 손상되었습니다: {path}. 복원된 변경 사항의 검토 출처를 잊으려면 이 파일을 제거하십시오."
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr "files[{path!r}]에 소유된 교체 측이 없는 소스 대안이 있습니다"
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:497
 msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
 msgstr "{path!r}의 비텍스트 파일 항목에 레거시 소스 대안 마커가 있습니다"

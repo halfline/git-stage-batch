@@ -7839,6 +7839,12 @@ msgstr "Alle wijzigingen in de werkboom zijn momenteel opgeslagen in {locations}
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "De status van toegepaste batches is beschadigd: {path}. Verwijder dit bestand om de beoordelingsherkomst van herstelde wijzigingen te vergeten."
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr ""
+"files[{path!r}] heeft een bronalternatief zonder eigen vervangingszijde"
+
 #: src/git_stage_batch/batch/state/metadata_schema.py:497
 msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
 msgstr ""

@@ -2859,6 +2859,40 @@ class TestMergeBatch:
 
         assert result == b"head\nnew1\nnew2\ntail\n"
 
+    def test_unique_legacy_deletion_anchors_moved_insertion(self):
+        """A unique old side can prove a moved replacement insertion."""
+        source = b"head\nnew\nneighbor\ntail\n"
+        working = b"head\nold\nneighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[b"old\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head\n",
+                        before_line=3,
+                        before_content=b"neighbor\n",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                2: BaselineReference(
+                    after_line=3,
+                    after_content=b"neighbor\n",
+                    before_line=4,
+                    before_content=b"tail\n",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        assert merge_batch(source, ownership, working) == (
+            b"head\nneighbor\nnew\ntail\n"
+        )
+
     def test_split_replacement_origin_refuses_missing_parent_boundary(self):
         """Split replacement units should fail rather than guess a new location."""
         source = b"head\nnew1\nnew2\ntail\n"

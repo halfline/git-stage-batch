@@ -14,6 +14,7 @@ import git_stage_batch.commands.batch_source.action_selection as action_selectio
 import git_stage_batch.commands.batch_source.candidate_preview_action as candidate_preview_action
 import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts
 import git_stage_batch.commands.batch_source.candidate_execution as candidate_execution
+import git_stage_batch.data.undo.checkpoints as undo_checkpoints
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.output.candidate_preview as candidate_preview_module
 import git_stage_batch.output.candidate_preview_summary as candidate_preview_summary
@@ -34,6 +35,7 @@ from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.data.session_marker import active_session_marker_path
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
@@ -64,7 +66,9 @@ def temp_git_repo(tmp_path, monkeypatch):
         capture_output=True,
     )
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
         check=True,
@@ -79,7 +83,9 @@ def temp_git_repo(tmp_path, monkeypatch):
 
 def _create_displaced_absence_batch(repo, note=None):
     (repo / "file.txt").write_text("a\nb\n")
-    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Add source file"],
         check=True,
@@ -105,7 +111,9 @@ def _create_displaced_absence_batch(repo, note=None):
 
 def _create_displaced_absence_block_batch(repo):
     (repo / "file.txt").write_text("a\nb\n")
-    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Add source file"],
         check=True,
@@ -128,14 +136,14 @@ def _create_displaced_absence_block_batch(repo):
         ),
         "100644",
     )
-    (repo / "file.txt").write_text(
-        "a\ninsert\nx\ny\nz\nmid\nx\ny\nz\nb\n"
-    )
+    (repo / "file.txt").write_text("a\ninsert\nx\ny\nz\nmid\nx\ny\nz\nb\n")
 
 
 def _create_split_replacement_origin_batch(repo):
     (repo / "file.txt").write_text("head\nnew1\nnew2\ntail\n")
-    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Add split replacement source file"],
         check=True,
@@ -199,7 +207,9 @@ def _create_split_replacement_origin_batch(repo):
 def _create_contextual_presence_batch(repo):
     source = "header\nold one\nold two\nold three\nclaimed\nold tail\nfooter\n"
     (repo / "file.txt").write_text(source)
-    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Add contextual source file"],
         check=True,
@@ -218,18 +228,11 @@ def _create_contextual_presence_batch(repo):
 
 
 def _create_coordinate_strategy_batch(repo):
-    source = (
-        "P\n"
-        "ANCHOR\n"
-        "NEXT\n"
-        "MIDDLE\n"
-        "ANCHOR\n"
-        "NEW\n"
-        "NEXT\n"
-        "TAIL\n"
-    )
+    source = "P\nANCHOR\nNEXT\nMIDDLE\nANCHOR\nNEW\nNEXT\nTAIL\n"
     (repo / "file.txt").write_text(source)
-    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Add coordinate source file"],
         check=True,
@@ -257,16 +260,7 @@ def _create_coordinate_strategy_batch(repo):
         "100644",
     )
     (repo / "file.txt").write_text(
-        "P\n"
-        "ANCHOR\n"
-        "NEXT\n"
-        "FILL\n"
-        "ANCHOR\n"
-        "NEXT\n"
-        "MIDDLE\n"
-        "ANCHOR\n"
-        "NEXT\n"
-        "TAIL\n"
+        "P\nANCHOR\nNEXT\nFILL\nANCHOR\nNEXT\nMIDDLE\nANCHOR\nNEXT\nTAIL\n"
     )
 
 
@@ -331,17 +325,7 @@ def test_coordinate_strategy_candidates_can_be_reviewed_and_applied(
     captured = capsys.readouterr()
     assert "Applied candidate 1 of 2" in captured.err
     assert (temp_git_repo / "file.txt").read_text() == (
-        "P\n"
-        "ANCHOR\n"
-        "NEXT\n"
-        "FILL\n"
-        "ANCHOR\n"
-        "NEXT\n"
-        "MIDDLE\n"
-        "ANCHOR\n"
-        "NEW\n"
-        "NEXT\n"
-        "TAIL\n"
+        "P\nANCHOR\nNEXT\nFILL\nANCHOR\nNEXT\nMIDDLE\nANCHOR\nNEW\nNEXT\nTAIL\n"
     )
     assert not _candidate_state_has_file("coordinate-choice", "file.txt")
 
@@ -365,16 +349,25 @@ def test_show_candidate_set_lists_context_and_commands(temp_git_repo, capsys):
     assert "Working tree:" not in captured.out
     assert "3│ -x" in captured.out
     assert "5│ -x" in captured.out
-    assert "Preview this candidate:\n     git-stage-batch show --from ambiguous:apply:1 --file file.txt" in captured.out
-    assert "Apply this candidate:\n     git-stage-batch apply --from ambiguous:apply:1 --file file.txt" in captured.out
+    assert (
+        "Preview this candidate:\n     git-stage-batch show --from ambiguous:apply:1 --file file.txt"
+        in captured.out
+    )
+    assert (
+        "Apply this candidate:\n     git-stage-batch apply --from ambiguous:apply:1 --file file.txt"
+        in captured.out
+    )
     assert "Apply candidate 1 of 2 for batch 'ambiguous'." not in captured.err
 
 
 def test_multiline_ambiguous_block_summary_uses_ellipsis():
     """Candidate summaries should name a multi-line block by its endpoints."""
-    assert candidate_preview_summary.summarize_ambiguity_block(
-        ["vanilla extract", "nutmeg"],
-    ) == '"vanilla extract … nutmeg"'
+    assert (
+        candidate_preview_summary.summarize_ambiguity_block(
+            ["vanilla extract", "nutmeg"],
+        )
+        == '"vanilla extract … nutmeg"'
+    )
 
 
 def test_candidate_overview_subject_names_only_ambiguous_targets():
@@ -432,8 +425,14 @@ def test_show_candidate_set_highlights_candidate_regions_when_colored(
     assert candidate_preview_module.Colors.REVERSE in captured.out
     assert candidate_preview_module.Colors.GRAY in captured.out
     assert candidate_preview_module.Colors.RED in captured.out
-    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.RED}" not in captured.out
-    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.GRAY}" in captured.out
+    assert (
+        f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.RED}"
+        not in captured.out
+    )
+    assert (
+        f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.GRAY}"
+        in captured.out
+    )
     assert "3│ " in captured.out
 
 
@@ -592,9 +591,7 @@ def test_candidate_preview_allows_equivalent_line_selection_spelling(
 
     captured = capsys.readouterr()
     assert "Applied candidate 1 of 2 from batch 'ambiguous-lines'" in captured.err
-    assert (temp_git_repo / "file.txt").read_text() == (
-        "a\ninsert\nmid\nx\ny\nz\nb\n"
-    )
+    assert (temp_git_repo / "file.txt").read_text() == ("a\ninsert\nmid\nx\ny\nz\nb\n")
 
 
 def test_apply_from_reports_candidate_enumeration_error(
@@ -631,7 +628,9 @@ def test_numbered_show_candidate_records_its_own_preview(temp_git_repo, capsys):
     assert first_preview.out.startswith(
         "file.txt  ·  ambiguous  ·  apply candidate 1/2\n"
     )
-    assert "Preview apply candidate 1 of 2 for batch 'ambiguous'." not in first_preview.out
+    assert (
+        "Preview apply candidate 1 of 2 for batch 'ambiguous'." not in first_preview.out
+    )
     assert "Note:" not in first_preview.out
     assert "No changes applied." not in first_preview.out
     assert "\nfile.txt\nCandidate 1 of 2\n" not in first_preview.out
@@ -643,12 +642,24 @@ def test_numbered_show_candidate_records_its_own_preview(temp_git_repo, capsys):
     assert "file.txt :: @@ -1,6 +1,5 @@" in first_preview.out
     assert "3│ -x" in first_preview.out
     assert "--- a/file.txt" not in first_preview.out
-    assert "overview: git-stage-batch show --from ambiguous:apply --file file.txt" in first_preview.out
-    assert "next: git-stage-batch show --from ambiguous:apply:2 --file file.txt" in first_preview.out
+    assert (
+        "overview: git-stage-batch show --from ambiguous:apply --file file.txt"
+        in first_preview.out
+    )
+    assert (
+        "next: git-stage-batch show --from ambiguous:apply:2 --file file.txt"
+        in first_preview.out
+    )
     command_show_from_batch("ambiguous:apply:2", file="file.txt")
     second_preview = capsys.readouterr()
-    assert "overview: git-stage-batch show --from ambiguous:apply --file file.txt" in second_preview.out
-    assert "previous: git-stage-batch show --from ambiguous:apply:1 --file file.txt" in second_preview.out
+    assert (
+        "overview: git-stage-batch show --from ambiguous:apply --file file.txt"
+        in second_preview.out
+    )
+    assert (
+        "previous: git-stage-batch show --from ambiguous:apply:1 --file file.txt"
+        in second_preview.out
+    )
 
     command_apply_from_batch("ambiguous:apply:1", file="file.txt")
 
@@ -665,8 +676,7 @@ def test_numbered_show_candidate_header_preserves_batch_note(temp_git_repo, caps
 
     captured = capsys.readouterr()
     assert captured.out.startswith(
-        "file.txt  ·  ambiguous  ·  apply candidate 1/2\n"
-        "Note: Auto-created\n"
+        "file.txt  ·  ambiguous  ·  apply candidate 1/2\nNote: Auto-created\n"
     )
     assert "Preview apply candidate" not in captured.out
     assert "─\nRemove" in captured.out
@@ -690,8 +700,14 @@ def test_numbered_show_candidate_keeps_diff_colors_when_colored(
     captured = capsys.readouterr()
     assert candidate_preview_module.Colors.REVERSE in captured.out
     assert candidate_preview_module.Colors.RED in captured.out
-    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.RED}" not in captured.out
-    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.GRAY}" in captured.out
+    assert (
+        f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.RED}"
+        not in captured.out
+    )
+    assert (
+        f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.GRAY}"
+        in captured.out
+    )
 
 
 def test_numbered_include_candidate_separates_target_sections(
@@ -704,11 +720,11 @@ def test_numbered_include_candidate_separates_target_sections(
     command_show_from_batch("ambiguous:include:2", file="file.txt")
 
     captured = capsys.readouterr()
-    assert captured.out.startswith(
-        "file.txt  ·  ambiguous  ·  include candidate 2/2\n"
-    )
+    assert captured.out.startswith("file.txt  ·  ambiguous  ·  include candidate 2/2\n")
     assert "Preview include candidate" not in captured.out
-    assert "Index update: No text changes\n\nWorking tree update: Remove" in captured.out
+    assert (
+        "Index update: No text changes\n\nWorking tree update: Remove" in captured.out
+    )
     assert "Working tree update:\nRemove" not in captured.out
     assert "Working tree update: Remove" in captured.out
     assert "\n\n\nWorking tree update:" not in captured.out
@@ -783,7 +799,10 @@ def test_include_candidate_can_run_from_overview(temp_git_repo, capsys):
     assert overview.out.index("Candidate 1/2") < overview.out.index("Index update")
     assert "Candidate 1/2   Working tree:" not in overview.out
     assert "Candidate 2/2   Working tree:" not in overview.out
-    assert "Include this candidate:\n     git-stage-batch include --from ambiguous:include:2 --file file.txt" in overview.out
+    assert (
+        "Include this candidate:\n     git-stage-batch include --from ambiguous:include:2 --file file.txt"
+        in overview.out
+    )
     assert _candidate_state_has_file("ambiguous", "file.txt")
 
     command_include_from_batch("ambiguous:include:2", file="file.txt")
@@ -793,6 +812,195 @@ def test_include_candidate_can_run_from_overview(temp_git_repo, capsys):
     assert "delete target line" not in captured.err
     assert (temp_git_repo / "file.txt").read_text() == "a\ninsert\nx\nmid\nb\n"
     assert not _candidate_state_has_file("ambiguous", "file.txt")
+
+
+@pytest.mark.parametrize("active_session", [True, False], ids=["active", "no-session"])
+def test_include_candidate_write_failure_restores_both_targets(
+    temp_git_repo,
+    monkeypatch,
+    capsys,
+    active_session,
+):
+    """Candidate include must be atomic with and without a live session."""
+    _create_displaced_absence_batch(temp_git_repo)
+    command_show_from_batch("ambiguous:include", file="file.txt")
+    capsys.readouterr()
+    before_index = subprocess.run(
+        ["git", "show", ":file.txt"],
+        cwd=temp_git_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    before_worktree = (temp_git_repo / "file.txt").read_text()
+    if not active_session:
+        active_session_marker_path().unlink()
+        monkeypatch.setattr(
+            candidate_execution,
+            "snapshot_file_if_untracked",
+            lambda _path: (_ for _ in ()).throw(
+                AssertionError("outside-session include wrote abort state")
+            ),
+        )
+
+    monkeypatch.setattr(
+        candidate_execution._text_file_actions,
+        "write_text_file_to_worktree",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("injected candidate write failure")
+        ),
+    )
+
+    with pytest.raises(OSError, match="injected candidate write failure"):
+        command_include_from_batch("ambiguous:include:2", file="file.txt")
+
+    assert (
+        subprocess.run(
+            ["git", "show", ":file.txt"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == before_index
+    )
+    assert (temp_git_repo / "file.txt").read_text() == before_worktree
+    assert _candidate_state_has_file("ambiguous", "file.txt")
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/git-stage-batch/transactions",
+            ],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == ""
+    )
+
+
+@pytest.mark.parametrize("active_session", [True, False], ids=["active", "no-session"])
+def test_include_candidate_cleanup_cancellation_restores_both_targets(
+    temp_git_repo,
+    monkeypatch,
+    capsys,
+    active_session,
+):
+    """Candidate resources must close before their transaction commits."""
+    _create_displaced_absence_batch(temp_git_repo)
+    command_show_from_batch("ambiguous:include", file="file.txt")
+    capsys.readouterr()
+    before_index = subprocess.run(
+        ["git", "show", ":file.txt"],
+        cwd=temp_git_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    before_worktree = (temp_git_repo / "file.txt").read_text()
+    if not active_session:
+        active_session_marker_path().unlink()
+
+    real_close = candidate_execution._action_plans.close_resources
+
+    def close_then_cancel(resources):
+        real_close(resources)
+        raise KeyboardInterrupt("candidate cleanup cancelled")
+
+    monkeypatch.setattr(
+        candidate_execution._action_plans,
+        "close_resources",
+        close_then_cancel,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="candidate cleanup cancelled"):
+        command_include_from_batch("ambiguous:include:2", file="file.txt")
+
+    assert (
+        subprocess.run(
+            ["git", "show", ":file.txt"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == before_index
+    )
+    assert (temp_git_repo / "file.txt").read_text() == before_worktree
+    assert _candidate_state_has_file("ambiguous", "file.txt")
+    assert "✓ Included" not in capsys.readouterr().err
+
+
+def test_include_candidate_preserves_conflict_introduced_after_checkpoint(
+    temp_git_repo,
+    monkeypatch,
+    capsys,
+):
+    """An unarmed stale check must not overwrite a concurrent index conflict."""
+    _create_displaced_absence_batch(temp_git_repo)
+    command_show_from_batch("ambiguous:include", file="file.txt")
+    capsys.readouterr()
+    before_worktree = (temp_git_repo / "file.txt").read_text()
+    object_ids = []
+    for content in ("base\n", "ours\n", "theirs\n"):
+        object_ids.append(
+            subprocess.run(
+                ["git", "hash-object", "-w", "--stdin"],
+                cwd=temp_git_repo,
+                input=content,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+
+    real_create = undo_checkpoints._create_undo_checkpoint
+
+    def create_then_conflict(*args, **kwargs):
+        checkpoint = real_create(*args, **kwargs)
+        subprocess.run(
+            ["git", "update-index", "--index-info"],
+            cwd=temp_git_repo,
+            input=(
+                f"0 {'0' * 40} 0\tfile.txt\n"
+                + "".join(
+                    f"100644 {object_id} {stage}\tfile.txt\n"
+                    for stage, object_id in enumerate(object_ids, start=1)
+                )
+            ),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return checkpoint
+
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "_create_undo_checkpoint",
+        create_then_conflict,
+    )
+
+    with pytest.raises(CommandError, match="Index changed.*file.txt"):
+        command_include_from_batch("ambiguous:include:2", file="file.txt")
+
+    assert (temp_git_repo / "file.txt").read_text() == before_worktree
+    conflict_entries = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "file.txt"],
+        cwd=temp_git_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert tuple(line.split()[2] for line in conflict_entries.splitlines()) == (
+        "1",
+        "2",
+        "3",
+    )
+    assert _candidate_state_has_file("ambiguous", "file.txt")
 
 
 def test_include_from_reports_candidate_limit(temp_git_repo, monkeypatch):

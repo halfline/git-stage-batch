@@ -14,7 +14,11 @@ from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.data.session import initialize_abort_state
-from git_stage_batch.exceptions import CommandError
+from git_stage_batch.data.file_target_identity import (
+    IndexIdentity,
+    WorktreeIdentity,
+)
+from git_stage_batch.exceptions import CommandError, MergeError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
@@ -254,7 +258,61 @@ static void reset_state(void)
         assert (temp_git_repo / "a.txt").read_text() == "a.txt batch\n"
         assert (temp_git_repo / "b.txt").read_text() == "b.txt batch\n"
 
-    def test_discard_from_batch_partial_atomic_unit_shows_required_lines(self, temp_git_repo):
+    def test_index_derived_rollback_rejects_change_after_planning(
+        self,
+        monkeypatch,
+    ):
+        """Discard must not use an index identity that went stale."""
+        monkeypatch.setattr(
+            discard_action,
+            "read_index_identities",
+            lambda _paths: {
+                "file.txt": IndexIdentity("100644", "b" * 40),
+            },
+        )
+
+        with pytest.raises(CommandError, match="Index changed.*file.txt"):
+            discard_action._require_unchanged_discard_targets(
+                {"file.txt": IndexIdentity("100644", "a" * 40)},
+                {},
+            )
+
+    def test_discard_rejects_worktree_change_after_planning(
+        self,
+        monkeypatch,
+    ):
+        """Discard must not publish a plan built from stale worktree bytes."""
+        monkeypatch.setattr(
+            discard_action,
+            "capture_worktree_identities",
+            lambda _paths: {
+                "file.txt": WorktreeIdentity(
+                    True,
+                    "regular",
+                    0o644,
+                    7,
+                    "b" * 64,
+                )
+            },
+        )
+
+        with pytest.raises(CommandError, match="Working tree file changed"):
+            discard_action._require_unchanged_discard_targets(
+                {},
+                {
+                    "file.txt": WorktreeIdentity(
+                        True,
+                        "regular",
+                        0o644,
+                        7,
+                        "a" * 64,
+                    )
+                },
+            )
+
+    def test_discard_from_batch_partial_atomic_unit_shows_required_lines(
+        self, temp_git_repo
+    ):
         """Partial replacement selections should keep the atomic-selection guidance."""
         test_file = temp_git_repo / "file.txt"
         test_file.write_text("old value\nkeep\n")

@@ -651,6 +651,94 @@ def test_transaction_checkpoint_delegates_to_active_outer_checkpoint(
 
 
 
+@pytest.mark.parametrize("active_session", (False, True))
+def test_nested_transaction_arm_rolls_back_error_through_outer(
+    temp_git_repo,
+    active_session,
+):
+    """An inner publication must arm its enclosing transaction."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+
+    with pytest.raises(RuntimeError, match="inner failed"):
+        with transaction_checkpoint(
+            "outer change",
+            worktree_paths=["target.txt"],
+        ) as outer_status:
+            with transaction_checkpoint(
+                "inner change",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                inner_status.arm_rollback()
+                target.write_text("inner partial\n")
+                raise RuntimeError("inner failed")
+
+    assert outer_status.rollback == "completed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "before\n"
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_successful_nested_transaction_arm_rolls_back_later_outer_error(
+    temp_git_repo,
+    active_session,
+):
+    """A successful inner publication must remain armed for outer failure."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+
+    with pytest.raises(RuntimeError, match="outer failed"):
+        with transaction_checkpoint(
+            "outer change",
+            worktree_paths=["target.txt"],
+        ) as outer_status:
+            with transaction_checkpoint(
+                "inner change",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                inner_status.arm_rollback()
+                target.write_text("inner complete\n")
+            raise RuntimeError("outer failed")
+
+    assert outer_status.rollback == "completed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "before\n"
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_caught_unarmed_nested_refusal_does_not_abort_armed_outer_transaction(
+    temp_git_repo,
+    active_session,
+):
+    """A nested pre-publication refusal must not poison an armed outer command."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        outer_status.arm_rollback()
+        target.write_text("outer complete\n")
+        with pytest.raises(CommandError, match="stale inner target"):
+            with transaction_checkpoint(
+                "inner refusal",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                raise CommandError("stale inner target")
+
+    assert outer_status.rollback == "not-needed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "outer complete\n"
 def test_nontransactional_checkpoint_status_remains_not_requested(
     temp_git_repo,
 ):

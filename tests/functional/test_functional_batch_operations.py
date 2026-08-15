@@ -135,6 +135,44 @@ def _install_castkms_raw_map_replay_fixture(functional_repo):
     return batch_name
 
 
+def _install_castkms_primary_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_primary_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "73ab324457aa97fc118e8406b973a8050e6e1cd2",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-36-primary-plane-lookup-ownership"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "ad3641debe9fcba69b6018d096cf97f2969fd730",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
 class TestCreateBatch:
     """Test creating batches."""
 
@@ -830,6 +868,27 @@ class TestApplyFromBatch:
             relative_path,
         )
         assert path.read_text() == committed
+
+
+    def test_apply_batch_after_committing_neighboring_replacements(
+        self,
+        functional_repo,
+    ):
+        """Committed neighboring replacements must not block batch replay."""
+        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode == 0, result.stderr
+        header = (functional_repo / "src" / "castkms_config.h").read_text()
+        tests = (
+            functional_repo / "src" / "tests" / "castkms_config_test.c"
+        ).read_text()
+        assert (
+            "castkms_config_crtc_primary_plane(struct castkms_config_crtc"
+            in header
+        )
+        assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
 
 
 class TestBatchList:

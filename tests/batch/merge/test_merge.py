@@ -5171,3 +5171,319 @@ def test_trusted_target_group_requires_exact_unchanged_gap(working: bytes) -> No
             working,
             trusted_target_content=trusted,
         )
+
+
+def _partial_reordered_replacement_ownership() -> BatchOwnership:
+    mapped_reference = BaselineReference(
+        after_line=1,
+        after_content=b"a-head\n",
+        before_line=3,
+        before_content=b"a-tail\n",
+        has_before_line=True,
+    )
+    parent_reference = BaselineReference(
+        after_line=4,
+        after_content=b"head\n",
+        before_line=7,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    return BatchOwnership.from_presence_lines(
+        ["2", "6"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"a-old\n"],
+                baseline_reference=mapped_reference,
+            ),
+            AbsenceClaim(
+                anchor_line=4,
+                content_lines=[b"old-owned\n"],
+                baseline_reference=BaselineReference(
+                    after_line=4,
+                    after_content=b"head\n",
+                    before_line=6,
+                    before_content=b"old-sibling\n",
+                    has_before_line=True,
+                ),
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, mapped_reference),
+            ),
+            ReplacementUnit(
+                ["6"],
+                [1],
+                ReplacementUnitOrigin(5, 6, 5, 6, parent_reference),
+            )
+        ],
+    )
+
+
+def test_partial_replacement_refuses_untrusted_historical_order() -> None:
+    """Historical child coordinates cannot override mapped source ordering."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=4,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    child_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"new-sibling\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-owned\n"],
+                baseline_reference=child_reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["3"],
+                [0],
+                ReplacementUnitOrigin(
+                    2,
+                    3,
+                    2,
+                    3,
+                    parent_reference,
+                ),
+            )
+        ],
+    )
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew-sibling\nnew-owned\ntail\n",
+            ownership,
+            b"head\nold-owned\nnew-sibling\ntail\n",
+        )
+
+
+def test_trusted_target_places_partial_replacement_after_updated_sibling() -> None:
+    """An index-matched sibling can position its selected reordered child."""
+    source = (
+        b"a-head\na-new\na-tail\nhead\n"
+        b"new-sibling\nnew-owned\ntail\n"
+    )
+    trusted = (
+        b"a-head\na-new\na-tail\nhead\n"
+        b"old-owned\nnew-sibling\ntail\n"
+    )
+
+    assert merge_batch(
+        source,
+        _partial_reordered_replacement_ownership(),
+        trusted,
+        trusted_target_content=trusted,
+    ) == source
+
+
+def test_trusted_target_preserves_edited_partial_replacement_sibling() -> None:
+    """An unstaged sibling edit is not moved through the trusted-index path."""
+    source = (
+        b"a-head\na-new\na-tail\nhead\n"
+        b"new-sibling\nnew-owned\ntail\n"
+    )
+    trusted = (
+        b"a-head\na-new\na-tail\nhead\n"
+        b"old-owned\nnew-sibling\ntail\n"
+    )
+    working = (
+        b"a-head\na-new\na-tail\nhead\n"
+        b"old-owned\nworktree-sibling\ntail\n"
+    )
+
+    assert merge_batch(
+        source,
+        _partial_reordered_replacement_ownership(),
+        working,
+        trusted_target_content=trusted,
+    ) == (
+        b"a-head\na-new\na-tail\nhead\n"
+        b"new-owned\nworktree-sibling\ntail\n"
+    )
+
+
+def test_trusted_partial_replay_indexes_each_split_parent_once(monkeypatch) -> None:
+    """Separated missing children share one bounded parent occurrence index."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=9,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=8,
+        new_start=2,
+        new_end=8,
+        baseline_reference=parent_reference,
+    )
+    old_contents = (
+        [b"old-0a\n", b"old-0b\n"],
+        [b"old-1\n"],
+        [b"old-2a\n", b"old-2b\n"],
+        [b"old-3\n"],
+        [b"old-4\n"],
+    )
+    old_offsets = (0, 2, 3, 5, 6)
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "3", "4", "5", "6-8"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=content,
+                baseline_reference=BaselineReference(
+                    after_line=1 + offset,
+                    after_content=b"historical boundary\n",
+                ),
+            )
+            for content, offset in zip(old_contents, old_offsets)
+        ],
+        replacement_units=[
+            ReplacementUnit(source_lines, [index], origin)
+            for index, source_lines in enumerate(
+                (["2"], ["3"], ["4"], ["5"], ["6-8"])
+            )
+        ],
+    )
+    source = (
+        b"head\nnew-0\nnew-1\nnew-2\nnew-3\n"
+        b"new-4a\nnew-4b\nnew-4c\ntail\n"
+    )
+    trusted = (
+        b"head\nnew-0\nold-1\nnew-2\nold-3\n"
+        b"new-4a\nnew-4b\nnew-4c\ntail\n"
+    )
+    original_index = (
+        baseline_replacement_edits_module.LinePayloadOccurrenceIndex
+    )
+    index_builds = 0
+
+    def build_index(*args, **kwargs):
+        nonlocal index_builds
+        index_builds += 1
+        return original_index(*args, **kwargs)
+
+    monkeypatch.setattr(
+        baseline_replacement_edits_module,
+        "LinePayloadOccurrenceIndex",
+        build_index,
+    )
+
+    assert merge_batch(
+        source,
+        ownership,
+        trusted,
+        trusted_target_content=trusted,
+    ) == source
+    assert index_builds == 1
+
+
+def test_trusted_partial_replay_releases_each_finished_parent_index(
+    monkeypatch,
+) -> None:
+    """Separated replacement parents retain at most one scoped index."""
+    first_parent = BaselineReference(
+        after_line=1,
+        after_content=b"head-1\n",
+        before_line=4,
+        before_content=b"tail-1\n",
+        has_before_line=True,
+    )
+    second_parent = BaselineReference(
+        after_line=6,
+        after_content=b"head-2\n",
+        before_line=9,
+        before_content=b"tail-2\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3", "8"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-1\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    after_content=b"head-1\n",
+                    before_line=3,
+                    before_content=b"sibling-1\n",
+                    has_before_line=True,
+                ),
+            ),
+            AbsenceClaim(
+                anchor_line=6,
+                content_lines=[b"old-2\n"],
+                baseline_reference=BaselineReference(
+                    after_line=6,
+                    after_content=b"head-2\n",
+                    before_line=8,
+                    before_content=b"sibling-2\n",
+                    has_before_line=True,
+                ),
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["3"],
+                [0],
+                ReplacementUnitOrigin(2, 3, 2, 3, first_parent),
+            ),
+            ReplacementUnit(
+                ["8"],
+                [1],
+                ReplacementUnitOrigin(7, 8, 7, 8, second_parent),
+            ),
+        ],
+    )
+    source = (
+        b"head-1\nsibling-1\nnew-1\ntail-1\nseparator\n"
+        b"head-2\nsibling-2\nnew-2\ntail-2\n"
+    )
+    trusted = (
+        b"head-1\nsibling-1\nold-1\ntail-1\nseparator\n"
+        b"head-2\nsibling-2\nold-2\ntail-2\n"
+    )
+    original_index = baseline_replacement_edits_module.LinePayloadOccurrenceIndex
+    capacities = []
+    close_count = 0
+
+    class TrackingIndex(original_index):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            capacities.append(self._positions.capacity)
+
+        def close(self):
+            nonlocal close_count
+            if self._workspace is not None:
+                close_count += 1
+            super().close()
+
+    monkeypatch.setattr(
+        baseline_replacement_edits_module,
+        "LinePayloadOccurrenceIndex",
+        TrackingIndex,
+    )
+
+    assert merge_batch(
+        source,
+        ownership,
+        trusted,
+        trusted_target_content=trusted,
+    ) == source
+    assert capacities == [2, 2]
+    assert close_count == 2

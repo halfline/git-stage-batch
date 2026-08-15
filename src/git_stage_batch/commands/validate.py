@@ -212,7 +212,11 @@ def inspect_batch_metadata() -> list[_BatchValidationReport]:
                 if type(raw_schema_version) is int
                 else None
             )
-            report["migration_required"] = report["schema_version"] == 0
+            report["migration_required"] = (
+                report["schema_version"] is not None
+                and report["schema_version"]
+                < CURRENT_BATCH_METADATA_SCHEMA_VERSION
+            )
             model = decode_batch_metadata(payload, expected_batch=batch_name)
             report["revision"] = model.revision
             decoded_models.append((report, model))

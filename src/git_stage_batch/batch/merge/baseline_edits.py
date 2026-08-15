@@ -294,12 +294,12 @@ def _build_baseline_edit_plan(
             return None
     workspace.close_resource(mapped_replacement_target_lines)
 
-    positioned_insertion_lines = _plan_presence_insertions(
+    presence_insertion_plan = _plan_presence_insertions(
         plan,
         workspace,
         source_lines,
         working_lines,
-        ownership,
+        presence_references,
         presence_lines,
         replacement_source_ranges,
         allow_adjacent_unmapped_presence=allow_adjacent_unmapped_presence,
@@ -308,8 +308,11 @@ def _build_baseline_edit_plan(
         source_to_working_mapping=source_to_working_mapping,
         spool_dir=spool_dir,
     )
-    if positioned_insertion_lines is None:
+    if presence_insertion_plan is None:
         return None
+    positioned_insertion_lines, owned_presence_mapping = (
+        presence_insertion_plan
+    )
 
     try:
         workspace.close_resource(replacement_source_ranges)
@@ -323,12 +326,17 @@ def _build_baseline_edit_plan(
                 deletion_edit_bounds,
                 positioned_insertion_lines,
                 source_to_working_mapping=source_to_working_mapping,
+                presence_source_to_working_mapping=(
+                    source_to_working_mapping or owned_presence_mapping
+                ),
                 mapped_source_lines=mapped_source_lines,
                 spool_dir=spool_dir,
             )
         ):
             return None
     finally:
+        if owned_presence_mapping is not None:
+            owned_presence_mapping.close()
         if mapped_source_lines is not None:
             workspace.close_resource(mapped_source_lines)
 

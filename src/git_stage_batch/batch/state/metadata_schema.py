@@ -6,16 +6,18 @@ import hashlib
 import json
 import re
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
+from itertools import chain
 from types import MappingProxyType
 from typing import Any, NoReturn, TypeAlias, cast
 
 from ...exceptions import BatchMetadataError
 from ...i18n import _, ngettext
 from ...utils.git_repository import object_id_hex_length
+from ..ownership.claims import parse_ownership_line_ranges
 from .metadata_types import (
     BatchFileMetadataDict,
     BatchMetadataDict,
@@ -29,34 +31,38 @@ JsonScalar: TypeAlias = None | bool | int | str
 JsonValue: TypeAlias = JsonScalar | tuple["JsonValue", ...] | Mapping[str, "JsonValue"]
 
 _LINE_RANGE_RE = re.compile(r"^(?P<start>[1-9][0-9]*)(?:-(?P<end>[1-9][0-9]*))?$")
-_FILE_METADATA_KEYS = frozenset({
-    "batch_source_commit",
-    "change_type",
-    "claimed_lines",
-    "deletions",
-    "file_type",
-    "legacy_unmarked_source_alternatives",
-    "mode",
-    "new_mode",
-    "new_oid",
-    "old_mode",
-    "old_oid",
-    "presence_claims",
-    "replacement_masks",
-    "replacement_units",
-    "source_path",
-})
-_TOP_LEVEL_KEYS = frozenset({
-    "schema_version",
-    "revision",
-    "batch",
-    "note",
-    "created_at",
-    "baseline",
-    "content_ref",
-    "content_commit",
-    "files",
-})
+_FILE_METADATA_KEYS = frozenset(
+    {
+        "batch_source_commit",
+        "change_type",
+        "claimed_lines",
+        "deletions",
+        "file_type",
+        "legacy_unmarked_source_alternatives",
+        "mode",
+        "new_mode",
+        "new_oid",
+        "old_mode",
+        "old_oid",
+        "presence_claims",
+        "replacement_masks",
+        "replacement_units",
+        "source_path",
+    }
+)
+_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema_version",
+        "revision",
+        "batch",
+        "note",
+        "created_at",
+        "baseline",
+        "content_ref",
+        "content_commit",
+        "files",
+    }
+)
 _GIT_FILE_MODES = frozenset({"100644", "100755", "120000", "160000"})
 
 
@@ -101,10 +107,12 @@ class BatchFileMetadata:
         """Return this entry with its canonical state-tree source path."""
         return replace(
             self,
-            values=MappingProxyType({
-                **self.values,
-                "source_path": f"sources/{self.path}",
-            }),
+            values=MappingProxyType(
+                {
+                    **self.values,
+                    "source_path": f"sources/{self.path}",
+                }
+            ),
         )
 
 
@@ -174,9 +182,7 @@ class BatchMetadata:
             self,
             revision=new_batch_metadata_revision(),
             files=tuple(
-                entry.with_source_path()
-                if entry.path in source_path_set else
-                entry
+                entry.with_source_path() if entry.path in source_path_set else entry
                 for entry in self.files
             ),
             content_ref=content_ref,
@@ -223,20 +229,21 @@ def decode_batch_metadata(
     elif version != CURRENT_BATCH_METADATA_SCHEMA_VERSION:
         _invalid(
             expected_batch,
-            _("unsupported metadata schema version {version}").format(
-                version=version
-            ),
+            _("unsupported metadata schema version {version}").format(version=version),
         )
     return _decode_current(data, expected_batch, allow_legacy=migrated_from_v0)
 
 
 def encode_batch_metadata(metadata: BatchMetadata) -> str:
     """Serialize current metadata deterministically."""
-    return json.dumps(
-        metadata.to_storage_dict(),
-        indent=2,
-        ensure_ascii=False,
-    ) + "\n"
+    return (
+        json.dumps(
+            metadata.to_storage_dict(),
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
 
 
 def metadata_from_application_dict(
@@ -453,13 +460,17 @@ def _decode_file_metadata(
         )
 
     file_type = values.get("file_type")
-    if file_type is not None and file_type not in {item.value for item in BatchFileType}:
+    if file_type is not None and file_type not in {
+        item.value for item in BatchFileType
+    }:
         _invalid(
             batch_name,
             _("file entry for {path!r} has invalid file_type").format(path=path),
         )
     change_type = values.get("change_type")
-    if change_type is not None and change_type not in {item.value for item in BatchChangeType}:
+    if change_type is not None and change_type not in {
+        item.value for item in BatchChangeType
+    }:
         _invalid(
             batch_name,
             _("file entry for {path!r} has invalid change_type").format(path=path),
@@ -481,14 +492,10 @@ def _decode_file_metadata(
         _invalid(
             batch_name,
             _(
-                "file entry for {path!r} has an invalid legacy "
-                "source-alternative flag"
+                "file entry for {path!r} has an invalid legacy source-alternative flag"
             ).format(path=path),
         )
-    if (
-        "legacy_unmarked_source_alternatives" in values
-        and file_type is not None
-    ):
+    if "legacy_unmarked_source_alternatives" in values and file_type is not None:
         _invalid(
             batch_name,
             _(
@@ -502,13 +509,13 @@ def _decode_file_metadata(
     for key in ("old_oid", "new_oid"):
         value = values.get(key)
         if value is not None:
-            _validate_hex_object_id(value, batch_name, f"files[{path!r}].{key}", (40, 64))
+            _validate_hex_object_id(
+                value, batch_name, f"files[{path!r}].{key}", (40, 64)
+            )
     if "source_path" in values and values["source_path"] != f"sources/{path}":
         _invalid(
             batch_name,
-            _("file entry for {path!r} has inconsistent source_path").format(
-                path=path
-            ),
+            _("file entry for {path!r} has inconsistent source_path").format(path=path),
         )
     if file_type in (None, BatchFileType.BINARY.value, BatchFileType.MODE.value):
         if "batch_source_commit" not in values:
@@ -525,19 +532,18 @@ def _decode_file_metadata(
     if file_type == BatchFileType.GITLINK.value and values.get("mode") != "160000":
         _invalid(
             batch_name,
-            _("gitlink entry for {path!r} must use mode 160000").format(
-                path=path
-            ),
+            _("gitlink entry for {path!r} must use mode 160000").format(path=path),
         )
     if file_type == BatchFileType.MODE.value:
         if not {"old_mode", "new_mode", "mode"} <= set(values):
             _invalid(
                 batch_name,
-                _("mode entry for {path!r} is missing mode fields").format(
-                    path=path
-                ),
+                _("mode entry for {path!r} is missing mode fields").format(path=path),
             )
-        if values["mode"] != values["new_mode"] or values["old_mode"] == values["new_mode"]:
+        if (
+            values["mode"] != values["new_mode"]
+            or values["old_mode"] == values["new_mode"]
+        ):
             _invalid(
                 batch_name,
                 _("mode entry for {path!r} has inconsistent transition").format(
@@ -559,14 +565,22 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                     field=key,
                 ),
             )
-    seen_presence: set[tuple[str, ...]] = set()
+    if "claimed_lines" in values:
+        _validate_line_ranges(
+            values["claimed_lines"],
+            batch_name,
+            f"files[{path!r}].claimed_lines",
+        )
+    seen_presence: set[tuple[tuple[int, int], ...]] = set()
     for claim in values.get("presence_claims", []):
-        if not isinstance(claim, dict) or not isinstance(claim.get("source_lines"), list):
+        if not isinstance(claim, dict) or not isinstance(
+            claim.get("source_lines"), list
+        ):
             _invalid(
                 batch_name,
-                _(
-                    "files[{path!r}].presence_claims has an invalid claim"
-                ).format(path=path),
+                _("files[{path!r}].presence_claims has an invalid claim").format(
+                    path=path
+                ),
             )
         _reject_unknown_keys(
             claim,
@@ -574,31 +588,32 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
             batch_name,
             f"files[{path!r}].presence_claims",
         )
-        ranges = tuple(claim["source_lines"])
-        _validate_line_ranges(ranges, batch_name, f"files[{path!r}].presence_claims")
-        if ranges in seen_presence:
+        range_specs = claim["source_lines"]
+        _validate_line_ranges(
+            range_specs,
+            batch_name,
+            f"files[{path!r}].presence_claims",
+        )
+        canonical_ranges = parse_ownership_line_ranges(range_specs).ranges()
+        if canonical_ranges in seen_presence:
             _invalid(
                 batch_name,
-                _("files[{path!r}] has duplicate presence claims").format(
-                    path=path
-                ),
+                _("files[{path!r}] has duplicate presence claims").format(path=path),
             )
-        seen_presence.add(ranges)
+        seen_presence.add(canonical_ranges)
         references = claim.get("baseline_references", {})
         if not isinstance(references, dict):
             _invalid(
                 batch_name,
-                _("files[{path!r}] has invalid baseline_references").format(
-                    path=path
-                ),
+                _("files[{path!r}] has invalid baseline_references").format(path=path),
             )
         for line, reference in references.items():
             if not isinstance(line, str) or not line.isdigit() or int(line) < 1:
                 _invalid(
                     batch_name,
-                    _(
-                        "files[{path!r}] has invalid baseline reference line"
-                    ).format(path=path),
+                    _("files[{path!r}] has invalid baseline reference line").format(
+                        path=path
+                    ),
                 )
             _validate_baseline_reference(reference, batch_name, path)
     source_alternative_indices: set[int] = set()
@@ -606,9 +621,7 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
         if not isinstance(deletion, dict):
             _invalid(
                 batch_name,
-                _(
-                    "files[{path!r}].deletions has a non-object entry"
-                ).format(path=path),
+                _("files[{path!r}].deletions has a non-object entry").format(path=path),
             )
         _reject_unknown_keys(
             deletion,
@@ -625,31 +638,31 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
         if anchor is not None and (type(anchor) is not int or anchor < 1):
             _invalid(
                 batch_name,
-                _("files[{path!r}] has an invalid deletion anchor").format(
-                    path=path
-                ),
+                _("files[{path!r}] has an invalid deletion anchor").format(path=path),
             )
-        _validate_object_id(deletion.get("blob"), batch_name, f"files[{path!r}].deletions.blob")
+        _validate_object_id(
+            deletion.get("blob"), batch_name, f"files[{path!r}].deletions.blob"
+        )
         if (
             "source_alternative" in deletion
             and type(deletion["source_alternative"]) is not bool
         ):
             _invalid(
                 batch_name,
-                _(
-                    "files[{path!r}] has an invalid source-alternative flag"
-                ).format(path=path),
+                _("files[{path!r}] has an invalid source-alternative flag").format(
+                    path=path
+                ),
             )
         if "baseline_reference" in deletion:
-            _validate_baseline_reference(deletion["baseline_reference"], batch_name, path)
+            _validate_baseline_reference(
+                deletion["baseline_reference"], batch_name, path
+            )
         if deletion.get("source_alternative") is True:
             baseline_reference = deletion.get("baseline_reference")
-            if (
-                not isinstance(baseline_reference, dict)
-                or not {"after_line", "before_line"}.intersection(
-                    baseline_reference
-                )
-            ):
+            if not isinstance(baseline_reference, dict) or not {
+                "after_line",
+                "before_line",
+            }.intersection(baseline_reference):
                 _invalid(
                     batch_name,
                     _(
@@ -659,13 +672,22 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                 )
             source_alternative_indices.add(deletion_index)
     deletion_count = len(values.get("deletions", []))
+    owned_presence = parse_ownership_line_ranges(
+        line_range
+        for source_lines in chain(
+            (values.get("claimed_lines", []),),
+            (claim["source_lines"] for claim in values.get("presence_claims", [])),
+        )
+        for line_range in source_lines
+    )
+    coupled_source_alternatives: set[int] = set()
     for replacement in values.get("replacement_units", []):
         if not isinstance(replacement, dict):
             _invalid(
                 batch_name,
-                _(
-                    "files[{path!r}].replacement_units has a non-object entry"
-                ).format(path=path),
+                _("files[{path!r}].replacement_units has a non-object entry").format(
+                    path=path
+                ),
             )
         _reject_unknown_keys(
             replacement,
@@ -673,37 +695,49 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
             batch_name,
             f"files[{path!r}].replacement_units",
         )
-        presence_lines = replacement.get("presence_lines", replacement.get("claimed_lines"))
-        deletion_indices = replacement.get("deletion_indices")
-        if not isinstance(presence_lines, list) or not isinstance(deletion_indices, list):
-            _invalid(
-                batch_name,
-                _("files[{path!r}] has an invalid replacement unit").format(
-                    path=path
-                ),
-            )
-        _validate_line_ranges(
-            tuple(presence_lines),
-            batch_name,
-            f"files[{path!r}].replacement_units.presence_lines",
+        presence_lines = replacement.get(
+            "presence_lines", replacement.get("claimed_lines")
         )
-        if (
-            any(type(index) is not int or not 0 <= index < deletion_count for index in deletion_indices)
-            or len(set(deletion_indices)) != len(deletion_indices)
+        deletion_indices = replacement.get("deletion_indices")
+        if not isinstance(presence_lines, list) or not isinstance(
+            deletion_indices, list
         ):
             _invalid(
                 batch_name,
-                _(
-                    "files[{path!r}] has invalid replacement deletion indices"
-                ).format(path=path),
+                _("files[{path!r}] has an invalid replacement unit").format(path=path),
+            )
+        _validate_line_ranges(
+            presence_lines,
+            batch_name,
+            f"files[{path!r}].replacement_units.presence_lines",
+        )
+        if any(
+            type(index) is not int or not 0 <= index < deletion_count
+            for index in deletion_indices
+        ) or len(set(deletion_indices)) != len(deletion_indices):
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has invalid replacement deletion indices").format(
+                    path=path
+                ),
+            )
+        replacement_presence = parse_ownership_line_ranges(presence_lines)
+        if replacement_presence and all(
+            owned_presence.contains_range(start, end)
+            for start, end in replacement_presence.ranges()
+        ):
+            coupled_source_alternatives.update(
+                source_alternative_indices.intersection(deletion_indices)
             )
         if "original_unit" in replacement:
             _validate_replacement_origin(replacement["original_unit"], batch_name, path)
-    if "claimed_lines" in values:
-        _validate_line_ranges(
-            tuple(values["claimed_lines"]),
+    if source_alternative_indices - coupled_source_alternatives:
+        _invalid(
             batch_name,
-            f"files[{path!r}].claimed_lines",
+            _(
+                "files[{path!r}] has a source alternative without an owned "
+                "replacement side"
+            ).format(path=path),
         )
     _validate_json_value(values, batch_name, f"files[{path!r}]")
 
@@ -712,9 +746,7 @@ def _validate_baseline_reference(reference: Any, batch_name: str, path: str) -> 
     if not isinstance(reference, dict):
         _invalid(
             batch_name,
-            _("files[{path!r}] has a non-object baseline reference").format(
-                path=path
-            ),
+            _("files[{path!r}] has a non-object baseline reference").format(path=path),
         )
     _reject_unknown_keys(
         reference,
@@ -741,9 +773,7 @@ def _validate_replacement_origin(origin: Any, batch_name: str, path: str) -> Non
     if not isinstance(origin, dict):
         _invalid(
             batch_name,
-            _("files[{path!r}] has a non-object replacement origin").format(
-                path=path
-            ),
+            _("files[{path!r}] has a non-object replacement origin").format(path=path),
         )
     required = {"old_start", "old_end", "new_start", "new_end"}
     _reject_unknown_keys(
@@ -755,9 +785,7 @@ def _validate_replacement_origin(origin: Any, batch_name: str, path: str) -> Non
     if not required <= set(origin):
         _invalid(
             batch_name,
-            _("files[{path!r}] has an incomplete replacement origin").format(
-                path=path
-            ),
+            _("files[{path!r}] has an incomplete replacement origin").format(path=path),
         )
     for key in required:
         if type(origin[key]) is not int or origin[key] < 1:
@@ -768,7 +796,10 @@ def _validate_replacement_origin(origin: Any, batch_name: str, path: str) -> Non
                     field=key,
                 ),
             )
-    if origin["old_end"] < origin["old_start"] or origin["new_end"] < origin["new_start"]:
+    if (
+        origin["old_end"] < origin["old_start"]
+        or origin["new_end"] < origin["new_start"]
+    ):
         _invalid(
             batch_name,
             _("files[{path!r}] has descending replacement coordinates").format(
@@ -797,7 +828,11 @@ def _reject_unknown_keys(
         )
 
 
-def _validate_line_ranges(values: tuple[Any, ...], batch_name: str, field: str) -> None:
+def _validate_line_ranges(
+    values: Sequence[Any],
+    batch_name: str,
+    field: str,
+) -> None:
     for value in values:
         if type(value) is int:
             if value < 1:
@@ -832,11 +867,15 @@ def _validate_line_ranges(values: tuple[Any, ...], batch_name: str, field: str) 
                 )
 
 
-def _freeze_mapping(values: Mapping[str, Any], batch_name: str) -> Mapping[str, JsonValue]:
-    return MappingProxyType({
-        key: _freeze_json_value(value, batch_name, key)
-        for key, value in values.items()
-    })
+def _freeze_mapping(
+    values: Mapping[str, Any], batch_name: str
+) -> Mapping[str, JsonValue]:
+    return MappingProxyType(
+        {
+            key: _freeze_json_value(value, batch_name, key)
+            for key, value in values.items()
+        }
+    )
 
 
 def _freeze_json_value(value: Any, batch_name: str, field: str) -> JsonValue:
@@ -904,7 +943,9 @@ def _optional_string(data: Mapping[str, Any], key: str, batch_name: str) -> str 
     return value
 
 
-def _optional_object_id(data: Mapping[str, Any], key: str, batch_name: str) -> str | None:
+def _optional_object_id(
+    data: Mapping[str, Any], key: str, batch_name: str
+) -> str | None:
     value = data[key]
     if value is not None:
         _validate_object_id(value, batch_name, key)
@@ -926,14 +967,11 @@ def _validate_hex_object_id(
             batch_name,
             _("'{field}' must be a hexadecimal object ID").format(field=field),
         )
-    if any(
-        character not in "0123456789abcdefABCDEF"
-        for character in value
-    ):
+    if any(character not in "0123456789abcdefABCDEF" for character in value):
         raise BatchMetadataError(
-            _(
-                "Batch '{name}' metadata field '{field}' is not hexadecimal"
-            ).format(name=batch_name, field=field)
+            _("Batch '{name}' metadata field '{field}' is not hexadecimal").format(
+                name=batch_name, field=field
+            )
         )
 
 

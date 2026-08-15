@@ -1,5 +1,7 @@
 """Tests for batch-source action plan records."""
 
+import pytest
+
 import git_stage_batch.commands.batch_source.action_plans as action_plans
 
 
@@ -104,3 +106,23 @@ def test_discard_text_file_action_plan_allows_missing_buffer():
     )
 
     plan.close()
+
+def test_resource_cleanup_callback_closes_once_before_context_exit():
+    """Publishers may move successful teardown inside their transaction."""
+    buffer = _CloseCountingBuffer()
+
+    with action_plans.resource_cleanup((buffer,)) as close_resources:
+        close_resources()
+
+    assert buffer.close_count == 1
+
+
+def test_resource_cleanup_preserves_primary_error_when_close_is_cancelled():
+    """A cleanup cancellation must not replace the publication failure."""
+    buffer = _CloseCountingBuffer(error=KeyboardInterrupt("close cancelled"))
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with action_plans.resource_cleanup((buffer,)):
+            raise RuntimeError("publication failed")
+
+    assert buffer.close_count == 1

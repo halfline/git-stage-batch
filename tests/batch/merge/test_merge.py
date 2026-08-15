@@ -1142,17 +1142,35 @@ def discard_batch(
     ownership: BatchOwnership,
     working_content: bytes,
     baseline_content: bytes,
+    *,
+    trusted_presence_lines: LineRanges | None = None,
+    trusted_target_content: bytes | None = None,
+    applied_presence_lines: LineRanges | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
 ) -> bytes:
     """Return discarded bytes through the buffer-returning production API."""
     with (
         LineBuffer.from_bytes(batch_source_content) as source_lines,
         LineBuffer.from_bytes(working_content) as working_lines,
         LineBuffer.from_bytes(baseline_content) as baseline_lines,
+        LineBuffer.from_bytes(
+            trusted_target_content or b""
+        ) as trusted_target_lines,
         discard_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
             working_lines,
             baseline_lines,
+            trusted_presence_lines=trusted_presence_lines,
+            trusted_target_lines=(
+                None
+                if trusted_target_content is None
+                else trusted_target_lines
+            ),
+            applied_presence_lines=applied_presence_lines,
+            index_preimage_presence_lines=(
+                index_preimage_presence_lines
+            ),
         ) as buffer,
     ):
         return buffer.to_bytes()
@@ -1539,6 +1557,166 @@ def test_discard_does_not_restore_unrealized_replacement_old_side() -> None:
         working,
         b"head\nold\ntail\n",
     ) == working
+
+
+def test_discard_restores_fresh_replacement_index_preimage() -> None:
+    """Discard restores exact index bytes overwritten by a trusted apply."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+    source = b"head\nnew\ntail\n"
+    baseline = b"head\nhistorical-old\ntail\n"
+    trusted = b"head\ntransformed-one\ntransformed-two\ntail\n"
+
+    assert discard_batch(
+        source,
+        ownership,
+        source,
+        baseline,
+        trusted_presence_lines=LineRanges.from_specs(["2"]),
+        trusted_target_content=trusted,
+        index_preimage_presence_lines=LineRanges.from_specs(["2"]),
+    ) == trusted
+
+
+def test_discard_locates_exact_preimage_beside_equal_preexisting_line() -> None:
+    """Index lineage distinguishes the applied occurrence from equal content."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+    source = b"head\nsame\ntail\nsame\n"
+    trusted = b"head\nindex-old\ntail\nsame\n"
+
+    assert discard_batch(
+        source,
+        ownership,
+        source,
+        b"head\nhistorical-old\ntail\nsame\n",
+        trusted_presence_lines=LineRanges.from_specs(["2"]),
+        trusted_target_content=trusted,
+        index_preimage_presence_lines=LineRanges.from_specs(["2"]),
+    ) == trusted
+
+
+def test_discard_refuses_ambiguous_exact_preimage_occurrence() -> None:
+    """Exact-preimage authority cannot fall back to historical old text."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+    source = b"head\nsame\ntail\nsame\n"
+
+    with pytest.raises(MergeError, match="live occurrence is ambiguous"):
+        discard_batch(
+            source,
+            ownership,
+            source,
+            b"head\nhistorical-old\ntail\nsame\n",
+            trusted_presence_lines=LineRanges.from_specs(["2"]),
+            trusted_target_content=b"head\nindex-old\ntail\nother\n",
+            index_preimage_presence_lines=LineRanges.from_specs(["2"]),
+        )
+
+
+def test_discard_does_not_infer_unrecorded_index_preimage() -> None:
+    """Index bytes are not restored without apply-time preimage provenance."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+
+    assert discard_batch(
+        b"head\nnew\ntail\n",
+        ownership,
+        b"head\nnew\ntail\n",
+        b"head\nhistorical-old\ntail\n",
+        trusted_presence_lines=LineRanges.from_specs(["2"]),
+        trusted_target_content=(
+            b"head\ntransformed-one\ntransformed-two\ntail\n"
+        ),
+    ) == b"head\nhistorical-old\ntail\n"
 
 
 class TestMergeLineSequences:
@@ -4552,6 +4730,69 @@ class TestDiscardBatch:
             working,
             baseline,
         ) == working
+
+    def test_discard_preserves_applied_presence_that_preexisted_in_index(self):
+        """A selected no-op line must survive rollback of its adjacent edit."""
+        baseline = b"head\nold-a\nbaseline-neighbor\ntail\n"
+        batch_source = b"head\nnew-a\ncurrent-neighbor\ntail\n"
+        trusted_target = b"head\nold-a\ncurrent-neighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old-a\n"])],
+            replacement_units=[ReplacementUnit(["2"], [0])],
+        )
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+            trusted_target_content=trusted_target,
+            applied_presence_lines=LineRanges.from_ranges([(2, 3)]),
+        )
+
+        assert result == trusted_target
+
+    def test_discard_does_not_reverse_preexisting_explicit_replacement(self):
+        """An explicit replacement already satisfied before apply is a no-op."""
+        baseline = b"head\nold\ntail\n"
+        batch_source = b"head\nnew\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+            replacement_units=[ReplacementUnit(["2"], [0])],
+        )
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+            trusted_target_content=batch_source,
+            applied_presence_lines=LineRanges.from_ranges([(2, 2)]),
+        )
+
+        assert result == batch_source
+
+    def test_discard_does_not_reverse_preexisting_legacy_replacement(self):
+        """A legacy replacement already satisfied before apply is also a no-op."""
+        baseline = b"head\nold\ntail\n"
+        batch_source = b"head\nnew\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        )
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+            trusted_target_content=batch_source,
+            applied_presence_lines=LineRanges.from_ranges([(2, 2)]),
+        )
+
+        assert result == batch_source
 
     def test_discard_rejects_partial_ambiguous_repeated_replacement(self):
         """Repeated baseline/source content must not be guessed partially."""

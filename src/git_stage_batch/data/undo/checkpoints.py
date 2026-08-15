@@ -7,10 +7,9 @@ import shutil
 import tempfile
 from collections.abc import Callable
 from contextlib import contextmanager
-from dataclasses import dataclass
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Iterator, Literal, TypeAlias
 from uuid import uuid4
 
 from . import restore as _undo_restore
@@ -144,6 +143,8 @@ class _TransactionBoundary:
                 # rollback failure that brought the transaction here.
                 pass
 
+
+@dataclass(slots=True)
 class _TransientTransaction:
     """Process-local owner for one nested transient transaction."""
 
@@ -151,7 +152,6 @@ class _TransientTransaction:
     boundary: _TransactionBoundary
     repository: Path
     rollback_cause: BaseException | None = None
-
 
 
 @dataclass(slots=True)
@@ -191,8 +191,6 @@ class UndoCheckpointStatus:
         self._transaction_boundary.defer_completion(on_commit, on_rollback)
 
 
-
-
 def _active_transaction_boundary() -> _TransactionBoundary | None:
     """Return the process-local transaction boundary, when one is active."""
     if _ACTIVE_TRANSIENT_TRANSACTION is not None:
@@ -204,6 +202,32 @@ def _active_transaction_boundary() -> _TransactionBoundary | None:
     ):
         return _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
     return None
+
+
+def defer_transaction_completion(
+    on_commit: Callable[[], None],
+    on_rollback: Callable[[RollbackStatus], None],
+) -> None:
+    """Run paired effects after the outermost transaction settles."""
+    boundary = _active_transaction_boundary()
+    if boundary is not None:
+        boundary.defer_completion(on_commit, on_rollback)
+        return
+    on_commit()
+
+
+def defer_transaction_success(callback: Callable[[], None]) -> None:
+    """Run a success effect after the outermost transaction commits.
+
+    Commands may finish inside a transaction delegated to an enclosing caller.
+    In that case output and post-success metadata must wait until the shared
+    before-image can no longer roll the command back.
+    """
+    boundary = _active_transaction_boundary()
+    if boundary is not None:
+        boundary.defer_success(callback)
+        return
+    callback()
 
 
 def _clear_pending_checkpoint() -> None:
@@ -242,6 +266,7 @@ def _validate_nested_checkpoint(
                 "checkpoint does not roll back on error."
             )
         )
+
 
 def _validate_transaction_scope(
     manifest: CheckpointState,
@@ -288,8 +313,6 @@ def _validate_transaction_scope(
                     paths=", ".join(display_path(path) for path in missing_paths),
                 )
             )
-
-
 
 
 def _checkpoint_worktree_scope(
@@ -342,8 +365,7 @@ def _create_undo_checkpoint(
         "intent_to_add_paths": before["intent_to_add_paths"],
         "refs": before["refs"],
         "worktree_paths": [
-            worktree_metadata_without_blob(entry)
-            for entry in before["worktree_paths"]
+            worktree_metadata_without_blob(entry) for entry in before["worktree_paths"]
         ],
         "tracked_worktree_paths": tracked_worktree_paths,
         "tracked_index_paths": tracked_index_paths,
@@ -497,6 +519,7 @@ def _delete_transient_transaction_ref(ref_name: str) -> None:
     """Release a transient checkpoint after success or completed rollback."""
     update_git_refs(deletes=[ref_name])
 
+
 def _cross_repository_transaction_error(repository: Path) -> CommandError:
     """Return the established nested-scope refusal for another repository."""
     return CommandError(
@@ -635,9 +658,6 @@ def transaction_checkpoint(
         _ACTIVE_TRANSIENT_TRANSACTION = None
         status.rollback = "not-needed"
         transaction.boundary.commit()
-
-
-
 
 
 @contextmanager
@@ -836,8 +856,6 @@ def undo_checkpoint(
             if rollback_on_error:
                 status.rollback = "not-needed"
                 status._transaction_boundary.commit()
-
-
 
 
 def _rollback_transaction_checkpoint(

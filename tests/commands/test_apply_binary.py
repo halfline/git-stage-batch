@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.batch_source.apply_action as apply_action
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.start import command_start
@@ -163,6 +164,71 @@ class TestBinaryApply:
         assert file1.exists()
         assert file1.read_bytes() == content1
         assert not file2.exists()
+
+    def test_failed_multi_file_apply_does_not_report_rolled_back_binary(
+        self,
+        binary_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """A binary success message must wait for transaction completion."""
+        files = [binary_repo / "data1.bin", binary_repo / "data2.bin"]
+        for index, file_path in enumerate(files):
+            file_path.write_bytes(bytes((index, 0, 255)))
+
+        command_start()
+        create_batch("test-batch", "Multiple binaries")
+        for file_path in files:
+            add_binary_file_to_batch(
+                "test-batch",
+                BinaryFileChange(
+                    old_path="/dev/null",
+                    new_path=file_path.name,
+                    change_type="added",
+                ),
+            )
+            file_path.unlink()
+
+        original_write = apply_action._binary_file_actions.write_binary_file_to_worktree
+        calls = 0
+
+        def fail_second_write(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected binary write failure")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(
+            apply_action._binary_file_actions,
+            "write_binary_file_to_worktree",
+            fail_second_write,
+        )
+
+        with pytest.raises(CommandError, match="injected binary write failure"):
+            command_apply_from_batch("test-batch")
+
+        assert all(not file_path.exists() for file_path in files)
+        assert "✓ Applied new binary file" not in capsys.readouterr().err
+
+    def test_mixed_binary_results_report_each_completed_action(self, capsys):
+        """Deferred aggregate output must retain each action's own label."""
+        action = apply_action._binary_file_actions.BinaryWorktreeAction
+
+        apply_action._print_binary_worktree_results(
+            (
+                ("added.bin", action.ADDED),
+                ("deleted.bin", action.DELETED),
+                ("replaced.bin", action.REPLACED),
+                ("unchanged.bin", None),
+            )
+        )
+
+        assert capsys.readouterr().err.splitlines() == [
+            "✓ Applied new binary file: added.bin",
+            "✓ Deleted binary file: deleted.bin",
+            "✓ Replaced binary file: replaced.bin",
+        ]
 
     def test_apply_binary_with_line_selection_fails(self, binary_repo):
         """Test that --lines flag fails for binary files with clear error."""

@@ -52,7 +52,11 @@ def temp_git_repo(tmp_path, monkeypatch):
     return repo
 
 
-def _record_overlay(repo) -> None:
+def _record_overlay(
+    repo,
+    *,
+    introduced_selected_presence: bool = False,
+) -> None:
     before_identity = capture_worktree_identity("file.txt")
     (repo / "file.txt").write_text("after\n")
     revision = read_batch_metadata("saved")["revision"]
@@ -68,6 +72,7 @@ def _record_overlay(repo) -> None:
                     "presence_claims": [{"source_lines": ["1"]}],
                 },
                 source_object_id="b" * 40,
+                introduced_selected_presence=introduced_selected_presence,
             ),
         },
         before_worktree_identities={"file.txt": before_identity},
@@ -268,6 +273,181 @@ def test_recording_persists_only_compact_attribution_claims(temp_git_repo):
             },
         ],
     }
+
+
+def test_recording_excludes_partly_preexisting_selected_presence(temp_git_repo):
+    """Discard authorization must exclude a partly preexisting selection."""
+    revision = read_batch_metadata("saved")["revision"]
+    assert isinstance(revision, str)
+    source_object_id = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        input="existing\nintroduced\n",
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    before_identity = capture_worktree_identity("file.txt")
+    before_lines = overlays.LineBuffer.from_bytes(b"existing\n")
+    after_lines = overlays.LineBuffer.from_bytes(b"existing\nintroduced\n")
+    try:
+        provenance = overlays.AppliedFileProvenance(
+            file_metadata={
+                "batch_source_commit": "a" * 40,
+                "change_type": "modified",
+                "presence_claims": [{"source_lines": ["1-2"]}],
+            },
+            source_object_id=source_object_id,
+            introduced_selected_presence=(
+                overlays._all_selected_presence_introduced(
+                    {
+                        "presence_claims": [{"source_lines": ["1-2"]}],
+                    },
+                    source_object_id,
+                    before_lines,
+                    after_lines,
+                )
+            ),
+        )
+    finally:
+        before_lines.close()
+        after_lines.close()
+    (temp_git_repo / "file.txt").write_text("existing\nintroduced\n")
+    record_applied_batch_overlays(
+        batch_name="saved",
+        batch_revision=revision,
+        files={"file.txt": provenance},
+        before_worktree_identities={"file.txt": before_identity},
+    )
+
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+
+    assert view.source_line_ranges_by_batch == {}
+
+
+def test_recording_exposes_fully_introduced_selected_presence(temp_git_repo):
+    """A reviewed apply may authorize its entirely new selected range."""
+    revision = read_batch_metadata("saved")["revision"]
+    assert isinstance(revision, str)
+    source_object_id = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        input="introduced\n",
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    before_lines = overlays.LineBuffer.from_bytes(b"before\n")
+    after_lines = overlays.LineBuffer.from_bytes(b"introduced\nbefore\n")
+    try:
+        provenance = AppliedFileProvenance(
+            file_metadata={
+                "batch_source_commit": "a" * 40,
+                "change_type": "modified",
+                "presence_claims": [{"source_lines": ["1"]}],
+            },
+            source_object_id=source_object_id,
+            introduced_selected_presence=(
+                overlays._all_selected_presence_introduced(
+                    {"presence_claims": [{"source_lines": ["1"]}]},
+                    source_object_id,
+                    before_lines,
+                    after_lines,
+                )
+            ),
+            index_preimage_source_ranges=((1, 1),),
+        )
+    finally:
+        before_lines.close()
+        after_lines.close()
+    before_identity = capture_worktree_identity("file.txt")
+    (temp_git_repo / "file.txt").write_text("introduced\nbefore\n")
+    record_applied_batch_overlays(
+        batch_name="saved",
+        batch_revision=revision,
+        files={"file.txt": provenance},
+        before_worktree_identities={"file.txt": before_identity},
+    )
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+
+    assert application["introduced_selected_presence"] is True
+    assert application["index_preimage_source_lines"] == ["1"]
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+    assert view.source_line_ranges_by_batch == {"saved": ((1, 1),)}
+    assert view.index_preimage_source_line_ranges_by_batch == {"saved": ((1, 1),)}
+
+
+def test_selected_presence_equal_to_preexisting_content_is_not_introduced(
+    temp_git_repo,
+):
+    """LCS placement cannot authorize content that was already in the file."""
+    source_object_id = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        input="duplicate\n",
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    before_lines = overlays.LineBuffer.from_bytes(b"duplicate\nkeep\n")
+    after_lines = overlays.LineBuffer.from_bytes(b"keep\nduplicate\n")
+    try:
+        assert not overlays._all_selected_presence_introduced(
+            {"presence_claims": [{"source_lines": ["1"]}]},
+            source_object_id,
+            before_lines,
+            after_lines,
+        )
+    finally:
+        before_lines.close()
+        after_lines.close()
+
+
+def test_new_selected_occurrence_may_duplicate_preexisting_content(
+    temp_git_repo,
+):
+    """An exact newly added occurrence remains attributable by position."""
+    source_object_id = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        input="duplicate\n",
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    before_lines = overlays.LineBuffer.from_bytes(b"duplicate\nkeep\n")
+    after_lines = overlays.LineBuffer.from_bytes(b"duplicate\nkeep\nduplicate\n")
+    try:
+        assert overlays._all_selected_presence_introduced(
+            {"presence_claims": [{"source_lines": ["1"]}]},
+            source_object_id,
+            before_lines,
+            after_lines,
+        )
+    finally:
+        before_lines.close()
+        after_lines.close()
+
+
+def test_reordered_selected_ranges_are_not_discard_authorized(temp_git_repo):
+    """Trusted anchors must remain collectively ordered across source ranges."""
+    source_object_id = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        input="first\nunselected\nlast\n",
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+    before_lines = overlays.LineBuffer.from_bytes(b"before\n")
+    after_lines = overlays.LineBuffer.from_bytes(b"last\nbefore\nfirst\n")
+    try:
+        assert not overlays._all_selected_presence_introduced(
+            {"presence_claims": [{"source_lines": ["1,3"]}]},
+            source_object_id,
+            before_lines,
+            after_lines,
+        )
+    finally:
+        before_lines.close()
+        after_lines.close()
 
 
 def test_recording_reads_previous_batch_revisions_once(temp_git_repo, monkeypatch):

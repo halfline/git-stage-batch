@@ -253,6 +253,80 @@ def _install_castkms_hot_unplug_replay_fixture(functional_repo):
     return batch_name
 
 
+def _install_castkms_primary_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_primary_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "73ab324457aa97fc118e8406b973a8050e6e1cd2",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-36-primary-plane-lookup-ownership"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "ad3641debe9fcba69b6018d096cf97f2969fd730",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_cursor_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_cursor_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "0f363e67dd7f8fca07c2c5063b55f2a85723e191",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-35-cursor-plane-lookup-ownership"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "1d0e9af52e3461111dd8a70fd78b005116d9c095",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "3243a7e460aa3e4e16e3be263d03dfab8efd42d2",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
 class TestCreateBatch:
     """Test creating batches."""
 
@@ -574,6 +648,296 @@ class TestApplyFromBatch:
         assert "if (!drm_dev_enter(dev, &idx))" in source
         assert "drm_dev_exit(idx);" in source
         assert "config = castkmsdev->config;" in source
+
+    def test_apply_batch_after_committing_neighboring_replacements(
+        self,
+        functional_repo,
+    ):
+        """Committed neighboring replacements must not block batch replay."""
+        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode == 0, result.stderr
+        header = (functional_repo / "src" / "castkms_config.h").read_text()
+        tests = (
+            functional_repo / "src" / "tests" / "castkms_config_test.c"
+        ).read_text()
+        assert (
+            "castkms_config_crtc_primary_plane(struct castkms_config_crtc"
+            in header
+        )
+        assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
+
+    def test_discard_partially_applied_replacement_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding a file-scoped replay must restore the committed file."""
+        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+        committed = path.read_text()
+
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        assert path.read_text() != committed
+
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_discard_applied_output_replacement_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding a reviewed output replacement must restore the file."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_output.c"
+        committed = path.read_text()
+
+        overview = git_stage_batch("apply", "--from", batch_name, check=False)
+        assert overview.returncode != 0
+        assert "apply candidate" in overview.stderr
+        git_stage_batch(
+            "show",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_output.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_apply_suggested_cursor_helper_line_selection(
+        self,
+        functional_repo,
+    ):
+        """The suggested helper line selection must apply after its adopters."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+
+        overview = git_stage_batch("apply", "--from", batch_name, check=False)
+        assert overview.returncode != 0
+        git_stage_batch(
+            "show",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.h",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-10,17-18",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = (functional_repo / "src" / "castkms_config.c").read_text()
+        assert "castkms_crtc_get_plane(struct castkms_config_crtc" in source
+        assert (
+            "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_CURSOR)"
+            in source
+        )
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "11-16",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = (functional_repo / "src/castkms_config.c").read_text()
+        assert (
+            "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_PRIMARY)"
+            in source
+        )
+        assert (
+            "castkms_config_crtc_cursor_plane(struct castkms_config *"
+            not in source
+        )
+
+    def test_discard_partial_cursor_helper_replay_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding a partial helper replay must restore the committed file."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+        committed = path.read_text()
+
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-10,17-18",
+        )
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_discard_completed_cursor_helper_replay_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding both helper selections must restore the committed file."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "11-16",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-10,17-18",
+        )
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_apply_remaining_cursor_test_calls_after_middle_pairs(
+        self,
+        functional_repo,
+    ):
+        """Applying middle test pairs must leave surrounding calls replayable."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/tests/castkms_config_test.c",
+            "--line",
+            "5-8",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/tests/castkms_config_test.c",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/tests/castkms_config_test.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = (
+            functional_repo / "src" / "tests" / "castkms_config_test.c"
+        ).read_text()
+        assert (
+            "castkms_config_crtc_cursor_plane(config, crtc_cfg)"
+            not in source
+        )
 
     def test_start_reviews_changes_restored_from_batch(self, functional_repo):
         """A restored batch should remain available to a fresh staging pass."""

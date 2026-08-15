@@ -479,6 +479,14 @@ the same action-context, selection, planning, refusal, and completion modules as
 the other batch-source actions. Text reversal reaches the discard functions
 under `batch/`.
 
+An explicit multi-file scope remains one ordered literal command, rather than
+running one independently checkpointed command per path. Discard captures every
+selected worktree target (and immutable text input artifact), builds every text,
+binary, mode, and submodule plan, and reports any planning failure before it
+opens the transaction. It then repeats the identity checks inside the unarmed
+checkpoint and publishes the plans in order. A later exception or cancellation
+rolls back every earlier publication both inside and outside a session.
+
 The reversal code compares the batch source with the baseline. It determines
 whether each region is unchanged, inserted, a line-for-line replacement, or a
 replacement that must be handled as one complete hunk. The implementation uses

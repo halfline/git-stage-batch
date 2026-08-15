@@ -179,18 +179,21 @@ def _resolve_batch_source_action_files(
     dict[str, BatchFileMetadataDict],
     set[int] | None,
 ]:
-    file = resolve_current_batch_atomic_file_scope(
-        context.batch_name,
-        context.all_files,
-        context.file,
-        patterns,
-        line_ids,
-    )
+    file = context.file
+    if context.resolved_file_paths is None:
+        file = resolve_current_batch_atomic_file_scope(
+            context.batch_name,
+            context.all_files,
+            file,
+            patterns,
+            line_ids,
+        )
     files = resolve_batch_file_scope(
         context.batch_name,
         context.all_files,
         file,
         patterns,
+        resolved_file_paths=context.resolved_file_paths,
     )
     selected_ids = require_single_file_context_for_line_selection(
         context.batch_name,

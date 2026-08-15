@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -39,6 +40,37 @@ def close_resources(resources: Iterable[CloseableResource]) -> None:
                 first_error = error
     if first_error is not None:
         raise first_error
+
+
+@contextmanager
+def resource_cleanup(
+    resources: Iterable[CloseableResource],
+) -> Iterator[Callable[[], None]]:
+    """Close resources once, preserving any error already in flight.
+
+    The yielded callback lets a publisher perform teardown before its
+    transaction commits.  Earlier planning failures still close on context
+    exit, and a cleanup failure never replaces the primary failure.
+    """
+    cleanup_attempted = False
+
+    def close_once() -> None:
+        nonlocal cleanup_attempted
+        if cleanup_attempted:
+            return
+        cleanup_attempted = True
+        close_resources(resources)
+
+    try:
+        yield close_once
+    except BaseException:
+        try:
+            close_once()
+        except BaseException:
+            pass
+        raise
+    else:
+        close_once()
 
 
 @dataclass

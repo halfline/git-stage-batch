@@ -5,12 +5,14 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.data.undo.checkpoints as undo_checkpoints
 from git_stage_batch.commands.include import command_include_file, command_include_line
 from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.undo.checkpoints import (
     redo_last_checkpoint,
+    transaction_checkpoint,
     undo_checkpoint,
     undo_last_checkpoint,
 )
@@ -359,6 +361,261 @@ def test_transaction_status_preserves_unavailable_without_active_session(
         pass
 
     assert ordinary_status.rollback == "not-requested"
+
+
+def test_transient_transaction_rolls_back_without_active_session(
+    temp_git_repo,
+):
+    """A required transaction should use a temporary non-session before-image."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    repository_path = (
+        temp_git_repo / ".git" / "git-stage-batch" / "transaction-state.txt"
+    )
+    repository_path.parent.mkdir(parents=True, exist_ok=True)
+    repository_path.write_text("repository before\n")
+    previous_checkpoint = current_undo_commit()
+
+    status = None
+    with pytest.raises(KeyboardInterrupt, match="operation cancelled"):
+        with transaction_checkpoint(
+            "change targets",
+            worktree_paths=["target.txt"],
+            repository_paths=[
+                "git-stage-batch/transaction-state.txt",
+            ],
+        ) as status:
+            status.arm_rollback()
+            target.write_text("worktree partial\n")
+            repository_path.write_text("repository partial\n")
+            raise KeyboardInterrupt("operation cancelled")
+
+    assert target.read_text() == "before\n"
+    assert repository_path.read_text() == "repository before\n"
+    assert current_undo_commit() == previous_checkpoint
+    assert status is not None
+    assert status.rollback == "completed"
+    transient_refs = subprocess.run(
+        [
+            "git",
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/git-stage-batch/transactions/",
+        ],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert transient_refs == ""
+
+
+def test_transient_transaction_cleans_ref_after_snapshot_publication_error(
+    temp_git_repo,
+    monkeypatch,
+):
+    """A snapshot constructor error must not leak a published temporary ref."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    published_refs = []
+
+    def publish_then_fail(**kwargs):
+        ref_name = kwargs["ref_name"]
+        published_refs.append(ref_name)
+        subprocess.run(
+            ["git", "update-ref", ref_name, "HEAD"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        raise RuntimeError("snapshot publication failed")
+
+    monkeypatch.setattr(
+        undo_checkpoints._undo_snapshots,
+        "write_snapshot_commit",
+        publish_then_fail,
+    )
+
+    with pytest.raises(RuntimeError, match="snapshot publication failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ):
+            target.write_text("must not run\n")
+
+    assert target.read_text() == "before\n"
+    assert len(published_refs) == 1
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", published_refs[0]],
+        check=False,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+
+
+def test_transient_snapshot_cleanup_cancellation_preserves_snapshot_error(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Best-effort ref cleanup must not replace a snapshot failure."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+
+    def fail_snapshot(**_kwargs):
+        raise RuntimeError("snapshot publication failed")
+
+    def cancel_cleanup(**_kwargs):
+        raise KeyboardInterrupt("cleanup cancelled")
+
+    monkeypatch.setattr(
+        undo_checkpoints._undo_snapshots,
+        "write_snapshot_commit",
+        fail_snapshot,
+    )
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "update_git_refs",
+        cancel_cleanup,
+    )
+
+    with pytest.raises(RuntimeError, match="snapshot publication failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ):
+            target.write_text("must not run\n")
+
+    assert target.read_text() == "before\n"
+
+
+@pytest.mark.parametrize(
+    ("arm_rollback", "expected_content", "expected_rollback"),
+    [
+        (False, "partial\n", "not-needed"),
+        (True, "before\n", "completed"),
+    ],
+)
+def test_transient_ref_cleanup_cancellation_preserves_operation_error(
+    temp_git_repo,
+    monkeypatch,
+    arm_rollback,
+    expected_content,
+    expected_rollback,
+):
+    """Cleanup cancellation must not mask an armed or unarmed failure."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+
+    def cancel_cleanup(_ref_name):
+        raise KeyboardInterrupt("cleanup cancelled")
+
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "_delete_transient_transaction_ref",
+        cancel_cleanup,
+    )
+
+    status = None
+    with pytest.raises(RuntimeError, match="operation failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ) as status:
+            if arm_rollback:
+                status.arm_rollback()
+            target.write_text("partial\n")
+            raise RuntimeError("operation failed")
+
+    assert target.read_text() == expected_content
+    assert status is not None
+    assert status.rollback == expected_rollback
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_unarmed_transaction_refusal_preserves_concurrent_worktree_edit(
+    temp_git_repo,
+    active_session,
+):
+    """A refusal before publication must not restore over an external edit."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+    previous_checkpoint = current_undo_commit()
+
+    status = None
+    with pytest.raises(CommandError, match="stale apply target"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ) as status:
+            target.write_text("concurrent edit\n")
+            raise CommandError("stale apply target")
+
+    assert target.read_text() == "concurrent edit\n"
+    assert current_undo_commit() == previous_checkpoint
+    assert status is not None
+    assert status.rollback == "not-needed"
+def test_transient_transaction_rolls_back_scoped_index_change(temp_git_repo):
+    """A non-session transaction must restore every declared index target."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    neighbor = _commit_text_file(temp_git_repo, "neighbor.txt", "neighbor\n")
+    target.write_text("staged\n")
+    subprocess.run(
+        ["git", "add", "target.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    expected_index = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "target.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    with pytest.raises(RuntimeError, match="index publication failed"):
+        with transaction_checkpoint(
+            "change index",
+            worktree_paths=[],
+            index_paths=["target.txt"],
+        ) as status:
+            status.arm_rollback()
+            subprocess.run(
+                ["git", "update-index", "--force-remove", "--", "target.txt"],
+                check=True,
+                cwd=temp_git_repo,
+                capture_output=True,
+            )
+            neighbor.write_text("concurrent neighbor\n")
+            subprocess.run(
+                ["git", "add", "neighbor.txt"],
+                check=True,
+                cwd=temp_git_repo,
+                capture_output=True,
+            )
+            raise RuntimeError("index publication failed")
+
+    assert (
+        subprocess.run(
+            ["git", "ls-files", "--stage", "--", "target.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == expected_index
+    )
+    assert (
+        subprocess.run(
+            ["git", "show", ":neighbor.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == "concurrent neighbor\n"
+    )
 
 
 def test_nontransactional_checkpoint_status_remains_not_requested(

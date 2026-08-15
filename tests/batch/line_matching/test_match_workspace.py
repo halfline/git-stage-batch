@@ -11,6 +11,9 @@ import git_stage_batch.batch.line_matching.match as match_module
 import git_stage_batch.core.mapped_storage as mapped_storage_module
 from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
+from git_stage_batch.batch.line_matching.occurrence_index import (
+    LinePayloadOccurrenceIndex,
+)
 from git_stage_batch.core.mapped_storage import MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
 
 
@@ -35,6 +38,28 @@ def test_matcher_workspace_tracks_and_closes_resources():
     workspace.close()
     assert records.closed
     assert workspace._current_bytes == 0
+
+
+def test_occurrence_index_sizes_and_releases_scoped_storage():
+    """A parent-range index should not reserve storage for the whole file."""
+    lines = [b"outside\n"] * 10_000
+    workspace = MatcherWorkspace()
+
+    occurrence_index = LinePayloadOccurrenceIndex(
+        workspace,
+        lines,
+        target_indexes=range(4000, 4010),
+    )
+
+    assert occurrence_index._contents.capacity == 10
+    assert occurrence_index._positions.capacity == 10
+    assert workspace._current_bytes < 2048
+    occurrence_index.close()
+    assert workspace._current_bytes == 0
+    assert occurrence_index._contents.closed
+    assert occurrence_index._positions.closed
+
+    workspace.close()
 
 
 def test_match_lines_routes_mapped_storage_to_requested_spool(

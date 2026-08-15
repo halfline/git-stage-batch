@@ -497,6 +497,22 @@ def _delete_transient_transaction_ref(ref_name: str) -> None:
     """Release a transient checkpoint after success or completed rollback."""
     update_git_refs(deletes=[ref_name])
 
+def _cross_repository_transaction_error(repository: Path) -> CommandError:
+    """Return the established nested-scope refusal for another repository."""
+    return CommandError(
+        ngettext(
+            "Cannot start nested undoable operation because the outer "
+            "checkpoint does not cover this {scope} path: {paths}",
+            "Cannot start nested undoable operation because the outer "
+            "checkpoint does not cover these {scope} paths: {paths}",
+            1,
+        ).format(
+            scope=_("repository"),
+            paths=display_path(str(repository)),
+        )
+    )
+
+
 @contextmanager
 def transaction_checkpoint(
     operation: str,
@@ -515,6 +531,9 @@ def transaction_checkpoint(
     requested_index_paths = [] if index_paths is None else index_paths
     if _ACTIVE_TRANSIENT_TRANSACTION is not None:
         transaction = _ACTIVE_TRANSIENT_TRANSACTION
+        current_repository = get_git_directory_path()
+        if current_repository != transaction.repository:
+            raise _cross_repository_transaction_error(current_repository)
         _validate_transaction_scope(
             transaction.manifest,
             worktree_paths=worktree_paths,
@@ -540,6 +559,8 @@ def transaction_checkpoint(
             _PENDING_CHECKPOINT_REPOSITORY is not None
             and current_repository != _PENDING_CHECKPOINT_REPOSITORY
         ):
+            if _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None:
+                raise _cross_repository_transaction_error(current_repository)
             _clear_pending_checkpoint()
 
     if session_is_active() or _PENDING_CHECKPOINT is not None:
@@ -618,6 +639,7 @@ def transaction_checkpoint(
 
 
 
+
 @contextmanager
 def undo_checkpoint(
     operation: str,
@@ -650,6 +672,8 @@ def undo_checkpoint(
             _PENDING_CHECKPOINT_REPOSITORY is not None
             and current_repository != _PENDING_CHECKPOINT_REPOSITORY
         ):
+            if _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None:
+                raise _cross_repository_transaction_error(current_repository)
             _clear_pending_checkpoint()
         elif current_undo_commit() == _PENDING_CHECKPOINT:
             _validate_nested_checkpoint(
@@ -812,6 +836,7 @@ def undo_checkpoint(
             if rollback_on_error:
                 status.rollback = "not-needed"
                 status._transaction_boundary.commit()
+
 
 
 

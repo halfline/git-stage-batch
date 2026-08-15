@@ -123,6 +123,17 @@ def _print_binary_worktree_result(
         )
 
 
+def _print_binary_worktree_results(
+    results: tuple[
+        tuple[str, _binary_file_actions.BinaryWorktreeAction | None],
+        ...,
+    ],
+) -> None:
+    """Print binary apply results after their outer transaction commits."""
+    for file_path, action in results:
+        _print_binary_worktree_result(file_path, action)
+
+
 def execute_apply_action(
     *,
     batch_name: str,
@@ -191,6 +202,12 @@ def execute_apply_action(
             )
             publication_started = False
             checkpoint_status: UndoCheckpointStatus | None = None
+            binary_worktree_results: list[
+                tuple[
+                    str,
+                    _binary_file_actions.BinaryWorktreeAction | None,
+                ]
+            ] = []
             report_progress("checkpoint", "not-started")
             try:
                 with transaction_checkpoint(
@@ -230,7 +247,7 @@ def execute_apply_action(
                                     "but the batch content is missing"
                                 ),
                             )
-                            _print_binary_worktree_result(plan.file_path, action)
+                            binary_worktree_results.append((plan.file_path, action))
                         elif isinstance(
                             plan,
                             _action_plans.SubmodulePointerActionPlan,
@@ -278,6 +295,13 @@ def execute_apply_action(
             else:
                 assert checkpoint_status is not None
                 report_progress("publication", checkpoint_status.rollback)
+                if binary_worktree_results:
+                    checkpoint_status.defer_success(
+                        partial(
+                            _print_binary_worktree_results,
+                            tuple(binary_worktree_results),
+                        )
+                    )
     assert checkpoint_status is not None
     report_progress("completion", checkpoint_status.rollback)
     checkpoint_status.defer_success(

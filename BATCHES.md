@@ -207,6 +207,18 @@ worktree files and scoped session, batch, and repository metadata. Checkpoints
 written before that field existed remain readable and fall back to their saved
 Git mode.
 
+Batch-source commands that publish worktree state use `transaction_checkpoint()`.
+An active session receives the normal undo node; outside a session, a uniquely
+referenced Git snapshot exists only for the publication and is removed after
+success or completed rollback. The checkpoint starts unarmed: plans verify
+their captured worktree and relevant full index identities once before the
+snapshot and again inside it. A full index identity includes the stage-zero
+mode and object, the intent-to-add bit, and every stage 1/2/3 conflict entry.
+Checkpoint creation refuses a declared path that is already unmerged; an
+unmerged or other index change that races either identity check is stale and is
+left untouched. The caller arms rollback immediately before its first
+mutation, so a stale second check also preserves the external edit it detected.
+
 ## How `include --to` saves a live change
 
 For `git-stage-batch include --to <name>`, execution crosses the following

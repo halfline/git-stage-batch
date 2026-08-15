@@ -390,7 +390,9 @@ ordinary partial selections do not acquire omitted changes.
 ## How `include --from` and `apply --from` add saved changes
 
 `include --from <name>` changes both the index and working tree.
-`apply --from <name>` changes only the working tree.
+`apply --from <name>` changes only the working tree, except that an added
+submodule pointer needs an intent-to-add index entry so Git can expose it as an
+unstaged pointer change.
 
 Their command modules are:
 

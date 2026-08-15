@@ -715,6 +715,26 @@ the visible ownership.
 The overlay lives in `.git/git-stage-batch/applied-batch-overlays.json`; it does
 not modify the batch state ref or `batch.json`.
 
+Apply plans also record when every selected presence occurrence was introduced
+in that apply's exact output. A newly introduced occurrence can share content
+with a preexisting line; its before-to-after mapping must still prove one exact,
+ordered occurrence. While the overlay
+remains fresh, `discard --from` may use the already stored selected ranges as
+trusted equal-line anchors. This lets reversal remove a reviewed replacement
+that crossed a neighboring committed replacement without relaxing ordinary
+structural matching. Only selected lines with a unique, collectively ordered
+live occurrence become anchors; an ambiguous line does not invalidate its
+independently proven siblings. This general selected-range authorization is
+all-or-nothing, so a partly preexisting selection does not acquire it. Every
+still-fresh application contributes its proven ranges, so a later partial apply
+does not drop rollback authority for an earlier partial apply on the same path.
+Separately, every fresh application's selected ranges are available only in the
+in-memory view for the byte-for-byte preexisting-line proof described in the
+discard section; they are reconstructed from `file_metadata` and are not a new
+persisted range field or general anchor authorization. An optional
+`index_target_is_original` marker authorizes this proof only until the overlay's
+index target is rebound.
+
 An applied overlay is accepted only while all of these still match its record:
 
 - the batch metadata revision

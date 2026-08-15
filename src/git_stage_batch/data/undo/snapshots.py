@@ -12,6 +12,7 @@ from ..recovery_types import (
     CheckpointState,
     FilesystemEntryState,
     FilesystemState,
+    IndexEntryState,
     WorktreePathState,
     worktree_metadata_without_blob,
 )
@@ -184,6 +185,7 @@ def write_snapshot_commit(
     session_paths: list[str] | None = None,
     batch_paths: list[str] | None = None,
     repository_paths: list[str] | None = None,
+    index_entries: dict[str, IndexEntryState] | None = None,
 ) -> str:
     """Write a complete checkpoint snapshot and advance its stack ref."""
     with temp_git_index() as env:
@@ -216,32 +218,46 @@ def write_snapshot_commit(
 
         repo_root = get_git_repository_root_path()
         index_updates: list[GitIndexEntryUpdate] = []
-        for entry in worktree_entries:
-            if entry.get("kind") in {"gitlink", "embedded-repo"} and not entry.get(
-                "archive"
+        for file_path, index_entry in sorted((index_entries or {}).items()):
+            object_id = index_entry["object_id"]
+            if index_entry["mode"] == "160000" or not any(
+                character != "0" for character in object_id
             ):
                 continue
-            if not entry.get("exists", False):
+            index_updates.append(
+                GitIndexEntryUpdate(
+                    file_path=f"index/{file_path}",
+                    mode=index_entry["mode"],
+                    blob_sha=object_id,
+                )
+            )
+        for worktree_entry in worktree_entries:
+            if worktree_entry.get("kind") in {
+                "gitlink",
+                "embedded-repo",
+            } and not worktree_entry.get("archive"):
                 continue
-            blob_sha = entry.get("blob")
+            if not worktree_entry.get("exists", False):
+                continue
+            blob_sha = worktree_entry.get("blob")
             if blob_sha:
                 index_updates.append(
                     GitIndexEntryUpdate(
-                        file_path=f"worktree/{entry['path']}",
-                        mode=entry.get(
+                        file_path=f"worktree/{worktree_entry['path']}",
+                        mode=worktree_entry.get(
                             "storage_mode",
-                            entry.get("mode", "100644"),
+                            worktree_entry.get("mode", "100644"),
                         ),
                         blob_sha=blob_sha,
                     )
                 )
             else:
-                full_path = repo_root / entry["path"]
+                full_path = repo_root / worktree_entry["path"]
                 if os.path.lexists(full_path):
                     mode = _undo_worktree.file_mode_for_path(full_path)
                     index_updates.append(
                         GitIndexEntryUpdate(
-                            file_path=f"worktree/{entry['path']}",
+                            file_path=f"worktree/{worktree_entry['path']}",
                             mode=mode,
                             blob_sha=(
                                 _undo_worktree.create_blob_from_worktree_path(
@@ -300,8 +316,7 @@ def push_redo_node(
         "batches_files": target.get("batches_files", {}),
         "repository_files": target.get("repository_files", {}),
         "worktree_paths": [
-            worktree_metadata_without_blob(entry)
-            for entry in worktree_entries
+            worktree_metadata_without_blob(entry) for entry in worktree_entries
         ],
         "after_undo": after_undo,
         "recovery_anchors": anchor_recovery_objects(recovery_objects),

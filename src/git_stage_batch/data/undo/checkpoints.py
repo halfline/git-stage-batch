@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Literal
+from uuid import uuid4
 
 from . import restore as _undo_restore
 from . import snapshots as _undo_snapshots
@@ -22,6 +23,7 @@ from .refs import (
     SESSION_UNDO_STACK_REF,
     checkpoint_parent,
     current_redo_commit,
+    current_stack_commit,
     current_undo_commit,
 )
 from ..recovery_anchors import (
@@ -56,6 +58,7 @@ _PENDING_CHECKPOINT: str | None = None
 _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 _PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
+_TRANSIENT_TRANSACTION_REF_PREFIX = "refs/git-stage-batch/transactions/"
 
 
 RollbackStatus: TypeAlias = Literal[
@@ -367,6 +370,91 @@ def _create_undo_checkpoint(
     _PENDING_CHECKPOINT_REPOSITORY = get_git_directory_path()
     return checkpoint_commit
 
+
+def _create_transient_transaction_checkpoint(
+    operation: str,
+    *,
+    worktree_paths: list[str],
+    index_paths: list[str],
+    repository_paths: list[str] | None,
+) -> tuple[str, str, CheckpointState]:
+    """Create a Git-backed before-image without publishing session undo state."""
+    tracked_worktree_paths = sorted(set(worktree_paths))
+    tracked_index_paths = sorted(set(index_paths))
+    tracked_repository_paths = sorted(set(repository_paths or []))
+    before = _undo_snapshots.snapshot_current_state(
+        tracked_worktree_paths,
+        index_paths=tracked_index_paths,
+        ref_names=[],
+    )
+    repository_files = _undo_snapshots.filesystem_directory_state(
+        get_git_directory_path(),
+        relative_paths=tracked_repository_paths,
+    )
+    worktree_entries = before["worktree_paths"]
+    manifest: CheckpointState = {
+        "operation": display_path(operation),
+        "index_entries": before["index_entries"],
+        "intent_to_add_paths": before["intent_to_add_paths"],
+        "refs": {},
+        "worktree_paths": [
+            worktree_metadata_without_blob(entry) for entry in worktree_entries
+        ],
+        "tracked_worktree_paths": tracked_worktree_paths,
+        "tracked_index_paths": tracked_index_paths,
+        "tracked_refs": [],
+        "tracked_session_paths": [],
+        "tracked_batches_paths": [],
+        "tracked_repository_paths": tracked_repository_paths,
+        "session_files": {},
+        "batches_files": {},
+        "repository_files": repository_files,
+        "worktree_path_scope": _undo_state.EXPLICIT_WORKTREE_SCOPE,
+    }
+    ref_name = _TRANSIENT_TRANSACTION_REF_PREFIX + uuid4().hex
+    try:
+        checkpoint = _undo_snapshots.write_snapshot_commit(
+            ref_name=ref_name,
+            message=f"Transient transaction checkpoint: {display_path(operation)}",
+            manifest=manifest,
+            session_dir=get_session_directory_path(),
+            batches_dir=get_batches_directory_path(),
+            repository_dir=get_git_directory_path(),
+            worktree_entries=worktree_entries,
+            parent=None,
+            session_paths=[],
+            batch_paths=[],
+            repository_paths=tracked_repository_paths,
+            index_entries=before["index_entries"],
+        )
+    except BaseException:
+        try:
+            update_git_refs(deletes=[ref_name])
+        except BaseException:
+            # Preserve the snapshot error; a successfully published ref is a
+            # usable recovery root if best-effort cleanup itself fails.
+            pass
+        raise
+    return ref_name, checkpoint, manifest
+
+
+def _restore_transient_transaction_checkpoint(
+    ref_name: str,
+    checkpoint: str,
+    manifest: CheckpointState,
+) -> None:
+    """Restore one transient before-image after a failed publication."""
+    if current_stack_commit(ref_name) != checkpoint:
+        raise CommandError(
+            _("Cannot roll back a failed operation because its checkpoint moved.")
+        )
+    validate_recovery_state(manifest)
+    _undo_state.restore_checkpoint_state(checkpoint, manifest)
+
+
+def _delete_transient_transaction_ref(ref_name: str) -> None:
+    """Release a transient checkpoint after success or completed rollback."""
+    update_git_refs(deletes=[ref_name])
 
 @contextmanager
 def transaction_checkpoint(

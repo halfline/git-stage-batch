@@ -7784,6 +7784,15 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+"nejednoznačný"
+
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"Nelze zahodit blok náhrady základní verze, který mísí použité řádky s "
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

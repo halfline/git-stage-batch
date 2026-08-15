@@ -7735,6 +7735,15 @@ msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde ka
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"Uygulanan satırları bağımsız bir eski tarafı olmayan sahiplikle karıştıran "
+"temel çizgi değiştirme öbeği atılamıyor (kaynak satırları {start}-{end})"
+
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

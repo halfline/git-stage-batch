@@ -7819,6 +7819,16 @@ msgstr "Todas as alterações da árvore de trabalho estão salvas atualmente em
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "O estado dos lotes aplicados está corrompido: {path}. Remova este arquivo para esquecer a procedência de revisão das alterações restauradas."
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"Não é possível descartar um bloco de substituição da linha de base que "
+"mistura linhas aplicadas com propriedade sem um lado antigo independente "
+"(linhas de origem {start}-{end})"
+
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

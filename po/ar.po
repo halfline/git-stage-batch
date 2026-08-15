@@ -8020,6 +8020,15 @@ msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"لا يمكن تجاهل كتلة استبدال من خط الأساس تمزج أسطرًا مطبّقة بملكية تفتقر إلى "
+"جانب قديم مستقل (أسطر المصدر {start}-{end})"
+
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

@@ -7892,6 +7892,16 @@ msgstr "Wszystkie zmiany drzewa roboczego są obecnie zapisane w {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stan zastosowanych partii jest uszkodzony: {path}. Usuń ten plik, aby zapomnieć pochodzenie przeglądu przywróconych zmian."
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"Nie można odrzucić fragmentu zastąpienia wersji bazowej, który łączy "
+"zastosowane wiersze z własnością bez niezależnej starej strony (wiersze "
+"źródłowe {start}-{end})"
+
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

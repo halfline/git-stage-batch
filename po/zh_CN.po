@@ -7287,6 +7287,15 @@ msgstr "所有工作树更改当前都已保存在 {locations} 中。"
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "已应用批次状态已损坏：{path}。请删除此文件以忘记已恢复更改的审查来源。"
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"无法丢弃混合了已应用行和缺少独立旧侧所有权的基线替换块（源代码行 {start}-"
+"{end}）"
+
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

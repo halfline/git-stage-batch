@@ -7318,6 +7318,15 @@ msgstr "作業ツリーのすべての変更は現在 {locations} に保存さ�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "適用済みバッチの状態が破損しています: {path}。復元された変更のレビュー来歴を破棄するには、このファイルを削除してください。"
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"適用済みの行と独立した旧側を持たない所有権が混在するベースライン置換ハンクは"
+"破棄できません（ソース行 {start}-{end}）"
+
 #: src/git_stage_batch/data/undo/snapshots.py:66
 #, python-brace-format
 msgid ""

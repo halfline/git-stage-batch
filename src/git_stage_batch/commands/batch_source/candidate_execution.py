@@ -57,6 +57,28 @@ def _finish_apply_candidate_success(
     )
 
 
+def _finish_include_candidate_success(
+    *,
+    batch_name: str,
+    file_path: str,
+    ordinal: int,
+    count: int,
+) -> None:
+    """Publish include-candidate completion after its outermost commit."""
+    clear_candidate_preview_state_for_file(
+        batch_name=batch_name,
+        file_path=file_path,
+    )
+    print(
+        _("✓ Included candidate {ordinal} of {count} from batch '{batch}'").format(
+            ordinal=ordinal,
+            count=count,
+            batch=batch_name,
+        ),
+        file=sys.stderr,
+    )
+
+
 def execute_apply_candidate(
     *,
     batch_name: str,
@@ -228,6 +250,17 @@ def execute_include_candidate(
     replacement_payload: ReplacementPayload | None,
 ) -> None:
     """Recompute and include one previewed include candidate."""
+    initial_file_path = next(iter(files)) if len(files) == 1 else None
+    expected_worktree_identity = (
+        capture_worktree_identity(initial_file_path)
+        if initial_file_path is not None
+        else None
+    )
+    expected_index_identity = (
+        read_index_identities((initial_file_path,))[initial_file_path]
+        if initial_file_path is not None
+        else None
+    )
     materialized = _candidate_materialization.materialize_include_candidate(
         batch_name=batch_name,
         raw_selector=raw_selector,
@@ -237,11 +270,22 @@ def execute_include_candidate(
         selection_ids_to_include=selection_ids_to_include,
         replacement_payload=replacement_payload,
     )
-    try:
+    with _action_plans.resource_cleanup((materialized,)) as close_materialized:
         preview = materialized.preview
         file_path = materialized.file_path
         index_target = materialized.index_target
         worktree_target = materialized.worktree_target
+        if (
+            expected_worktree_identity is None
+            or expected_index_identity is None
+            or file_path != initial_file_path
+        ):
+            raise ValueError("include candidate omitted its target identity")
+        _require_unchanged_include_candidate_targets(
+            file_path,
+            expected_index_identity,
+            expected_worktree_identity,
+        )
         print(
             _("Including candidate {ordinal} of {count} for batch '{batch}':").format(
                 ordinal=preview.ordinal,
@@ -254,11 +298,19 @@ def execute_include_candidate(
         print("    {}".format(_("Index")), file=sys.stderr)
         print("    {}".format(_("Working tree")), file=sys.stderr)
         operation_parts = ["include", "--from", raw_selector, "--file", file_path]
-        with undo_checkpoint(
+        with transaction_checkpoint(
             terminal_safe_shell_join(operation_parts),
             worktree_paths=[file_path],
-        ):
-            snapshot_file_if_untracked(file_path)
+            index_paths=[file_path],
+        ) as checkpoint_status:
+            _require_unchanged_include_candidate_targets(
+                file_path,
+                expected_index_identity,
+                expected_worktree_identity,
+            )
+            checkpoint_status.arm_rollback()
+            if session_is_active():
+                snapshot_file_if_untracked(file_path)
             _text_file_actions.stage_text_file_to_index(
                 file_path,
                 index_target.after_buffer,
@@ -271,17 +323,39 @@ def execute_include_candidate(
                 materialized.worktree_file_mode,
                 worktree_target.change_type,
             )
-        clear_candidate_preview_state_for_file(
-            batch_name=batch_name,
-            file_path=file_path,
-        )
-        print(
-            _("✓ Included candidate {ordinal} of {count} from batch '{batch}'").format(
+            close_materialized()
+        checkpoint_status.defer_success(
+            partial(
+                _finish_include_candidate_success,
+                batch_name=batch_name,
+                file_path=file_path,
                 ordinal=preview.ordinal,
                 count=preview.count,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
+            )
         )
-    finally:
-        materialized.close()
+
+
+def _require_unchanged_include_candidate_targets(
+    file_path: str,
+    expected_index_identity: IndexIdentity,
+    expected_worktree_identity: WorktreeIdentity,
+) -> None:
+    """Refuse an include candidate computed from a target that changed."""
+    current_index_identity = read_index_identities((file_path,))[file_path]
+    if (
+        expected_index_identity.unmerged_entries
+        or current_index_identity != expected_index_identity
+    ):
+        raise CommandError(
+            _(
+                "Index changed while include was being calculated: "
+                "{file}. Retry the include command."
+            ).format(file=display_path(file_path))
+        )
+    if capture_worktree_identity(file_path) != expected_worktree_identity:
+        raise CommandError(
+            _(
+                "Working tree file changed while include was being calculated: "
+                "{file}. Retry the include command."
+            ).format(file=display_path(file_path))
+        )

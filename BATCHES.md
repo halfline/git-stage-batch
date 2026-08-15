@@ -215,13 +215,6 @@ An action that changes a batch must run inside the existing command checkpoint
 flow. `abort` and `undo` serve different scopes: `abort` returns all batches to
 session-start state, while `undo` reverses one recorded operation.
 
-Checkpoint trees use Git modes for stored blobs, while compatible manifest
-records also retain each regular file's exact Unix permission bits. Automatic
-rollback, undo, and redo therefore restore permissions such as `0600` for
-worktree files and scoped session, batch, and repository metadata. Checkpoints
-written before that field existed remain readable and fall back to their saved
-Git mode.
-
 Batch-source commands that publish worktree state use `transaction_checkpoint()`.
 An active session receives the normal undo node; outside a session, a uniquely
 referenced Git snapshot exists only for the publication and is removed after
@@ -246,6 +239,13 @@ before that commit; a teardown failure therefore rolls publication back instead
 of reporting failure after leaving changed files behind. Transient snapshots
 retain only the declared index paths and repository-state files alongside their
 worktree scope.
+
+Checkpoint trees use Git modes for stored blobs, while compatible manifest
+records also retain each regular file's exact Unix permission bits. Automatic
+rollback, undo, and redo therefore restore permissions such as `0600` for
+worktree files and scoped session, batch, and repository metadata. Checkpoints
+written before that field existed remain readable and fall back to their saved
+Git mode.
 
 ## How `include --to` saves a live change
 
@@ -420,7 +420,14 @@ entry as part of the same transaction and validates that entry before
 publication; ordinary worktree-only apply paths do not acquire broader index
 rollback authority.
 
-Both flows
+Include builds every selected file plan before opening one transaction whose
+index and worktree scope covers all selected paths. It publishes neither a
+later file nor an earlier one when planning fails, and a publication exception
+rolls the whole scope back. A pre-resolved `include --from ... --files` scope
+stays one ordered set of literal paths through that planning and publication;
+it does not fall back to independently committed per-file transient
+transactions. Reviewed include candidates use the same
+index-scoped transaction for their single materialized target. Both flows
 capture the complete scoped index identity, including intent-to-add and every
 unmerged stage, before merge planning. They repeat that check inside the
 unarmed transaction, then arm rollback immediately before the first write. A
@@ -428,6 +435,7 @@ pre-existing conflict or an index/worktree change introduced after capture is
 therefore refused without overwriting concurrent state. Their review-complete
 state and success output are deferred until the outermost transaction commits,
 so a nested success cannot survive an enclosing rollback.
+
 For text files, [`batch/merge/merge.py`](src/git_stage_batch/batch/merge/merge.py) receives
 the batch source, ownership, and current target bytes. It tries to satisfy the
 presence and absence requirements against that target.
@@ -450,9 +458,6 @@ old side must still match there (or at its sole complete relocated identity)
 before the owned source side replaces it. Ordinary presence claims never gain
 permission to remove an adjacent unowned source line.
 
-
-
-
 Recorded baseline coordinates are the first placement proof, not permanently
 fixed worktree offsets. Earlier replay may insert or remove neighboring lines.
 When that happens, a legacy replacement or deletion anchor may follow the sole
@@ -465,26 +470,6 @@ instead use the exact gap between its mapped surviving source anchors. The gap
 must contain the complete saved old side or none of it; matching bytes elsewhere
 are unrelated and remain untouched. Mapped deletion gaps selected together must
 not overlap, so each target region is inspected at most once.
-
-When a complete replacement's historical old bytes were transformed by a
-later commit or staged change, `apply --from` may instead use the current index
-as a trusted target. The replacement is accepted only when the immediate source
-boundaries map to the same index and worktree boundaries and every worktree line
-inside that span maps unchanged from the index. An unstaged edit inside the span
-therefore still causes refusal. The owned children may end immediately before
-an unchanged line that belonged to the historical parent: the mapped source
-neighbors must then bracket exactly the deletion-sized interior gap, and the
-deletion references must cover that gap consecutively. This proof scans the
-source, index, and worktree spans once and retains only compact ranges in mapped
-storage. Consecutive split children that satisfy the complete-parent proof only
-together are exposed as one atomic review selection.
-
-Older replacement units without parent-origin metadata can use the same trusted
-target proof when a duplicate historical source alternative hides an immediate
-source boundary. Their saved after/span-length/before context must identify one
-live span, at most a small bounded number of context candidates are inspected,
-and that span plus both boundaries must map unchanged from the index. This is a
-runtime compatibility proof: it does not rewrite the batch metadata.
 
 A missing insertion may likewise follow a boundary neighbor that occurs once,
 or a conservatively mapped source predecessor when the target still matches
@@ -514,6 +499,35 @@ saved presence ranges. A nonempty target gap or broader unowned source skew
 still requires distinctive context and otherwise fails closed. The island scan
 uses compact missing ranges and does not construct a per-line Python index.
 
+For adjacent selectable children of one historical replacement, the persisted
+parent coordinates describe the comparison that discovered the replacement;
+the child presence ranges describe the current batch-source coordinates. Source
+advancement can shift those coordinate spaces. Structural validation therefore
+accepts the children collectively only when their source ranges are contiguous,
+their exact old- and new-side counts cover the whole recorded parent, every new
+line is missing, and the complete old side remains contiguous at the verified
+parent boundary.
+
+When a complete replacement's historical old bytes were transformed by a
+later commit or staged change, `apply --from` may instead use the current index
+as a trusted target. The replacement is accepted only when the immediate source
+boundaries map to the same index and worktree boundaries and every worktree line
+inside that span maps unchanged from the index. An unstaged edit inside the span
+therefore still causes refusal. The owned children may end immediately before
+an unchanged line that belonged to the historical parent: the mapped source
+neighbors must then bracket exactly the deletion-sized interior gap, and the
+deletion references must cover that gap consecutively. This proof scans the
+source, index, and worktree spans once and retains only compact ranges in mapped
+storage. Consecutive split children that satisfy the complete-parent proof only
+together are exposed as one atomic review selection.
+
+Older replacement units without parent-origin metadata can use the same trusted
+target proof when a duplicate historical source alternative hides an immediate
+source boundary. Their saved after/span-length/before context must identify one
+live span, at most a small bounded number of context candidates are inspected,
+and that span plus both boundaries must map unchanged from the index. This is a
+runtime compatibility proof: it does not rewrite the batch metadata.
+
 A batch may own only one child of a historical parent whose unowned sibling was
 already committed and reordered. In a multi-unit replay, the coordinate planner
 may remove that child's exact old bytes and insert its new bytes separately when
@@ -521,6 +535,7 @@ the index and worktree agree on the complete parent, a unique line proves the
 old child's location inside that bounded parent, and the immediate mapped source
 neighbors agree on one insertion boundary. A lone reordered child remains a
 reviewed candidate rather than silently changing the existing review workflow.
+
 [`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. The merge helpers separate these structural and
 exact-coordinate responsibilities:
@@ -609,7 +624,14 @@ insertions remain in mapped storage and are materialized through one line
 buffer, avoiding repeated whole-result rebuilding and line-scale Python
 objects.
 
-
+Older batches can express the same relationship without a stored replacement
+unit: a deletion immediately before a contiguous presence range is its legacy
+replacement form. Reversal couples the live suffix of that range to the
+deletion just as merge does. This lets it remove the new side and restore the
+old side without expanding a historical whole-file replacement hunk over an
+unowned neighboring line. Candidate suffixes in each disjoint presence range
+are scanned together, so overlapping legacy claims do not repeatedly scan the
+same source lines.
 
 Reversal restores a replacement's old side only when at least one selected
 new-side line actually maps into the working tree. Thus a whole-file discard can
@@ -631,15 +653,6 @@ agree. The selected ranges are reconstructed rather than duplicated. One
 optional application boolean records that the overlay is still bound to its
 original apply-time index target; index drift or session rebinding removes that
 authority. This changes no canonical batch metadata.
-
-Older batches can express the same relationship without a stored replacement
-unit: a deletion immediately before a contiguous presence range is its legacy
-replacement form. Reversal couples the live suffix of that range to the
-deletion just as merge does. This lets it remove the new side and restore the
-old side without expanding a historical whole-file replacement hunk over an
-unowned neighboring line. Candidate suffixes in each disjoint presence range
-are scanned together, so overlapping legacy claims do not repeatedly scan the
-same source lines.
 
 The same refusal rule applies: when the current file no longer provides one
 safe reversal, the command stops without guessing.
@@ -772,7 +785,6 @@ An applied overlay is accepted only while all of these still match its record:
 - the batch metadata revision
 - `HEAD`
 - the path's index entry (an absent entry and `start`'s intent-to-add sentinel
-  are equivalent)
   are equivalent; unresolved higher-stage entries never match either state)
 - the exact worktree path kind, mode, size, and streamed content digest
 

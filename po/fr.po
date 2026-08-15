@@ -7920,6 +7920,29 @@ msgstr "Toutes les modifications de l’arbre de travail sont actuellement enreg
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "L’état des lots appliqués est endommagé : {path}. Supprimez ce fichier pour oublier la provenance de révision des modifications restaurées."
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr ""
+"L’entrée de fichier pour {path!r} possède un indicateur hérité d’alternative "
+"de source non valide"
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"L’entrée de fichier non texte pour {path!r} possède un marqueur hérité "
+"d’alternative de source"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr ""
+"files[{path!r}] possède un indicateur d’alternative de source non valide"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"files[{path!r}] possède une alternative de source sans limite dans le "
+"contenu actuel"
+
 # Apply/discard target integrity translations.
 #: src/git_stage_batch/commands/batch_source/apply_action.py:811
 #: src/git_stage_batch/commands/batch_source/candidate_execution.py:229

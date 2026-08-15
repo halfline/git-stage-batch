@@ -7892,6 +7892,20 @@ msgstr "Wszystkie zmiany drzewa roboczego są obecnie zapisane w {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stan zastosowanych partii jest uszkodzony: {path}. Usuń ten plik, aby zapomnieć pochodzenie przeglądu przywróconych zmian."
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"Wpis pliku nietekstowego dla {path!r} ma starszy znacznik alternatywy źródła"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}] ma nieprawidłową flagę alternatywy źródła"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"files[{path!r}] ma alternatywę źródła bez granicy w bieżącej zawartości"
+
 # Apply/discard target integrity translations.
 #: src/git_stage_batch/commands/batch_source/apply_action.py:811
 #: src/git_stage_batch/commands/batch_source/candidate_execution.py:229

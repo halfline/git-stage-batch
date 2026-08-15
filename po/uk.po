@@ -7845,6 +7845,28 @@ msgstr "Усі зміни робочого дерева зараз збереж�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Стан застосованих пакетів пошкоджено: {path}. Видаліть цей файл, щоб забути походження перевірки відновлених змін."
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr ""
+"Запис файлу для {path!r} містить неприпустимий застарілий прапорець "
+"альтернативи джерела"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"Запис нетекстового файлу для {path!r} містить застарілий маркер альтернативи "
+"джерела"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}] містить неприпустимий прапорець альтернативи джерела"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"files[{path!r}] містить альтернативу джерела без межі в поточному вмісті"
+
 # Apply/discard target integrity translations.
 #: src/git_stage_batch/commands/batch_source/apply_action.py:811
 #: src/git_stage_batch/commands/batch_source/candidate_execution.py:229

@@ -7784,6 +7784,24 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+"alternativu, která se má nahradit. Před přehráním tuto dávku znovu vytvořte "
+"pomocí aktuální verze git-stage-batch."
+
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr ""
+"Položka souboru pro {path!r} má neplatný příznak starší alternativy zdroje"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"Položka netextového souboru pro {path!r} má značku starší alternativy zdroje"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "Položka files[{path!r}] má neplatný příznak alternativy zdroje"
+
 "contains staged content."
 msgstr ""
 "Nelze zahodit přidaný ukazatel submodulu pro {file}: index již obsahuje "

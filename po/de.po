@@ -7928,6 +7928,25 @@ msgstr "Alle Änderungen im Arbeitsbaum sind derzeit in {locations} gespeichert.
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Der Zustand angewendeter Stapel ist beschädigt: {path}. Entfernen Sie diese Datei, um die Prüfherkunft wiederhergestellter Änderungen zu vergessen."
+msgstr ""
+"Veraltete Stapelmetadaten für {file} können nicht sicher wiedergegeben "
+"werden: Der Stapel zeichnet nicht auf, ob benachbarter historischer "
+"Quellinhalt eine Alternative war, die ersetzt werden sollte. Erstellen Sie "
+"diesen Stapel vor der Wiedergabe mit der aktuellen Version von git-stage-"
+"batch neu."
+
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr ""
+"Der Dateieintrag für {path!r} hat ein ungültiges veraltetes Quellalternativ-"
+"Flag"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"Der Eintrag der Nicht-Textdatei für {path!r} hat eine veraltete "
+"Quellalternativ-Markierung"
 #: src/git_stage_batch/batch/submodule_pointer.py:287
 #, python-brace-format
 msgid ""

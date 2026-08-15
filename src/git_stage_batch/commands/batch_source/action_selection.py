@@ -251,6 +251,7 @@ def _operation_parts(
     *,
     line_ids: str | None,
     file: str | None,
+    resolved_file_paths: tuple[str, ...] | None = None,
     replacement_payload: ReplacementPayload | None = None,
 ) -> tuple[str, ...]:
     parts = [command_name, "--from", raw_selector]
@@ -258,6 +259,9 @@ def _operation_parts(
         parts.extend(["--line", line_ids])
     if file is not None:
         parts.extend(["--file", file])
+    if resolved_file_paths is not None:
+        for file_path in resolved_file_paths:
+            parts.extend(["--file", file_path])
     if replacement_payload is not None:
         parts.extend(["--as", replacement_payload.display_text or "<stdin>"])
     return tuple(parts)

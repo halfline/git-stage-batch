@@ -399,6 +399,26 @@ must contain the complete saved old side or none of it; matching bytes elsewhere
 are unrelated and remain untouched. Mapped deletion gaps selected together must
 not overlap, so each target region is inspected at most once.
 
+When a complete replacement's historical old bytes were transformed by a
+later commit or staged change, `apply --from` may instead use the current index
+as a trusted target. The replacement is accepted only when the immediate source
+boundaries map to the same index and worktree boundaries and every worktree line
+inside that span maps unchanged from the index. An unstaged edit inside the span
+therefore still causes refusal. The owned children may end immediately before
+an unchanged line that belonged to the historical parent: the mapped source
+neighbors must then bracket exactly the deletion-sized interior gap, and the
+deletion references must cover that gap consecutively. This proof scans the
+source, index, and worktree spans once and retains only compact ranges in mapped
+storage. Consecutive split children that satisfy the complete-parent proof only
+together are exposed as one atomic review selection.
+
+Older replacement units without parent-origin metadata can use the same trusted
+target proof when a duplicate historical source alternative hides an immediate
+source boundary. Their saved after/span-length/before context must identify one
+live span, at most a small bounded number of context candidates are inspected,
+and that span plus both boundaries must map unchanged from the index. This is a
+runtime compatibility proof: it does not rewrite the batch metadata.
+
 [`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. The merge helpers separate these structural and
 exact-coordinate responsibilities:

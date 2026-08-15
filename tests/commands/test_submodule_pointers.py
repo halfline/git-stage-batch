@@ -9,7 +9,9 @@ from pathlib import Path
 import pytest
 
 from git_stage_batch.batch import submodule_pointer as submodule_pointer_actions
+import git_stage_batch.commands.batch_source.apply_action as apply_action
 import git_stage_batch.commands.batch_source.discard_action as discard_action
+import git_stage_batch.data.undo.checkpoints as undo_checkpoints
 from git_stage_batch.commands.discard import command_discard, command_discard_file
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -35,7 +37,9 @@ from git_stage_batch.data.selected_change.store import (
     read_selected_change_kind,
 )
 from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
-from git_stage_batch.data.selected_change.lifecycle import clear_selected_change_state_files
+from git_stage_batch.data.selected_change.lifecycle import (
+    clear_selected_change_state_files,
+)
 from git_stage_batch.exceptions import CommandError
 
 EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
@@ -119,7 +123,9 @@ def test_submodule_removal_refuses_superproject_walk_up(
 
 
 @pytest.fixture
-def submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str, str]:
+def submodule_pointer_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, str, str]:
     """Create a superproject with a modified submodule pointer."""
     repo = tmp_path / "repo"
     submodule = repo / "sub"
@@ -144,7 +150,10 @@ def submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
 
     (repo / "z.txt").write_text("base\n")
     _run(["git", "add", "z.txt"], cwd=repo)
-    _run(["git", "update-index", "--add", "--cacheinfo", "160000", old_oid, "sub"], cwd=repo)
+    _run(
+        ["git", "update-index", "--add", "--cacheinfo", "160000", old_oid, "sub"],
+        cwd=repo,
+    )
     _run(["git", "commit", "-m", "Add submodule pointer"], cwd=repo)
 
     _run(["git", "checkout", "--detach", new_oid], cwd=submodule)
@@ -155,7 +164,9 @@ def submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> t
 
 
 @pytest.fixture
-def added_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
+def added_submodule_pointer_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, str]:
     """Create a superproject with an added submodule pointer."""
     repo = tmp_path / "repo"
     submodule = repo / "sub"
@@ -182,7 +193,9 @@ def added_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.fixture
-def untracked_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
+def untracked_submodule_pointer_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, str]:
     """Create a superproject with an untracked embedded repository."""
     repo = tmp_path / "repo"
     submodule = repo / "sub"
@@ -208,7 +221,9 @@ def untracked_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 @pytest.fixture
-def dirty_only_submodule_with_file_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def dirty_only_submodule_with_file_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
     """Create a superproject with a file edit and a dirty submodule worktree."""
     repo = tmp_path / "repo"
     submodule = repo / "sub"
@@ -229,7 +244,10 @@ def dirty_only_submodule_with_file_repo(tmp_path: Path, monkeypatch: pytest.Monk
     _run(["git", "commit", "-m", "Add sub file"], cwd=submodule)
     sub_oid = _git_stdout(["rev-parse", "HEAD"], cwd=submodule)
 
-    _run(["git", "update-index", "--add", "--cacheinfo", "160000", sub_oid, "sub"], cwd=repo)
+    _run(
+        ["git", "update-index", "--add", "--cacheinfo", "160000", sub_oid, "sub"],
+        cwd=repo,
+    )
     _run(["git", "commit", "-m", "Add submodule pointer"], cwd=repo)
 
     (repo / "README.md").write_text("base\nchange\n")
@@ -240,7 +258,9 @@ def dirty_only_submodule_with_file_repo(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 @pytest.fixture
-def deleted_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
+def deleted_submodule_pointer_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, str]:
     """Create a superproject with a deleted submodule pointer."""
     repo = tmp_path / "repo"
     submodule = repo / "sub"
@@ -257,7 +277,10 @@ def deleted_submodule_pointer_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     _run(["git", "commit", "-m", "Add sub file"], cwd=submodule)
     old_oid = _git_stdout(["rev-parse", "HEAD"], cwd=submodule)
 
-    _run(["git", "update-index", "--add", "--cacheinfo", "160000", old_oid, "sub"], cwd=repo)
+    _run(
+        ["git", "update-index", "--add", "--cacheinfo", "160000", old_oid, "sub"],
+        cwd=repo,
+    )
     _run(["git", "commit", "-m", "Add submodule pointer"], cwd=repo)
     submodule.rename(tmp_path / "sub-backup")
     _run(["git", "config", "diff.ignoreSubmodules", "all"], cwd=repo)
@@ -418,7 +441,9 @@ def test_include_stages_selected_submodule_pointer(
     assert old_oid in raw_diff
     assert new_oid in raw_diff
     assert raw_diff.endswith("\tsub")
-    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    assert (
+        _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    )
 
 
 def test_include_file_stages_submodule_pointer(
@@ -438,7 +463,9 @@ def test_include_file_stages_submodule_pointer(
     assert old_oid in raw_diff
     assert new_oid in raw_diff
     assert raw_diff.endswith("\tsub")
-    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    assert (
+        _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    )
 
 
 def test_include_to_batch_stores_submodule_pointer_entry(
@@ -534,7 +561,9 @@ def test_discard_restores_selected_submodule_pointer(
 
     assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
     assert _cached_raw_diff(repo) == ""
-    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    assert (
+        _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    )
 
 
 def test_discard_removes_added_submodule_pointer(
@@ -548,7 +577,9 @@ def test_discard_removes_added_submodule_pointer(
 
     assert not (repo / "sub").exists()
     assert _cached_raw_diff(repo) == ""
-    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    assert (
+        _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    )
 
 
 def test_discard_added_submodule_pointer_undo_redo(
@@ -642,7 +673,9 @@ def test_discard_file_restores_submodule_pointer(
 
     assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
     assert _cached_raw_diff(repo) == ""
-    assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    assert (
+        _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+    )
 
 
 def test_unstaged_gitlink_selection_freshness_uses_index_base(
@@ -704,7 +737,9 @@ def test_show_from_batch_renders_submodule_pointer(
     assert read_selected_change_kind() == SelectedChangeKind.BATCH_GITLINK
     assert read_selected_change_kind().value == "batch-submodule"
 
-    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+    with pytest.raises(
+        CommandError, match="Cannot use --lines with submodule pointers"
+    ):
         command_show_from_batch("pointers", line_ids="1", file="sub")
 
 
@@ -720,7 +755,9 @@ def test_live_include_refuses_selected_batch_submodule_pointer(
     command_show_from_batch("pointers", file="sub")
     capsys.readouterr()
 
-    with pytest.raises(CommandError, match="came from a batch, not the live working tree"):
+    with pytest.raises(
+        CommandError, match="came from a batch, not the live working tree"
+    ):
         command_include(quiet=True)
 
     assert _cached_raw_diff(repo) == ""
@@ -811,6 +848,73 @@ def test_apply_from_batch_applies_added_submodule_pointer_as_live_diff(
 
     assert _cached_raw_diff(repo) == ""
     assert new_oid in _worktree_pointer_diff(repo)
+
+
+def test_apply_added_submodule_refuses_stale_index_after_snapshot(
+    added_submodule_pointer_repo: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unarmed apply refusal must preserve a concurrent submodule index edit."""
+    repo, new_oid = added_submodule_pointer_repo
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    _run(["git", "update-index", "--force-remove", "--", "sub"], cwd=repo)
+    command_stop()
+
+    real_create = undo_checkpoints._create_transient_transaction_checkpoint
+
+    def mutate_after_snapshot(*args, **kwargs):
+        checkpoint = real_create(*args, **kwargs)
+        _run(
+            [
+                "git",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                "160000",
+                new_oid,
+                "sub",
+            ],
+            cwd=repo,
+        )
+        return checkpoint
+
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "_create_transient_transaction_checkpoint",
+        mutate_after_snapshot,
+    )
+
+    with pytest.raises(CommandError, match="Index changed.*sub"):
+        command_apply_from_batch("pointers", file="sub")
+
+    assert _git_stdout(["ls-files", "--stage", "--", "sub"], cwd=repo) == (
+        f"160000 {new_oid} 0\tsub"
+    )
+
+
+def test_apply_added_submodule_rolls_back_index_outside_session(
+    added_submodule_pointer_repo: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later apply failure must restore an added submodule's index absence."""
+    repo, _new_oid = added_submodule_pointer_repo
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    _run(["git", "update-index", "--force-remove", "--", "sub"], cwd=repo)
+    command_stop()
+    monkeypatch.setattr(
+        apply_action,
+        "record_applied_batch_overlays",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("injected overlay failure")
+        ),
+    )
+
+    with pytest.raises(CommandError, match="injected overlay failure"):
+        command_apply_from_batch("pointers", file="sub")
+
+    assert _git_stdout(["ls-files", "--stage", "--", "sub"], cwd=repo) == ""
 
 
 def test_include_from_batch_stages_deleted_submodule_pointer(
@@ -1000,13 +1104,21 @@ def test_batch_submodule_pointer_actions_refuse_lines(
     command_start(quiet=True)
     command_include_to_batch("pointers", quiet=True)
 
-    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+    with pytest.raises(
+        CommandError, match="Cannot use --lines with submodule pointers"
+    ):
         command_apply_from_batch("pointers", line_ids="1", file="sub")
-    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+    with pytest.raises(
+        CommandError, match="Cannot use --lines with submodule pointers"
+    ):
         command_include_from_batch("pointers", line_ids="1", file="sub")
-    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+    with pytest.raises(
+        CommandError, match="Cannot use --lines with submodule pointers"
+    ):
         command_discard_from_batch("pointers", line_ids="1", file="sub")
-    with pytest.raises(CommandError, match="Cannot use --lines with submodule pointers"):
+    with pytest.raises(
+        CommandError, match="Cannot use --lines with submodule pointers"
+    ):
         command_reset_from_batch("pointers", line_ids="1", file="sub")
 
 

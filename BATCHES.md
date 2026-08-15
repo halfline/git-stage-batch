@@ -219,6 +219,19 @@ unmerged or other index change that races either identity check is stale and is
 left untouched. The caller arms rollback immediately before its first
 mutation, so a stale second check also preserves the external edit it detected.
 
+Nested transactions share the publication arm state and outermost success
+boundary. Each nested context separately records whether it reached its own
+publication boundary, so a caught inner refusal before its first write does not
+poison an already-armed outer operation. Output, review completion, and other
+success-only effects registered through the shared boundary run only after the
+outer transaction and its durable checkpoint have committed. A refusal or
+rollback drops them, including when an inner operation returned successfully
+before a later sibling failed. Deferred plans and their mapped workspaces close
+before that commit; a teardown failure therefore rolls publication back instead
+of reporting failure after leaving changed files behind. Transient snapshots
+retain only the declared index paths and repository-state files alongside their
+worktree scope.
+
 ## How `include --to` saves a live change
 
 For `git-stage-batch include --to <name>`, execution crosses the following
@@ -347,6 +360,8 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
+state and success output are deferred until the outermost transaction commits,
+so a nested success cannot survive an enclosing rollback.
 For text files, [`batch/merge/merge.py`](src/git_stage_batch/batch/merge/merge.py) receives
 the batch source, ownership, and current target bytes. It tries to satisfy the
 presence and absence requirements against that target.

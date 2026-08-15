@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator, Literal
 
@@ -56,6 +58,87 @@ _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 _PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
 
 
+RollbackStatus: TypeAlias = Literal[
+    "unavailable",
+    "not-requested",
+    "pending",
+    "delegated",
+    "completed",
+    "failed",
+    "not-needed",
+    "not-attempted",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class _DeferredTransactionCompletion:
+    """Paired effects for one command completed inside a transaction."""
+
+    on_commit: Callable[[], None]
+    on_rollback: Callable[[RollbackStatus], None] | None = None
+
+
+@dataclass(slots=True)
+class _TransactionBoundary:
+    """Shared publication lifecycle for nested transactional contexts."""
+
+    armed: bool = True
+    completions: list[_DeferredTransactionCompletion] = field(default_factory=list)
+    outcome: Literal["pending", "committed", "rolled-back"] = "pending"
+    rollback: RollbackStatus | None = None
+
+    def defer_success(self, callback: Callable[[], None]) -> None:
+        """Run after the outermost commit, or immediately once committed."""
+        self.defer_completion(callback)
+
+    def defer_completion(
+        self,
+        on_commit: Callable[[], None],
+        on_rollback: Callable[[RollbackStatus], None] | None = None,
+    ) -> None:
+        """Run paired completion effects at the outermost outcome."""
+        if self.outcome == "committed":
+            on_commit()
+        elif self.outcome == "rolled-back":
+            if on_rollback is not None and self.rollback is not None:
+                on_rollback(self.rollback)
+        elif self.outcome == "pending":
+            self.completions.append(
+                _DeferredTransactionCompletion(on_commit, on_rollback)
+            )
+
+    def commit(self) -> None:
+        """Publish every deferred success effect after durable completion."""
+        self.outcome = "committed"
+        completions = tuple(self.completions)
+        self.completions.clear()
+        first_error: BaseException | None = None
+        for completion in completions:
+            try:
+                completion.on_commit()
+            except BaseException as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
+
+    def finish_rollback(self, rollback: RollbackStatus) -> None:
+        """Publish best-effort rollback effects after restoration settles."""
+        self.outcome = "rolled-back"
+        self.rollback = rollback
+        completions = tuple(self.completions)
+        self.completions.clear()
+        for completion in completions:
+            if completion.on_rollback is None:
+                continue
+            try:
+                completion.on_rollback(rollback)
+            except BaseException:
+                # A diagnostic completion must not mask the publication or
+                # rollback failure that brought the transaction here.
+                pass
+
+
 @dataclass(slots=True)
 class UndoCheckpointStatus:
     """Observable rollback state for one checkpoint context.
@@ -64,26 +147,47 @@ class UndoCheckpointStatus:
     the nested context cannot report that enclosing rollback's final outcome.
     """
 
-    rollback: Literal[
-        "unavailable",
-        "not-requested",
-        "pending",
-        "delegated",
-        "completed",
-        "failed",
-        "not-needed",
-        "not-attempted",
-    ] = "not-requested"
+    rollback: RollbackStatus = "not-requested"
+    _transaction_boundary: _TransactionBoundary = field(
+        default_factory=_TransactionBoundary
+    )
+    _context_rollback_armed: bool = True
+
+    @property
+    def _rollback_armed(self) -> bool:
+        """Return whether this context's shared publication has started."""
+        return self._transaction_boundary.armed
+
+    def arm_rollback(self) -> None:
+        """Mark the beginning of caller-owned publication mutations."""
+        self._context_rollback_armed = True
+        self._transaction_boundary.armed = True
+
+    def defer_success(self, callback: Callable[[], None]) -> None:
+        """Run a success effect after the outermost transaction commits."""
+        self._transaction_boundary.defer_success(callback)
+
+    def defer_completion(
+        self,
+        on_commit: Callable[[], None],
+        on_rollback: Callable[[RollbackStatus], None],
+    ) -> None:
+        """Run paired effects after the outermost transaction settles."""
+        self._transaction_boundary.defer_completion(on_commit, on_rollback)
+
+
 
 
 def _clear_pending_checkpoint() -> None:
     """Forget process-local state for the pending checkpoint."""
     global _PENDING_CHECKPOINT, _PENDING_CHECKPOINT_REPOSITORY
     global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR, _PENDING_CHECKPOINT_ROLLBACK_CAUSE
+    global _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
     _PENDING_CHECKPOINT = None
     _PENDING_CHECKPOINT_REPOSITORY = None
     _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = None
     _PENDING_CHECKPOINT_ROLLBACK_CAUSE = None
+    _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY = None
 
 
 def _validate_nested_checkpoint(
@@ -265,6 +369,33 @@ def _create_undo_checkpoint(
 
 
 @contextmanager
+def transaction_checkpoint(
+    operation: str,
+    *,
+    worktree_paths: list[str],
+    index_paths: list[str] | None = None,
+    repository_paths: list[str] | None = None,
+) -> Iterator[UndoCheckpointStatus]:
+    """Defer transaction completion effects at one publication boundary."""
+    status = UndoCheckpointStatus(
+        rollback="pending",
+        _transaction_boundary=_TransactionBoundary(armed=False),
+        _context_rollback_armed=False,
+    )
+    try:
+        yield status
+    except BaseException:
+        status.rollback = (
+            "not-attempted" if status._rollback_armed else "not-needed"
+        )
+        status._transaction_boundary.finish_rollback(status.rollback)
+        raise
+    else:
+        status.rollback = "not-needed"
+        status._transaction_boundary.commit()
+
+
+@contextmanager
 def undo_checkpoint(
     operation: str,
     *,
@@ -272,6 +403,7 @@ def undo_checkpoint(
     index_paths: list[str] | None = None,
     repository_paths: list[str] | None = None,
     rollback_on_error: bool = False,
+    defer_rollback_until_armed: bool = False,
 ) -> Iterator[UndoCheckpointStatus]:
     """Bracket an undoable operation with before and after snapshots.
 
@@ -281,7 +413,13 @@ def undo_checkpoint(
     """
     global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
     global _PENDING_CHECKPOINT_ROLLBACK_CAUSE
-    status = UndoCheckpointStatus()
+    global _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
+    status = UndoCheckpointStatus(
+        _transaction_boundary=_TransactionBoundary(
+            armed=not defer_rollback_until_armed,
+        ),
+        _context_rollback_armed=not defer_rollback_until_armed,
+    )
 
     if _PENDING_CHECKPOINT is not None:
         current_repository = get_git_directory_path()
@@ -328,6 +466,7 @@ def undo_checkpoint(
     )
     if checkpoint is not None:
         _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = rollback_on_error
+        _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY = status._transaction_boundary
         if rollback_on_error:
             status.rollback = "pending"
     elif rollback_on_error:
@@ -335,7 +474,19 @@ def undo_checkpoint(
     try:
         yield status
     except BaseException as operation_error:
-        if checkpoint is not None and rollback_on_error:
+        if checkpoint is not None and rollback_on_error and not status._rollback_armed:
+            try:
+                _discard_failed_checkpoint(
+                    checkpoint,
+                    previous_redo=previous_redo,
+                )
+            except BaseException:
+                status.rollback = "failed"
+                status._transaction_boundary.finish_rollback(status.rollback)
+                raise
+            status.rollback = "not-needed"
+            status._transaction_boundary.finish_rollback(status.rollback)
+        elif checkpoint is not None and rollback_on_error:
             try:
                 _rollback_failed_checkpoint(
                     checkpoint,
@@ -343,6 +494,7 @@ def undo_checkpoint(
                 )
             except BaseException as rollback_error:
                 status.rollback = "failed"
+                status._transaction_boundary.finish_rollback(status.rollback)
                 if not isinstance(rollback_error, Exception):
                     raise
                 raise CommandError(
@@ -357,6 +509,7 @@ def undo_checkpoint(
                     )
                 ) from operation_error
             status.rollback = "completed"
+            status._transaction_boundary.finish_rollback(status.rollback)
         elif checkpoint is not None:
             try:
                 finalize_pending_checkpoint()
@@ -377,6 +530,8 @@ def undo_checkpoint(
                         finalization_error=finalization_error,
                     )
                 ) from operation_error
+        elif rollback_on_error:
+            status._transaction_boundary.finish_rollback(status.rollback)
         raise
     else:
         if checkpoint is not None:
@@ -389,6 +544,7 @@ def undo_checkpoint(
                     )
                 except BaseException as rollback_error:
                     status.rollback = "failed"
+                    status._transaction_boundary.finish_rollback(status.rollback)
                     if not isinstance(rollback_error, Exception):
                         raise
                     raise CommandError(
@@ -403,6 +559,7 @@ def undo_checkpoint(
                         )
                     ) from pending_nested_error
                 status.rollback = "completed"
+                status._transaction_boundary.finish_rollback(status.rollback)
                 raise CommandError(
                     _(
                         "A nested transactional operation failed, so the "
@@ -411,11 +568,82 @@ def undo_checkpoint(
                 ) from pending_nested_error
             try:
                 finalize_pending_checkpoint()
-            except BaseException:
-                status.rollback = "not-attempted"
+            except BaseException as finalization_error:
+                if rollback_on_error and status._rollback_armed:
+                    _rollback_transaction_checkpoint(
+                        checkpoint,
+                        previous_redo=previous_redo,
+                        operation_error=finalization_error,
+                        status=status,
+                    )
+                else:
+                    status.rollback = "not-attempted"
+                    if rollback_on_error:
+                        status._transaction_boundary.finish_rollback(status.rollback)
                 raise
             if rollback_on_error:
                 status.rollback = "not-needed"
+                status._transaction_boundary.commit()
+
+
+def _rollback_transaction_checkpoint(
+    checkpoint: str,
+    *,
+    previous_redo: str | None,
+    operation_error: BaseException,
+    status: UndoCheckpointStatus,
+) -> None:
+    """Restore a transactional before-image or report both failures."""
+    try:
+        _rollback_failed_checkpoint(
+            checkpoint,
+            previous_redo=previous_redo,
+        )
+    except BaseException as rollback_error:
+        status.rollback = "failed"
+        status._transaction_boundary.finish_rollback(status.rollback)
+        if not isinstance(rollback_error, Exception):
+            raise
+        raise CommandError(
+            _(
+                "Operation failed and its automatic rollback also failed. "
+                "The before-image remains available through `undo --force`.\n"
+                "Operation error: {operation_error}\n"
+                "Rollback error: {rollback_error}"
+            ).format(
+                operation_error=operation_error,
+                rollback_error=rollback_error,
+            )
+        ) from operation_error
+    status.rollback = "completed"
+    status._transaction_boundary.finish_rollback(status.rollback)
+
+
+def _discard_failed_checkpoint(
+    checkpoint: str,
+    *,
+    previous_redo: str | None,
+) -> None:
+    """Drop an unarmed checkpoint without restoring its target snapshots."""
+    _clear_pending_checkpoint()
+
+    if current_undo_commit() != checkpoint:
+        raise CommandError(
+            _("Cannot roll back a failed operation because its checkpoint moved.")
+        )
+
+    parent = checkpoint_parent(checkpoint)
+    updates: list[tuple[str, str]] = []
+    deletes: list[str] = []
+    if parent is None:
+        deletes.append(SESSION_UNDO_STACK_REF)
+    else:
+        updates.append((SESSION_UNDO_STACK_REF, parent))
+    if previous_redo is None:
+        deletes.append(SESSION_REDO_STACK_REF)
+    else:
+        updates.append((SESSION_REDO_STACK_REF, previous_redo))
+    update_git_refs(updates=updates, deletes=deletes)
 
 
 def _rollback_failed_checkpoint(
@@ -434,19 +662,10 @@ def _rollback_failed_checkpoint(
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
     validate_recovery_state(manifest)
     _undo_state.restore_checkpoint_state(checkpoint, manifest)
-
-    parent = checkpoint_parent(checkpoint)
-    updates: list[tuple[str, str]] = []
-    deletes: list[str] = []
-    if parent is None:
-        deletes.append(SESSION_UNDO_STACK_REF)
-    else:
-        updates.append((SESSION_UNDO_STACK_REF, parent))
-    if previous_redo is None:
-        deletes.append(SESSION_REDO_STACK_REF)
-    else:
-        updates.append((SESSION_REDO_STACK_REF, previous_redo))
-    update_git_refs(updates=updates, deletes=deletes)
+    _discard_failed_checkpoint(
+        checkpoint,
+        previous_redo=previous_redo,
+    )
 
 
 def finalize_pending_checkpoint() -> None:

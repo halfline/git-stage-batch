@@ -23,7 +23,7 @@ from .metadata_types import (
 )
 
 
-CURRENT_BATCH_METADATA_SCHEMA_VERSION = 1
+CURRENT_BATCH_METADATA_SCHEMA_VERSION = 2
 
 JsonScalar: TypeAlias = None | bool | int | str
 JsonValue: TypeAlias = JsonScalar | tuple["JsonValue", ...] | Mapping[str, "JsonValue"]
@@ -35,6 +35,7 @@ _FILE_METADATA_KEYS = frozenset({
     "claimed_lines",
     "deletions",
     "file_type",
+    "legacy_unmarked_source_alternatives",
     "mode",
     "new_mode",
     "new_oid",
@@ -193,7 +194,7 @@ def decode_batch_metadata(
     *,
     expected_batch: str,
 ) -> BatchMetadata:
-    """Decode v0 or v1 metadata and return a validated immutable model."""
+    """Decode supported metadata and return a validated immutable model."""
     data = _load_json_object(payload, expected_batch)
     version = data.get("schema_version", 0)
     if type(version) is not int:
@@ -214,8 +215,11 @@ def decode_batch_metadata(
     if version < 0:
         _invalid(expected_batch, _("'schema_version' cannot be negative"))
     migrated_from_v0 = version == 0
-    if migrated_from_v0:
+    if version == 0:
         data = _migrate_v0_to_v1(data, expected_batch)
+        version = 1
+    if version == 1:
+        data = _migrate_v1_to_v2(data)
     elif version != CURRENT_BATCH_METADATA_SCHEMA_VERSION:
         _invalid(
             expected_batch,
@@ -223,7 +227,7 @@ def decode_batch_metadata(
                 version=version
             ),
         )
-    return _decode_v1(data, expected_batch, allow_legacy=migrated_from_v0)
+    return _decode_current(data, expected_batch, allow_legacy=migrated_from_v0)
 
 
 def encode_batch_metadata(metadata: BatchMetadata) -> str:
@@ -258,7 +262,7 @@ def metadata_from_application_dict(
         "content_commit": content_commit,
         "files": data.get("files", {}),
     }
-    return _decode_v1(storage, batch_name)
+    return _decode_current(storage, batch_name)
 
 
 def _load_json_object(
@@ -289,7 +293,7 @@ def _migrate_v0_to_v1(data: dict[str, Any], batch_name: str) -> dict[str, Any]:
     if revision is None:
         revision = "v0-" + hashlib.sha256(canonical_legacy.encode("utf-8")).hexdigest()
     return {
-        "schema_version": CURRENT_BATCH_METADATA_SCHEMA_VERSION,
+        "schema_version": 1,
         "revision": revision,
         "batch": data.get("batch", batch_name),
         "note": data.get("note", ""),
@@ -301,7 +305,41 @@ def _migrate_v0_to_v1(data: dict[str, Any], batch_name: str) -> dict[str, Any]:
     }
 
 
-def _decode_v1(
+def _migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    """Mark text ownership whose source-alternative intent was not recorded."""
+    files = data.get("files")
+    if not isinstance(files, dict):
+        return {**data, "schema_version": 2}
+
+    migrated_files: dict[str, Any] = {}
+    for path, values in files.items():
+        if (
+            not isinstance(values, dict)
+            or values.get("file_type") is not None
+            or not any(
+                field in values
+                for field in (
+                    "claimed_lines",
+                    "presence_claims",
+                    "deletions",
+                    "replacement_units",
+                )
+            )
+        ):
+            migrated_files[path] = values
+            continue
+        migrated_files[path] = {
+            **values,
+            "legacy_unmarked_source_alternatives": True,
+        }
+    return {
+        **data,
+        "schema_version": 2,
+        "files": migrated_files,
+    }
+
+
+def _decode_current(
     data: dict[str, Any],
     expected_batch: str,
     *,
@@ -436,6 +474,28 @@ def _decode_file_metadata(
                     field=key,
                 ),
             )
+    if (
+        "legacy_unmarked_source_alternatives" in values
+        and type(values["legacy_unmarked_source_alternatives"]) is not bool
+    ):
+        _invalid(
+            batch_name,
+            _(
+                "file entry for {path!r} has an invalid legacy "
+                "source-alternative flag"
+            ).format(path=path),
+        )
+    if (
+        "legacy_unmarked_source_alternatives" in values
+        and file_type is not None
+    ):
+        _invalid(
+            batch_name,
+            _(
+                "non-text file entry for {path!r} has a legacy "
+                "source-alternative marker"
+            ).format(path=path),
+        )
     for key in ("batch_source_commit",):
         if key in values:
             _validate_object_id(values[key], batch_name, f"files[{path!r}].{key}")

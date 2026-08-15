@@ -1,7 +1,7 @@
 """Tests for CLI argument parsing."""
 
 import io
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 import pytest
 
@@ -1606,10 +1606,11 @@ def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(mo
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("batch", None, "foo.py"),
-        call("batch", None, "bar.py"),
-    ]
+    mock_command.assert_called_once_with(
+        "batch",
+        line_ids=None,
+        file_paths=("foo.py", "bar.py"),
+    )
 
 
 def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkeypatch):

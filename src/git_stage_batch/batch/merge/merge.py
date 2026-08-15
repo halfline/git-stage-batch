@@ -29,9 +29,11 @@ from .coordinate_strategy import (
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
+    has_fragmented_replacement_crossing_mapped_source_lines as _has_fragmented_replacement_crossing_mapped_source_lines,
     has_mapped_origin_replacement_claims as _has_mapped_origin_replacement_claims,
     has_mixed_origin_replacement_claims as _has_mixed_origin_replacement_claims,
     has_missing_origin_replacement_claims as _has_missing_origin_replacement_claims,
+    has_unsafe_mapped_origin_old_side_claims as _has_unsafe_mapped_old_side,
 )
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
@@ -64,6 +66,7 @@ if TYPE_CHECKING:
 
 
 _MERGE_CANDIDATE_CAP = 50
+_MAPPED_OLD_SIDE_PREFLIGHT_LIMIT = 16
 
 
 class _CoordinateStrategyAmbiguity(_MergeError):
@@ -202,6 +205,20 @@ def _build_structural_realized_entries(
                 )
                 mapping = owned_mapping
 
+        if _has_fragmented_replacement_crossing_mapped_source_lines(
+            ownership,
+            presence_line_set,
+            source_lines,
+            mapping,
+            spool_dir=spool_dir,
+        ):
+            raise _MergeError(
+                _(
+                    "Cannot reliably place split replacement: original replacement "
+                    "boundary is not present"
+                )
+            )
+
         if _has_missing_origin_replacement_claims(
             ownership,
             presence_line_set,
@@ -209,6 +226,22 @@ def _build_structural_realized_entries(
             working_lines,
             mapping,
             spool_dir=spool_dir,
+        ):
+            raise _MergeError(
+                _(
+                    "Cannot reliably place split replacement: original replacement "
+                    "boundary is not present"
+                )
+            )
+
+        if _has_unsafe_mapped_old_side(
+            ownership,
+            presence_line_set,
+            source_lines,
+            working_lines,
+            mapping,
+            spool_dir=spool_dir,
+            max_classifications=_MAPPED_OLD_SIDE_PREFLIGHT_LIMIT,
         ):
             raise _MergeError(
                 _(
@@ -427,6 +460,10 @@ def _merge_batch_acquired_line_chunks(
         getattr(unit, "origin", None) is not None
         for unit in ownership.replacement_units
     )
+    has_legacy_replacement_units = any(
+        getattr(unit, "origin", None) is None
+        for unit in ownership.replacement_units
+    )
 
     replacement_resolution_unit_indices = (
         _replacement_origin_resolution_unit_indices(
@@ -453,6 +490,7 @@ def _merge_batch_acquired_line_chunks(
         and presence_line_set
         and (
             has_origin_replacement_units
+            or has_legacy_replacement_units
             or not _has_recorded_baseline_coordinates(
                 ownership,
                 presence_line_set,
@@ -580,6 +618,24 @@ def _merge_batch_acquired_line_chunks(
                 spool_dir=spool_dir,
             )
         )
+        mapped_coordinate_fallback = None
+        if skip_coordinate_replay and trusted_target_lines is not None:
+            mapped_coordinate_fallback = (
+                _baseline_edits.try_apply_baseline_coordinate_edits(
+                    source_lines,
+                    working_lines,
+                    ownership,
+                    presence_line_set,
+                    deletion_claims,
+                    resolution=effective_resolution,
+                    max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
+                    source_to_working_mapping=shared_mapping,
+                    trusted_target_lines=trusted_target_lines,
+                    source_to_trusted_target_mapping=trusted_source_mapping,
+                    trusted_target_to_working_mapping=trusted_working_mapping,
+                    spool_dir=spool_dir,
+                )
+            )
         if strategy_choice is None and not skip_coordinate_replay:
             fallback_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
                 source_lines,
@@ -630,16 +686,22 @@ def _merge_batch_acquired_line_chunks(
                 )
             )
         try:
-            realized_entries = _build_structural_realized_entries(
-                source_lines,
-                ownership,
-                working_lines,
-                presence_line_set,
-                deletion_claims,
-                source_to_working_mapping=shared_mapping,
-                resolution=effective_resolution,
-                spool_dir=spool_dir,
-            )
+            try:
+                realized_entries = _build_structural_realized_entries(
+                    source_lines,
+                    ownership,
+                    working_lines,
+                    presence_line_set,
+                    deletion_claims,
+                    source_to_working_mapping=shared_mapping,
+                    resolution=effective_resolution,
+                    spool_dir=spool_dir,
+                )
+            except _MergeError:
+                if mapped_coordinate_fallback is None:
+                    raise
+                yield from mapped_coordinate_fallback
+                return
             try:
                 structural_chunks = _realized_entry_content_chunks(
                     realized_entries
@@ -655,6 +717,7 @@ def _merge_batch_acquired_line_chunks(
                 realized_entries.close()
         finally:
             _close_candidate(coordinate_candidate)
+            _close_candidate(mapped_coordinate_fallback)
     finally:
         if owned_trusted_target_to_working_mapping is not None:
             owned_trusted_target_to_working_mapping.close()

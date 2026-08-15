@@ -60,6 +60,87 @@ def test_shared_ranges_keep_the_source_editor_open(line_sequence):
         source_editor.close()
 
 
+def test_pending_close_releases_owned_resource_after_last_borrower(line_sequence):
+    """Deferred editor close should retain and then release backing resources."""
+
+    class Resource:
+        close_count = 0
+
+        def close(self):
+            self.close_count += 1
+
+    resource = Resource()
+    source_editor = LineEditor(())
+    target_editor = LineEditor(())
+    source_editor.retain_resource(resource)
+    source_editor.append_line_range(line_sequence([b"one\n"]), 0, 1)
+    target_editor.append_line_ranges_from_editor(source_editor, 0, 1)
+
+    with pytest.raises(ValueError, match="active leases"):
+        source_editor.close()
+    assert resource.close_count == 0
+    assert target_editor[0] == b"one\n"
+
+    target_editor.close()
+
+    assert resource.close_count == 1
+    with pytest.raises(ValueError, match="editor is closed"):
+        _ = len(source_editor)
+
+
+def test_explicit_empty_owner_retains_resource_for_appended_range():
+    """An empty owner is still an owner rather than a false-like sentinel."""
+
+    class Resource:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    resource = Resource()
+    source_editor = LineEditor(())
+    target_editor = LineEditor(())
+    source_editor.retain_resource(resource)
+    target_editor.append_line_range(
+        (b"one\n",),
+        0,
+        1,
+        owner=source_editor,
+    )
+
+    with pytest.raises(ValueError, match="active leases"):
+        source_editor.close()
+    assert resource.closed is False
+
+    target_editor.close()
+
+    assert resource.closed is True
+
+
+def test_pending_close_drains_long_lease_chain_without_recursion():
+    """Claim-scale editor chains should close without using Python recursion."""
+    root = LineEditor(())
+    root.append_line_range((b"root\n",), 0, 1)
+    current = root
+
+    for index in range(1500):
+        child = LineEditor(())
+        child.append_line_ranges_from_editor(
+            current,
+            len(current) - 1,
+            len(current),
+        )
+        child.append_line_range((f"{index}\n".encode(),), 0, 1)
+        with pytest.raises(ValueError, match="active leases"):
+            current.close()
+        current = child
+
+    current.close()
+
+    with pytest.raises(ValueError, match="editor is closed"):
+        _ = len(root)
+
+
 def test_line_editor_rejects_invalid_append_ranges(line_sequence):
     """Append ranges must stay within their indexed source."""
     lines = line_sequence([b"one\n"])

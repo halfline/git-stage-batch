@@ -11,7 +11,13 @@ from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType
 
 
-class BatchSourceActionPlan(Protocol):
+class CloseableResource(Protocol):
+    """Resource with explicit lifetime management."""
+
+    def close(self) -> None: ...
+
+
+class BatchSourceActionPlan(CloseableResource, Protocol):
     """Plan record that may hold resources until command execution."""
 
     @property
@@ -20,6 +26,19 @@ class BatchSourceActionPlan(Protocol):
 
     def close(self) -> None:
         ...
+
+
+def close_resources(resources: Iterable[CloseableResource]) -> None:
+    """Close every resource while preserving the first close failure."""
+    first_error: BaseException | None = None
+    for resource in resources:
+        try:
+            resource.close()
+        except BaseException as error:
+            if first_error is None:
+                first_error = error
+    if first_error is not None:
+        raise first_error
 
 
 @dataclass

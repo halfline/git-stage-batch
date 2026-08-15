@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 import sys
 
@@ -37,6 +38,8 @@ from ...data.file_target_identity import (
 from ...data.index_entries import read_index_entries
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
+from ...data.session_marker import session_is_active
+from ...data.undo.checkpoints import transaction_checkpoint
 from ...exceptions import AtomicUnitError, CommandError, exit_with_error
 from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
@@ -85,7 +88,8 @@ def execute_include_action(
     """Include selected batch-source changes into the index and worktree."""
     files = selection.files
     repository_root = get_git_repository_root_path()
-    with FileJobWorkspace() as workspace:
+    workspace = FileJobWorkspace()
+    with _action_plans.resource_cleanup((workspace,)) as close_workspace:
         (
             include_plans,
             mode_actions,
@@ -101,19 +105,24 @@ def execute_include_action(
             repository_root=repository_root,
             workspace=workspace,
         )
-        try:
+        with _action_plans.resource_cleanup(include_plans) as close_include_plans:
             _require_unchanged_include_targets(
                 expected_index_identities,
                 expected_worktree_identities,
             )
             try:
-                with undo_checkpoint(
+                with transaction_checkpoint(
                     terminal_safe_shell_join(selection.operation_parts),
                     worktree_paths=list(files),
-                    rollback_on_error=True,
-                ):
+                ) as checkpoint_status:
+                    _require_unchanged_include_targets(
+                        expected_index_identities,
+                        expected_worktree_identities,
+                    )
+                    checkpoint_status.arm_rollback()
                     for plan in include_plans:
-                        snapshot_file_if_untracked(plan.file_path)
+                        if session_is_active():
+                            snapshot_file_if_untracked(plan.file_path)
                         if isinstance(
                             plan,
                             _action_plans.IncludeTextFileActionPlan,
@@ -160,6 +169,8 @@ def execute_include_action(
                             file_path,
                             file_meta,
                         )
+                    close_include_plans()
+                    close_workspace()
             except CommandError:
                 raise
             except Exception as error:
@@ -168,10 +179,13 @@ def execute_include_action(
                     file_paths=files,
                     error=error,
                 )
-        finally:
-            _action_plans.close_action_plans(include_plans)
-
-    _action_completion.finish_batch_source_action_review(context, files)
+    checkpoint_status.defer_success(
+        partial(
+            _action_completion.finish_batch_source_action_review,
+            context,
+            tuple(files),
+        )
+    )
 
 
 def _build_include_action_plans(

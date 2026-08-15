@@ -7,8 +7,9 @@ from pathlib import Path
 from types import TracebackType
 from typing import overload
 
-from ...editor.line_editor import LineEditor
+from ...editor.line_editor import ActiveLineEditorLeaseError, LineEditor
 from ...editor.piece_table import LineLike
+from ...core.buffer import LineBuffer
 from ..line_matching.line_range_view import LineRangeView as _LineRangeView
 from .entries import RealizedEntry as _RealizedEntry
 from .provenance import (
@@ -112,21 +113,31 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         if start == end:
             return
 
-        if isinstance(lines, LineEditor):
-            self._editor.append_line_ranges_from_editor(lines, start, end)
-        else:
-            self._editor.append_line_range(lines, start, end)
-
         dest_start = self._line_count
         dest_end = dest_start + (end - start)
-        self._provenance.append(
-            dest_start,
-            dest_end,
-            source_start=_stored_provenance_line_number(source_line_start),
-            target_start=_stored_provenance_line_number(target_line_start),
-            flags=_PROVENANCE_CLAIMED_FLAG if is_claimed else 0,
-        )
-        self._line_count = dest_end
+        try:
+            if isinstance(lines, LineEditor):
+                self._editor.append_line_ranges_from_editor(lines, start, end)
+            else:
+                self._editor.append_line_range(lines, start, end)
+
+            self._provenance.append(
+                dest_start,
+                dest_end,
+                source_start=_stored_provenance_line_number(source_line_start),
+                target_start=_stored_provenance_line_number(target_line_start),
+                flags=_PROVENANCE_CLAIMED_FLAG if is_claimed else 0,
+            )
+            self._line_count = dest_end
+        except BaseException:
+            # Content and provenance form one logical append. If either side
+            # reports cancellation, make the partially built result unusable
+            # and release both stores rather than exposing mismatched lengths.
+            try:
+                self.close()
+            except BaseException:
+                pass
+            raise
 
     def append_line_from(
         self,
@@ -145,6 +156,11 @@ class RealizedEntries(Sequence[_RealizedEntry]):
             target_line_start=target_line,
             is_claimed=is_claimed,
         )
+
+    def retain_line_buffer(self, buffer: LineBuffer) -> None:
+        """Keep an appended line buffer alive through all borrowed slices."""
+        self._require_open()
+        self._editor.retain_resource(buffer)
 
     def append_entry(self, entry: _RealizedEntry) -> None:
         self.append(
@@ -196,6 +212,34 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         for index in range(start, stop):
             self.append_entry(entries[index])
 
+    def copy_provenance_slice_from(
+        self,
+        entries: RealizedEntries,
+        content_lines: Sequence[LineLike],
+        start: int,
+        stop: int,
+    ) -> None:
+        """Copy provenance while reading content from an indexed sequence.
+
+        The caller owns ``content_lines`` and must keep it alive until this
+        collection closes.  This variant avoids rescanning a fragmented source
+        editor when several monotonically increasing slices are copied.
+        """
+        self._require_open()
+        entries._require_open()
+        start, stop = entries._validated_range(start, stop)
+        if stop > len(content_lines):
+            raise ValueError("content lines do not cover realized entries")
+        for run in entries.provenance_runs(start, stop):
+            self.append_line_range_from(
+                content_lines,
+                run.dest_start,
+                run.dest_end,
+                source_line_start=run.source_line_at(run.dest_start),
+                target_line_start=run.target_line_at(run.dest_start),
+                is_claimed=run.is_claimed,
+            )
+
     def provenance_runs(
         self,
         start: int = 0,
@@ -244,32 +288,28 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         result.copy_slice_from(self, stop, len(self))
         return result
 
-    def insert_entries(
-        self,
-        position: int,
-        entries: Sequence[_RealizedEntry],
-    ) -> RealizedEntries:
-        self._require_open()
-        position = self._validated_position(position)
-        result = RealizedEntries(spool_dir=self._spool_dir)
-        result.copy_slice_from(self, 0, position)
-        result.copy_slice_from(entries, 0, len(entries))
-        result.copy_slice_from(self, position, len(self))
-        return result
-
     def close(self) -> None:
         if self._closed:
             return
 
-        self._provenance.close()
+        failure: BaseException | None = None
+        self._closed = True
+        try:
+            self._provenance.close()
+        except BaseException as error:
+            failure = error
         try:
             self._editor.close()
-        except ValueError:
+        except ActiveLineEditorLeaseError:
             # A returned entries object may still borrow ranges from this
             # editor. In that case closing is deferred to the borrower
             # lifetime; public access to this wrapper is still rejected.
             pass
-        self._closed = True
+        except BaseException as error:
+            if failure is None:
+                failure = error
+        if failure is not None:
+            raise failure
 
     def __enter__(self) -> RealizedEntries:
         self._require_open()
@@ -305,13 +345,6 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         if start < 0 or stop < start or stop > len(self):
             raise ValueError("invalid line range")
         return start, stop
-
-    def _validated_position(self, position: int) -> int:
-        if position < 0:
-            position += len(self)
-        if position < 0 or position > len(self):
-            raise ValueError("invalid insert position")
-        return position
 
     def _require_open(self) -> None:
         if self._closed:
@@ -372,13 +405,7 @@ class RealizedEntryContentSequence(Sequence[bytes]):
 
     def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):
-            start, stop, step = index.indices(len(self))
-            if step == 1:
-                return _LineRangeView(self, start, stop)
-            return tuple(
-                self[child_index]
-                for child_index in range(start, stop, step)
-            )
+            return _LineRangeView(self, 0, len(self))[index]
 
         if index < 0:
             index += len(self)
@@ -388,9 +415,8 @@ class RealizedEntryContentSequence(Sequence[bytes]):
 
 
 def backing_content_sequence(lines: Sequence[bytes]) -> Sequence[LineLike]:
-    if (
-        isinstance(lines, RealizedEntryContentSequence)
-        and isinstance(lines._entries, RealizedEntries)
+    if isinstance(lines, RealizedEntryContentSequence) and isinstance(
+        lines._entries, RealizedEntries
     ):
         return lines._entries._editor
     return lines

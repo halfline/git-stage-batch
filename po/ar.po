@@ -204,11 +204,6 @@ msgstr[3] "السطر المُطالب به {line} خارج النطاق (مصد
 msgstr[4] "السطر المُطالب به {line} خارج النطاق (مصدر الدفعة فيه {count} سطرًا)"
 msgstr[5] "السطر المُطالب به {line} خارج النطاق (مصدر الدفعة فيه {count} سطر)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr "لا يمكن وضع السطر المُطالب به {line} بصورة موثوقة: فُقد السياق المحيط"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"

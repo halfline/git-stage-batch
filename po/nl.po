@@ -204,13 +204,6 @@ msgstr[1] ""
 "Geclaimde regel {line} valt buiten het bereik (de batchbron bevat {count} "
 "regels)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr ""
-"Geclaimde regel {line} kan niet betrouwbaar worden geplaatst: de omringende "
-"context is verloren gegaan"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"

@@ -208,13 +208,6 @@ msgstr[1] ""
 "La línea reclamada {line} está fuera de rango (el origen del lote tiene "
 "{count} líneas)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr ""
-"No se puede ubicar de forma fiable la línea reclamada {line}: se perdió el "
-"contexto circundante"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"

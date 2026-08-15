@@ -179,11 +179,6 @@ msgid "Claimed line {line} is out of range (batch source has {count} line)"
 msgid_plural "Claimed line {line} is out of range (batch source has {count} lines)"
 msgstr[0] "소유권을 주장한 {line}행이 범위를 벗어났습니다(배치 소스는 {count}행입니다)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr "존재가 선언된 줄을 안정적으로 배치할 수 없습니다: {line}. 주변 문맥이 사라졌습니다"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"

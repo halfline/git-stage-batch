@@ -206,13 +206,6 @@ msgstr[1] ""
 "Die beanspruchte Zeile {line} liegt außerhalb des gültigen Bereichs (die "
 "Stapelquelle enthält {count} Zeilen)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr ""
-"Die beanspruchte Zeile {line} kann nicht zuverlässig positioniert werden: "
-"Der umgebende Kontext ist verloren gegangen"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"

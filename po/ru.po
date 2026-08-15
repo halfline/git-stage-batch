@@ -204,13 +204,6 @@ msgstr[0] "Заявленная строка {line} вне диапазона (�
 msgstr[1] "Заявленная строка {line} вне диапазона (в источнике пакета {count} строки)"
 msgstr[2] "Заявленная строка {line} вне диапазона (в источнике пакета {count} строк)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr ""
-"Невозможно надёжно разместить заявленную строку {line}: окружающий контекст "
-"утрачен"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"

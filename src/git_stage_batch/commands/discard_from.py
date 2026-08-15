@@ -68,3 +68,31 @@ def command_discard_from_batch(
         print(_("✓ Discarded changes from batch '{name}'").format(name=batch_name), file=sys.stderr)
 
     print(_("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(name=batch_name), file=sys.stderr)
+
+
+def _print_discard_success(
+    *,
+    batch_name: str,
+    file_paths: tuple[str, ...],
+    selected_lines: bool,
+    selected_file: bool,
+) -> None:
+    """Print discard success only after the outermost commit."""
+    if selected_lines:
+        message = _("✓ Discarded selected lines from batch '{name}'").format(
+            name=batch_name
+        )
+    elif selected_file:
+        message = _("✓ Discarded changes for {file} from batch '{name}'").format(
+            file=display_path(file_paths[0]),
+            name=batch_name,
+        )
+    else:
+        message = _("✓ Discarded changes from batch '{name}'").format(name=batch_name)
+    print(message, file=sys.stderr)
+    print(
+        _("Note: Batch '{name}' still exists (use 'drop' to delete it)").format(
+            name=batch_name
+        ),
+        file=sys.stderr,
+    )

@@ -192,7 +192,7 @@ A staging session includes batch references in its recovery state.
 - [`data/batch_refs.py`](src/git_stage_batch/data/batch_refs.py) records every
   current batch content and state reference. `abort` restores those references,
   restores a dropped batch, and removes a batch created after session start.
-- [`data/undo_checkpoints.py`](src/git_stage_batch/data/undo_checkpoints.py)
+- [`data/undo/checkpoints.py`](src/git_stage_batch/data/undo/checkpoints.py)
   records references changed by one command. `undo` and `redo` restore only the
   command checkpoints they traverse.
 

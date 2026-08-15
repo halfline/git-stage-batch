@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...core.line_selection import LineRanges
 from .model import BatchOwnership
+from ...core.line_selection import LineRangeBuilder
 from .claims import (
     format_ownership_line_set,
     presence_claims_from_source_lines,
@@ -17,13 +18,14 @@ from .unit_types import (
 
 def rebuild_ownership_from_units(units: list[_UnitRecord]) -> BatchOwnership:
     """Rebuild BatchOwnership from semantic ownership units."""
-    all_presence_lines = LineRanges.empty()
+    all_presence_lines = LineRangeBuilder()
     all_presence_references = {}
     all_deletions = []
     replacement_units: list[ReplacementUnit] = []
 
     for unit in units:
-        all_presence_lines = all_presence_lines.union(unit.claimed_source_lines)
+        for range_start, range_end in unit.claimed_source_lines.ranges():
+            all_presence_lines.add_range(range_start, range_end)
         all_presence_references.update(
             {
                 line: reference
@@ -47,7 +49,7 @@ def rebuild_ownership_from_units(units: list[_UnitRecord]) -> BatchOwnership:
 
     return BatchOwnership(
         presence_claims=presence_claims_from_source_lines(
-            all_presence_lines,
+            all_presence_lines.finish(),
             all_presence_references,
         ),
         deletions=all_deletions,

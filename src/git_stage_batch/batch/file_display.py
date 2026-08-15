@@ -118,6 +118,7 @@ def build_batch_file_display_from_inputs(
     )
 
     mergeable_id_ranges = LineRanges.empty()
+    mergeable_selection_groups: tuple[LineRanges, ...] = ()
     units = []
     if probe_mergeability and display_lines:
         mergeability = _file_mergeability.probe_batch_file_mergeability(
@@ -127,6 +128,9 @@ def build_batch_file_display_from_inputs(
             batch_source_lines=batch_source_lines,
         )
         mergeable_id_ranges = mergeability.mergeable_id_ranges
+        mergeable_selection_groups = (
+            mergeability.mergeable_selection_groups
+        )
         units = mergeability.units
 
     return _file_display_model.build_rendered_batch_display_model(
@@ -134,5 +138,6 @@ def build_batch_file_display_from_inputs(
         file_meta=file_meta,
         display_lines=display_lines,
         mergeable_id_ranges=mergeable_id_ranges,
+        mergeable_selection_groups=mergeable_selection_groups,
         units=units,
     )

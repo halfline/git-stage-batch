@@ -33,6 +33,7 @@ def build_rendered_batch_display_model(
     display_lines: list[OwnershipDisplayLine],
     mergeable_id_ranges: LineRanges,
     units: Sequence[OwnershipUnit],
+    mergeable_selection_groups: Sequence[LineRanges] = (),
 ) -> Optional[RenderedBatchDisplay]:
     """Build the rendered batch display model from display rows and units."""
     if not display_lines:
@@ -144,11 +145,6 @@ def build_rendered_batch_display_model(
             selection_id_to_gutter[entry.id] = gutter_num
             gutter_num += 1
 
-    line_id_display_order = [
-        entry.id
-        for entry in line_entries
-        if entry.id is not None
-    ]
     resettable_ids = LineRanges.from_ranges(
         display_id_range
         for unit in units
@@ -163,22 +159,54 @@ def build_rendered_batch_display_model(
             review_selection_id_to_gutter[entry.id] = review_gutter_num
             review_gutter_num += 1
 
+    if not mergeable_selection_groups:
+        mergeable_selection_groups = tuple(
+            unit.display_line_ids
+            for unit in units
+            if (
+                unit.display_line_ids
+                and all(
+                    mergeable_id_ranges.contains_range(range_start, range_end)
+                    for range_start, range_end
+                    in unit.display_line_ids.ranges()
+                )
+            )
+        )
+    mergeable_selection_group_set = frozenset(mergeable_selection_groups)
+    unit_display_line_id_set = frozenset(
+        unit.display_line_ids for unit in units
+    )
+
     actionable_selection_groups = []
+    rendered_mergeable_selection_groups = []
+    for selection_group in mergeable_selection_groups:
+        if any(
+            line_id not in review_selection_id_to_gutter
+            for line_id in selection_group
+        ):
+            continue
+        ordered_selection_group = tuple(sorted(
+            selection_group,
+            key=review_selection_id_to_gutter.__getitem__,
+        ))
+        actionable_selection_groups.append(ordered_selection_group)
+        rendered_mergeable_selection_groups.append(selection_group)
     review_action_groups = []
     for unit in units:
         if not unit.display_line_ids:
             continue
-        ordered_group = tuple(
-            line_id
-            for line_id in line_id_display_order
-            if line_id in unit.display_line_ids
-        )
-        if len(ordered_group) != len(unit.display_line_ids):
+        if any(
+            line_id not in review_selection_id_to_gutter
+            for line_id in unit.display_line_ids
+        ):
             continue
+        ordered_group = tuple(sorted(
+            unit.display_line_ids,
+            key=review_selection_id_to_gutter.__getitem__,
+        ))
 
         actions = [_BATCH_RESET_REVIEW_ACTION]
-        if unit.display_line_ids.intersection(mergeable_id_ranges) == unit.display_line_ids:
-            actionable_selection_groups.append(ordered_group)
+        if unit.display_line_ids in mergeable_selection_group_set:
             actions = [
                 *_BATCH_MERGE_REVIEW_ACTIONS,
                 _BATCH_RESET_REVIEW_ACTION,
@@ -204,6 +232,29 @@ def build_rendered_batch_display_model(
                     reason=reason,
                 )
             )
+
+    for selection_group, ordered_group in zip(
+        rendered_mergeable_selection_groups,
+        actionable_selection_groups,
+        strict=True,
+    ):
+        if selection_group in unit_display_line_id_set:
+            continue
+        review_display_ids = tuple(
+            review_selection_id_to_gutter[line_id]
+            for line_id in ordered_group
+            if line_id in review_selection_id_to_gutter
+        )
+        if len(review_display_ids) != len(ordered_group):
+            continue
+        review_action_groups.append(
+            ReviewActionGroup(
+                display_ids=review_display_ids,
+                selection_ids=ordered_group,
+                actions=_BATCH_MERGE_REVIEW_ACTIONS,
+                reason="replacement",
+            )
+        )
 
     return RenderedBatchDisplay(
         line_changes=line_changes,

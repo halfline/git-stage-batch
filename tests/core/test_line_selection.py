@@ -3,6 +3,7 @@
 import pytest
 
 from git_stage_batch.core.line_selection import (
+    LineRangeBuilder,
     LineRanges,
     coerce_line_ranges,
     format_line_ids,
@@ -169,6 +170,27 @@ class TestFormatLineIds:
 
 class TestLineRanges:
     """Tests for range-backed line selections."""
+
+    def test_range_builder_coalesces_ordered_additions(self):
+        builder = LineRangeBuilder()
+        builder.add_line(1)
+        builder.add_range(2, 4)
+        builder.add_range(8, 9)
+
+        assert builder.finish().ranges() == ((1, 4), (8, 9))
+
+    def test_range_builder_normalizes_out_of_order_ranges_at_finish(self):
+        builder = LineRangeBuilder()
+        builder.add_range(10, 12)
+        builder.add_range(1, 10)
+
+        assert builder.finish().ranges() == ((1, 12),)
+
+    def test_range_builder_keeps_large_range_compact(self):
+        builder = LineRangeBuilder()
+        builder.add_range(1, 10_000_000)
+
+        assert builder.finish().ranges() == ((1, 10_000_000),)
 
     def test_coerce_line_ranges_keeps_range_instance(self):
         selection = LineRanges.from_ranges([(1, 3)])

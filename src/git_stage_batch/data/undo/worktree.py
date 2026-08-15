@@ -283,3 +283,8 @@ def file_mode_for_path(path: Path) -> str:
     if stat.S_ISLNK(file_status.st_mode):
         return "120000"
     return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
+
+
+def file_permissions_for_path(path: Path) -> int:
+    """Return exact Unix permission bits for a regular filesystem path."""
+    return stat.S_IMODE(path.lstat().st_mode)

@@ -4,11 +4,14 @@ import git_stage_batch.commands.batch_source.action_plans as action_plans
 
 
 class _CloseCountingBuffer:
-    def __init__(self) -> None:
+    def __init__(self, *, error: BaseException | None = None) -> None:
         self.close_count = 0
+        self.error = error
 
     def close(self) -> None:
         self.close_count += 1
+        if self.error is not None:
+            raise self.error
 
 
 def test_apply_text_file_action_plan_closes_buffer():

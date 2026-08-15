@@ -1,6 +1,7 @@
 """Tests for undo command."""
 
 import os
+import stat
 import subprocess
 
 import pytest
@@ -72,6 +73,10 @@ def _commit_text_file(repo, path: str, content: str):
         capture_output=True,
     )
     return file_path
+
+
+def _permission_bits(path):
+    return stat.S_IMODE(path.lstat().st_mode)
 
 
 def test_undo_include_line_restores_symlink_worktree_snapshot(temp_git_repo):
@@ -341,6 +346,41 @@ def test_atomic_failed_operation_rolls_back_before_propagating(temp_git_repo):
     assert _show_index_path(temp_git_repo, "target.txt") == b"before\n"
     assert current_undo_commit() == previous_checkpoint
     assert status is not None
+    assert status.rollback == "completed"
+
+
+def test_active_transaction_rollback_restores_private_metadata_permissions(
+    temp_git_repo,
+):
+    """An unfinalized active checkpoint retains exact metadata modes."""
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    session_file = get_session_directory_path() / "private-state"
+    batch_file = get_batches_directory_path() / "saved" / "private-state"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    batch_file.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+    session_file.write_text("session before\n")
+    batch_file.write_text("batch before\n")
+    session_file.chmod(0o600)
+    batch_file.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with transaction_checkpoint(
+            "change private metadata",
+            worktree_paths=[],
+            index_paths=[],
+        ) as status:
+            status.arm_rollback()
+            session_file.write_text("session published\n")
+            batch_file.write_text("batch published\n")
+            session_file.chmod(0o644)
+            batch_file.chmod(0o644)
+            raise RuntimeError("publication failed")
+
+    assert session_file.read_text() == "session before\n"
+    assert batch_file.read_text() == "batch before\n"
+    assert _permission_bits(session_file) == 0o600
+    assert _permission_bits(batch_file) == 0o600
     assert status.rollback == "completed"
 
 
@@ -1055,6 +1095,89 @@ def test_scoped_undo_preserves_unrelated_application_metadata(temp_git_repo):
     assert target_batch.read_text() == "after\n"
     assert unrelated_session.read_text() == "unrelated later\n"
     assert unrelated_batch.read_text() == "unrelated later\n"
+
+
+def test_undo_and_redo_restore_exact_worktree_and_metadata_permissions(
+    temp_git_repo,
+):
+    """Checkpoint manifests retain modes more precise than Git tree modes."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    session_file = get_session_directory_path() / "private-state"
+    batch_file = get_batches_directory_path() / "saved" / "private-state"
+    repository_relative_path = applied_batch_overlays_repository_path()
+    repository_file = temp_git_repo / ".git" / repository_relative_path
+    session_file.parent.mkdir(parents=True, exist_ok=True)
+    batch_file.parent.mkdir(parents=True, exist_ok=True)
+    repository_file.parent.mkdir(parents=True, exist_ok=True)
+    for path in (target, session_file, batch_file, repository_file):
+        path.write_text("before\n")
+        path.chmod(0o600)
+
+    with undo_checkpoint(
+        "change private files",
+        worktree_paths=["target.txt"],
+        repository_paths=[repository_relative_path],
+    ):
+        for path in (target, session_file, batch_file, repository_file):
+            path.write_text("after\n")
+            path.chmod(0o640)
+
+    undo_last_checkpoint()
+
+    for path in (target, session_file, batch_file, repository_file):
+        assert path.read_text() == "before\n"
+        assert _permission_bits(path) == 0o600
+
+    redo_last_checkpoint()
+
+    for path in (target, session_file, batch_file, repository_file):
+        assert path.read_text() == "after\n"
+        assert _permission_bits(path) == 0o640
+
+
+def test_transient_rollback_restores_private_overlay_permissions(
+    temp_git_repo,
+):
+    """A failed no-session apply cannot broaden private overlay access."""
+    repository_relative_path = applied_batch_overlays_repository_path()
+    overlay_path = temp_git_repo / ".git" / repository_relative_path
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    overlay_path.write_text("private before\n")
+    overlay_path.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with transaction_checkpoint(
+            "change overlay",
+            worktree_paths=[],
+            index_paths=[],
+            repository_paths=[repository_relative_path],
+        ) as status:
+            status.arm_rollback()
+            overlay_path.write_text("published\n")
+            overlay_path.chmod(0o644)
+            raise RuntimeError("publication failed")
+
+    assert overlay_path.read_text() == "private before\n"
+    assert _permission_bits(overlay_path) == 0o600
+
+
+def test_transient_rollback_restores_exact_worktree_permissions(temp_git_repo):
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    target.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+            index_paths=[],
+        ) as status:
+            status.arm_rollback()
+            target.write_text("published\n")
+            target.chmod(0o644)
+            raise RuntimeError("publication failed")
+
+    assert target.read_text() == "before\n"
+    assert _permission_bits(target) == 0o600
 
 
 def test_incomplete_checkpoint_requires_force(temp_git_repo, monkeypatch):

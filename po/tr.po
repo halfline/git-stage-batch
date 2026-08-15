@@ -7735,6 +7735,24 @@ msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde ka
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"{file} için eklenen alt modül işaretçisi atılamıyor: dizinde "
+"birleştirilmemiş girdiler var."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"{file} için eklenen alt modül işaretçisi atılamıyor: dizin zaten hazırlanmış "
+"içerik barındırıyor."
+
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
 #: src/git_stage_batch/batch/discard.py:884

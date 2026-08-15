@@ -7892,6 +7892,24 @@ msgstr "Wszystkie zmiany drzewa roboczego są obecnie zapisane w {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stan zastosowanych partii jest uszkodzony: {path}. Usuń ten plik, aby zapomnieć pochodzenie przeglądu przywróconych zmian."
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Nie można odrzucić dodanego wskaźnika podmodułu dla {file}: indeks zawiera "
+"niescalone wpisy."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"Nie można odrzucić dodanego wskaźnika podmodułu dla {file}: indeks zawiera "
+"już przygotowaną zawartość."
+
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
 #: src/git_stage_batch/batch/discard.py:884

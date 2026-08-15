@@ -7329,6 +7329,24 @@ msgstr "모든 작업 트리 변경 사항은 현재 {locations}에 저장되어
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "적용된 배치 상태가 손상되었습니다: {path}. 복원된 변경 사항의 검토 출처를 잊으려면 이 파일을 제거하십시오."
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"{file}에 추가된 서브모듈 포인터를 버릴 수 없습니다. 인덱스에 병합되지 않은 항"
+"목이 있습니다."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"{file}에 추가된 서브모듈 포인터를 버릴 수 없습니다. 인덱스에 이미 스테이징된 "
+"내용이 있습니다."
+
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
 #: src/git_stage_batch/batch/discard.py:884

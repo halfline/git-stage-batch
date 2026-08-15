@@ -7287,6 +7287,20 @@ msgstr "所有工作树更改当前都已保存在 {locations} 中。"
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "已应用批次状态已损坏：{path}。请删除此文件以忘记已恢复更改的审查来源。"
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr "无法丢弃 {file} 新增的子模块指针：索引中存在未合并条目。"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr "无法丢弃 {file} 新增的子模块指针：索引中已包含暂存内容。"
+
 
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869

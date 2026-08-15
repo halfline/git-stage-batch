@@ -8020,6 +8020,24 @@ msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"لا يمكن تجاهل مؤشر الوحدة الفرعية المضاف للملف {file}: يحتوي الفهرس على "
+"إدخالات غير مدمجة."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"لا يمكن تجاهل مؤشر الوحدة الفرعية المضاف للملف {file}: يحتوي الفهرس بالفعل "
+"على محتوى مجهّز."
+
 
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869

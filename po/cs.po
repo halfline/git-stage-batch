@@ -7784,6 +7784,25 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr ""
+"Položka files[{path!r}] má alternativu zdroje bez vlastněné strany náhrady"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Nelze zahodit přidaný ukazatel submodulu pro {file}: index obsahuje "
+"nesloučené položky."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
 
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869

@@ -7819,6 +7819,24 @@ msgstr "Todas as alterações da árvore de trabalho estão salvas atualmente em
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "O estado dos lotes aplicados está corrompido: {path}. Remova este arquivo para esquecer a procedência de revisão das alterações restauradas."
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Não é possível descartar o ponteiro de submódulo adicionado de {file}: o "
+"índice contém entradas não mescladas."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"Não é possível descartar o ponteiro de submódulo adicionado de {file}: o "
+"índice já contém conteúdo preparado."
+
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
 #: src/git_stage_batch/batch/discard.py:884

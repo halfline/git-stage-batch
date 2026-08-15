@@ -7839,6 +7839,24 @@ msgstr "Alle wijzigingen in de werkboom zijn momenteel opgeslagen in {locations}
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "De status van toegepaste batches is beschadigd: {path}. Verwijder dit bestand om de beoordelingsherkomst van herstelde wijzigingen te vergeten."
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Kan de toegevoegde submoduleverwijzing voor {file} niet verwijderen: de "
+"index bevat niet-samengevoegde vermeldingen."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"Kan de toegevoegde submoduleverwijzing voor {file} niet verwijderen: de "
+"index bevat al klaargezette inhoud."
+
 # Applied replacement rollback translations.
 #: src/git_stage_batch/batch/discard.py:869
 #: src/git_stage_batch/batch/discard.py:884

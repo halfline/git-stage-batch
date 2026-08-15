@@ -18,7 +18,10 @@ from git_stage_batch.data.applied_batch_overlays import (
     rebind_applied_batch_overlays_after_session,
     record_applied_batch_overlays,
 )
-from git_stage_batch.data.file_target_identity import capture_worktree_identity
+from git_stage_batch.data.file_target_identity import (
+    IndexIdentity,
+    capture_worktree_identity,
+)
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_applied_batch_overlays_file_path
@@ -56,6 +59,8 @@ def _record_overlay(
     repo,
     *,
     introduced_selected_presence: bool = False,
+    index_preimage_source_ranges: tuple[tuple[int, int], ...] = (),
+    expected_index_identities: dict[str, IndexIdentity] | None = None,
 ) -> None:
     before_identity = capture_worktree_identity("file.txt")
     (repo / "file.txt").write_text("after\n")
@@ -73,9 +78,11 @@ def _record_overlay(
                 },
                 source_object_id="b" * 40,
                 introduced_selected_presence=introduced_selected_presence,
+                index_preimage_source_ranges=index_preimage_source_ranges,
             ),
         },
         before_worktree_identities={"file.txt": before_identity},
+        expected_index_identities=expected_index_identities,
     )
 
 
@@ -494,3 +501,153 @@ def test_recording_reads_previous_batch_revisions_once(temp_git_repo, monkeypatc
     )
 
     assert calls == [("saved",)]
+
+
+def test_exact_preimage_authorizes_its_range_in_a_mixed_selection(
+    temp_git_repo,
+):
+    """A replacement preimage remains usable when another claim preexisted."""
+    _record_overlay(
+        temp_git_repo,
+        introduced_selected_presence=False,
+        index_preimage_source_ranges=((1, 1),),
+    )
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    assert "introduced_selected_presence" not in application
+    assert application["index_preimage_source_lines"] == ["1"]
+
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+    assert view.source_line_ranges_by_batch == {"saved": ((1, 1),)}
+    assert view.index_preimage_source_line_ranges_by_batch == {"saved": ((1, 1),)}
+
+
+def test_recording_omits_preimage_when_planned_index_went_stale(
+    temp_git_repo,
+):
+    """A late index change must not acquire exact-preimage authority."""
+    _record_overlay(
+        temp_git_repo,
+        introduced_selected_presence=True,
+        index_preimage_source_ranges=((1, 1),),
+        expected_index_identities={
+            "file.txt": IndexIdentity("100644", "f" * 40),
+        },
+    )
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    assert "index_target_is_original" not in application
+    assert "index_preimage_source_lines" not in application
+    assert (
+        fresh_applied_batch_overlay_for_path(
+            "file.txt"
+        ).index_preimage_source_line_ranges_by_batch
+        == {}
+    )
+
+
+def test_reapplying_identical_ownership_preserves_one_strongest_record(
+    temp_git_repo,
+):
+    """A no-op reapply must not duplicate or weaken fresh provenance."""
+    _record_overlay(
+        temp_git_repo,
+        introduced_selected_presence=True,
+        index_preimage_source_ranges=((1, 1),),
+    )
+    _record_overlay(temp_git_repo)
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    applications = state["files"]["file.txt"]["applications"]
+    assert len(applications) == 1
+    assert applications[0]["introduced_selected_presence"] is True
+    assert applications[0]["index_target_is_original"] is True
+    assert applications[0]["index_preimage_source_lines"] == ["1"]
+
+
+def test_overlay_rejects_preimage_outside_selected_presence(temp_git_repo):
+    """Index-preimage authority cannot exceed the recorded application."""
+    _record_overlay(temp_git_repo)
+    state_path = get_applied_batch_overlays_file_path()
+    state = json.loads(state_path.read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    application["introduced_selected_presence"] = True
+    application["index_preimage_source_lines"] = ["2"]
+    state_path.write_text(json.dumps(state))
+
+    with pytest.raises(CommandError, match="Applied-batch state is corrupt"):
+        load_applied_batch_overlay_snapshot()
+
+
+def test_overlay_without_original_index_marker_withholds_preexisting_proof(
+    temp_git_repo,
+):
+    """Older advisory entries must not treat a rebound index as apply input."""
+    _record_overlay(temp_git_repo)
+    state_path = get_applied_batch_overlays_file_path()
+    state = json.loads(state_path.read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    application.pop("index_target_is_original")
+    state_path.write_text(json.dumps(state))
+
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+
+    assert view.revealed_owner_names
+    assert view.applied_source_line_ranges_by_batch == {}
+
+
+def test_legacy_preimage_without_original_index_marker_is_fail_closed(
+    temp_git_repo,
+):
+    """Legacy unbound preimages must load without granting index authority."""
+    _record_overlay(
+        temp_git_repo,
+        index_preimage_source_ranges=((1, 1),),
+    )
+    state_path = get_applied_batch_overlays_file_path()
+    state = json.loads(state_path.read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    application.pop("index_target_is_original")
+    state_path.write_text(json.dumps(state))
+
+    snapshot = load_applied_batch_overlay_snapshot()
+    loaded_application = snapshot.state["files"]["file.txt"]["applications"][0]
+    view = fresh_applied_batch_overlay_for_path(
+        "file.txt",
+        snapshot=snapshot,
+    )
+
+    assert "index_preimage_source_lines" not in loaded_application
+    assert view.revealed_owner_names
+    assert view.source_line_ranges_by_batch == {}
+    assert view.index_preimage_source_line_ranges_by_batch == {}
+
+
+def test_reapplying_legacy_unbound_preimage_does_not_promote_it(
+    temp_git_repo,
+):
+    """Fresh identity proof must not become attached to an old unbound range."""
+    _record_overlay(
+        temp_git_repo,
+        index_preimage_source_ranges=((1, 1),),
+    )
+    state_path = get_applied_batch_overlays_file_path()
+    state = json.loads(state_path.read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    application.pop("index_target_is_original")
+    state_path.write_text(json.dumps(state))
+
+    _record_overlay(temp_git_repo)
+
+    rewritten_state = json.loads(state_path.read_text())
+    rewritten_application = rewritten_state["files"]["file.txt"]["applications"][0]
+    assert rewritten_application["index_target_is_original"] is True
+    assert "index_preimage_source_lines" not in rewritten_application
+    assert (
+        fresh_applied_batch_overlay_for_path(
+            "file.txt"
+        ).index_preimage_source_line_ranges_by_batch
+        == {}
+    )

@@ -1075,3 +1075,108 @@ def test_incomplete_checkpoint_requires_force(temp_git_repo, monkeypatch):
         undo_last_checkpoint()
 
     assert target.read_text() == "after process exit\n"
+
+
+def test_active_transaction_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """An active-session transaction must remain scoped to its repository."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with transaction_checkpoint(
+                    "wrong repository",
+                    worktree_paths=[],
+                ):
+                    raise AssertionError("cross-repository transaction started")
+        outer_status.arm_rollback()
+        target.write_text("published\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert target.read_text() == "published\n"
+
+
+def test_active_undo_checkpoint_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """A regular pending checkpoint must retain ownership of its repository."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with undo_checkpoint("outer change", worktree_paths=["target.txt"]):
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with undo_checkpoint("wrong repository", worktree_paths=[]):
+                    raise AssertionError("cross-repository checkpoint started")
+        target.write_text("published\n")
+
+    assert target.read_text() == "published\n"
+    undo_last_checkpoint()
+    assert target.read_text() == "before\n"
+
+
+def test_transient_transaction_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """A transient before-image must never delegate work in another repo."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with transaction_checkpoint(
+                    "wrong repository",
+                    worktree_paths=[],
+                ):
+                    raise AssertionError("cross-repository transaction started")
+        outer_status.arm_rollback()
+        target.write_text("published\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert target.read_text() == "published\n"

@@ -96,7 +96,12 @@ def test_probe_batch_file_mergeability_checks_each_unit_once(monkeypatch):
         fake_validate_ownership_units,
     )
 
-    def fake_rebuild_ownership_from_units(unit_group):
+    def fake_rebuild_ownership_from_units(
+        unit_group,
+        *,
+        normalize_replacement_metadata,
+    ):
+        assert normalize_replacement_metadata is False
         rebuilt_units.append(tuple(unit_group))
         return _OwnershipForUnit(unit_group[0])
 
@@ -138,3 +143,88 @@ def test_probe_batch_file_mergeability_checks_each_unit_once(monkeypatch):
     assert rebuilt_units == [(units[0],), (units[1],)]
     assert merge_checks == [(units[0], "mapping"), (units[1], "mapping")]
     assert len(match_calls) == 1
+
+
+def test_composite_probe_skips_repeated_replacement_normalization(
+    monkeypatch,
+):
+    """One large parent probe must use the trusted linear rebuild path."""
+    unit_count = 512
+    origin = object()
+    units = [
+        _Unit(LineRanges.from_ranges(((line_id, line_id),)), origin)
+        for line_id in range(1, unit_count + 1)
+    ]
+    ownership = BatchOwnership.from_presence_lines([f"1-{unit_count}"], [])
+    display_lines = [
+        {"id": line_id, "type": "claimed"}
+        for line_id in range(1, unit_count + 1)
+    ]
+    rebuilt_sizes = []
+
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "load_working_tree_file_as_buffer",
+        lambda _path: _LineContext([b"line\n"]),
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "read_git_object_buffer_or_none",
+        lambda _spec: None,
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "match_lines",
+        lambda _source, _target: _LineContext("mapping"),
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "build_ownership_units_from_display_lines",
+        lambda _ownership, _display: units,
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "validate_ownership_units",
+        lambda _units: None,
+    )
+
+    class _GroupOwnership:
+        def __init__(self, selected_units):
+            self.units = tuple(selected_units)
+
+        def is_empty(self):
+            return False
+
+    def rebuild(
+        selected_units,
+        *,
+        normalize_replacement_metadata,
+    ):
+        assert normalize_replacement_metadata is False
+        rebuilt_sizes.append(len(selected_units))
+        return _GroupOwnership(selected_units)
+
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "rebuild_ownership_from_units",
+        rebuild,
+    )
+    monkeypatch.setattr(
+        file_mergeability_module.batch_merge,
+        "can_merge_batch_from_line_sequences",
+        lambda _source, selected, _working, **_options: (
+            len(selected.units) == unit_count
+        ),
+    )
+
+    result = probe_batch_file_mergeability(
+        file_path="file.txt",
+        ownership=ownership,
+        display_lines=display_lines,
+        batch_source_lines=[b"line\n"],
+    )
+
+    assert rebuilt_sizes == [1] * unit_count + [unit_count]
+    assert result.mergeable_selection_groups == (
+        LineRanges.from_ranges(((1, unit_count),)),
+    )

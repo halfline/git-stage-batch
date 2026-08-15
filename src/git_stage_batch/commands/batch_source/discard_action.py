@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 import sys
 
+from . import action_plans as _action_plans
 from . import action_selection as _action_selection
 from . import atomic_unit_refusals as _atomic_unit_refusals
 from . import binary_file_actions as _binary_file_actions
@@ -14,9 +17,20 @@ from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.submodule_pointer import (
     discard_submodule_pointer_from_batch,
     is_batch_submodule_pointer,
+    validate_discard_submodule_pointer,
 )
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+)
+from ...data.file_target_identity import (
+    IndexIdentity,
+    WorktreeIdentity,
+    capture_worktree_identities,
+    capture_worktree_identity,
+    read_index_identities,
+)
 from ...exceptions import (
     AtomicUnitError,
     BatchMetadataError,
@@ -26,6 +40,64 @@ from ...exceptions import (
 )
 from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
+
+
+@dataclass(frozen=True, slots=True)
+class _DiscardTextInput:
+    """Captured immutable worktree input for one text discard plan."""
+
+    ordinal: int
+    file_path: str
+    file_meta: BatchFileMetadataDict
+    identity: WorktreeIdentity
+    worktree_artifact: Path
+    scratch_directory: Path
+
+
+@dataclass(frozen=True, slots=True)
+class _DiscardModeActionPlan:
+    """Deferred worktree mode restoration."""
+
+    file_path: str
+    file_mode: str
+
+    def close(self) -> None:
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class _DiscardPlanCapture:
+    """All plans and target identities captured before publication."""
+
+    plans: list[_action_plans.BatchSourceActionPlan]
+    worktree_identities: dict[str, WorktreeIdentity]
+    index_identities: dict[str, IndexIdentity]
+    index_mutation_paths: tuple[str, ...]
+
+
+def _validate_discard_submodule_pointer_target(
+    file_path: str,
+    file_meta: BatchFileMetadataDict,
+    index_identity: IndexIdentity,
+) -> None:
+    """Validate submodule metadata and command-owned index preconditions."""
+    validate_discard_submodule_pointer(file_path, file_meta)
+    if file_meta.get("change_type") != "added":
+        return
+    if index_identity.unmerged_entries:
+        raise CommandError(
+            _(
+                "Cannot discard added submodule pointer for {file}: "
+                "the index has unmerged entries."
+            ).format(file=display_path(file_path))
+        )
+    if index_identity.exists and not index_identity.intent_to_add:
+        raise CommandError(
+            _(
+                "Cannot discard added submodule pointer for {file}: "
+                "the index already contains staged content."
+            ).format(file=display_path(file_path))
+        )
 
 
 def _print_binary_discard_result(

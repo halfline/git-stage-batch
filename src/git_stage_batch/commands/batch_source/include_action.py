@@ -33,9 +33,8 @@ from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
     capture_worktree_identity,
-    index_identity_from_entry,
+    read_index_identities,
 )
-from ...data.index_entries import read_index_entries
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
 from ...data.session_marker import session_is_active
@@ -248,11 +247,7 @@ def _capture_include_plan_inputs(
     workspace: FileJobWorkspace,
 ) -> _IncludePlanCapture:
     """Capture include targets and classify atomic and text inputs."""
-    index_entries = read_index_entries(files)
-    index_identities = {
-        file_path: index_identity_from_entry(index_entries.get(file_path))
-        for file_path in files
-    }
+    index_identities = read_index_identities(files)
     worktree_identities: dict[str, WorktreeIdentity] = {}
     plans_by_ordinal: dict[int, _action_plans.BatchSourceActionPlan] = {}
     command_errors_by_ordinal: dict[int, CommandError] = {}
@@ -697,13 +692,17 @@ def _include_target_changed_error(
     *,
     target: str,
 ) -> CommandError:
-    label = "Index" if target == "index" else "Working tree file"
-    return CommandError(
-        _(
-            "{label} changed while include was being calculated: "
+    if target == "index":
+        message = _(
+            "Index changed while include was being calculated: "
             "{file}. Retry the include command."
-        ).format(label=label, file=display_path(file_path))
-    )
+        )
+    else:
+        message = _(
+            "Working tree file changed while include was being calculated: "
+            "{file}. Retry the include command."
+        )
+    return CommandError(message.format(file=display_path(file_path)))
 
 
 def _require_unchanged_include_targets(
@@ -711,12 +710,13 @@ def _require_unchanged_include_targets(
     expected_worktree_identities: dict[str, WorktreeIdentity],
 ) -> None:
     file_paths = tuple(expected_index_identities)
-    current_index_entries = read_index_entries(file_paths)
+    current_index_identities = read_index_identities(file_paths)
     for file_path in file_paths:
-        current_index_identity = index_identity_from_entry(
-            current_index_entries.get(file_path)
-        )
-        if current_index_identity != expected_index_identities[file_path]:
+        current_index_identity = current_index_identities[file_path]
+        if (
+            expected_index_identities[file_path].unmerged_entries
+            or current_index_identity != expected_index_identities[file_path]
+        ):
             raise _include_target_changed_error(
                 file_path,
                 target="index",
@@ -736,8 +736,11 @@ def _require_unchanged_include_target(
     expected_index_identity: IndexIdentity,
     expected_worktree_identity: WorktreeIdentity,
 ) -> None:
-    current_index_entry = read_index_entries((file_path,)).get(file_path)
-    if index_identity_from_entry(current_index_entry) != expected_index_identity:
+    current_index_identity = read_index_identities((file_path,))[file_path]
+    if (
+        expected_index_identity.unmerged_entries
+        or current_index_identity != expected_index_identity
+    ):
         raise _include_target_changed_error(file_path, target="index")
     if capture_worktree_identity(file_path) != expected_worktree_identity:
         raise _include_target_changed_error(file_path, target="worktree")

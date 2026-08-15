@@ -908,13 +908,15 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
     target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
     get_session_directory_path().mkdir(parents=True, exist_ok=True)
     original_directory_state = undo_snapshots.filesystem_directory_state
-    calls = 0
+    session_calls = 0
 
     def fail_during_finalization(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls > 2:
-            raise RuntimeError("manifest persistence failed")
+        nonlocal session_calls
+        source_dir = args[0] if args else kwargs["source_dir"]
+        if source_dir == get_session_directory_path():
+            session_calls += 1
+            if session_calls > 1:
+                raise RuntimeError("manifest persistence failed")
         return original_directory_state(*args, **kwargs)
 
     monkeypatch.setattr(

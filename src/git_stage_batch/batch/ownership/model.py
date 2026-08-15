@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ...core.line_selection import (
+    LineRangeBuilder as _LineRangeBuilder,
     LineRanges,
 )
 from .absence_claims import AbsenceClaim as _AbsenceClaim
@@ -64,10 +65,11 @@ class BatchOwnership:
 
     def presence_line_set(self) -> LineRanges:
         """Return all batch-source lines claimed present by this ownership."""
-        presence_lines = LineRanges.empty()
+        presence_lines = _LineRangeBuilder()
         for claim in self.presence_claims:
-            presence_lines = presence_lines.union(claim.source_line_set())
-        return presence_lines
+            for range_start, range_end in claim.source_line_set().ranges():
+                presence_lines.add_range(range_start, range_end)
+        return presence_lines.finish()
 
     def presence_baseline_references(self) -> dict[int, _BaselineReference]:
         """Return baseline references keyed by claimed batch-source line."""

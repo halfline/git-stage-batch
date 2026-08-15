@@ -465,7 +465,14 @@ absences are already satisfied before writing.
 ## How `discard --from` removes saved changes
 
 `discard --from <name>` removes the selected batch's effect from the working
-tree and does not change the index.
+tree. Text, binary, and mode actions do not change the index. Restoring the
+absence that preceded an added submodule pointer also removes that pointer's
+intent-to-add index entry, so that exact index path participates in validation
+and rollback.
+
+This removal accepts only an absent entry or the existing intent-to-add
+sentinel. It refuses both independently staged content and unmerged index
+stages, rather than treating either state as an expendable empty entry.
 
 [`commands/discard_from.py`](src/git_stage_batch/commands/discard_from.py) uses
 the same action-context, selection, planning, refusal, and completion modules as

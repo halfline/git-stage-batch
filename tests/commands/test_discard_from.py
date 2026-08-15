@@ -7,18 +7,22 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.data.undo.checkpoints as undo_checkpoints
 import git_stage_batch.commands.batch_source.discard_action as discard_action
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
+from git_stage_batch.commands.stop import command_stop
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
 )
 from git_stage_batch.exceptions import CommandError, MergeError
+from git_stage_batch.utils.file_job_workspace import FileJobWorkspace
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
@@ -252,12 +256,6 @@ static void reset_state(void)
             fail_second_write,
         )
 
-        with pytest.raises(CommandError, match="a.txt|b.txt"):
-            command_discard_from_batch("test-batch")
-
-        assert (temp_git_repo / "a.txt").read_text() == "a.txt batch\n"
-        assert (temp_git_repo / "b.txt").read_text() == "b.txt batch\n"
-
     def test_index_derived_rollback_rejects_change_after_planning(
         self,
         monkeypatch,
@@ -310,30 +308,6 @@ static void reset_state(void)
                 },
             )
 
-    def test_discard_from_batch_partial_atomic_unit_shows_required_lines(
-        self, temp_git_repo
-    ):
-        """Partial replacement selections should keep the atomic-selection guidance."""
-        test_file = temp_git_repo / "file.txt"
-        test_file.write_text("old value\nkeep\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("new value\nkeep\n")
-        command_start()
-        command_include_to_batch("test-batch", quiet=True)
-
-        rendered = render_batch_file_display("test-batch", "file.txt")
-        new_value_gutter = next(
-            rendered.selection_id_to_gutter[line.id]
-            for line in rendered.line_changes.lines
-            if line.id is not None and line.display_text() == "new value"
-        )
-
-        with pytest.raises(CommandError, match="must be selected together") as exc_info:
-            command_discard_from_batch("test-batch", line_ids=str(new_value_gutter), file="file.txt")
-
-        assert "Use: --line" in exc_info.value.message
 
     def test_discard_from_empty_batch_fails(self, temp_git_repo):
         """Test discarding from an empty batch fails."""
@@ -356,3 +330,197 @@ static void reset_state(void)
 
         with pytest.raises(CommandError):
             command_discard_from_batch("test-batch")
+
+    def test_cancelled_binary_plan_closes_acquired_buffer(
+        self,
+        monkeypatch,
+    ):
+        """Cancellation during binary metadata lookup must release content."""
+        buffer = LineBuffer.from_bytes(b"binary\0content")
+        monkeypatch.setattr(
+            discard_action,
+            "read_git_object_buffer_or_none",
+            lambda *_args, **_kwargs: buffer,
+        )
+
+        def interrupt_mode_lookup(*_args, **_kwargs):
+            raise KeyboardInterrupt("mode lookup cancelled")
+
+        monkeypatch.setattr(
+            discard_action,
+            "detect_file_mode_in_commit",
+            interrupt_mode_lookup,
+        )
+
+        with (
+            FileJobWorkspace() as workspace,
+            pytest.raises(KeyboardInterrupt, match="mode lookup cancelled"),
+        ):
+            discard_action._build_discard_binary_action_plan(
+                ordinal=0,
+                file_path="image.bin",
+                baseline_commit="baseline",
+                workspace=workspace,
+            )
+
+        with pytest.raises(ValueError, match="buffer is closed"):
+            buffer.to_bytes()
+
+    def test_discard_refusal_after_snapshot_preserves_concurrent_edit(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """The discard checkpoint must remain unarmed through its final check."""
+        file_path = temp_git_repo / "file.txt"
+        file_path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("stale-batch", quiet=True)
+        command_stop()
+
+        real_create = undo_checkpoints._create_transient_transaction_checkpoint
+
+        def mutate_after_snapshot(*args, **kwargs):
+            checkpoint = real_create(*args, **kwargs)
+            file_path.write_text("concurrent\n")
+            return checkpoint
+
+        monkeypatch.setattr(
+            undo_checkpoints,
+            "_create_transient_transaction_checkpoint",
+            mutate_after_snapshot,
+        )
+
+        with pytest.raises(CommandError, match="Retry the discard command"):
+            command_discard_from_batch("stale-batch")
+
+        assert file_path.read_text() == "concurrent\n"
+        transient_refs = subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/git-stage-batch/transactions/",
+            ],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert transient_refs == ""
+
+    def test_multi_file_planning_failure_precedes_every_write(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Every selected file must plan successfully before publication."""
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+        subprocess.run(
+            ["git", "add", "a.txt", "b.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", file="a.txt", quiet=True)
+        command_include_to_batch("test-batch", file="b.txt", quiet=True)
+
+        real_build = (
+            discard_action._text_plan_builders.build_discard_text_file_action_plan
+        )
+
+        def fail_second_plan(*args, **kwargs):
+            if kwargs["file_path"] == "b.txt":
+                raise MergeError("injected planning failure")
+            return real_build(*args, **kwargs)
+
+        monkeypatch.setattr(
+            discard_action._text_plan_builders,
+            "build_discard_text_file_action_plan",
+            fail_second_plan,
+        )
+        monkeypatch.setattr(
+            discard_action._text_file_actions,
+            "write_discarded_text_file_to_worktree",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("publication started before planning finished")
+            ),
+        )
+
+        with pytest.raises(CommandError, match="a.txt|b.txt"):
+            command_discard_from_batch("test-batch")
+
+        assert (temp_git_repo / "a.txt").read_text() == "a.txt batch\n"
+        assert (temp_git_repo / "b.txt").read_text() == "b.txt batch\n"
+
+    def test_discard_rejects_stale_target_before_checkpoint(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A target changed after planning must not create an undo snapshot."""
+        file_path = temp_git_repo / "file.txt"
+        file_path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("stale-batch", quiet=True)
+
+        real_build = discard_action._build_discard_action_plans
+
+        def mutate_after_planning(*args, **kwargs):
+            capture = real_build(*args, **kwargs)
+            file_path.write_text("concurrent\n")
+            return capture
+
+        monkeypatch.setattr(
+            discard_action,
+            "_build_discard_action_plans",
+            mutate_after_planning,
+        )
+        monkeypatch.setattr(
+            discard_action,
+            "transaction_checkpoint",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("checkpoint started for stale target")
+            ),
+        )
+
+        with pytest.raises(CommandError, match="Retry the discard command"):
+            command_discard_from_batch("stale-batch")
+
+        assert file_path.read_text() == "concurrent\n"

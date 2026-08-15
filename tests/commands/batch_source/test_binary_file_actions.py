@@ -7,154 +7,82 @@ from types import SimpleNamespace
 import pytest
 
 import git_stage_batch.commands.batch_source.binary_file_actions as binary_file_actions
+import git_stage_batch.commands.batch_source.discard_action as discard_action
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.utils.file_job_workspace import FileJobWorkspace
 
 
-def test_discard_binary_file_to_worktree_restores_baseline(
+def test_planned_binary_discard_restores_baseline_and_mode(
     tmp_path,
     monkeypatch,
 ):
-    """Binary discard should restore baseline content and mode."""
-    monkeypatch.setattr(
-        binary_file_actions,
-        "get_git_repository_root_path",
-        lambda: tmp_path,
-    )
+    """Deferred binary discard should replace any current path from baseline."""
     baseline_buffer = LineBuffer.from_bytes(b"baseline")
     monkeypatch.setattr(
-        binary_file_actions,
+        discard_action,
         "read_git_object_buffer_or_none",
-        lambda spec: baseline_buffer if spec == "base:image.png" else None,
+        lambda _spec, **_kwargs: baseline_buffer,
     )
     monkeypatch.setattr(
-        binary_file_actions,
+        discard_action,
         "detect_file_mode_in_commit",
-        lambda commit, file_path: "100755",
+        lambda _commit, _file_path: "100755",
     )
-    action = binary_file_actions.discard_binary_file_to_worktree(
-        "image.png",
-        "base",
-    )
-
-    target = tmp_path / "image.png"
-    assert action is binary_file_actions.BinaryWorktreeAction.REPLACED
-    assert target.read_bytes() == b"baseline"
-    assert stat.S_IMODE(target.stat().st_mode) & stat.S_IXUSR
-    with pytest.raises(ValueError, match="buffer is closed"):
-        baseline_buffer.to_bytes()
-
-
-def test_discard_binary_file_to_worktree_deletes_without_baseline(
-    tmp_path,
-    monkeypatch,
-):
-    """Binary discard should remove worktree paths absent from baseline."""
     monkeypatch.setattr(
         binary_file_actions,
         "get_git_repository_root_path",
         lambda: tmp_path,
     )
-    monkeypatch.setattr(
-        binary_file_actions,
-        "read_git_object_buffer_or_none",
-        lambda spec: None,
-    )
-    target = tmp_path / "image.png"
-    target.write_bytes(b"current")
-
-    action = binary_file_actions.discard_binary_file_to_worktree(
-        "image.png",
-        "base",
-    )
-
-    assert action is binary_file_actions.BinaryWorktreeAction.DELETED
-    assert not target.exists()
-
-
-def test_discard_binary_replaces_dangling_symlink_with_regular_file(
-    tmp_path,
-    monkeypatch,
-):
-    """Restoring a regular binary should unlink a current dangling symlink."""
-    monkeypatch.setattr(
-        binary_file_actions,
-        "get_git_repository_root_path",
-        lambda: tmp_path,
-    )
-    baseline_buffer = LineBuffer.from_bytes(b"baseline")
-    monkeypatch.setattr(
-        binary_file_actions,
-        "read_git_object_buffer_or_none",
-        lambda _spec: baseline_buffer,
-    )
-    monkeypatch.setattr(
-        binary_file_actions,
-        "detect_file_mode_in_commit",
-        lambda _commit, _file_path: "100644",
-    )
+    monkeypatch.setattr(discard_action, "session_is_active", lambda: False)
     target = tmp_path / "image.png"
     os.symlink("missing", target)
 
-    action = binary_file_actions.discard_binary_file_to_worktree(
-        "image.png",
-        "base",
-    )
+    with FileJobWorkspace(parent_directory=tmp_path) as workspace:
+        plan = discard_action._build_discard_binary_action_plan(
+            ordinal=0,
+            file_path="image.png",
+            baseline_commit="base",
+            workspace=workspace,
+        )
+        try:
+            discard_action._publish_discard_action_plan(plan)
+        finally:
+            plan.close()
 
-    assert action is binary_file_actions.BinaryWorktreeAction.REPLACED
     assert not target.is_symlink()
     assert target.read_bytes() == b"baseline"
+    assert stat.S_IMODE(target.stat().st_mode) & stat.S_IXUSR
 
 
-def test_discard_binary_deletes_dangling_symlink_without_baseline(
+def test_planned_binary_discard_removes_path_without_baseline(
     tmp_path,
     monkeypatch,
 ):
-    """Absent binary baselines should remove broken symlink paths."""
+    """Deferred binary discard should restore baseline absence."""
+    monkeypatch.setattr(
+        discard_action,
+        "read_git_object_buffer_or_none",
+        lambda _spec, **_kwargs: None,
+    )
     monkeypatch.setattr(
         binary_file_actions,
         "get_git_repository_root_path",
         lambda: tmp_path,
     )
-    monkeypatch.setattr(
-        binary_file_actions,
-        "read_git_object_buffer_or_none",
-        lambda _spec: None,
-    )
+    monkeypatch.setattr(discard_action, "session_is_active", lambda: False)
     target = tmp_path / "image.png"
     os.symlink("missing", target)
 
-    action = binary_file_actions.discard_binary_file_to_worktree(
-        "image.png",
-        "base",
-    )
+    with FileJobWorkspace(parent_directory=tmp_path) as workspace:
+        plan = discard_action._build_discard_binary_action_plan(
+            ordinal=0,
+            file_path="image.png",
+            baseline_commit="base",
+            workspace=workspace,
+        )
+        discard_action._publish_discard_action_plan(plan)
 
-    assert action is binary_file_actions.BinaryWorktreeAction.DELETED
     assert not os.path.lexists(target)
-
-
-def test_discard_binary_file_to_worktree_ignores_missing_path_without_baseline(
-    tmp_path,
-    monkeypatch,
-):
-    """Binary discard should allow missing worktree paths absent from baseline."""
-    monkeypatch.setattr(
-        binary_file_actions,
-        "get_git_repository_root_path",
-        lambda: tmp_path,
-    )
-    monkeypatch.setattr(
-        binary_file_actions,
-        "read_git_object_buffer_or_none",
-        lambda spec: None,
-    )
-
-    action = binary_file_actions.discard_binary_file_to_worktree(
-        "image.png",
-        "base",
-    )
-
-    assert action is None
-    assert not (tmp_path / "image.png").exists()
 
 
 def test_write_binary_file_to_worktree_writes_buffer(tmp_path, monkeypatch):

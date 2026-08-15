@@ -117,6 +117,30 @@ def test_explicit_empty_owner_retains_resource_for_appended_range():
     assert resource.closed is True
 
 
+def test_appending_ranges_acquires_owner_leases_incrementally():
+    """Append-only lease tracking should not rescan accumulated piece runs."""
+
+    class CountingEditor(LineEditor):
+        hash_count = 0
+
+        def __hash__(self):
+            self.hash_count += 1
+            return id(self)
+
+    source_editor = CountingEditor(())
+    target_editor = LineEditor(())
+    source_editor.append_line_range((b"one\n",), 0, 1)
+    source_editor.hash_count = 0
+
+    append_count = 500
+    for _index in range(append_count):
+        target_editor.append_line_ranges_from_editor(source_editor, 0, 1)
+
+    assert source_editor.hash_count < append_count * 10
+    target_editor.close()
+    source_editor.close()
+
+
 def test_pending_close_drains_long_lease_chain_without_recursion():
     """Claim-scale editor chains should close without using Python recursion."""
     root = LineEditor(())

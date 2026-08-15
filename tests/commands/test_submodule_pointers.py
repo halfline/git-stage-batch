@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from git_stage_batch.batch import submodule_pointer as submodule_pointer_actions
+import git_stage_batch.commands.batch_source.discard_action as discard_action
 from git_stage_batch.commands.discard import command_discard, command_discard_file
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -26,6 +27,7 @@ from git_stage_batch.commands.show import command_show_file_list
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.skip import command_skip
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.commands.status import command_status
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.selected_change.store import (
@@ -843,6 +845,135 @@ def test_discard_from_batch_restores_submodule_pointer_baseline(
     assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
     assert _cached_raw_diff(repo) == ""
     assert _worktree_pointer_diff(repo) == ""
+
+
+def test_discard_added_submodule_rolls_back_index_outside_session(
+    added_submodule_pointer_repo: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed added-pointer discard must restore its worktree and index."""
+    repo, new_oid = added_submodule_pointer_repo
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    command_stop()
+    expected_index = _git_stdout(
+        ["ls-files", "--stage", "--", "sub"],
+        cwd=repo,
+    )
+    real_discard = discard_action.discard_submodule_pointer_from_batch
+
+    def discard_then_fail(file_path, file_meta):
+        real_discard(file_path, file_meta)
+        raise RuntimeError("injected submodule failure")
+
+    monkeypatch.setattr(
+        discard_action,
+        "discard_submodule_pointer_from_batch",
+        discard_then_fail,
+    )
+
+    with pytest.raises(CommandError, match="injected submodule failure"):
+        command_discard_from_batch("pointers", file="sub")
+
+    assert (repo / "sub" / ".git").is_dir()
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    assert (
+        _git_stdout(
+            ["ls-files", "--stage", "--", "sub"],
+            cwd=repo,
+        )
+        == expected_index
+    )
+
+
+def test_discard_added_submodule_refuses_staged_gitlink(
+    added_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """Discard must not remove an independently staged submodule pointer."""
+    repo, new_oid = added_submodule_pointer_repo
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    _run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            new_oid,
+            "sub",
+        ],
+        cwd=repo,
+    )
+    expected_index = _git_stdout(
+        ["ls-files", "--stage", "--", "sub"],
+        cwd=repo,
+    )
+
+    with pytest.raises(CommandError, match="index already contains staged content"):
+        command_discard_from_batch("pointers", file="sub")
+
+    assert (
+        _git_stdout(
+            ["ls-files", "--stage", "--", "sub"],
+            cwd=repo,
+        )
+        == expected_index
+    )
+    assert (repo / "sub" / ".git").is_dir()
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+
+
+def test_discard_added_submodule_refuses_unmerged_index(
+    added_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """Discard must preserve an independently conflicted submodule entry."""
+    repo, new_oid = added_submodule_pointer_repo
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    object_ids = [new_oid]
+    for content in (b"other-one\n", b"other-two\n"):
+        object_ids.append(
+            subprocess.run(
+                ["git", "hash-object", "-w", "--stdin"],
+                cwd=repo,
+                input=content,
+                check=True,
+                capture_output=True,
+            )
+            .stdout.decode()
+            .strip()
+        )
+    subprocess.run(
+        ["git", "update-index", "--index-info"],
+        cwd=repo,
+        input=(
+            f"0 {'0' * 40} 0\tsub\n"
+            + "".join(
+                f"160000 {object_id} {stage}\tsub\n"
+                for stage, object_id in enumerate(object_ids, start=1)
+            )
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    expected_index = _git_stdout(
+        ["ls-files", "--stage", "--", "sub"],
+        cwd=repo,
+    )
+
+    with pytest.raises(CommandError, match="index has unmerged entries"):
+        command_discard_from_batch("pointers", file="sub")
+
+    assert (
+        _git_stdout(
+            ["ls-files", "--stage", "--", "sub"],
+            cwd=repo,
+        )
+        == expected_index
+    )
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
 
 
 def test_reset_from_batch_removes_submodule_pointer_claim(

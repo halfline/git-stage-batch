@@ -200,6 +200,13 @@ An action that changes a batch must run inside the existing command checkpoint
 flow. `abort` and `undo` serve different scopes: `abort` returns all batches to
 session-start state, while `undo` reverses one recorded operation.
 
+Checkpoint trees use Git modes for stored blobs, while compatible manifest
+records also retain each regular file's exact Unix permission bits. Automatic
+rollback, undo, and redo therefore restore permissions such as `0600` for
+worktree files and scoped session, batch, and repository metadata. Checkpoints
+written before that field existed remain readable and fall back to their saved
+Git mode.
+
 ## How `include --to` saves a live change
 
 For `git-stage-batch include --to <name>`, execution crosses the following
@@ -343,6 +350,14 @@ line and every absence claim:
 - an absence anchor must still identify the intended structural boundary
 - a replacement fallback requires the recorded baseline bytes at the recorded
   baseline position
+A source-alternative replacement uses the same exact-boundary discipline, but
+its recorded old bytes and boundary come from the post-discard live target. The
+old side must still match there (or at its sole complete relocated identity)
+before the owned source side replaces it. Ordinary presence claims never gain
+permission to remove an adjacent unowned source line.
+
+
+
 
 [`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. The merge helpers separate these structural and

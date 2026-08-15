@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from ..core.buffer import LineBuffer
 from ..editor.line_endings import (
@@ -17,10 +16,44 @@ from .line_matching.match import match_lines as _match_lines
 from .merge import baseline_anchor_matching as _baseline_anchor_matching
 from .merge import baseline_edits as _baseline_edits
 from .merge.presence_constraints import satisfy_constraints
+from .ownership.absence_claims import AbsenceClaim
+from .ownership.model import BatchOwnership
+from .ownership.replacement_units import ReplacementUnit
 from .realization.entry_storage import realized_entry_content_chunks
 
-if TYPE_CHECKING:
-    from .ownership.model import BatchOwnership
+
+def _ownership_for_realization(ownership: BatchOwnership) -> BatchOwnership:
+    """Omit live source alternatives from the baseline-derived batch tree."""
+    if not any(claim.source_alternative for claim in ownership.deletions):
+        return ownership
+
+    deletion_index_map: dict[int, int] = {}
+    deletions: list[AbsenceClaim] = []
+    for deletion_index, claim in enumerate(ownership.deletions):
+        if claim.source_alternative:
+            continue
+        deletion_index_map[deletion_index] = len(deletions)
+        deletions.append(claim)
+
+    replacement_units = []
+    for unit in ownership.replacement_units:
+        remapped_indices = [
+            deletion_index_map[deletion_index]
+            for deletion_index in unit.deletion_indices
+            if deletion_index in deletion_index_map
+        ]
+        if not remapped_indices:
+            continue
+        replacement_units.append(ReplacementUnit(
+            presence_lines=unit.presence_lines,
+            deletion_indices=remapped_indices,
+            origin=unit.origin,
+        ))
+    return BatchOwnership(
+        presence_claims=ownership.presence_claims,
+        deletions=deletions,
+        replacement_units=replacement_units,
+    )
 
 
 def _has_unequal_replacement_parent(ownership: "BatchOwnership") -> bool:
@@ -69,10 +102,13 @@ def _stream_realized_content_chunks_from_lines(
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes]:
     """Yield realized batch content chunks from normalized line sequences."""
-    resolved = ownership.resolve()
+    realization_ownership = _ownership_for_realization(ownership)
+    resolved = realization_ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
-    has_unequal_replacement_parent = _has_unequal_replacement_parent(ownership)
+    has_unequal_replacement_parent = _has_unequal_replacement_parent(
+        realization_ownership
+    )
 
     baseline_chunks = (
         None
@@ -80,7 +116,7 @@ def _stream_realized_content_chunks_from_lines(
         else _baseline_edits.try_apply_baseline_coordinate_edits(
             batch_source_lines,
             base_lines,
-            ownership,
+            realization_ownership,
             presence_line_set,
             deletion_claims,
             trust_baseline_coordinates=True,
@@ -112,7 +148,7 @@ def _stream_realized_content_chunks_from_lines(
                     _baseline_edits.try_apply_baseline_coordinate_edits(
                         batch_source_lines,
                         base_lines,
-                        ownership,
+                        realization_ownership,
                         presence_line_set,
                         deletion_claims,
                         allow_adjacent_unmapped_presence=True,
@@ -138,7 +174,7 @@ def _stream_realized_content_chunks_from_lines(
         baseline_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
             batch_source_lines,
             base_lines,
-            ownership,
+            realization_ownership,
             presence_line_set,
             deletion_claims,
             trust_baseline_coordinates=True,

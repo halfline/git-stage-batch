@@ -47,6 +47,11 @@ def apply_old_file_mode(file_path: str, file_meta: BatchFileMetadataDict) -> Non
     _apply(file_path, _mode(file_meta, "old_mode"))
 
 
+def apply_file_mode(file_path: str, mode: str) -> None:
+    """Apply one already validated executable mode to a worktree path."""
+    _apply(file_path, mode)
+
+
 def _apply(file_path: str, mode: str) -> None:
     path: Path = get_git_repository_root_path() / file_path
     if not path.exists() or path.is_symlink():

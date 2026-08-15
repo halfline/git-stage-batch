@@ -759,10 +759,16 @@ An applied overlay is accepted only while all of these still match its record:
   are equivalent; unresolved higher-stage entries never match either state)
 - the exact worktree path kind, mode, size, and streamed content digest
 
+Recording or rebinding an overlay while that path is unmerged drops the path's
+overlay record, so resolving the conflict to an absent entry cannot revive old
+authority.
+
 Any external worktree edit, pre-session staging operation, commit, or batch
 mutation makes the old overlay inapplicable. Staging part of a fresh overlay
 through git-stage-batch during an active session keeps its remaining ownership
-reviewable; `stop` binds the overlay to the final index state. Multiple
+reviewable; `stop` binds the overlay to the final index state. Exact-index
+preimage authority is withheld during index drift and removed when an overlay
+is rebound to a changed index. Multiple
 consecutive `apply --from` operations on the same unchanged target carry forward
 the still-fresh ownership, so layered recomposition remains reviewable as a
 whole. Active-session undo checkpoints and abort recovery include the overlay

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
+from types import SimpleNamespace
 
 import pytest
 
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.core.text_lifecycle import TextFileChangeType
+from git_stage_batch.data.file_target_identity import IndexIdentity
 from git_stage_batch.exceptions import MergeError
 import git_stage_batch.commands.batch_source.text_plan_builders as builders
 
@@ -37,6 +40,11 @@ class _OwnershipContext(AbstractContextManager):
 
     def __exit__(self, exc_type, _exc_value, traceback) -> None:
         return None
+
+
+class _RaisingOwnershipContext(_OwnershipContext):
+    def __exit__(self, exc_type, _exc_value, traceback) -> None:
+        raise RuntimeError("ownership close failed")
 
 
 class _ReplacementView(AbstractContextManager):
@@ -129,11 +137,7 @@ def _patch_discard_text_plan_io(
     baseline_exists: bool = True,
 ):
     batch_buffer = LineBuffer.from_bytes(b"batch\n")
-    baseline_buffer = (
-        LineBuffer.from_bytes(b"baseline\n")
-        if baseline_exists
-        else None
-    )
+    baseline_buffer = LineBuffer.from_bytes(b"baseline\n") if baseline_exists else None
     worktree_buffer = LineBuffer.from_bytes(b"worktree\n")
     (tmp_path / "notes.txt").write_bytes(b"worktree\n")
 
@@ -246,9 +250,7 @@ def test_build_apply_text_file_action_plan_closes_merge_on_lifecycle_failure(
     monkeypatch.setattr(
         builders,
         "selected_text_target_change_type",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            RuntimeError("lifecycle failed")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("lifecycle failed")),
     )
 
     with pytest.raises(RuntimeError, match="lifecycle failed"):
@@ -265,6 +267,129 @@ def test_build_apply_text_file_action_plan_closes_merge_on_lifecycle_failure(
 
     with pytest.raises(ValueError, match="buffer is closed"):
         _ = merged_buffer.byte_count
+
+
+def test_build_apply_text_file_action_plan_closes_merge_on_proof_cancellation(
+    monkeypatch,
+    tmp_path,
+):
+    """A cancelled introduced-presence proof should release its merge buffer."""
+    _patch_apply_text_plan_io(monkeypatch, tmp_path, _Ownership())
+    merged_buffer = LineBuffer.from_bytes(b"merged\n")
+    monkeypatch.setattr(
+        builders,
+        "merge_batch_from_line_sequences_as_buffer",
+        lambda *args, **kwargs: merged_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "selected_presence_was_introduced",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt("proof cancelled")
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="proof cancelled"):
+        builders.build_apply_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            selected_ids=None,
+            selection_ids_to_apply=None,
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = merged_buffer.byte_count
+
+
+def test_build_apply_text_file_action_plan_closes_merge_on_context_exit_failure(
+    monkeypatch,
+    tmp_path,
+):
+    """A resource exit failure should release the completed merge buffer."""
+    ownership = _Ownership()
+    _patch_apply_text_plan_io(monkeypatch, tmp_path, ownership)
+    merged_buffer = LineBuffer.from_bytes(b"merged\n")
+    monkeypatch.setattr(
+        builders,
+        "acquire_batch_ownership_for_display_ids_from_lines",
+        lambda *args, **kwargs: _RaisingOwnershipContext(ownership),
+    )
+    monkeypatch.setattr(
+        builders,
+        "merge_batch_from_line_sequences_as_buffer",
+        lambda *args, **kwargs: merged_buffer,
+    )
+
+    with pytest.raises(RuntimeError, match="ownership close failed"):
+        builders.build_apply_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            selected_ids=None,
+            selection_ids_to_apply=None,
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = merged_buffer.byte_count
+
+
+def test_build_apply_uses_captured_index_blob_as_trusted_target(
+    monkeypatch,
+    tmp_path,
+):
+    """Apply planning must not reread a newer live index after capture."""
+    ownership = _Ownership()
+    ownership.replacement_units = (SimpleNamespace(origin=object()),)
+    _patch_apply_text_plan_io(monkeypatch, tmp_path, ownership)
+    trusted_buffer = LineBuffer.from_bytes(b"captured index\n")
+    loaded_object_ids = []
+    merged_targets = []
+
+    def load_blob(object_id, *, spool_dir=None):
+        loaded_object_ids.append((object_id, spool_dir))
+        return trusted_buffer
+
+    def merge_batch(_source, _ownership, _working, **options):
+        merged_targets.append(options["trusted_target_lines"].to_bytes())
+        return LineBuffer.from_bytes(b"merged\n")
+
+    monkeypatch.setattr(builders, "load_git_blob_as_buffer", load_blob)
+    monkeypatch.setattr(
+        builders,
+        "merge_batch_from_line_sequences_as_buffer",
+        merge_batch,
+    )
+    monkeypatch.setattr(
+        builders,
+        "trusted_target_replacement_source_ranges",
+        lambda *_args, **_kwargs: LineRanges.empty(),
+    )
+
+    identity = IndexIdentity("100644", "d" * 40)
+    result = builders.build_apply_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        selected_ids={1},
+        selection_ids_to_apply={7},
+        captured_index_identity=identity,
+    )
+
+    assert loaded_object_ids == [("d" * 40, None)]
+    assert merged_targets == [b"captured index\n"]
+    assert result.plan is not None
+    assert result.plan.expected_index_identity == identity
+    result.plan.close()
 
 
 def test_build_apply_text_file_action_plan_returns_deleted_plan(
@@ -403,6 +528,7 @@ def test_build_discard_text_file_action_plan_returns_discarded_plan(
         line_ownership,
         working_lines,
         baseline_lines,
+        **options,
     ):
         calls["discard"] = (
             source_lines,
@@ -410,6 +536,7 @@ def test_build_discard_text_file_action_plan_returns_discarded_plan(
             working_lines,
             baseline_lines,
         )
+        calls["discard_options"] = options
         return LineBuffer.from_bytes(b"discarded\n")
 
     monkeypatch.setattr(
@@ -443,7 +570,50 @@ def test_build_discard_text_file_action_plan_returns_discarded_plan(
         worktree_buffer,
         baseline_buffer,
     )
+    assert calls["discard_options"] == {
+        "trusted_target_lines": None,
+        "index_preimage_presence_lines": None,
+    }
 
+    result.plan.close()
+
+
+def test_build_discard_text_plan_uses_captured_worktree_artifact(
+    monkeypatch,
+    tmp_path,
+):
+    """Discard planning must consume the bytes captured with its identity."""
+    _patch_discard_text_plan_io(monkeypatch, tmp_path, _Ownership())
+    artifact = tmp_path / "captured-worktree"
+    artifact.write_bytes(b"captured\n")
+    observed_worktree = []
+
+    def discard_batch(_source, _ownership, working, _baseline, **_options):
+        observed_worktree.append(working.to_bytes())
+        return LineBuffer.from_bytes(b"discarded\n")
+
+    monkeypatch.setattr(
+        builders,
+        "discard_batch_from_line_sequences_as_buffer",
+        discard_batch,
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids={1},
+        selection_ids_to_discard={7},
+        working_tree_artifact_path=artifact,
+        captured_working_tree_exists=True,
+    )
+
+    assert observed_worktree == [b"captured\n"]
+    assert result.plan is not None
     result.plan.close()
 
 
@@ -487,6 +657,102 @@ def test_build_discard_text_file_action_plan_restores_lifecycle_baseline(
     assert result.plan.file_mode == "100755"
     assert result.plan.change_type == TextFileChangeType.MODIFIED
 
+    result.plan.close()
+
+
+def test_build_discard_uses_captured_index_blob_as_exact_preimage(
+    monkeypatch,
+    tmp_path,
+):
+    """Discard planning must restore from the captured, not live, index blob."""
+    _patch_discard_text_plan_io(monkeypatch, tmp_path, _Ownership())
+    trusted_buffer = LineBuffer.from_bytes(b"captured index\n")
+    loaded_object_ids = []
+    restored_targets = []
+
+    def load_blob(object_id, *, spool_dir=None):
+        loaded_object_ids.append((object_id, spool_dir))
+        return trusted_buffer
+
+    def discard_batch(_source, _ownership, _working, _baseline, **options):
+        restored_targets.append(options["trusted_target_lines"].to_bytes())
+        return LineBuffer.from_bytes(b"discarded\n")
+
+    monkeypatch.setattr(builders, "load_git_blob_as_buffer", load_blob)
+    monkeypatch.setattr(
+        builders,
+        "discard_batch_from_line_sequences_as_buffer",
+        discard_batch,
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids={1},
+        selection_ids_to_discard={7},
+        index_preimage_presence_lines=LineRanges.from_specs(["1"]),
+        captured_index_identity=IndexIdentity("100644", "e" * 40),
+    )
+
+    assert loaded_object_ids == [("e" * 40, None)]
+    assert restored_targets == [b"captured index\n"]
+    assert result.plan is not None
+    result.plan.close()
+
+
+def test_build_discard_uses_captured_index_for_preexisting_applied_lines(
+    monkeypatch,
+    tmp_path,
+):
+    """Discard planning should prove selected no-op lines against apply's index."""
+    _patch_discard_text_plan_io(monkeypatch, tmp_path, _Ownership())
+    trusted_buffer = LineBuffer.from_bytes(b"captured index\n")
+    applied_lines = LineRanges.from_specs(["2-3"])
+    loaded_object_ids = []
+    discard_options = []
+
+    def load_blob(object_id, *, spool_dir=None):
+        loaded_object_ids.append((object_id, spool_dir))
+        return trusted_buffer
+
+    def discard_batch(_source, _ownership, _working, _baseline, **options):
+        discard_options.append(
+            (
+                options["trusted_target_lines"].to_bytes(),
+                options["applied_presence_lines"],
+            )
+        )
+        return LineBuffer.from_bytes(b"discarded\n")
+
+    monkeypatch.setattr(builders, "load_git_blob_as_buffer", load_blob)
+    monkeypatch.setattr(
+        builders,
+        "discard_batch_from_line_sequences_as_buffer",
+        discard_batch,
+    )
+
+    result = builders.build_discard_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        baseline_commit="baseline",
+        selected_ids={1},
+        selection_ids_to_discard={7},
+        applied_presence_lines=applied_lines,
+        captured_index_identity=IndexIdentity("100644", "e" * 40),
+    )
+
+    assert loaded_object_ids == [("e" * 40, None)]
+    assert discard_options == [(b"captured index\n", applied_lines)]
+    assert result.plan is not None
     result.plan.close()
 
 
@@ -550,6 +816,159 @@ def test_build_discard_text_file_action_plan_reports_missing_source(
     assert result.plan is None
 
 
+def test_discard_plan_closes_source_when_baseline_load_is_cancelled(
+    monkeypatch,
+):
+    """Cancellation during the second object load must release the source."""
+    batch_buffer = LineBuffer.from_bytes(b"batch\n")
+    calls = 0
+
+    def interrupt_baseline_load(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return batch_buffer
+        raise KeyboardInterrupt("baseline load cancelled")
+
+    monkeypatch.setattr(
+        builders,
+        "read_git_object_buffer_or_none",
+        interrupt_baseline_load,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="baseline load cancelled"):
+        builders.build_discard_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            baseline_commit="baseline",
+            selected_ids={1},
+            selection_ids_to_discard={7},
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        batch_buffer.to_bytes()
+
+
+def test_discard_plan_closes_source_when_empty_baseline_creation_is_cancelled(
+    monkeypatch,
+):
+    """Cancellation while materializing an empty baseline must release source."""
+    batch_buffer = LineBuffer.from_bytes(b"batch\n")
+    calls = 0
+
+    def read_without_baseline(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return batch_buffer if calls == 1 else None
+
+    monkeypatch.setattr(
+        builders,
+        "read_git_object_buffer_or_none",
+        read_without_baseline,
+    )
+    monkeypatch.setattr(
+        builders.LineBuffer,
+        "from_bytes",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt("empty baseline cancelled")
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="empty baseline cancelled"):
+        builders.build_discard_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            baseline_commit="baseline",
+            selected_ids={1},
+            selection_ids_to_discard={7},
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        batch_buffer.to_bytes()
+
+
+def test_discard_plan_closes_inputs_when_mode_lookup_is_cancelled(
+    monkeypatch,
+):
+    """Cancellation during mode lookup must release both loaded inputs."""
+    batch_buffer = LineBuffer.from_bytes(b"batch\n")
+    baseline_buffer = LineBuffer.from_bytes(b"baseline\n")
+    buffers = iter((batch_buffer, baseline_buffer))
+    monkeypatch.setattr(
+        builders,
+        "read_git_object_buffer_or_none",
+        lambda *_args, **_kwargs: next(buffers),
+    )
+    monkeypatch.setattr(
+        builders,
+        "detect_file_mode_in_commit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt("mode lookup cancelled")
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="mode lookup cancelled"):
+        builders.build_discard_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            baseline_commit="baseline",
+            selected_ids={1},
+            selection_ids_to_discard={7},
+            captured_working_tree_exists=True,
+        )
+
+    for buffer in (batch_buffer, baseline_buffer):
+        with pytest.raises(ValueError, match="buffer is closed"):
+            buffer.to_bytes()
+
+
+def test_baseline_restore_plan_closes_buffer_when_mode_lookup_is_cancelled(
+    monkeypatch,
+):
+    """Whole-file baseline planning must release content on cancellation."""
+    baseline_buffer = LineBuffer.from_bytes(b"baseline\n")
+    monkeypatch.setattr(
+        builders,
+        "read_git_object_buffer_or_none",
+        lambda *_args, **_kwargs: baseline_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "detect_file_mode_in_commit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt("mode lookup cancelled")
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="mode lookup cancelled"):
+        builders.build_discard_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "deleted",
+                "mode": "100644",
+            },
+            baseline_commit="baseline",
+            selected_ids=None,
+            selection_ids_to_discard=None,
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        baseline_buffer.to_bytes()
+
+
 def test_build_discard_text_file_action_plan_skips_empty_ownership(
     monkeypatch,
     tmp_path,
@@ -593,9 +1012,11 @@ def test_build_discard_text_file_action_plan_closes_empty_deleted_buffer(
     monkeypatch.setattr(
         builders,
         "discard_batch_from_line_sequences_as_buffer",
-        lambda source_lines, line_ownership, working_lines, baseline_lines: (
-            discarded_buffer
-        ),
+        lambda source_lines,
+        line_ownership,
+        working_lines,
+        baseline_lines,
+        **_options: (discarded_buffer),
     )
 
     result = builders.build_discard_text_file_action_plan(
@@ -615,6 +1036,43 @@ def test_build_discard_text_file_action_plan_closes_empty_deleted_buffer(
     assert result.plan.change_type == TextFileChangeType.DELETED
     with pytest.raises(ValueError, match="buffer is closed"):
         discarded_buffer.to_bytes()
+
+
+def test_build_discard_text_file_action_plan_closes_buffer_on_cancellation(
+    monkeypatch,
+    tmp_path,
+):
+    """Cancellation during lifecycle planning should release discarded output."""
+    _patch_discard_text_plan_io(monkeypatch, tmp_path, _Ownership())
+    discarded_buffer = LineBuffer.from_bytes(b"discarded\n")
+    monkeypatch.setattr(
+        builders,
+        "discard_batch_from_line_sequences_as_buffer",
+        lambda *args, **kwargs: discarded_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "selected_text_discard_change_type",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt("lifecycle cancelled")
+        ),
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="lifecycle cancelled"):
+        builders.build_discard_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            baseline_commit="baseline",
+            selected_ids={1},
+            selection_ids_to_discard={7},
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = discarded_buffer.byte_count
 
 
 def test_build_include_text_file_action_plan_uses_replacement_view(
@@ -911,6 +1369,47 @@ def test_build_include_text_file_action_plan_reports_missing_source(
     assert result.plan is None
 
 
+def test_include_plan_closes_index_when_source_load_is_cancelled(
+    monkeypatch,
+    tmp_path,
+):
+    """Cancellation while loading batch source must release index content."""
+    index_buffer = LineBuffer.from_bytes(b"index\n")
+    (tmp_path / "notes.txt").write_bytes(b"worktree\n")
+    monkeypatch.setattr(
+        builders,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+
+    def load_object(spec):
+        if spec == ":notes.txt":
+            return index_buffer
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        builders,
+        "read_git_object_buffer_or_none",
+        load_object,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        builders.build_include_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            selected_ids={1},
+            selection_ids_to_include={7},
+            replacement_payload=None,
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = index_buffer.byte_count
+
+
 def test_build_include_text_file_action_plan_skips_empty_partial_ownership(
     monkeypatch,
     tmp_path,
@@ -932,131 +1431,3 @@ def test_build_include_text_file_action_plan_skips_empty_partial_ownership(
 
     assert not result.missing_source
     assert result.plan is None
-
-
-class _RaisingOwnershipContext(_OwnershipContext):
-    def __exit__(self, exc_type, _exc_value, traceback) -> None:
-        raise RuntimeError("ownership close failed")
-
-
-def test_build_apply_text_file_action_plan_closes_merge_on_context_exit_failure(
-    monkeypatch,
-    tmp_path,
-):
-    """A resource exit failure should release the completed merge buffer."""
-    ownership = _Ownership()
-    _patch_apply_text_plan_io(monkeypatch, tmp_path, ownership)
-    merged_buffer = LineBuffer.from_bytes(b"merged\n")
-    monkeypatch.setattr(
-        builders,
-        "acquire_batch_ownership_for_display_ids_from_lines",
-        lambda *args, **kwargs: _RaisingOwnershipContext(ownership),
-    )
-    monkeypatch.setattr(
-        builders,
-        "merge_batch_from_line_sequences_as_buffer",
-        lambda *args, **kwargs: merged_buffer,
-    )
-
-    with pytest.raises(RuntimeError, match="ownership close failed"):
-        builders.build_apply_text_file_action_plan(
-            file_path="notes.txt",
-            file_meta={
-                "batch_source_commit": "commit",
-                "change_type": "modified",
-                "mode": "100644",
-            },
-            selected_ids=None,
-            selection_ids_to_apply=None,
-        )
-
-    with pytest.raises(ValueError, match="buffer is closed"):
-        _ = merged_buffer.byte_count
-
-
-def test_build_apply_text_file_action_plan_closes_merge_on_proof_cancellation(
-    monkeypatch,
-    tmp_path,
-):
-    """A cancelled introduced-presence proof should release its merge buffer."""
-    _patch_apply_text_plan_io(monkeypatch, tmp_path, _Ownership())
-    merged_buffer = LineBuffer.from_bytes(b"merged\n")
-    monkeypatch.setattr(
-        builders,
-        "merge_batch_from_line_sequences_as_buffer",
-        lambda *args, **kwargs: merged_buffer,
-    )
-    monkeypatch.setattr(
-        builders,
-        "selected_presence_was_introduced",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            KeyboardInterrupt("proof cancelled")
-        ),
-    )
-
-    with pytest.raises(KeyboardInterrupt, match="proof cancelled"):
-        builders.build_apply_text_file_action_plan(
-            file_path="notes.txt",
-            file_meta={
-                "batch_source_commit": "commit",
-                "change_type": "modified",
-                "mode": "100644",
-            },
-            selected_ids=None,
-            selection_ids_to_apply=None,
-        )
-
-    with pytest.raises(ValueError, match="buffer is closed"):
-        _ = merged_buffer.byte_count
-
-
-def test_build_apply_uses_captured_index_blob_as_trusted_target(
-    monkeypatch,
-    tmp_path,
-):
-    """Apply planning must not reread a newer live index after capture."""
-    ownership = _Ownership()
-    ownership.replacement_units = (SimpleNamespace(origin=object()),)
-    _patch_apply_text_plan_io(monkeypatch, tmp_path, ownership)
-    trusted_buffer = LineBuffer.from_bytes(b"captured index\n")
-    loaded_object_ids = []
-    merged_targets = []
-
-    def load_blob(object_id, *, spool_dir=None):
-        loaded_object_ids.append((object_id, spool_dir))
-        return trusted_buffer
-
-    def merge_batch(_source, _ownership, _working, **options):
-        merged_targets.append(options["trusted_target_lines"].to_bytes())
-        return LineBuffer.from_bytes(b"merged\n")
-
-    monkeypatch.setattr(builders, "load_git_blob_as_buffer", load_blob)
-    monkeypatch.setattr(
-        builders,
-        "merge_batch_from_line_sequences_as_buffer",
-        merge_batch,
-    )
-    monkeypatch.setattr(
-        builders,
-        "trusted_target_replacement_source_ranges",
-        lambda *_args, **_kwargs: LineRanges.empty(),
-    )
-
-    identity = IndexIdentity("100644", "d" * 40)
-    result = builders.build_apply_text_file_action_plan(
-        file_path="notes.txt",
-        file_meta={
-            "batch_source_commit": "commit",
-            "change_type": "modified",
-            "mode": "100644",
-        },
-        selected_ids={1},
-        selection_ids_to_apply={7},
-        captured_index_identity=identity,
-    )
-
-    assert loaded_object_ids == [("d" * 40, None)]
-    assert merged_targets == [b"captured index\n"]
-    assert result.plan is not None
-    assert result.plan.expected_index_identity == identity
-    result.plan.close()

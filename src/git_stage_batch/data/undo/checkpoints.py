@@ -59,6 +59,7 @@ _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 _PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
 _TRANSIENT_TRANSACTION_REF_PREFIX = "refs/git-stage-batch/transactions/"
+_ACTIVE_TRANSIENT_TRANSACTION: _TransientTransaction | None = None
 
 
 RollbackStatus: TypeAlias = Literal[
@@ -140,6 +141,15 @@ class _TransactionBoundary:
                 # A diagnostic completion must not mask the publication or
                 # rollback failure that brought the transaction here.
                 pass
+
+class _TransientTransaction:
+    """Process-local owner for one nested transient transaction."""
+
+    manifest: CheckpointState
+    boundary: _TransactionBoundary
+    repository: Path
+    rollback_cause: BaseException | None = None
+
 
 
 @dataclass(slots=True)
@@ -464,23 +474,77 @@ def transaction_checkpoint(
     index_paths: list[str] | None = None,
     repository_paths: list[str] | None = None,
 ) -> Iterator[UndoCheckpointStatus]:
-    """Defer transaction completion effects at one publication boundary."""
+    """Provide rollback-on-error both inside and outside an active session.
+
+    Active sessions retain their ordinary undo node. Outside a session, a
+    uniquely referenced Git snapshot exists only for the duration of the
+    publication and is restored on every ``BaseException``.
+    """
+    global _ACTIVE_TRANSIENT_TRANSACTION
+    requested_index_paths = [] if index_paths is None else index_paths
+
+
+    ref_name, checkpoint, manifest = _create_transient_transaction_checkpoint(
+        operation,
+        worktree_paths=worktree_paths,
+        index_paths=requested_index_paths,
+        repository_paths=repository_paths,
+    )
     status = UndoCheckpointStatus(
         rollback="pending",
         _transaction_boundary=_TransactionBoundary(armed=False),
         _context_rollback_armed=False,
     )
+    transaction = _TransientTransaction(
+        manifest,
+        status._transaction_boundary,
+        get_git_directory_path(),
+    )
+    _ACTIVE_TRANSIENT_TRANSACTION = transaction
     try:
         yield status
+        if transaction.rollback_cause is not None:
+            raise CommandError(
+                _(
+                    "A nested transactional operation failed, so the "
+                    "enclosing operation was rolled back: {error}"
+                ).format(error=transaction.rollback_cause)
+            ) from transaction.rollback_cause
+        _delete_transient_transaction_ref(ref_name)
     except BaseException:
-        status.rollback = (
-            "not-attempted" if status._rollback_armed else "not-needed"
-        )
-        status._transaction_boundary.finish_rollback(status.rollback)
+        _ACTIVE_TRANSIENT_TRANSACTION = None
+        if not status._rollback_armed:
+            status.rollback = "not-needed"
+            try:
+                _delete_transient_transaction_ref(ref_name)
+            except BaseException:
+                pass
+            transaction.boundary.finish_rollback(status.rollback)
+            raise
+        try:
+            _restore_transient_transaction_checkpoint(
+                ref_name,
+                checkpoint,
+                manifest,
+            )
+        except BaseException:
+            status.rollback = "failed"
+            transaction.boundary.finish_rollback(status.rollback)
+            raise
+        status.rollback = "completed"
+        try:
+            _delete_transient_transaction_ref(ref_name)
+        except BaseException:
+            # The restored before-image remains reachable for recovery. Do
+            # not hide the publication error with best-effort ref cleanup.
+            pass
+        transaction.boundary.finish_rollback(status.rollback)
         raise
     else:
+        _ACTIVE_TRANSIENT_TRANSACTION = None
         status.rollback = "not-needed"
-        status._transaction_boundary.commit()
+        transaction.boundary.commit()
+
 
 
 @contextmanager

@@ -61,7 +61,10 @@ def probe_batch_file_mergeability(
             for unit in units:
                 try:
                     validate_ownership_units([unit])
-                    ownership_for_unit = rebuild_ownership_from_units([unit])
+                    ownership_for_unit = rebuild_ownership_from_units(
+                        [unit],
+                        normalize_replacement_metadata=False,
+                    )
                     if ownership_for_unit.is_empty():
                         continue
                     if not batch_merge.can_merge_batch_from_line_sequences(

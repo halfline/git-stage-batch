@@ -13,6 +13,7 @@ from git_stage_batch.batch.operation_candidate_types import (
 import git_stage_batch.commands.batch_source.action_selection as action_selection
 import git_stage_batch.commands.batch_source.candidate_preview_action as candidate_preview_action
 import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts
+import git_stage_batch.commands.batch_source.candidate_execution as candidate_execution
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.output.candidate_preview as candidate_preview_module
 import git_stage_batch.output.candidate_preview_summary as candidate_preview_summary
@@ -36,6 +37,7 @@ from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
+    get_applied_batch_overlays_file_path,
     ensure_state_directory_exists,
     get_batch_candidate_state_file_path,
 )
@@ -453,6 +455,69 @@ def test_apply_candidate_can_run_from_overview(temp_git_repo, capsys):
 
     command_stop()
     command_start(auto_advance=False)
+
+
+def test_apply_candidate_does_not_trust_an_index_changed_during_publication(
+    temp_git_repo,
+    capsys,
+    monkeypatch,
+):
+    """Candidate provenance must bind only to its captured index target."""
+    _create_displaced_absence_batch(temp_git_repo)
+    command_show_from_batch("ambiguous:apply", file="file.txt")
+    capsys.readouterr()
+    original_write = candidate_execution._text_file_actions.write_text_file_to_worktree
+
+    def write_and_stage(*args, **kwargs):
+        original_write(*args, **kwargs)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+    monkeypatch.setattr(
+        candidate_execution._text_file_actions,
+        "write_text_file_to_worktree",
+        write_and_stage,
+    )
+
+    command_apply_from_batch("ambiguous:apply:1", file="file.txt")
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    assert "index_target_is_original" not in application
+
+
+def test_apply_candidate_rejects_worktree_change_after_materialization(
+    temp_git_repo,
+    capsys,
+    monkeypatch,
+):
+    """A reviewed candidate must not overwrite a newly changed worktree."""
+    _create_displaced_absence_batch(temp_git_repo)
+    command_show_from_batch("ambiguous:apply", file="file.txt")
+    capsys.readouterr()
+    real_materialize = (
+        candidate_execution._candidate_materialization.materialize_apply_candidate
+    )
+
+    def materialize_and_change(*args, **kwargs):
+        materialized = real_materialize(*args, **kwargs)
+        (temp_git_repo / "file.txt").write_text("concurrent\n")
+        return materialized
+
+    monkeypatch.setattr(
+        candidate_execution._candidate_materialization,
+        "materialize_apply_candidate",
+        materialize_and_change,
+    )
+
+    with pytest.raises(CommandError, match="Working tree file changed"):
+        command_apply_from_batch("ambiguous:apply:1", file="file.txt")
+
+    assert (temp_git_repo / "file.txt").read_text() == "concurrent\n"
 
 
 def test_split_replacement_origin_uses_apply_candidates(temp_git_repo, capsys):

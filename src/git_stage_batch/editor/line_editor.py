@@ -100,7 +100,7 @@ class LineEditor(Sequence[_LineLike]):
             end,
             owner=self if owner is None else owner,
         )
-        self._append_line_ranges((line_range,))
+        self._append_line_range(line_range)
 
     def append_line_ranges_from_editor(
         self,
@@ -116,32 +116,66 @@ class LineEditor(Sequence[_LineLike]):
         if end > len(editor):
             raise ValueError("invalid line range")
 
-        self._append_line_ranges(tuple(editor._line_sources(start, end)))
+        # A highly fragmented editor can expose one source range per line.
+        # Append those compact runs incrementally instead of duplicating every
+        # run as a temporary Python object tuple.
+        append_position = self._current_line_count()
+        piece_checkpoint = self._pieces.checkpoint()
+        incoming_lease_count = len(self._incoming_editor_leases)
+        try:
+            for line_range in editor._line_sources(start, end):
+                self._append_line_range(line_range)
+        except BaseException:
+            self._pieces.restore(piece_checkpoint)
+            self._line_count = append_position
+            while len(self._incoming_editor_leases) > incoming_lease_count:
+                _source, lease = self._incoming_editor_leases.popitem()
+                lease._detach()
+            raise
 
     def retain_resource(self, resource: _Closeable) -> None:
         """Close a range's backing resource after every borrower releases it."""
         self._require_open()
         self._owned_resources.append(resource)
 
-    def _append_line_ranges(self, ranges: Sequence[LineRange]) -> None:
-        self._require_range_owners_open(ranges)
-        line_count = _line_ranges_line_count(ranges)
+    def _append_line_range(self, line_range: LineRange) -> None:
+        owner = line_range.owner
+        if owner is not None and owner is not self:
+            owner._require_open()
+        line_count = line_range.end - line_range.start
         if line_count == 0:
             return
 
         append_position = self._current_line_count()
-        self._pieces.append_line_ranges(ranges)
-        self._line_count = append_position + line_count
-        for line_range in ranges:
-            owner = line_range.owner
-            if owner is not None and owner is not self:
-                self._borrow_editor(cast(LineEditor, owner))
-
-    def _require_range_owners_open(self, ranges: Sequence[LineRange]) -> None:
-        for line_range in ranges:
-            owner = line_range.owner
-            if owner is not None and owner is not self:
-                owner._require_open()
+        source_editor = (
+            None if owner is None or owner is self else cast(LineEditor, owner)
+        )
+        already_borrowed = (
+            source_editor is not None
+            and source_editor in self._incoming_editor_leases
+        )
+        piece_checkpoint = self._pieces.checkpoint()
+        try:
+            if source_editor is not None:
+                self._borrow_editor(source_editor)
+            # An interruption after the piece append can safely recompute the
+            # count from the piece table rather than retaining a stale cache.
+            self._line_count = None
+            self._pieces.append_line_range(
+                line_range.lines,
+                line_range.start,
+                line_range.end,
+                line_range.owner,
+            )
+            self._line_count = append_position + line_count
+        except BaseException:
+            self._pieces.restore(piece_checkpoint)
+            self._line_count = None
+            if source_editor is not None and not already_borrowed:
+                lease = self._incoming_editor_leases.get(source_editor)
+                if lease is not None:
+                    lease._detach()
+            raise
 
     def close(self) -> None:
         """Release shared-range leases held by this collection."""
@@ -326,7 +360,12 @@ class LineEditor(Sequence[_LineLike]):
 
         lease = _LineEditorLease(source, self)
         self._incoming_editor_leases[source] = lease
-        source._outgoing_editor_leases.add(lease)
+        try:
+            source._outgoing_editor_leases.add(lease)
+        except BaseException:
+            if self._incoming_editor_leases.get(source) is lease:
+                del self._incoming_editor_leases[source]
+            raise
 
 class _LineEditorLease:
     """Borrow relationship between editors sharing line segments."""
@@ -448,10 +487,6 @@ def _validated_line_range(
 ) -> LineRange:
     _validate_line_range(lines, start, end, validate_end=validate_end)
     return LineRange(lines, start, end, owner)
-
-
-def _line_ranges_line_count(ranges: Sequence[LineRange]) -> int:
-    return sum(line_range.end - line_range.start for line_range in ranges)
 
 
 def _slice_uses_negative_bounds(line_slice: slice) -> bool:

@@ -8,6 +8,7 @@ from pathlib import Path
 from types import TracebackType
 
 from ...core.mapped_storage import ChunkedMappedRecordVector
+from ...core.resource_cleanup import close_resources_preserving_first
 
 
 _RUN_DEST_START = 0
@@ -65,9 +66,7 @@ def _run_source_is_contiguous(
 ) -> bool:
     if left.source_start == 0 or right.source_start == 0:
         return left.source_start == 0 and right.source_start == 0
-    return right.source_start == left.source_start + (
-        left.dest_end - left.dest_start
-    )
+    return right.source_start == left.source_start + (left.dest_end - left.dest_start)
 
 
 def _run_target_is_contiguous(
@@ -76,9 +75,7 @@ def _run_target_is_contiguous(
 ) -> bool:
     if left.target_start == 0 or right.target_start == 0:
         return left.target_start == 0 and right.target_start == 0
-    return right.target_start == left.target_start + (
-        left.dest_end - left.dest_start
-    )
+    return right.target_start == left.target_start + (left.dest_end - left.dest_start)
 
 
 def _runs_can_merge(left: ProvenanceRun, right: ProvenanceRun) -> bool:
@@ -173,10 +170,7 @@ class ProvenanceRunTable:
     def run_at(self, dest_index: int) -> ProvenanceRun:
         self._require_open()
         pending = self._pending_run
-        if (
-            pending is not None
-            and pending.dest_start <= dest_index < pending.dest_end
-        ):
+        if pending is not None and pending.dest_start <= dest_index < pending.dest_end:
             return pending
 
         run = self._flushed_run_at(dest_index)
@@ -221,25 +215,30 @@ class ProvenanceRunTable:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def _flush_pending(self) -> None:
         pending = self._pending_run
         if pending is None:
             return
-        self._runs.append((
-            pending.dest_start,
-            pending.dest_end,
-            pending.source_start,
-            pending.target_start,
-            pending.flags,
-        ))
+        self._runs.append(
+            (
+                pending.dest_start,
+                pending.dest_end,
+                pending.source_start,
+                pending.target_start,
+                pending.flags,
+            )
+        )
         self._pending_run = None
 
     def _flushed_run_at(self, dest_index: int) -> ProvenanceRun | None:

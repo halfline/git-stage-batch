@@ -10,6 +10,7 @@ from typing import overload
 from ...editor.line_editor import ActiveLineEditorLeaseError, LineEditor
 from ...editor.piece_table import LineLike
 from ...core.buffer import LineBuffer
+from ...core.resource_cleanup import close_resources_preserving_first
 from ..line_matching.line_range_view import LineRangeView as _LineRangeView
 from .entries import RealizedEntry as _RealizedEntry
 from .provenance import (
@@ -289,15 +290,13 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         return result
 
     def close(self) -> None:
-        if self._closed:
-            return
-
         failure: BaseException | None = None
         self._closed = True
-        try:
-            self._provenance.close()
-        except BaseException as error:
-            failure = error
+        if not self._provenance.closed:
+            try:
+                self._provenance.close()
+            except BaseException as error:
+                failure = error
         try:
             self._editor.close()
         except ActiveLineEditorLeaseError:
@@ -321,12 +320,15 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def _normalize_index(self, index: int) -> int:

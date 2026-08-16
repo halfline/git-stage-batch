@@ -7,7 +7,6 @@ import pytest
 from git_stage_batch.batch.ownership import (
     hunk_replacement_translation as hunk_replacement_translation_module,
 )
-from git_stage_batch.core.line_selection import LineRangeBuilder
 from git_stage_batch.batch.ownership.hunk_replacement_translation import (
     translate_hunk_replacement_line_runs,
 )
@@ -16,7 +15,7 @@ from git_stage_batch.batch.ownership.line_entries import (
 )
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.ownership.replacement_line_runs import ReplacementLineRun
-from git_stage_batch.core.line_selection import LineRanges
+from git_stage_batch.core.line_selection import LineRangeBuilder, LineRanges
 from git_stage_batch.core.models import LineEntry
 
 

@@ -30,10 +30,8 @@ def _install_castkms_primary_replay_fixture(functional_repo):
     )
     batch_name = "decompose-36-primary-plane-lookup-ownership"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "ad3641debe9fcba69b6018d096cf97f2969fd730",
+        f"refs/git-stage-batch/batches/{batch_name}": "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
+        f"refs/git-stage-batch/state/{batch_name}": "ad3641debe9fcba69b6018d096cf97f2969fd730",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -68,10 +66,8 @@ def _install_castkms_cursor_replay_fixture(functional_repo):
     )
     batch_name = "decompose-35-cursor-plane-lookup-ownership"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "1d0e9af52e3461111dd8a70fd78b005116d9c095",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "3243a7e460aa3e4e16e3be263d03dfab8efd42d2",
+        f"refs/git-stage-batch/batches/{batch_name}": "1d0e9af52e3461111dd8a70fd78b005116d9c095",
+        f"refs/git-stage-batch/state/{batch_name}": "3243a7e460aa3e4e16e3be263d03dfab8efd42d2",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -85,9 +81,7 @@ def _install_castkms_cursor_replay_fixture(functional_repo):
 
 def _install_castkms_hot_unplug_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_hot_unplug_replay_exact-*.pack")
-    )
+    fixture_pack = next(fixture_root.glob("castkms_hot_unplug_replay_exact-*.pack"))
     subprocess.run(
         ["git", "index-pack", "--stdin"],
         cwd=functional_repo,
@@ -108,10 +102,8 @@ def _install_castkms_hot_unplug_replay_fixture(functional_repo):
     )
     batch_name = "decompose-32-config-hot-unplug"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "6e6ab7224e6fcfef38a980c4cc2871ae5190f457",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "1b0d99b0092653263a4c64bcdc27a882b0242422",
+        f"refs/git-stage-batch/batches/{batch_name}": "6e6ab7224e6fcfef38a980c4cc2871ae5190f457",
+        f"refs/git-stage-batch/state/{batch_name}": "1b0d99b0092653263a4c64bcdc27a882b0242422",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -125,9 +117,7 @@ def _install_castkms_hot_unplug_replay_fixture(functional_repo):
 
 def _install_castkms_raw_map_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_raw_map_replay_exact-*.pack")
-    )
+    fixture_pack = next(fixture_root.glob("castkms_raw_map_replay_exact-*.pack"))
     subprocess.run(
         ["git", "index-pack", "--stdin"],
         cwd=functional_repo,
@@ -148,10 +138,8 @@ def _install_castkms_raw_map_replay_fixture(functional_repo):
     )
     batch_name = "decompose-31-raw-framebuffer-maps"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "68a98e92d69295c1a80b340fc97e5e74984fa167",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "ede272733ba7bff86d383059581cf1b73d976a53",
+        f"refs/git-stage-batch/batches/{batch_name}": "68a98e92d69295c1a80b340fc97e5e74984fa167",
+        f"refs/git-stage-batch/state/{batch_name}": "ede272733ba7bff86d383059581cf1b73d976a53",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -165,9 +153,7 @@ def _install_castkms_raw_map_replay_fixture(functional_repo):
 
 def _install_castkms_capture03_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_capture03_replay_exact-*.pack")
-    )
+    fixture_pack = next(fixture_root.glob("castkms_capture03_replay_exact-*.pack"))
     subprocess.run(
         ["git", "index-pack", "--stdin"],
         cwd=functional_repo,
@@ -188,10 +174,8 @@ def _install_castkms_capture03_replay_fixture(functional_repo):
     )
     batch_name = "decompose-03-explicit-first-use"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "bc12ec85fd1e2f52466e37cd2301033a0ebc354c",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "8f31cd7bcd70c2e886eb600032b18ac1c3abd6cc",
+        f"refs/git-stage-batch/batches/{batch_name}": "bc12ec85fd1e2f52466e37cd2301033a0ebc354c",
+        f"refs/git-stage-batch/state/{batch_name}": "8f31cd7bcd70c2e886eb600032b18ac1c3abd6cc",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -223,9 +207,7 @@ def _install_castkms_capture03_replay_fixture(functional_repo):
 
 def _install_castkms_packed_bit_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_packed_bit_replay_exact-*.pack")
-    )
+    fixture_pack = next(fixture_root.glob("castkms_packed_bit_replay_exact-*.pack"))
     subprocess.run(
         ["git", "index-pack", "--stdin"],
         cwd=functional_repo,
@@ -246,10 +228,8 @@ def _install_castkms_packed_bit_replay_fixture(functional_repo):
     )
     batch_name = "decompose-28-packed-bit-final-sample"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "f019f94fbad93c8c379c5c165b3f50c7a2d3eac1",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "cac5c82acdd60b43456eb02c82b561d79e93dfde",
+        f"refs/git-stage-batch/batches/{batch_name}": "f019f94fbad93c8c379c5c165b3f50c7a2d3eac1",
+        f"refs/git-stage-batch/state/{batch_name}": "cac5c82acdd60b43456eb02c82b561d79e93dfde",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -263,9 +243,7 @@ def _install_castkms_packed_bit_replay_fixture(functional_repo):
 
 def _install_castkms_wide_offset_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_wide_offset_replay_exact-*.pack")
-    )
+    fixture_pack = next(fixture_root.glob("castkms_wide_offset_replay_exact-*.pack"))
     subprocess.run(
         ["git", "index-pack", "--stdin"],
         cwd=functional_repo,
@@ -286,10 +264,8 @@ def _install_castkms_wide_offset_replay_fixture(functional_repo):
     )
     batch_name = "decompose-24-wide-framebuffer-offsets"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "1d2cd693967c909301b0dc9ced537f2c9aa012b5",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "caa757d3b5bdd3ae7838714254bea0c3ce54c112",
+        f"refs/git-stage-batch/batches/{batch_name}": "1d2cd693967c909301b0dc9ced537f2c9aa012b5",
+        f"refs/git-stage-batch/state/{batch_name}": "caa757d3b5bdd3ae7838714254bea0c3ce54c112",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -303,9 +279,7 @@ def _install_castkms_wide_offset_replay_fixture(functional_repo):
 
 def _install_castkms_stride_guard_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
-    fixture_pack = next(
-        fixture_root.glob("castkms_stride_guard_replay_exact-*.pack")
-    )
+    fixture_pack = next(fixture_root.glob("castkms_stride_guard_replay_exact-*.pack"))
     subprocess.run(
         ["git", "index-pack", "--stdin"],
         cwd=functional_repo,
@@ -326,10 +300,8 @@ def _install_castkms_stride_guard_replay_fixture(functional_repo):
     )
     batch_name = "decompose-23-int-range-scanout-guard"
     persisted_refs = {
-        f"refs/git-stage-batch/batches/{batch_name}":
-            "b2de98e6c965ea6e22945b0f13043c3a1072f033",
-        f"refs/git-stage-batch/state/{batch_name}":
-            "f714d3d0af9cb864401fe2ee2b8eb3253645d539",
+        f"refs/git-stage-batch/batches/{batch_name}": "b2de98e6c965ea6e22945b0f13043c3a1072f033",
+        f"refs/git-stage-batch/state/{batch_name}": "f714d3d0af9cb864401fe2ee2b8eb3253645d539",
     }
     for ref, object_id in persisted_refs.items():
         subprocess.run(
@@ -356,34 +328,39 @@ def _install_castkms_ptrdiff_replay_fixture(
         )
     for fixture_pack in fixture_packs:
         subprocess.run(
-            ["git", "index-pack", "--stdin"], cwd=functional_repo,
-            input=fixture_pack.read_bytes(), check=True, capture_output=True,
+            ["git", "index-pack", "--stdin"],
+            cwd=functional_repo,
+            input=fixture_pack.read_bytes(),
+            check=True,
+            capture_output=True,
         )
     subprocess.run(
         [
-            "git", "checkout", "--detach",
+            "git",
+            "checkout",
+            "--detach",
             "a59c3b7e422482f654186b79c87236c825d75741",
         ],
-        cwd=functional_repo, check=True, capture_output=True,
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
     )
     refs = {
-        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission":
-            "7f312fe101f4dc2dd9f55c2fadd07b005907009a",
-        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission":
-            (
-                "2f333bc3c08d6e10fa70d3fe1396057d0e2882f3"
-                if corrected_source_alternative
-                else "1ddc2c96e04556d24fd7216884127803fd28c333"
-            ),
-        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission-repair":
-            "6f9cf6498bc0e51f6491de71fe8725a7b592b7ab",
-        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission-repair":
-            "d71f3b3c44de3df9326a27d627ad99d191e02887",
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission": "7f312fe101f4dc2dd9f55c2fadd07b005907009a",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission": (
+            "2f333bc3c08d6e10fa70d3fe1396057d0e2882f3"
+            if corrected_source_alternative
+            else "1ddc2c96e04556d24fd7216884127803fd28c333"
+        ),
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission-repair": "6f9cf6498bc0e51f6491de71fe8725a7b592b7ab",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission-repair": "d71f3b3c44de3df9326a27d627ad99d191e02887",
     }
     for ref, oid in refs.items():
         subprocess.run(
-            ["git", "update-ref", ref, oid], cwd=functional_repo,
-            check=True, capture_output=True,
+            ["git", "update-ref", ref, oid],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
         )
     return "decompose-22-ptrdiff-stride-admission"
 
@@ -470,7 +447,9 @@ class TestIncludeToBatch:
         git_stage_batch("skip", check=False)
 
         # Include to second batch
-        result = git_stage_batch("include", "--to", "batch-b", "--line", "1", check=False)
+        result = git_stage_batch(
+            "include", "--to", "batch-b", "--line", "1", check=False
+        )
         if result.returncode == 0:
             # Both batches should have content
             batch_a = git_stage_batch("show", "--from", "batch-a")
@@ -504,8 +483,18 @@ class TestDiscardToBatch:
         """Discarding selected replacement lines to a batch can be applied back."""
         file_path = functional_repo / "file.txt"
         file_path.write_text("a\nb\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=functional_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=functional_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
 
         file_path.write_text("A\nB\n")
 
@@ -663,10 +652,7 @@ class TestApplyFromBatch:
         tests = (
             functional_repo / "src" / "tests" / "castkms_config_test.c"
         ).read_text()
-        assert (
-            "castkms_config_crtc_primary_plane(struct castkms_config_crtc"
-            in header
-        )
+        assert "castkms_config_crtc_primary_plane(struct castkms_config_crtc" in header
         assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
 
     def test_discard_partially_applied_replacement_restores_file(
@@ -781,10 +767,7 @@ class TestApplyFromBatch:
         assert result.returncode == 0, result.stderr
         source = (functional_repo / "src" / "castkms_config.c").read_text()
         assert "castkms_crtc_get_plane(struct castkms_config_crtc" in source
-        assert (
-            "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_CURSOR)"
-            in source
-        )
+        assert "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_CURSOR)" in source
 
         git_stage_batch(
             "show",
@@ -806,14 +789,8 @@ class TestApplyFromBatch:
 
         assert result.returncode == 0, result.stderr
         source = (functional_repo / "src/castkms_config.c").read_text()
-        assert (
-            "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_PRIMARY)"
-            in source
-        )
-        assert (
-            "castkms_config_crtc_cursor_plane(struct castkms_config *"
-            not in source
-        )
+        assert "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_PRIMARY)" in source
+        assert "castkms_config_crtc_cursor_plane(struct castkms_config *" not in source
 
     def test_discard_partial_cursor_helper_replay_restores_file(
         self,
@@ -934,10 +911,7 @@ class TestApplyFromBatch:
         source = (
             functional_repo / "src" / "tests" / "castkms_config_test.c"
         ).read_text()
-        assert (
-            "castkms_config_crtc_cursor_plane(config, crtc_cfg)"
-            not in source
-        )
+        assert "castkms_config_crtc_cursor_plane(config, crtc_cfg)" not in source
 
     def test_apply_hot_unplug_guard_after_recommended_adopters(
         self,
@@ -1036,18 +1010,16 @@ class TestApplyFromBatch:
 
         assert result.returncode == 0, result.stderr
         source = path.read_text()
-        assert source.count(
-            "static void castkms_format_test_framebuffer_offset"
-        ) == 1
-        assert source.count(
-            "static void castkms_format_test_distinct_multiplane_maps"
-        ) == 1
-        assert source.count(
-            "KUNIT_CASE(castkms_format_test_framebuffer_offset)"
-        ) == 1
-        assert source.count(
-            "KUNIT_CASE(castkms_format_test_distinct_multiplane_maps)"
-        ) == 1
+        assert source.count("static void castkms_format_test_framebuffer_offset") == 1
+        assert (
+            source.count("static void castkms_format_test_distinct_multiplane_maps")
+            == 1
+        )
+        assert source.count("KUNIT_CASE(castkms_format_test_framebuffer_offset)") == 1
+        assert (
+            source.count("KUNIT_CASE(castkms_format_test_distinct_multiplane_maps)")
+            == 1
+        )
 
         git_stage_batch(
             "discard",
@@ -1174,12 +1146,17 @@ class TestApplyFromBatch:
         path = functional_repo / "src" / "castkms_formats.c"
 
         result = git_stage_batch(
-            "apply", "--from", batch_name, check=False,
+            "apply",
+            "--from",
+            batch_name,
+            check=False,
         )
         assert result.returncode == 0, result.stderr
 
         git_stage_batch(
-            "discard", "--from", f"{batch_name}-repair",
+            "discard",
+            "--from",
+            f"{batch_name}-repair",
         )
         source = path.read_text()
         assert "static ptrdiff_t get_block_step_bytes" in source
@@ -1255,9 +1232,7 @@ class TestApplyFromBatch:
     ):
         """Staging one restored hunk must not hide the remaining applied work."""
         file_path = functional_repo / "file.txt"
-        file_path.write_text(
-            "base 1\nbase 2\nbase 3\nbase 4\nbase 5\nbase 6\nbase 7\n"
-        )
+        file_path.write_text("base 1\nbase 2\nbase 3\nbase 4\nbase 5\nbase 6\nbase 7\n")
         subprocess.run(
             ["git", "add", "file.txt"],
             check=True,
@@ -1352,8 +1327,7 @@ class TestApplyFromBatch:
 
         assert result.returncode == 2
         assert (
-            "All working tree changes are currently saved in batch "
-            "'saved-change'."
+            "All working tree changes are currently saved in batch 'saved-change'."
         ) in result.stderr
 
     def test_start_names_each_batch_that_owns_the_hidden_changes(
@@ -1550,10 +1524,7 @@ class TestApplyFromBatch:
 
         git_stage_batch("apply", "--from", "restored-change")
         overlay_path = (
-            functional_repo
-            / ".git"
-            / "git-stage-batch"
-            / "applied-batch-overlays.json"
+            functional_repo / ".git" / "git-stage-batch" / "applied-batch-overlays.json"
         )
         assert overlay_path.exists()
         git_stage_batch("undo")
@@ -1658,7 +1629,9 @@ class TestOddEvenLinesBatches:
 
         # Add to git
         subprocess.run(["git", "add", "numbers.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add numbers file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add numbers file"], check=True, capture_output=True
+        )
 
         # Add 10 new lines (only additions, simpler for line ID tracking)
         test_file.write_text(
@@ -1714,10 +1687,16 @@ class TestOddEvenLinesBatches:
         test_file.write_text("Header\n")
 
         subprocess.run(["git", "add", "sequence.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add sequence file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add sequence file"],
+            check=True,
+            capture_output=True,
+        )
 
         # Add 10 new lines
-        test_file.write_text("Header\n" + "\n".join([f"Added line {i}" for i in range(1, 11)]) + "\n")
+        test_file.write_text(
+            "Header\n" + "\n".join([f"Added line {i}" for i in range(1, 11)]) + "\n"
+        )
 
         # Create batches and discard
         git_stage_batch("new", "odd-lines")
@@ -1768,10 +1747,14 @@ class TestOddEvenLinesBatches:
         test_file.write_text("Start\n")
 
         subprocess.run(["git", "add", "reverse.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add reverse file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add reverse file"], check=True, capture_output=True
+        )
 
         # Add 10 new lines
-        test_file.write_text("Start\n" + "\n".join([f"New {i}" for i in range(1, 11)]) + "\n")
+        test_file.write_text(
+            "Start\n" + "\n".join([f"New {i}" for i in range(1, 11)]) + "\n"
+        )
 
         # Create batches and discard
         git_stage_batch("new", "odd-lines")
@@ -1815,7 +1798,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "test.txt"
         test_file.write_text("Line 1\n")
         subprocess.run(["git", "add", "test.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add test file"], check=True, capture_output=True
+        )
         test_file.write_text("Line 1\nLine 2\n")
 
         # Verify batch doesn't exist yet
@@ -1849,7 +1834,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "revert.txt"
         test_file.write_text("Original\n")
         subprocess.run(["git", "add", "revert.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"], check=True, capture_output=True
+        )
         test_file.write_text("Original\nAdded line 1\nAdded line 2\nAdded line 3\n")
 
         # Create batch BEFORE session (empty is the original state)
@@ -1857,12 +1844,17 @@ class TestBatchAbortReversion:
 
         # Start session and modify the batch by adding lines
         git_stage_batch("start")
-        git_stage_batch("include", "--to", "existing-batch", "--line", "1,2,3", check=False)
+        git_stage_batch(
+            "include", "--to", "existing-batch", "--line", "1,2,3", check=False
+        )
 
         # Verify batch has content now
         modified_show = git_stage_batch("show", "--from", "existing-batch")
         assert modified_show.returncode == 0
-        assert "Added line 1" in modified_show.stdout or "Added line 2" in modified_show.stdout
+        assert (
+            "Added line 1" in modified_show.stdout
+            or "Added line 2" in modified_show.stdout
+        )
 
         # Abort - should revert to original empty state
         git_stage_batch("abort")
@@ -1880,7 +1872,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "dropped.txt"
         test_file.write_text("Content\n")
         subprocess.run(["git", "add", "dropped.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"], check=True, capture_output=True
+        )
         test_file.write_text("Content\nNew line\n")
 
         # Create batch before session
@@ -1916,7 +1910,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "multi.txt"
         test_file.write_text("Base\n")
         subprocess.run(["git", "add", "multi.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"], check=True, capture_output=True
+        )
         test_file.write_text("Base\nLine 1\nLine 2\nLine 3\n")
 
         # Create some batches before session
@@ -2070,7 +2066,7 @@ class TestComplexBatchWorkflows:
         subprocess.run(
             ["git", "commit", "-m", "Applied batch changes"],
             check=True,
-            capture_output=True
+            capture_output=True,
         )
 
         # Batch still exists
@@ -2087,16 +2083,24 @@ class TestBatchRebaseWorkflow:
         file1 = functional_repo / "feature.txt"
         file1.write_text("# Feature\n\ndef main():\n    pass\n")
         subprocess.run(["git", "add", "feature.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add feature skeleton"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add feature skeleton"],
+            check=True,
+            capture_output=True,
+        )
 
         # Add unrelated commit
         file2 = functional_repo / "other.txt"
         file2.write_text("Other file\n")
         subprocess.run(["git", "add", "other.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add other file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add other file"], check=True, capture_output=True
+        )
 
         # Make changes at tip - add a new function
-        file1.write_text("# Feature\n\ndef main():\n    pass\n\ndef helper():\n    return 42\n")
+        file1.write_text(
+            "# Feature\n\ndef main():\n    pass\n\ndef helper():\n    return 42\n"
+        )
 
         # Batch the tip changes (just the new helper function)
         git_stage_batch("new", "improvements")
@@ -2118,7 +2122,7 @@ class TestBatchRebaseWorkflow:
             env=env,
             capture_output=True,
             text=True,
-            check=False
+            check=False,
         )
 
         # Should be in rebase state, stopped at first commit
@@ -2135,17 +2139,12 @@ class TestBatchRebaseWorkflow:
         # Amend the commit with the improvements
         subprocess.run(["git", "add", "feature.txt"], check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "--amend", "--no-edit"],
-            check=True,
-            capture_output=True
+            ["git", "commit", "--amend", "--no-edit"], check=True, capture_output=True
         )
 
         # Continue the rebase
         continue_result = subprocess.run(
-            ["git", "rebase", "--continue"],
-            capture_output=True,
-            text=True,
-            check=False
+            ["git", "rebase", "--continue"], capture_output=True, text=True, check=False
         )
 
         # Rebase should complete successfully
@@ -2153,17 +2152,14 @@ class TestBatchRebaseWorkflow:
 
         # Verify the improvement is now in the first commit
         first_commit_hash = subprocess.run(
-            ["git", "rev-parse", "HEAD~1"],
-            capture_output=True,
-            text=True,
-            check=True
+            ["git", "rev-parse", "HEAD~1"], capture_output=True, text=True, check=True
         ).stdout.strip()
 
         show_result = subprocess.run(
             ["git", "show", first_commit_hash],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
 
         # The helper function should be in the first commit now

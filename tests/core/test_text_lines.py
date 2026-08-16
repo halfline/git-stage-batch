@@ -72,12 +72,13 @@ class TestBytesToLines:
 
     def test_binary_content(self):
         """Test that binary content (non-UTF-8) is preserved."""
-        chunks = [b"text\nbin\x80\x05\xFF\nmore"]
+        chunks = [b"text\nbin\x80\x05\xff\nmore"]
         lines = list(bytes_to_lines(chunks))
-        assert lines == [b"text\n", b"bin\x80\x05\xFF\n", b"more"]
+        assert lines == [b"text\n", b"bin\x80\x05\xff\n", b"more"]
 
     def test_generator_input(self):
         """Test that generator input works."""
+
         def gen():
             yield b"a\n"
             yield b"b\n"

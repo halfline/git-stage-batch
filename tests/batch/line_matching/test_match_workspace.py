@@ -334,8 +334,7 @@ def test_match_lines_routes_mapped_storage_to_requested_spool(
 
     assert temporary_directories
     assert all(
-        directory is not None
-        and directory.resolve() == spool_dir.resolve()
+        directory is not None and directory.resolve() == spool_dir.resolve()
         for directory in temporary_directories
     )
 
@@ -344,6 +343,7 @@ def test_match_lines_closes_first_mapping_if_second_allocation_fails(
     monkeypatch,
 ):
     """Partial mapping allocation should not leak the first mapped vector."""
+
     class ClosingVector(list):
         closed = False
 
@@ -500,9 +500,7 @@ def test_lis_target_ranking_does_not_use_line_scale_python_heap(target_stride):
                 tracemalloc.stop()
 
             try:
-                assert tuple(anchors) == (
-                    (0, (line_count - 1) * target_stride),
-                )
+                assert tuple(anchors) == ((0, (line_count - 1) * target_stride),)
             finally:
                 workspace.close_resource(anchors)
 

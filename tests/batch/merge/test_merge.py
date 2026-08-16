@@ -11,6 +11,7 @@ import git_stage_batch.batch.merge.baseline_replacement_edits as baseline_replac
 import git_stage_batch.batch.merge.absence_constraints as absence_constraints_module
 import git_stage_batch.batch.merge.candidate_enumeration as candidate_enumeration_module
 import git_stage_batch.batch.merge.merge as merge_module
+import git_stage_batch.batch.merge.presence_constraints as presence_constraints_module
 import git_stage_batch.batch.merge.validation as validation_module
 import git_stage_batch.batch.realization.provenance as provenance_module
 import git_stage_batch.batch.discard as discard_module
@@ -1377,6 +1378,55 @@ def test_coordinate_candidate_is_closed_when_structural_planning_refuses(
     assert coordinate_candidate.closed
 
 
+def test_coordinate_candidate_cleanup_preserves_stream_failure(monkeypatch):
+    """Candidate cleanup cancellation must not replace stream failure."""
+    source = [b"a\n", b"new\n", b"b\n"]
+    target = [b"a\n", b"b\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [],
+        baseline_references={
+            2: BaselineReference(
+                after_line=1,
+                after_content=b"a\n",
+                before_line=2,
+                before_content=b"b\n",
+                has_before_line=True,
+            )
+        },
+    )
+
+    class FailingCandidate:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise RuntimeError("coordinate stream failed")
+
+        def close(self):
+            raise KeyboardInterrupt("coordinate cleanup cancelled")
+
+    monkeypatch.setattr(
+        merge_module._baseline_edits,
+        "try_apply_baseline_coordinate_edits",
+        lambda *_args, **_kwargs: FailingCandidate(),
+    )
+
+    with pytest.raises(RuntimeError, match="coordinate stream failed"):
+        merge_batch_from_line_sequences_as_buffer(
+            source,
+            ownership,
+            target,
+            resolution=MergeResolution(
+                {
+                    AMBIGUITY_KEY: (
+                        CoordinateStrategyChoice.RECORDED_COORDINATES.value
+                    )
+                }
+            ),
+        )
+
+
 @pytest.mark.parametrize("choice", [0, 3, True, "1", None])
 def test_coordinate_strategy_rejects_invalid_resolution_values(choice):
     """Only serialized values of the strategy enum are valid choices."""
@@ -1509,6 +1559,117 @@ def test_presence_resolution_may_waive_only_placement_ambiguity(monkeypatch):
 
     result.close()
     assert reached_presence_realization
+
+
+def test_presence_result_closes_when_owned_mapping_close_fails(monkeypatch):
+    """A cleanup failure cannot strand a result that will not be returned."""
+
+    class Mapping:
+        def close(self):
+            raise KeyboardInterrupt("mapping close cancelled")
+
+    class Result:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    result = Result()
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "match_lines",
+        lambda *_args, **_kwargs: Mapping(),
+    )
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "_apply_presence_constraints_with_mapping",
+        lambda *_args, **_kwargs: result,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="mapping close cancelled"):
+        presence_constraints_module.apply_presence_constraints(
+            [b"line\n"],
+            [b"line\n"],
+            LineRanges.empty(),
+        )
+
+    assert result.closed is True
+
+
+def test_presence_cleanup_does_not_replace_primary_error(monkeypatch):
+    """Mapping cleanup cancellation must not mask realization failure."""
+
+    class Mapping:
+        def close(self):
+            raise KeyboardInterrupt("mapping close cancelled")
+
+    def fail_realization(*_args, **_kwargs):
+        raise RuntimeError("realization failed")
+
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "match_lines",
+        lambda *_args, **_kwargs: Mapping(),
+    )
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "_apply_presence_constraints_with_mapping",
+        fail_realization,
+    )
+
+    with pytest.raises(RuntimeError, match="realization failed"):
+        presence_constraints_module.apply_presence_constraints(
+            [b"line\n"],
+            [b"line\n"],
+            LineRanges.empty(),
+        )
+
+
+def test_structural_result_closes_when_mapping_cleanup_fails(monkeypatch):
+    """Structural handoff must close a result rejected by final cleanup."""
+
+    class Result:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    result = Result()
+    source = [b"line\n"]
+    ownership = BatchOwnership.from_presence_lines([], [])
+    monkeypatch.setattr(
+        merge_module._presence_constraints,
+        "satisfy_constraints",
+        lambda *_args, **_kwargs: result,
+    )
+    monkeypatch.setattr(
+        merge_module,
+        "_close_owned_mappings",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt("mapping close cancelled")
+        ),
+    )
+
+    with (
+        match_lines(source, source) as mapping,
+        pytest.raises(KeyboardInterrupt, match="mapping close cancelled"),
+    ):
+        merge_module._build_structural_realized_entries(
+            source,
+            ownership,
+            source,
+            LineRanges.empty(),
+            (),
+            controlled_source_lines=LineRanges.empty(),
+            source_alternative_lines=LineRanges.empty(),
+            source_to_working_mapping=mapping,
+            resolution=None,
+            spool_dir=None,
+        )
+
+    assert result.closed is True
+
+
 def test_indexed_absence_result_closes_when_workspace_cleanup_fails(
     monkeypatch,
 ) -> None:
@@ -1680,6 +1841,40 @@ def test_unanchored_presence_reuses_fallback_line_mapping(monkeypatch):
         assert merged.to_bytes() == b"".join(source)
 
     assert mapping_calls == 1
+
+
+def test_merge_closes_initial_mapping_when_trusted_mapping_is_cancelled(
+    monkeypatch,
+) -> None:
+    """Cancellation during later mapping setup closes earlier owned storage."""
+    real_match_lines = merge_module.match_lines
+    acquired_mappings = []
+
+    def cancel_second_mapping(*args, **kwargs):
+        if acquired_mappings:
+            raise KeyboardInterrupt
+        mapping = real_match_lines(*args, **kwargs)
+        acquired_mappings.append(mapping)
+        return mapping
+
+    monkeypatch.setattr(merge_module, "match_lines", cancel_second_mapping)
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[ReplacementUnit(presence_lines=["2"], deletion_indices=[0])],
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        merge_batch(
+            b"head\nnew\ntail\n",
+            ownership,
+            b"head\nold\ntail\n",
+            trusted_target_content=b"head\nold\ntail\n",
+        )
+
+    assert len(acquired_mappings) == 1
+    with pytest.raises(ValueError, match="line mapping is closed"):
+        list(acquired_mappings[0].mapped_line_pairs())
 
 
 def test_reviewed_replacement_reuses_resolution_preflight_mapping(monkeypatch):

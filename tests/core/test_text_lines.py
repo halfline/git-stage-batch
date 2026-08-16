@@ -134,6 +134,33 @@ class TestNormalizeLineSequenceEndings:
 
         assert normalized[0:2] == [b"one\n", b"two\n"]
 
+    def test_slices_remain_lazy(self):
+        """Slicing must not materialize or normalize every selected line."""
+
+        class CountingLines:
+            def __init__(self, line_count):
+                self.line_count = line_count
+                self.read_count = 0
+
+            def __len__(self):
+                return self.line_count
+
+            def __getitem__(self, index):
+                if index < 0 or index >= self.line_count:
+                    raise IndexError(index)
+                self.read_count += 1
+                return b"line\r\n"
+
+        lines = CountingLines(1_000_000)
+        normalized = normalize_line_sequence_endings(lines)
+
+        sliced = normalized[100:900_000:2]
+
+        assert len(sliced) == 449_950
+        assert lines.read_count == 0
+        assert sliced[-1] == b"line\n"
+        assert lines.read_count == 1
+
     def test_negative_indexes_follow_sequence_rules(self, line_sequence):
         """Normalized line sequences support negative indexes."""
         lines = line_sequence([b"one\r\n", b"two\r"])

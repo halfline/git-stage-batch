@@ -234,6 +234,32 @@ def test_fragmented_source_lineage_translation_avoids_line_scale_python_heap():
     assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
+def test_lineage_constructor_streams_ordered_runs_without_python_sort_heap():
+    """Ordered run producers must flow directly into mapped lineage storage."""
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        gc.collect()
+        tracemalloc.start()
+        try:
+            with BatchSourceLineage(
+                source_runs=(
+                    LineageRun(
+                        old_start=line_number,
+                        old_end=line_number,
+                        new_start=line_number,
+                    )
+                    for line_number in range(1, line_count + 1)
+                )
+            ):
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
+
+
 def test_batch_source_lineage_finds_unmapped_source_ranges():
     """Unmapped-source lookup should scan runs without expanding selections."""
     with BatchSourceLineage(

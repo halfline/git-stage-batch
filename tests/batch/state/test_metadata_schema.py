@@ -259,6 +259,17 @@ def test_v1_rejects_duplicate_presence_claims():
         decode_batch_metadata(data, expected_batch="feature")
 
 
+def test_v1_rejects_equivalent_presence_claim_spellings():
+    """Duplicate detection canonicalizes ranges without copying every spec."""
+    data = _v1_metadata()
+    data["files"]["src/example.py"]["presence_claims"].append(
+        {"source_lines": ["1", "2-3"]}
+    )
+
+    with pytest.raises(BatchMetadataError, match="duplicate presence claims"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
 def test_v1_rejects_replacement_with_out_of_range_deletion_index():
     data = _v1_metadata()
     file_metadata = data["files"]["src/example.py"]

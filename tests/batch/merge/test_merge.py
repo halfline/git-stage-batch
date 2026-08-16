@@ -56,6 +56,7 @@ from git_stage_batch.batch.merge.presence_context import (
 from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.realization.entry_storage import (
     RealizedEntries,
+    RealizedEntryContentSequence,
     realized_entry_content_chunks,
 )
 from git_stage_batch.core.buffer import LineBuffer
@@ -3219,6 +3220,18 @@ class TestMergeLineSequences:
             b"line1\n",
             b"line2\n",
         ]
+
+    def test_realized_entry_content_strided_slice_remains_lazy(self):
+        """A strided content view must not materialize payload-line tuples."""
+        entries = RealizedEntries(
+            RealizedEntry(f"line {index}\n".encode(), source_line=index + 1)
+            for index in range(5)
+        )
+
+        sliced = RealizedEntryContentSequence(entries)[::-2]
+
+        assert not isinstance(sliced, tuple)
+        assert list(sliced) == [b"line 4\n", b"line 2\n", b"line 0\n"]
 
     def test_realized_entry_pending_read_does_not_flush_or_block_coalescing(self):
         """Reading a pending provenance run keeps it available for coalescing."""

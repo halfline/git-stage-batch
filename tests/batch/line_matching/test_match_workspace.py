@@ -200,6 +200,77 @@ def test_scoped_occurrence_index_refuses_whole_target_boundary_query():
         assert occurrence_index._boundaries is None
         occurrence_index.close()
 
+
+def test_match_occurrence_table_close_attempts_every_resource_and_can_retry():
+    """Internal match indexes must not strand a sibling after cancellation."""
+
+    class Resource:
+        pass
+
+    class Workspace:
+        def __init__(self):
+            self.calls = []
+            self.cancelled_resource = None
+
+        def close_resource(self, resource):
+            self.calls.append(resource)
+            if resource is self.cancelled_resource:
+                raise KeyboardInterrupt("close cancelled")
+
+    workspace = Workspace()
+    table = match_module._LineOccurrenceTable.__new__(
+        match_module._LineOccurrenceTable
+    )
+    table._workspace = workspace
+    table._records = Resource()
+    table._buckets = Resource()
+    table._closed = False
+    workspace.cancelled_resource = table._records
+
+    with pytest.raises(KeyboardInterrupt, match="close cancelled"):
+        table.close()
+
+    assert workspace.calls == [table._records, table._buckets]
+    assert table._closed is False
+
+    workspace.calls.clear()
+    workspace.cancelled_resource = None
+    table.close()
+    assert workspace.calls == [table._records, table._buckets]
+    assert table._closed is True
+
+
+def test_match_occurrence_table_preserves_body_cancellation_during_close():
+    """A secondary index-close failure must not mask matcher cancellation."""
+
+    class Resource:
+        pass
+
+    class Workspace:
+        def __init__(self):
+            self.calls = []
+
+        def close_resource(self, resource):
+            self.calls.append(resource)
+            raise RuntimeError("close failed")
+
+    workspace = Workspace()
+    table = match_module._LineOccurrenceTable.__new__(
+        match_module._LineOccurrenceTable
+    )
+    table._workspace = workspace
+    table._records = Resource()
+    table._buckets = Resource()
+    table._closed = False
+
+    with pytest.raises(KeyboardInterrupt, match="matching cancelled"):
+        with table:
+            raise KeyboardInterrupt("matching cancelled")
+
+    assert workspace.calls == [table._records, table._buckets]
+    assert table._closed is False
+
+
 def test_exact_occurrence_index_does_not_materialize_line_bytes():
     """Exact payload indexing should retain the existing hashable line view."""
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Sequence
 from pathlib import Path
+from types import TracebackType
 from typing import TypeVar
 
 from .line_mapping import (
@@ -18,6 +19,7 @@ from ...core.mapped_storage import (
     MappedRecordVector,
     sort_mapped_records,
 )
+from ...core.resource_cleanup import close_resources_preserving_first
 from ...core.text_lines import AcquirableLineSequence, as_acquirable_line_sequence
 
 
@@ -163,9 +165,30 @@ class _LineOccurrenceTable:
         """Release mapped occurrence storage."""
         if self._closed:
             return
-        self._workspace.close_resource(self._records)
-        self._workspace.close_resource(self._buckets)
+        first_error: BaseException | None = None
+        for resource in (self._records, self._buckets):
+            try:
+                self._workspace.close_resource(resource)
+            except BaseException as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
         self._closed = True
+
+    def __enter__(self) -> _LineOccurrenceTable:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def _find_record(
         self,
@@ -502,7 +525,7 @@ def _align_segment(
         target_start,
         target_end,
         source_to_target,
-        target_to_source
+        target_to_source,
     )
 
     source_end, target_end = _map_equal_suffix(
@@ -513,19 +536,18 @@ def _align_segment(
         target_start,
         target_end,
         source_to_target,
-        target_to_source
+        target_to_source,
     )
 
     if source_start >= source_end or target_start >= target_end:
         return False
 
-    occurrence_table = _LineOccurrenceTable(
+    with _LineOccurrenceTable(
         workspace,
         source_lines,
         source_start,
         source_end,
-    )
-    try:
+    ) as occurrence_table:
         occurrence_table.scan_source(source_start, source_end)
         occurrence_table.scan_target(target_lines, target_start, target_end)
         candidate_pairs = occurrence_table.emit_candidate_pairs(
@@ -534,8 +556,6 @@ def _align_segment(
             source_end,
         )
         has_common_lines = occurrence_table.has_common_lines
-    finally:
-        occurrence_table.close()
 
     try:
         anchors = _longest_increasing_subsequence_records(

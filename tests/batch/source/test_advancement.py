@@ -313,6 +313,45 @@ def test_batch_source_lineage_closes_mapped_storage():
         lineage.translate_source_line(1)
 
 
+def test_batch_source_lineage_close_attempts_every_table_and_can_retry():
+    """One table cancellation must not strand sibling lineage storage."""
+
+    class RetryableTable:
+        def __init__(self, *, cancel_once=False):
+            self.cancel_once = cancel_once
+            self.close_count = 0
+
+        @property
+        def byte_count(self):
+            return 8
+
+        def close(self):
+            self.close_count += 1
+            if self.cancel_once:
+                self.cancel_once = False
+                raise KeyboardInterrupt("lineage close cancelled")
+
+    lineage = BatchSourceLineage.__new__(BatchSourceLineage)
+    lineage._source_runs = RetryableTable(cancel_once=True)
+    lineage._working_runs = RetryableTable()
+    lineage._source_expansions = RetryableTable()
+    lineage._closed = False
+
+    with pytest.raises(KeyboardInterrupt, match="lineage close cancelled"):
+        lineage.close()
+
+    assert lineage._source_runs.close_count == 1
+    assert lineage._working_runs.close_count == 1
+    assert lineage._source_expansions.close_count == 1
+    assert lineage.closed is False
+
+    lineage.close()
+    assert lineage._source_runs.close_count == 2
+    assert lineage._working_runs.close_count == 2
+    assert lineage._source_expansions.close_count == 2
+    assert lineage.closed is True
+
+
 def test_source_lineage_remaps_guarded_presence_ranges():
     """Source-line remapping should consume presence ranges directly."""
     ownership = _PresenceLineGuardedOwnership(

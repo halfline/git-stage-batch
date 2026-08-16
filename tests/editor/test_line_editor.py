@@ -9,6 +9,7 @@ import pytest
 
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.editor.line_editor import LineEditor
+from git_stage_batch.batch.realization.entry_storage import RealizedEntries
 
 
 def test_line_editor_appends_indexed_ranges(line_sequence):
@@ -185,6 +186,27 @@ def test_owner_lease_registration_is_atomic_when_source_tracking_fails():
     assert target_editor._incoming_editor_leases == {}
     source_editor.close()
     target_editor.close()
+
+
+def test_realized_entry_append_fails_closed_after_provenance_cancellation(
+    monkeypatch,
+):
+    """Content cannot escape with a shorter provenance table."""
+    entries = RealizedEntries()
+    original_append = entries._provenance.append
+
+    def append_then_cancel(*args, **kwargs):
+        original_append(*args, **kwargs)
+        raise KeyboardInterrupt("provenance append cancelled")
+
+    monkeypatch.setattr(entries._provenance, "append", append_then_cancel)
+
+    with pytest.raises(KeyboardInterrupt, match="provenance append cancelled"):
+        entries.append(b"one\n", source_line=1)
+
+    assert entries.closed is True
+    with pytest.raises(ValueError, match="closed"):
+        len(entries)
 
 
 def test_appending_fragmented_editor_avoids_temporary_run_tuple() -> None:

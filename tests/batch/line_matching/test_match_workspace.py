@@ -64,6 +64,178 @@ def test_occurrence_index_sizes_and_releases_scoped_storage():
     workspace.close()
 
 
+def test_occurrence_index_releases_partial_constructor_allocations(monkeypatch):
+    """Cancellation between index allocations must release earlier storage."""
+    workspace = MatcherWorkspace()
+    original_record_vector = workspace.record_vector
+    allocation_count = 0
+
+    def cancel_second_record_allocation(*args, **kwargs):
+        nonlocal allocation_count
+        allocation_count += 1
+        if allocation_count == 2:
+            raise KeyboardInterrupt("record allocation cancelled")
+        return original_record_vector(*args, **kwargs)
+
+    monkeypatch.setattr(workspace, "record_vector", cancel_second_record_allocation)
+
+    with pytest.raises(KeyboardInterrupt, match="record allocation cancelled"):
+        LinePayloadOccurrenceIndex(workspace, [b"one\n", b"two\n"])
+
+    assert workspace._current_bytes == 0
+    assert workspace._resources == []
+    workspace.close()
+
+
+def test_occurrence_index_close_attempts_every_resource_and_can_retry():
+    """One close cancellation cannot strand the index's remaining storage."""
+
+    class Resource:
+        pass
+
+    class Workspace:
+        def __init__(self):
+            self.calls = []
+            self.cancelled_resource = None
+
+        def close_resource(self, resource):
+            self.calls.append(resource)
+            if resource is self.cancelled_resource:
+                raise KeyboardInterrupt
+
+    workspace = Workspace()
+    index = LinePayloadOccurrenceIndex.__new__(LinePayloadOccurrenceIndex)
+    index._workspace = workspace
+    index._positions = Resource()
+    index._contents = Resource()
+    index._buckets = Resource()
+    index._boundaries = Resource()
+    index._boundary_buckets = Resource()
+    workspace.cancelled_resource = index._boundaries
+
+    with pytest.raises(KeyboardInterrupt):
+        index.close()
+
+    expected_resources = [
+        index._boundaries,
+        index._boundary_buckets,
+        index._positions,
+        index._contents,
+        index._buckets,
+    ]
+    assert workspace.calls == expected_resources
+    assert index._workspace is workspace
+
+    workspace.calls.clear()
+    workspace.cancelled_resource = None
+    index.close()
+    assert workspace.calls == expected_resources
+    assert index._workspace is None
+
+
+def test_occurrence_index_finds_unique_adjacent_boundary_without_line_scan(
+    monkeypatch,
+):
+    """Repeated individual payloads should use one mapped pair index."""
+    lines = [b"A\n"] * 500 + [b"B\n"] * 500
+
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(workspace, lines)
+        monkeypatch.setattr(
+            occurrence_index,
+            "matching_line_indexes",
+            lambda _content: (_ for _ in ()).throw(
+                AssertionError("adjacent boundaries must not scan line occurrences")
+            ),
+        )
+
+        assert occurrence_index.unique_adjacent_boundary_position(
+            b"A\n",
+            b"B\n",
+        ) == 500
+        assert occurrence_index.unique_adjacent_boundary_position(
+            b"A\n",
+            b"A\n",
+        ) is None
+
+        occurrence_index.close()
+
+
+def test_adjacent_boundary_index_releases_partial_allocation(monkeypatch):
+    """Cancellation after bucket allocation must not strand mapped storage."""
+    workspace = MatcherWorkspace()
+    occurrence_index = LinePayloadOccurrenceIndex(
+        workspace,
+        [b"A\n", b"B\n"],
+    )
+    initial_bytes = workspace._current_bytes
+
+    def cancel_record_allocation(*_args, **_kwargs):
+        raise KeyboardInterrupt("allocation cancelled")
+
+    monkeypatch.setattr(workspace, "record_vector", cancel_record_allocation)
+    with pytest.raises(KeyboardInterrupt, match="allocation cancelled"):
+        occurrence_index.unique_adjacent_boundary_position(b"A\n", b"B\n")
+
+    assert workspace._current_bytes == initial_bytes
+    assert occurrence_index._boundary_buckets is None
+    assert occurrence_index._boundaries is None
+    occurrence_index.close()
+    workspace.close()
+
+
+def test_scoped_occurrence_index_refuses_whole_target_boundary_query():
+    """A range-sized index must not silently allocate for the whole file."""
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(
+            workspace,
+            [b"A\n", b"B\n", b"C\n"],
+            target_indexes=range(1, 2),
+        )
+
+        with pytest.raises(ValueError, match="full target index"):
+            occurrence_index.unique_adjacent_boundary_position(b"A\n", b"B\n")
+
+        assert occurrence_index._boundary_buckets is None
+        assert occurrence_index._boundaries is None
+        occurrence_index.close()
+
+def test_exact_occurrence_index_does_not_materialize_line_bytes():
+    """Exact payload indexing should retain the existing hashable line view."""
+
+    class NonMaterializableLine:
+        def __init__(self, content):
+            self.content = content
+
+        def __bytes__(self):
+            raise AssertionError("exact occurrence indexing copied line bytes")
+
+        def __hash__(self):
+            return hash(self.content)
+
+        def __eq__(self, other):
+            return (
+                isinstance(other, NonMaterializableLine)
+                and self.content == other.content
+            )
+
+    first = NonMaterializableLine(b"first\n")
+    repeated = NonMaterializableLine(b"repeated\n")
+    lines = [first, repeated, repeated]
+
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(
+            workspace,
+            lines,
+            normalize_payloads=False,
+        )
+        try:
+            assert occurrence_index.occurrence_count(first) == 1
+            assert occurrence_index.occurrence_count(repeated) == 2
+        finally:
+            occurrence_index.close()
+
+
 def test_match_lines_routes_mapped_storage_to_requested_spool(
     tmp_path,
     monkeypatch,
@@ -87,7 +259,7 @@ def test_match_lines_routes_mapped_storage_to_requested_spool(
     lines = [f"line {index}\n".encode() for index in range(line_count)]
 
     with match_lines(lines, lines, spool_dir=spool_dir) as mapping:
-        assert len(tuple(mapping.mapped_line_pairs())) == len(lines)
+        assert sum(1 for _pair in mapping.mapped_line_pairs()) == len(lines)
 
     assert temporary_directories
     assert all(

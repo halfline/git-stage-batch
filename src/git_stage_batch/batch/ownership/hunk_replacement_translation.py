@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
-from ...core.line_selection import LineRanges
+from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.models import LineEntry
 from ...core.repeated_context_replacement import (
     RepeatedContextSuffixReplacement,
@@ -14,7 +14,6 @@ from ...core.repeated_context_replacement import (
 from . import hunk_line_ranges as _hunk_line_ranges
 from .absence_content import AbsenceContentBuilder
 from .absence_claims import AbsenceClaim
-from ...core.line_selection import LineRangeBuilder
 from .line_entries import (
     baseline_reference_for_file_line_range,
     baseline_reference_for_old_line_range,

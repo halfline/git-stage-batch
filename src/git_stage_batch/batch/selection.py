@@ -9,7 +9,6 @@ from pathlib import Path
 import shlex
 from typing import TYPE_CHECKING, Optional
 
-from ..core.line_selection import LineRangeBuilder
 from .ownership.model import BatchOwnership
 from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from .ownership.units import (
@@ -21,6 +20,7 @@ from .ownership.unit_types import OwnershipUnit, OwnershipUnitKind
 from .ownership.unit_validation import validate_ownership_units
 from .state.metadata_types import BatchFileMetadataDict
 from ..core.line_selection import (
+    LineRangeBuilder,
     LineRanges,
     LineSelection,
     parse_line_selection,

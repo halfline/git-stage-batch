@@ -7,14 +7,13 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ...batch.file_display import render_batch_file_display
-from ...core.line_selection import LineRangeBuilder
 from ...batch.selection import require_single_file_context_for_line_selection_ranges
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
 )
-from ...core.line_selection import LineRanges
+from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...exceptions import CommandError
 from ...git_paths import display_path
 from ...i18n import _, pgettext

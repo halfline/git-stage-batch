@@ -7,7 +7,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import overload
 
-from ..core.line_selection import LineRanges
+from ..core.line_selection import LineRangeBuilder, LineRanges
 from ..core.text_lines import normalize_line_sequence_endings
 from ..utils.repository_buffers import (
     load_working_tree_file_as_buffer,
@@ -16,7 +16,6 @@ from ..utils.repository_buffers import (
 from .merge import merge as batch_merge
 from .line_matching.match import match_lines
 from .ownership.model import BatchOwnership
-from ..core.line_selection import LineRangeBuilder
 from .ownership.display_lines import OwnershipDisplayLine
 from .ownership.unit_rebuild import rebuild_ownership_from_units
 from .ownership.unit_types import OwnershipUnit, OwnershipUnitKind

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...core.line_selection import LineRanges
+from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...core.text_lines import normalize_line_sequence_endings
 from ...exceptions import MergeError as _MergeError
@@ -40,7 +40,6 @@ from ..line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from ..line_matching.sequence_equality import (
     line_slice_equals as _line_slice_matches,
 )
-from ...core.line_selection import LineRangeBuilder
 from ..ownership.replacement_units import (
     replacement_counts_cover_origin as _replacement_counts_cover_origin,
 )

@@ -1,5 +1,8 @@
 """Tests for line selection parsing."""
 
+import gc
+import tracemalloc
+
 import pytest
 
 from git_stage_batch.core.line_selection import (
@@ -11,7 +14,25 @@ from git_stage_batch.core.line_selection import (
     parse_line_selection_ranges,
     parse_positive_selection,
     scan_line_range_specs,
+    sorted_line_ranges_contain,
 )
+
+
+_LINE_SCALE_HEAP_LIMIT = 64 * 1024
+
+
+@pytest.mark.parametrize(
+    ("line_number", "expected"),
+    [(0, False), (1, True), (3, True), (4, False), (8, True), (10, False)],
+)
+def test_sorted_line_range_records_support_binary_membership(
+    line_number,
+    expected,
+) -> None:
+    """Mapped records may carry fields after their inclusive range."""
+    ranges = ((1, 3, 100), (7, 8, 200))
+
+    assert sorted_line_ranges_contain(ranges, line_number) is expected
 
 
 class TestParseLineSelection:
@@ -214,6 +235,37 @@ class TestLineRanges:
 
         assert selection.ranges() == ((1, 3),)
 
+    def test_from_lines_coalesces_contiguous_input_without_line_scale_heap(self):
+        """A long contiguous line stream should become one range as it is read."""
+        line_count = 16_384
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            selection = LineRanges.from_lines(range(1, line_count + 1))
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        assert selection.ranges() == ((1, line_count),)
+        assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+    def test_set_equality_does_not_duplicate_selected_lines_on_heap(self):
+        """Comparing an existing set must not build a second line-sized set."""
+        line_count = 16_384
+        selected_lines = set(range(1, line_count + 1))
+        selection = LineRanges.from_ranges(((1, line_count),))
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            assert selection == selected_lines
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
     def test_parse_selection_ranges_does_not_expand_ranges(
         self,
         monkeypatch,
@@ -341,6 +393,27 @@ class TestLineRanges:
             (9, 10),
             (20, 24),
         )
+
+    @pytest.mark.parametrize(
+        ("line_number", "expected"),
+        [
+            (0, None),
+            (1, 1),
+            (2, 1),
+            (4, 1),
+            (5, 5),
+            (8, 5),
+            (9, 9),
+        ],
+    )
+    def test_nearest_unselected_line_uses_range_boundaries(
+        self,
+        line_number,
+        expected,
+    ):
+        selection = LineRanges.from_ranges([(2, 4), (6, 8)])
+
+        assert selection.nearest_unselected_at_or_before(line_number) == expected
 
     def test_formats_ranges_without_line_expansion(self):
         selection = LineRanges.from_ranges([(10, 12), (1, 3), (4, 5)])

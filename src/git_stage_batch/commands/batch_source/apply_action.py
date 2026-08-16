@@ -22,7 +22,10 @@ from . import text_file_actions as _text_file_actions
 from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
 from ...batch.operation_candidate_types import CandidatePreviewCount
-from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    BatchMetadataDict,
+)
 from ...batch.state.metadata_types import add_ownership_metadata
 from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...core.models import RenderedBatchDisplay
@@ -35,8 +38,11 @@ from ...batch.submodule_pointer import (
 from ...data.session import snapshot_file_if_untracked
 from ...data.session_marker import session_is_active
 from ...data.applied_batch_overlays import (
+    AppliedBatchOverlayView,
     applied_batch_overlays_repository_path,
     build_applied_file_provenances,
+    fresh_applied_batch_overlay_for_path,
+    load_applied_batch_overlay_snapshot,
     record_applied_batch_overlays,
 )
 from ...data.file_target_identity import (
@@ -78,6 +84,7 @@ class _ApplyTextInput:
     source_commit: str | None
     source_required: bool
     index_identity: IndexIdentity | None
+    applied_overlay: AppliedBatchOverlayView
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +158,7 @@ def execute_apply_action(
             expected_worktree_identities,
         ) = _build_apply_action_plans(
             batch_name=batch_name,
+            batch_metadata=context.metadata,
             files=files,
             selected_ids=selected_ids,
             selection_ids_to_apply=selection_ids_to_apply,
@@ -351,12 +359,17 @@ def _build_apply_action_plans(
     rendered: RenderedBatchDisplay | None,
     repository_root: Path,
     workspace: FileJobWorkspace,
+    batch_metadata: BatchMetadataDict | None = None,
 ) -> tuple[
     list[_action_plans.BatchSourceActionPlan],
     list[tuple[str, BatchFileMetadataDict]],
     dict[str, WorktreeIdentity],
 ]:
     capture = _capture_apply_plan_inputs(
+        batch_name=batch_name,
+        batch_metadata=(
+            {"files": files} if batch_metadata is None else batch_metadata
+        ),
         files=files,
         selected_ids=selected_ids,
         workspace=workspace,
@@ -389,6 +402,8 @@ def _build_apply_action_plans(
 
 def _capture_apply_plan_inputs(
     *,
+    batch_name: str,
+    batch_metadata: BatchMetadataDict,
     files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     workspace: FileJobWorkspace,
@@ -421,6 +436,7 @@ def _capture_apply_plan_inputs(
         )
     )
     index_identities = read_index_identities(index_paths)
+    applied_overlay_snapshot = load_applied_batch_overlay_snapshot()
 
     for ordinal, (file_path, file_meta) in enumerate(files.items()):
         try:
@@ -481,6 +497,12 @@ def _capture_apply_plan_inputs(
                     source_required=source_required,
                     index_identity=(
                         index_identities[file_path] if source_required else None
+                    ),
+                    applied_overlay=fresh_applied_batch_overlay_for_path(
+                        file_path,
+                        batch_metadata_by_name={batch_name: batch_metadata},
+                        snapshot=applied_overlay_snapshot,
+                        worktree_identity=identity,
                     ),
                 )
             )
@@ -545,6 +567,7 @@ def _build_apply_text_jobs(
                     ),
                     "working_tree_artifact_path": str(text_input.worktree_artifact),
                     "scratch_directory": str(text_input.scratch_directory),
+                    "applied_overlay": text_input.applied_overlay,
                 },
             )
             output_path = workspace.output_path(ordinal, "merged-output")

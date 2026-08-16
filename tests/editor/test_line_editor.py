@@ -283,6 +283,58 @@ def test_pending_close_drains_long_lease_chain_without_recursion():
         _ = len(root)
 
 
+def test_line_editor_retries_failed_owned_resource_close():
+    """A retained resource that fails once must remain owned for a retry."""
+
+    class RetryableResource:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+            if self.close_count == 1:
+                raise KeyboardInterrupt("close cancelled")
+
+    resource = RetryableResource()
+    editor = LineEditor(())
+    editor.retain_resource(resource)
+
+    with pytest.raises(KeyboardInterrupt, match="close cancelled"):
+        editor.close()
+    with pytest.raises(ValueError, match="editor is closed"):
+        _ = len(editor)
+
+    editor.close()
+    assert resource.close_count == 2
+
+
+def test_line_editor_retries_failed_resource_from_drained_lease_chain():
+    """A borrower retry must retain a failed deferred source cleanup."""
+
+    class RetryableResource:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+            if self.close_count == 1:
+                raise KeyboardInterrupt("source cleanup cancelled")
+
+    resource = RetryableResource()
+    source = LineEditor((b"line\n",))
+    source.retain_resource(resource)
+    borrower = LineEditor(())
+    borrower.append_line_ranges_from_editor(source, 0, 1)
+    with pytest.raises(ValueError, match="active leases"):
+        source.close()
+
+    with pytest.raises(KeyboardInterrupt, match="cleanup cancelled"):
+        borrower.close()
+    borrower.close()
+
+    assert resource.close_count == 2
+
+
 def test_line_editor_rejects_invalid_append_ranges(line_sequence):
     """Append ranges must stay within their indexed source."""
     lines = line_sequence([b"one\n"])

@@ -58,7 +58,7 @@ def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
 def _has_complete_baseline_references(
     presence_references: EffectivePresenceReferenceIndex,
     presence_line_set: LineSelection,
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
 ) -> bool:
     for claimed_line in presence_line_set:
         reference = presence_references.reference_for(claimed_line)
@@ -76,7 +76,7 @@ def try_apply_baseline_coordinate_edits(
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
     presence_line_set: LineSelection,
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
     *,
     allow_adjacent_unmapped_presence: bool = False,
     allow_mapped_independent_removals: bool = False,
@@ -198,7 +198,7 @@ def _build_baseline_edit_plan(
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
     presence_line_set: LineSelection,
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
     presence_references: EffectivePresenceReferenceIndex,
     *,

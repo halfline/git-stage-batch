@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from itertools import chain
 from typing import Iterable, Iterator, Protocol
@@ -74,6 +75,23 @@ def _normalize_line_ranges(
 
 def _line_ranges_count(ranges: Iterable[tuple[int, int]]) -> int:
     return sum(end - start + 1 for start, end in ranges)
+
+
+def sorted_line_ranges_contain(
+    ranges: Sequence[tuple[int, ...]],
+    line_number: int,
+) -> bool:
+    """Return whether sorted, disjoint inclusive range records contain a line."""
+    lower = 0
+    upper = len(ranges)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if ranges[middle][0] <= line_number:
+            lower = middle + 1
+        else:
+            upper = middle
+    range_index = lower - 1
+    return range_index >= 0 and line_number <= ranges[range_index][1]
 
 
 def _selection_ranges(
@@ -159,7 +177,10 @@ class LineRanges:
 
     @classmethod
     def from_lines(cls, lines: Iterable[int]) -> LineRanges:
-        return cls(tuple((line, line) for line in lines))
+        builder = LineRangeBuilder()
+        for line in lines:
+            builder.add_line(line)
+        return builder.finish()
 
     @classmethod
     def from_ranges(cls, ranges: Iterable[tuple[int, int]]) -> LineRanges:
@@ -206,7 +227,7 @@ class LineRanges:
         if isinstance(other, LineRanges):
             return self._ranges == other._ranges
         if isinstance(other, set):
-            return set(self) == other
+            return len(self) == len(other) and all(line in self for line in other)
         return NotImplemented
 
     def ranges(self) -> tuple[tuple[int, int], ...]:
@@ -341,6 +362,19 @@ class LineRanges:
         if not self._ranges:
             return None
         return self._ranges[0][0]
+
+    def nearest_unselected_at_or_before(self, line_number: int) -> int | None:
+        """Return the nearest positive line not selected at or before one line."""
+        if line_number < 1:
+            return None
+        range_index = bisect_right(self._starts, line_number) - 1
+        if range_index < 0:
+            return line_number
+        range_start, range_end = self._ranges[range_index]
+        if line_number > range_end:
+            return line_number
+        predecessor = range_start - 1
+        return predecessor if predecessor > 0 else None
 
     def to_line_spec(self) -> str:
         return ",".join(

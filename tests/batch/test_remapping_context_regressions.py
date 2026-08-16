@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from contextlib import ExitStack
+import hashlib
 import json
 from pathlib import Path
 
@@ -131,6 +132,9 @@ def test_copied_cleanup_context_does_not_block_owned_binary_replay():
     path, merged = _merge_fixture("remapping_copied_cleanup_context.json")
 
     compile(merged.decode(), path, "exec")
+    assert hashlib.sha256(merged).hexdigest() == (
+        "7181b6dd235077a318979ffa9047057df845fc35b161ef13dad12016ec600e55"
+    )
 
 
 def test_cleanup_wrapper_preserves_predecessor_executor_indentation():

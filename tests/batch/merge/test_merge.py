@@ -51,6 +51,7 @@ from git_stage_batch.batch.merge.merge import (
 )
 from git_stage_batch.batch.merge.presence_constraints import satisfy_constraints
 from git_stage_batch.batch.merge.presence_context import (
+    PresencePlacementAmbiguityError,
     contextual_presence_placements,
 )
 from git_stage_batch.batch.realization.entries import RealizedEntry
@@ -1393,6 +1394,121 @@ def test_coordinate_strategy_rejects_invalid_resolution_values(choice):
         )
 
 
+@pytest.mark.parametrize(
+    "resolution",
+    [
+        MergeResolution({}),
+        MergeResolution({"unknown:choice": 1}),
+        MergeResolution({"presence:stale": True}),
+        MergeResolution({"presence:stale": 1, "absence:stale": 1}),
+    ],
+)
+def test_merge_rejects_malformed_resolution_shape(resolution):
+    """Only one typed decision from a known candidate family is admissible."""
+    with pytest.raises(
+        MergeError,
+        match="Selected merge resolution is no longer valid",
+    ):
+        merge_batch_from_line_sequences_as_buffer(
+            [b"same\n"],
+            BatchOwnership([], []),
+            [b"same\n"],
+            resolution=resolution,
+        )
+
+
+@pytest.mark.parametrize("ambiguity_key", ["presence:stale", "absence:stale"])
+def test_merge_rejects_unconsumed_structural_resolution(ambiguity_key):
+    """A namespace prefix alone cannot grant reviewed-placement authority."""
+    with pytest.raises(
+        MergeError,
+        match="Selected merge resolution is no longer valid",
+    ):
+        merge_batch_from_line_sequences_as_buffer(
+            [b"same\n"],
+            BatchOwnership([], []),
+            [b"same\n"],
+            resolution=MergeResolution({ambiguity_key: 1}),
+        )
+
+
+def test_presence_resolution_does_not_waive_unrelated_structural_refusal(
+    monkeypatch,
+):
+    """Review authority is limited to the presence ambiguity it names."""
+    source = [b"head\n", b"claimed\n", b"tail\n"]
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+
+    monkeypatch.setattr(
+        merge_module,
+        "_check_merge_structural_validity",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            MergeError("unrelated structural refusal")
+        ),
+    )
+
+    with (
+        match_lines(source, source) as mapping,
+        pytest.raises(MergeError, match="unrelated structural refusal"),
+    ):
+        merge_module._build_structural_realized_entries(
+            source,
+            ownership,
+            source,
+            ownership.presence_line_set(),
+            ownership.deletions,
+            controlled_source_lines=ownership.presence_line_set(),
+            source_alternative_lines=LineRanges.empty(),
+            source_to_working_mapping=mapping,
+            resolution=MergeResolution({"presence:reviewed": 1}),
+            spool_dir=None,
+        )
+
+
+def test_presence_resolution_may_waive_only_placement_ambiguity(monkeypatch):
+    """A reviewed choice may continue past its matching ambiguity class."""
+    source = [b"head\n", b"claimed\n", b"tail\n"]
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    reached_presence_realization = False
+
+    def refuse_ambiguous_placement(*_args, **_kwargs):
+        raise PresencePlacementAmbiguityError("reviewable placement")
+
+    def realize_reviewed_presence(*_args, **_kwargs):
+        nonlocal reached_presence_realization
+        reached_presence_realization = True
+        return RealizedEntries()
+
+    monkeypatch.setattr(
+        merge_module,
+        "_check_merge_structural_validity",
+        refuse_ambiguous_placement,
+    )
+    monkeypatch.setattr(
+        merge_module._presence_constraints,
+        "satisfy_constraints",
+        realize_reviewed_presence,
+    )
+
+    mapping = match_lines(source, source)
+    try:
+        result = merge_module._build_structural_realized_entries(
+            source,
+            ownership,
+            source,
+            ownership.presence_line_set(),
+            ownership.deletions,
+            controlled_source_lines=ownership.presence_line_set(),
+            source_alternative_lines=LineRanges.empty(),
+            source_to_working_mapping=mapping,
+            resolution=MergeResolution({"presence:reviewed": 1}),
+            spool_dir=None,
+        )
+    finally:
+        mapping.close()
+
+    result.close()
+    assert reached_presence_realization
 def test_indexed_absence_result_closes_when_workspace_cleanup_fails(
     monkeypatch,
 ) -> None:

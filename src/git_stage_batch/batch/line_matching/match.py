@@ -6,7 +6,12 @@ from collections.abc import Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import TypeVar
 
-from .line_mapping import IntVector as _IntVector, LineMapping as _LineMapping
+from .line_mapping import (
+    IntVector as _IntVector,
+    LineMapping as _LineMapping,
+    _close_vectors,
+    allocate_mapping_vector as _new_line_mapping,
+)
 from .match_workspace import MatcherWorkspace
 from ...core.mapped_storage import (
     MappedIntVector,
@@ -17,7 +22,6 @@ from ...core.text_lines import AcquirableLineSequence, as_acquirable_line_sequen
 
 
 LineContent = TypeVar("LineContent", bound=Hashable)
-_MAX_UINT32 = (1 << 32) - 1
 _MAX_UINT64 = (1 << 64) - 1
 _LINE_PAIR_RECORD_FORMAT = "QQ"
 _LINE_INDEX_RECORD_FORMAT = "Q"
@@ -29,26 +33,6 @@ _OCCURRENCE_SOURCE_COUNT = 2
 _OCCURRENCE_TARGET_INDEX = 3
 _OCCURRENCE_TARGET_COUNT = 4
 _OCCURRENCE_NEXT = 5
-
-
-def _line_mapping_width(max_line_number: int) -> int:
-    if max_line_number <= _MAX_UINT32:
-        return 4
-    return 8
-
-
-def _new_line_mapping(
-    size: int,
-    max_line_number: int,
-    *,
-    spool_dir: str | Path | None = None,
-) -> MappedIntVector:
-    return MappedIntVector(
-        size,
-        width=_line_mapping_width(max_line_number),
-        fill=0,
-        spool_dir=spool_dir,
-    )
 
 
 class _LineOccurrenceTable:
@@ -783,10 +767,10 @@ def match_acquirable_lines(
             may_have_unmapped_equal_lines=may_have_unmapped_equal_lines,
         )
     except BaseException:
-        if source_to_target is not None:
-            source_to_target.close()
-        if target_to_source is not None:
-            target_to_source.close()
+        try:
+            _close_vectors(source_to_target, target_to_source)
+        except BaseException:
+            pass
         raise
 
 

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import gc
+import tracemalloc
+
 import pytest
 
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.editor.line_editor import LineEditor
 
 
@@ -139,6 +143,120 @@ def test_appending_ranges_acquires_owner_leases_incrementally():
     assert source_editor.hash_count < append_count * 10
     target_editor.close()
     source_editor.close()
+
+
+def test_append_cancellation_rolls_back_piece_and_new_owner_lease(monkeypatch):
+    """A reported append failure must leave neither content nor a lease."""
+    source_editor = LineEditor((b"one\n",))
+    target_editor = LineEditor(())
+    original_append = target_editor._pieces.append_line_range
+
+    def append_then_cancel(*args, **kwargs):
+        original_append(*args, **kwargs)
+        raise KeyboardInterrupt("piece append cancelled")
+
+    monkeypatch.setattr(target_editor._pieces, "append_line_range", append_then_cancel)
+
+    with pytest.raises(KeyboardInterrupt, match="piece append cancelled"):
+        target_editor.append_line_ranges_from_editor(source_editor, 0, 1)
+
+    assert len(target_editor) == 0
+    assert target_editor._incoming_editor_leases == {}
+    assert source_editor._outgoing_editor_leases == set()
+    source_editor.close()
+    target_editor.close()
+
+
+def test_owner_lease_registration_is_atomic_when_source_tracking_fails():
+    """A failed source-side lease add must not leave a target-side lease."""
+
+    class CancellingSet(set):
+        def add(self, _value):
+            raise KeyboardInterrupt("lease registration cancelled")
+
+    source_editor = LineEditor((b"one\n",))
+    target_editor = LineEditor(())
+    source_editor._outgoing_editor_leases = CancellingSet()
+
+    with pytest.raises(KeyboardInterrupt, match="lease registration cancelled"):
+        target_editor.append_line_ranges_from_editor(source_editor, 0, 1)
+
+    assert len(target_editor) == 0
+    assert target_editor._incoming_editor_leases == {}
+    source_editor.close()
+    target_editor.close()
+
+
+def test_appending_fragmented_editor_avoids_temporary_run_tuple() -> None:
+    """Borrowing many pieces must not duplicate them as Python objects."""
+    run_count = 8192
+    with (
+        LineBuffer.from_line_chunks(
+            f"line {line_index}\n".encode()
+            for line_index in range(run_count * 2)
+        ) as line_buffer,
+        line_buffer.acquire_lines() as lines,
+    ):
+        source_editor = LineEditor(())
+        target_editor = LineEditor(())
+        try:
+            for line_index in range(0, len(lines), 2):
+                source_editor.append_line_range(lines, line_index, line_index + 1)
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                target_editor.append_line_ranges_from_editor(
+                    source_editor,
+                    0,
+                    len(source_editor),
+                )
+                current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            assert peak_heap - current_heap < 256 * 1024
+            assert len(target_editor) == run_count
+        finally:
+            target_editor.close()
+            source_editor.close()
+
+
+def test_fragmented_editor_append_rolls_back_every_run_after_cancellation(
+    monkeypatch,
+) -> None:
+    """Streaming a fragmented source is one atomic append operation."""
+    source_editor = LineEditor(())
+    target_editor = LineEditor((b"existing\n",))
+    try:
+        for content in (b"one\n", b"two\n", b"three\n"):
+            source_editor.append_line_range((content,), 0, 1)
+
+        original_append = target_editor._append_line_range
+        append_count = 0
+
+        def append_then_cancel(line_range):
+            nonlocal append_count
+            append_count += 1
+            original_append(line_range)
+            if append_count == 2:
+                raise KeyboardInterrupt("fragmented append cancelled")
+
+        monkeypatch.setattr(target_editor, "_append_line_range", append_then_cancel)
+
+        with pytest.raises(KeyboardInterrupt, match="fragmented append cancelled"):
+            target_editor.append_line_ranges_from_editor(
+                source_editor,
+                0,
+                len(source_editor),
+            )
+
+        assert list(target_editor.line_chunks()) == [b"existing\n"]
+        assert target_editor._incoming_editor_leases == {}
+        assert source_editor._outgoing_editor_leases == set()
+    finally:
+        target_editor.close()
+        source_editor.close()
 
 
 def test_pending_close_drains_long_lease_chain_without_recursion():

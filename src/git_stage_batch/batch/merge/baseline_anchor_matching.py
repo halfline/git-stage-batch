@@ -1131,17 +1131,18 @@ def unique_live_insertion_boundary_position(
     target_lines: Sequence[bytes],
     occurrence_index: LinePayloadOccurrenceIndex | None,
 ) -> int | None:
-    """Return a shifted insertion boundary with one unique boundary line.
+    """Return a shifted insertion boundary with one unique neighbor pair.
 
     File-edge references are intrinsically positioned.  Interior references
-    are relocated only when either saved neighbor occurs once in the target;
-    the other neighbor must still complete the saved boundary identity.  This
-    keeps repeated-reference planning linear after one storage-backed index is
-    built instead of scanning every occurrence for every claimed line.
+    are relocated only when the complete adjacent pair of saved neighbors
+    occurs once in the target. This keeps repeated-reference planning linear
+    after one storage-backed index is built instead of scanning every
+    occurrence for every claimed line.
     """
     if reference is None or not reference.has_after_line:
         return None
 
+    position: int | None
     if reference.after_line is None:
         position = 0
     elif not reference.has_before_line or reference.before_line is None:
@@ -1149,29 +1150,16 @@ def unique_live_insertion_boundary_position(
     else:
         if occurrence_index is None:
             return None
-        candidates = (
-            (reference.after_content, 1),
-            (reference.before_content, 0),
-        )
-        unique_content: bytes | None = None
-        boundary_delta = 0
-        for content, delta in candidates:
-            if (
-                content is not None
-                and occurrence_index.occurrence_count(content) == 1
-            ):
-                unique_content = content
-                boundary_delta = delta
-                break
-        if unique_content is None:
+        after_content = reference.after_content
+        before_content = reference.before_content
+        if after_content is None or before_content is None:
             return None
-        line_index = next(
-            occurrence_index.matching_line_indexes(unique_content),
-            None,
+        position = occurrence_index.unique_adjacent_boundary_position(
+            after_content,
+            before_content,
         )
-        if line_index is None:
+        if position is None:
             return None
-        position = line_index + boundary_delta
 
     if _insertion_boundary_identity_matches_at(
         reference,
@@ -1199,36 +1187,23 @@ def _live_insertion_boundary_is_unique(
     assert reference is not None
     after_line = reference.after_line
     before_line = reference.before_line
-    if after_line is None or (
-        reference.has_before_line
-        and before_line is None
+    if (
+        after_line is None
+        or not reference.has_before_line
+        or before_line is None
     ):
         return True
 
-    return _boundary_identity_occurs_once(
-        occurrence_index,
-        expected_position,
-        len(target_lines),
-        after_content=(
-            reference.after_content
-            if after_line is not None
-            else None
-        ),
-        span_contents=(),
-        before_content=(
-            reference.before_content
-            if (
-                reference.has_before_line and before_line is not None
-            )
-            else None
-        ),
-        before_delta=0,
-        identity_matches_at=lambda position: _insertion_boundary_identity_matches_at(
-            reference,
-            target_lines,
-            position,
-        ),
-        candidate_limit=None,
+    after_content = reference.after_content
+    before_content = reference.before_content
+    return (
+        after_content is not None
+        and before_content is not None
+        and occurrence_index.unique_adjacent_boundary_position(
+            after_content,
+            before_content,
+        )
+        == expected_position
     )
 
 

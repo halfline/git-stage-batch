@@ -174,7 +174,9 @@ footer
 
     result = merge_batch(source, ownership, target)
 
-    assert result == b"""header
+    assert (
+        result
+        == b"""header
 
 first one
 first two
@@ -186,6 +188,7 @@ second four
 
 footer
 """
+    )
 
 
 def test_recorded_presence_uses_exact_repeated_context_inside_mapped_edges() -> None:
@@ -2797,8 +2800,16 @@ def test_trusted_target_replaces_mapped_source_predecessor() -> None:
             b"head\nshared\nprior tail\ntail\n",
             b"head\ndifferent old\ntail\n",
         ),
+        (
+            b"head\nshared\nprior tail\nshared\nprior tail\ntail\n",
+            b"head\nhistorical old\ntail\n",
+        ),
     ],
-    ids=["unmapped-worktree-line", "different-index-old-side"],
+    ids=[
+        "unmapped-worktree-line",
+        "different-index-old-side",
+        "duplicate-live-predecessor",
+    ],
 )
 def test_mapped_source_predecessor_requires_complete_trusted_gap(
     working: bytes,
@@ -3914,6 +3925,40 @@ class TestMergeLineSequences:
 
         try:
             result = reverse_presence_constraints(entries, {2}, correspondence)
+        finally:
+            entries.close()
+
+        try:
+            assert list(result.content_chunks()) == baseline
+        finally:
+            result.close()
+
+    def test_reverse_presence_uses_indexed_content_without_piece_rescans(self):
+        """Repeated discard slices must not restart fragmented editor scans."""
+        baseline = [b"one\n", b"old\n", b"three\n"]
+        source = [b"one\n", b"new\n", b"three\n"]
+        correspondence = build_baseline_correspondence(baseline, source)
+        entries = RealizedEntries()
+        for source_line, content in enumerate(source, start=1):
+            entries.append_line_range_from(
+                (content,),
+                0,
+                1,
+                source_line_start=source_line,
+                target_line_start=source_line,
+            )
+
+        def reject_piece_scan(*_args, **_kwargs):
+            raise AssertionError("fragmented editor scan should not be used")
+
+        entries._editor._line_sources = reject_piece_scan
+        try:
+            result = reverse_presence_constraints(
+                entries,
+                {2},
+                correspondence,
+                indexed_content_lines=source,
+            )
         finally:
             entries.close()
 

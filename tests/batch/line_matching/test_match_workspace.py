@@ -7,9 +7,11 @@ import tracemalloc
 
 import pytest
 
+import git_stage_batch.batch.line_matching.line_mapping as line_mapping_module
 import git_stage_batch.batch.line_matching.match as match_module
 import git_stage_batch.core.mapped_storage as mapped_storage_module
 from git_stage_batch.batch.line_matching.match import match_lines
+from git_stage_batch.batch.line_matching.line_mapping import LineMapping
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.batch.line_matching.occurrence_index import (
     LinePayloadOccurrenceIndex,
@@ -125,6 +127,103 @@ def test_match_lines_closes_first_mapping_if_second_allocation_fails(
         match_lines([b"line\n"], [b"line\n"])
 
     assert source_mapping.closed is True
+
+
+def test_allocate_line_mapping_preserves_allocation_error_during_cleanup(
+    monkeypatch,
+):
+    """Partial direct allocation closes its vector without masking cancellation."""
+
+    class CancellingVector(list):
+        def __init__(self):
+            super().__init__([0])
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+            raise RuntimeError("close failed")
+
+    source_mapping = CancellingVector()
+    calls = 0
+
+    def allocate_vector(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return source_mapping
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        line_mapping_module,
+        "allocate_mapping_vector",
+        allocate_vector,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        line_mapping_module.allocate_line_mapping(1, 1)
+
+    assert source_mapping.close_calls == 1
+
+
+def test_line_mapping_close_attempts_both_vectors_before_raising():
+    """A close failure in one mapping vector cannot strand its sibling."""
+
+    class ClosingVector(list):
+        def __init__(self, *, cancel_close=False):
+            super().__init__([0])
+            self.cancel_close = cancel_close
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.cancel_close:
+                raise KeyboardInterrupt
+
+    source_mapping = ClosingVector(cancel_close=True)
+    target_mapping = ClosingVector()
+    mapping = LineMapping(source_mapping, target_mapping)
+
+    with pytest.raises(KeyboardInterrupt):
+        mapping.close()
+
+    assert source_mapping.close_calls == 1
+    assert target_mapping.close_calls == 1
+
+
+def test_match_lines_attempts_every_mapping_close_after_cancellation(monkeypatch):
+    """A failing partial-allocation close cannot strand the other vector."""
+
+    class ClosingVector(list):
+        def __init__(self, *, cancel_close=False):
+            super().__init__([0])
+            self.cancel_close = cancel_close
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.cancel_close:
+                raise KeyboardInterrupt
+
+    source_mapping = ClosingVector(cancel_close=True)
+    target_mapping = ClosingVector()
+    mappings = iter((source_mapping, target_mapping))
+
+    monkeypatch.setattr(
+        match_module,
+        "_new_line_mapping",
+        lambda *_args, **_kwargs: next(mappings),
+    )
+    monkeypatch.setattr(
+        match_module,
+        "_align_segments_around_anchors",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("cancel")),
+    )
+
+    with pytest.raises(RuntimeError, match="cancel"):
+        match_lines([b"line\n"], [b"line\n"])
+
+    assert source_mapping.close_calls == 1
+    assert target_mapping.close_calls == 1
 
 
 @pytest.mark.parametrize("target_stride", [1, 9])

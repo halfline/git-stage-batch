@@ -42,11 +42,21 @@ class _OwnershipUnitRange(Sequence[OwnershipUnit]):
         end: int,
     ) -> None:
         self._units = units
-        self._start = start
-        self._end = end
+        self._indices = range(start, end)
+
+    @classmethod
+    def _from_indices(
+        cls,
+        units: Sequence[OwnershipUnit],
+        indices: range,
+    ) -> _OwnershipUnitRange:
+        view = cls.__new__(cls)
+        view._units = units
+        view._indices = indices
+        return view
 
     def __len__(self) -> int:
-        return self._end - self._start
+        return len(self._indices)
 
     @overload
     def __getitem__(self, index: int) -> OwnershipUnit: ...
@@ -59,19 +69,12 @@ class _OwnershipUnitRange(Sequence[OwnershipUnit]):
         index: int | slice,
     ) -> OwnershipUnit | Sequence[OwnershipUnit]:
         if isinstance(index, slice):
-            start, stop, step = index.indices(len(self))
-            if step == 1:
-                return _OwnershipUnitRange(
-                    self._units,
-                    self._start + start,
-                    self._start + stop,
-                )
-            return tuple(self[child] for child in range(start, stop, step))
-        if index < 0:
-            index += len(self)
-        if index < 0 or index >= len(self):
-            raise IndexError(index)
-        return self._units[self._start + index]
+            return self._from_indices(self._units, self._indices[index])
+        try:
+            unit_index = self._indices[index]
+        except IndexError as error:
+            raise IndexError(index) from error
+        return self._units[unit_index]
 
 
 def _shared_presence_boundary_group_end(

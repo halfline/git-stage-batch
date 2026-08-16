@@ -14,6 +14,14 @@ from .absence_constraints import (
     absence_choices_for_claim as _merge_absence_choices_for_claim,
 )
 from . import presence_constraints as _presence_constraints
+from .presence_mapping import (
+    match_uncontrolled_context_lines as _match_uncontrolled_context_lines,
+    match_lines_preserving_unowned_context as _match_presence_lines,
+    presence_lines_requiring_context_protection as _protected_presence_lines,
+)
+from .source_alternative_constraints import (
+    resolve_effective_merge_constraints as _resolve_effective_constraints,
+)
 from .baseline_replacement_choices import (
     ReplacementOriginChoice as _BaselineReplacementOriginChoice,
     replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
@@ -40,10 +48,13 @@ from .validation import (
     has_unsafe_mapped_origin_old_side_claims as _has_unsafe_mapped_old_side,
 )
 from . import presence_placement_choices as _presence_placement_choices
-from ...core.line_selection import LineSelection, coerce_line_ranges
+from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.resource_cleanup import (
+    close_resources_on_exit,
+    close_resources_preserving_first,
+)
 from ...exceptions import MergeError as _MergeError
 from ...i18n import _
-from ...core.text_lines import normalize_line_endings
 
 if TYPE_CHECKING:
     from ..line_matching.line_mapping import LineMapping
@@ -125,15 +136,14 @@ def _find_unresolved_replacement_origin(
     ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
-    deletion_claims: list["AbsenceClaim"],
+    deletion_claims: Sequence["AbsenceClaim"],
     source_to_working_mapping: LineMapping,
     *,
     max_candidates: int,
     spool_dir: str | Path | None,
 ) -> _UnresolvedReplacementOrigin | None:
     """Return the only unresolved split replacement, if there is one."""
-    range_workspace = MatcherWorkspace(spool_dir=spool_dir)
-    try:
+    with MatcherWorkspace(spool_dir=spool_dir) as range_workspace:
         selected_presence = coerce_line_ranges(presence_line_set)
         unresolved = None
         for unit_index, unit in enumerate(ownership.replacement_units):
@@ -148,7 +158,7 @@ def _find_unresolved_replacement_origin(
                 raise _MergeError(
                     _("Batch was created from a different version of the file")
                 )
-            try:
+            with range_workspace.release_resource_on_exit(claimed_ranges):
                 source_start: int | None = None
                 source_end: int | None = None
                 has_mapped_claimed_line = False
@@ -191,10 +201,7 @@ def _find_unresolved_replacement_origin(
                     raise _MergeError(
                         _("Batch was created from a different version of the file")
                     )
-                if (
-                    deletion_index < 0
-                    or deletion_index >= len(deletion_claims)
-                ):
+                if deletion_index < 0 or deletion_index >= len(deletion_claims):
                     raise _MergeError(
                         _("Batch was created from a different version of the file")
                     )
@@ -223,16 +230,12 @@ def _find_unresolved_replacement_origin(
                         _("Multiple split replacement placements need review")
                     )
                 unresolved = candidate
-            finally:
-                range_workspace.close_resource(claimed_ranges)
         return unresolved
-    finally:
-        range_workspace.close()
 
 
 def _replacement_origin_candidate_set_from_unresolved(
     unresolved: _UnresolvedReplacementOrigin | None,
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
@@ -279,9 +282,9 @@ def _replacement_origin_candidate_set_from_unresolved(
             if target_start == target_end
             else f"{target_start}-{target_end}"
         )
-        summary = _(
-            "replace target lines {target} with source lines {source}"
-        ).format(target=target_range, source=source_range)
+        summary = _("replace target lines {target} with source lines {source}").format(
+            target=target_range, source=source_range
+        )
         candidates.append(
             _MergeCandidate(
                 ordinal=ordinal,
@@ -310,8 +313,10 @@ def _presence_candidate_set(
     source_lines: Sequence[bytes],
     ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
-    presence_line_set: LineSelection,
-    deletion_claims: list["AbsenceClaim"],
+    presence_line_set: LineRanges,
+    deletion_claims: Sequence["AbsenceClaim"],
+    controlled_source_lines: LineRanges,
+    source_alternative_lines: LineRanges,
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
@@ -324,11 +329,29 @@ def _presence_candidate_set(
         target_lines=working_lines,
         spool_dir=spool_dir,
     )
-    presence_mapping = match_lines(
+    presence_mapping_result = _match_presence_lines(
         source_lines,
         working_lines,
+        controlled_source_lines,
+        ownership=ownership,
+        presence_lines=presence_line_set,
+        preferred_context_lines=source_alternative_lines,
         spool_dir=spool_dir,
+        matcher=match_lines,
     )
+    presence_mapping = presence_mapping_result.mapping
+    owns_presence_mapping = presence_mapping_result.owned
+    if presence_mapping_result.ambiguous:
+        if owns_presence_mapping:
+            presence_mapping.close()
+        presence_mapping = _match_uncontrolled_context_lines(
+            source_lines,
+            working_lines,
+            controlled_source_lines,
+            spool_dir=spool_dir,
+            matcher=match_lines,
+        )
+        owns_presence_mapping = True
     try:
         presence_key, presence_choices = (
             _presence_placement_choices.presence_choices_for_missing_claimed_run(
@@ -346,7 +369,14 @@ def _presence_candidate_set(
                 spool_dir=spool_dir,
             )
         )
-    finally:
+    except BaseException:
+        if owns_presence_mapping:
+            close_resources_preserving_first(
+                (presence_mapping,),
+                suppress_errors=True,
+            )
+        raise
+    if owns_presence_mapping:
         presence_mapping.close()
 
     if presence_key is not None and len(presence_choices) > max_candidates:
@@ -408,8 +438,10 @@ def _absence_candidate_set(
     source_lines: Sequence[bytes],
     ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
-    presence_line_set: LineSelection,
-    deletion_claims: list["AbsenceClaim"],
+    presence_line_set: LineRanges,
+    deletion_claims: Sequence["AbsenceClaim"],
+    controlled_source_lines: LineRanges,
+    source_alternative_lines: LineRanges,
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
@@ -418,7 +450,18 @@ def _absence_candidate_set(
     if not deletion_claims:
         return _MergeCandidateSet.refused()
 
-    if len([claim for claim in deletion_claims if claim.content_lines]) != 1:
+    claim_index: int | None = None
+    claim: AbsenceClaim | None = None
+    for candidate_index, candidate_claim in enumerate(deletion_claims):
+        if not candidate_claim.content_lines:
+            continue
+        if claim is not None:
+            raise _MergeError(
+                _("Batch was created from a different version of the file")
+            )
+        claim_index = candidate_index
+        claim = candidate_claim
+    if claim is None or claim_index is None:
         raise _MergeError(_("Batch was created from a different version of the file"))
 
     distinctive_context_lines = _distinctive_context_lines(
@@ -429,11 +472,22 @@ def _absence_candidate_set(
         spool_dir=spool_dir,
     )
 
-    owned_mapping = match_lines(
+    mapping_result = _match_presence_lines(
         source_lines,
         working_lines,
+        controlled_source_lines,
+        ownership=ownership,
+        presence_lines=presence_line_set,
+        preferred_context_lines=source_alternative_lines,
         spool_dir=spool_dir,
+        matcher=match_lines,
     )
+    owned_mapping = mapping_result.mapping
+    if mapping_result.ambiguous:
+        if mapping_result.owned:
+            owned_mapping.close()
+        return _MergeCandidateSet.refused()
+    realized_entries = None
     try:
         contextual_placements = _check_merge_structural_validity(
             owned_mapping,
@@ -453,20 +507,27 @@ def _absence_candidate_set(
             contextual_placements=contextual_placements,
             spool_dir=spool_dir,
         )
-    finally:
-        owned_mapping.close()
+    except BaseException:
+        if mapping_result.owned:
+            close_resources_preserving_first(
+                (owned_mapping,),
+                suppress_errors=True,
+            )
+        raise
+    if mapping_result.owned:
+        try:
+            owned_mapping.close()
+        except BaseException:
+            close_resources_preserving_first(
+                (realized_entries,),
+                suppress_errors=True,
+            )
+            raise
 
-    try:
-        enumerable_claims = [
-            (index, claim)
-            for index, claim in enumerate(deletion_claims)
-            if claim.content_lines
-        ]
-        claim_index, claim = enumerable_claims[0]
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
+    assert realized_entries is not None
+
+    with close_resources_on_exit((realized_entries,)):
+        forbidden_sequence = claim.content_lines
         ambiguity_key = _merge_absence_ambiguity_key(
             claim_index,
             claim.anchor_line,
@@ -534,8 +595,6 @@ def _absence_candidate_set(
                 )
             )
         return _MergeCandidateSet.review_required(tuple(candidates))
-    finally:
-        realized_entries.close()
 
 
 def enumerate_merge_batch_candidates_for_lines(
@@ -550,20 +609,42 @@ def enumerate_merge_batch_candidates_for_lines(
 ) -> _MergeCandidateSet:
     """Enumerate merge candidates for acquired normalized line sequences."""
     resolved = ownership.resolve()
-    presence_line_set = resolved.presence_line_set
-    deletion_claims = resolved.deletion_claims
+    effective_constraints = _resolve_effective_constraints(
+        source_lines,
+        ownership,
+        resolved.presence_line_set,
+        resolved.deletion_claims,
+        spool_dir=spool_dir,
+    )
+    presence_line_set = effective_constraints.presence_lines
+    deletion_claims = effective_constraints.deletion_claims
+    source_alternative_lines = effective_constraints.source_alternative_lines
     unresolved_replacement = None
     has_replacement_origin = any(
         getattr(unit, "origin", None) is not None
         for unit in ownership.replacement_units
     )
+    discovery_controlled_source_lines = (
+        resolved.presence_line_set if source_alternative_lines else LineRanges.empty()
+    )
     if has_replacement_origin:
         try:
-            with match_lines(
+            discovery_result = _match_presence_lines(
                 source_lines,
                 working_lines,
+                discovery_controlled_source_lines,
+                ownership=ownership,
+                presence_lines=presence_line_set,
+                preferred_context_lines=source_alternative_lines,
                 spool_dir=spool_dir,
-            ) as discovery_mapping:
+                matcher=match_lines,
+            )
+            discovery_mapping = discovery_result.mapping
+            with close_resources_on_exit(
+                (discovery_mapping if discovery_result.owned else None,)
+            ):
+                if discovery_result.ambiguous:
+                    raise _MixedReplacementOrigin
                 unresolved_replacement = _find_unresolved_replacement_origin(
                     source_lines,
                     ownership,
@@ -586,15 +667,37 @@ def enumerate_merge_batch_candidates_for_lines(
                             working_lines,
                             anchor_pairs=deletion_anchor_pairs,
                             spool_dir=spool_dir,
-                        ) as structural_mapping:
-                            unsafe_old_side = _has_unsafe_mapped_old_side(
-                                ownership,
-                                presence_line_set,
+                        ) as ordinary_structural_mapping:
+                            structural_result = _match_presence_lines(
                                 source_lines,
                                 working_lines,
-                                structural_mapping,
+                                discovery_controlled_source_lines,
+                                ownership=ownership,
+                                presence_lines=presence_line_set,
+                                preferred_context_lines=source_alternative_lines,
+                                ordinary_mapping=ordinary_structural_mapping,
                                 spool_dir=spool_dir,
+                                matcher=match_lines,
                             )
+                            structural_mapping = structural_result.mapping
+                            with close_resources_on_exit(
+                                (
+                                    structural_mapping
+                                    if structural_result.owned
+                                    else None,
+                                )
+                            ):
+                                unsafe_old_side = (
+                                    structural_result.ambiguous
+                                    or _has_unsafe_mapped_old_side(
+                                        ownership,
+                                        presence_line_set,
+                                        source_lines,
+                                        working_lines,
+                                        structural_mapping,
+                                        spool_dir=spool_dir,
+                                    )
+                                )
                     else:
                         unsafe_old_side = _has_unsafe_mapped_old_side(
                             ownership,
@@ -625,12 +728,19 @@ def enumerate_merge_batch_candidates_for_lines(
     if replacement_candidates.candidates:
         return replacement_candidates
 
+    controlled_source_lines = _protected_presence_lines(
+        ownership,
+        resolved.presence_line_set,
+        deletion_claims,
+    )
     presence_candidates = _presence_candidate_set(
         source_lines,
         ownership,
         working_lines,
         presence_line_set,
         deletion_claims,
+        controlled_source_lines,
+        source_alternative_lines,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
         spool_dir=spool_dir,
@@ -644,6 +754,8 @@ def enumerate_merge_batch_candidates_for_lines(
         working_lines,
         presence_line_set,
         deletion_claims,
+        controlled_source_lines,
+        source_alternative_lines,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
         spool_dir=spool_dir,

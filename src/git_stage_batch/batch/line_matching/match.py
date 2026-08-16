@@ -80,14 +80,16 @@ class _LineOccurrenceTable:
             if record_index is None:
                 bucket_index = self._bucket_index(line_hash)
                 next_record = self._buckets[bucket_index]
-                new_record_index = self._records.append((
-                    line_hash,
-                    index,
-                    1,
-                    0,
-                    0,
-                    next_record,
-                ))
+                new_record_index = self._records.append(
+                    (
+                        line_hash,
+                        index,
+                        1,
+                        0,
+                        0,
+                        next_record,
+                    )
+                )
                 self._buckets[bucket_index] = new_record_index + 1
                 continue
 
@@ -154,10 +156,12 @@ class _LineOccurrenceTable:
                 and record[_OCCURRENCE_SOURCE_COUNT] == 1
                 and record[_OCCURRENCE_TARGET_COUNT] == 1
             ):
-                candidates.append((
-                    source_index,
-                    record[_OCCURRENCE_TARGET_INDEX],
-                ))
+                candidates.append(
+                    (
+                        source_index,
+                        record[_OCCURRENCE_TARGET_INDEX],
+                    )
+                )
 
         return candidates
 
@@ -772,10 +776,7 @@ def match_acquirable_lines(
             may_have_unmapped_equal_lines = _align_segments_around_anchors(
                 acquired_source_lines,
                 acquired_target_lines,
-                (
-                    (pair[0], pair[1])
-                    for pair in validated_anchor_pairs
-                ),
+                ((pair[0], pair[1]) for pair in validated_anchor_pairs),
                 source_to_target,
                 target_to_source,
                 workspace,

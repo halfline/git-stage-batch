@@ -120,9 +120,7 @@ def _validated_baseline_insertion_position(
         return None
 
     after_line = reference.after_line
-    if after_line is not None and (
-        type(after_line) is not int or after_line < 1
-    ):
+    if after_line is not None and (type(after_line) is not int or after_line < 1):
         return None
     if after_line is None:
         if reference.after_content is not None:
@@ -154,9 +152,7 @@ def _validated_baseline_insertion_position(
     if position is None:
         return None
 
-    expected_before_line = (
-        position + 1 if position < len(baseline_lines) else None
-    )
+    expected_before_line = position + 1 if position < len(baseline_lines) else None
     if reference.has_before_line and before_line != expected_before_line:
         return None
     return position
@@ -175,8 +171,7 @@ def _source_run_matches_insertion_boundary(
             return False
     elif (
         source_start == 1
-        or source_lines[source_start - 2]
-        != baseline_lines[baseline_position - 1]
+        or source_lines[source_start - 2] != baseline_lines[baseline_position - 1]
     ):
         return False
 
@@ -202,22 +197,19 @@ def _source_run_is_coherent_in_working(
         return False
 
     for offset, source_line in enumerate(range(source_start, source_end + 1)):
-        if source_to_working_mapping.get_target_line_from_source_line(
-            source_line
-        ) != target_start + offset:
+        if (
+            source_to_working_mapping.get_target_line_from_source_line(source_line)
+            != target_start + offset
+        ):
             return False
 
     if source_start > 1 and (
-        source_to_working_mapping.get_target_line_from_source_line(
-            source_start - 1
-        )
+        source_to_working_mapping.get_target_line_from_source_line(source_start - 1)
         != target_start - 1
     ):
         return False
     if source_end < source_line_count and (
-        source_to_working_mapping.get_target_line_from_source_line(
-            source_end + 1
-        )
+        source_to_working_mapping.get_target_line_from_source_line(source_end + 1)
         != target_start + source_end - source_start + 1
     ):
         return False
@@ -237,9 +229,7 @@ def _source_run_has_distinctive_working_placement(
     target_start = source_to_working_mapping.get_target_line_from_source_line(
         source_start
     )
-    target_end = source_to_working_mapping.get_target_line_from_source_line(
-        source_end
-    )
+    target_end = source_to_working_mapping.get_target_line_from_source_line(source_end)
     if target_start is None or target_end is None:
         return False
 
@@ -255,9 +245,7 @@ def _source_run_has_distinctive_working_placement(
         context_lines.append(source_end + 1)
     return any(
         source_occurrences.occurrence_count(source_lines[source_line - 1]) == 1
-        and working_occurrences.occurrence_count(
-            source_lines[source_line - 1]
-        ) == 1
+        and working_occurrences.occurrence_count(source_lines[source_line - 1]) == 1
         for source_line in context_lines
     )
 
@@ -305,9 +293,7 @@ def _append_pure_insertion_anchor_pairs(
     if source_to_working_mapping is None or working_lines is None:
         return
 
-    independent_presence_lines = presence_lines.difference(
-        replacement_presence_lines
-    )
+    independent_presence_lines = presence_lines.difference(replacement_presence_lines)
     if not independent_presence_lines:
         return
 
@@ -433,9 +419,7 @@ def acquire_deletion_anchor_pairs_for_target(
         for claim in deletion_claims:
             source_line = claim.anchor_line
             reference = claim.baseline_reference
-            recorded_target_line = (
-                None if reference is None else reference.after_line
-            )
+            recorded_target_line = None if reference is None else reference.after_line
             if type(source_line) is not int:
                 continue
             if source_line < 1 or source_line > len(source_lines):
@@ -595,13 +579,10 @@ def acquire_discard_baseline_anchor_pairs(
                 ):
                     continue
                 claim = deletion_claims[deletion_index]
-                if (
-                    unit.origin is not None
-                    and not _replacement_counts_cover_origin(
-                        unit.origin,
-                        source_end - source_start + 1,
-                        len(claim.content_lines),
-                    )
+                if unit.origin is not None and not _replacement_counts_cover_origin(
+                    unit.origin,
+                    source_end - source_start + 1,
+                    len(claim.content_lines),
                 ):
                     continue
                 anchor_line = claim.anchor_line
@@ -628,24 +609,20 @@ def acquire_discard_baseline_anchor_pairs(
                 ):
                     continue
 
-                deleted_sequence = normalize_line_sequence_endings(
-                    claim.content_lines
-                )
+                deleted_sequence = normalize_line_sequence_endings(claim.content_lines)
                 baseline_position = after_line or 0
                 before_line = reference.before_line
                 if (
                     not deleted_sequence
                     or baseline_position < 0
-                    or before_line
-                    != baseline_position + len(deleted_sequence) + 1
+                    or before_line != baseline_position + len(deleted_sequence) + 1
                     or before_line > len(baseline_lines)
                     or not _line_slice_matches(
                         baseline_lines,
                         baseline_position,
                         deleted_sequence,
                     )
-                    or source_lines[source_end]
-                    != baseline_lines[before_line - 1]
+                    or source_lines[source_end] != baseline_lines[before_line - 1]
                 ):
                     continue
 
@@ -683,10 +660,7 @@ def _removal_boundary_is_fixed_to_file_edge(claim: AbsenceClaim) -> bool:
     reference = claim.baseline_reference
     return reference is not None and (
         reference.after_line is None
-        or (
-            reference.has_before_line
-            and reference.before_line is None
-        )
+        or (reference.has_before_line and reference.before_line is None)
     )
 
 
@@ -718,14 +692,13 @@ def _removal_boundary_identity_matches_at(
     forbidden_sequence: Sequence[bytes],
 ) -> bool:
     """Return whether one target position has the claim's full identity."""
-    return (
-        _line_slice_matches(target_lines, position, forbidden_sequence)
-        and removal_boundary_context_matches_at(
-            claim,
-            target_lines,
-            position,
-            len(forbidden_sequence),
-        )
+    return _line_slice_matches(
+        target_lines, position, forbidden_sequence
+    ) and removal_boundary_context_matches_at(
+        claim,
+        target_lines,
+        position,
+        len(forbidden_sequence),
     )
 
 
@@ -783,16 +756,19 @@ def _boundary_identity_occurs_once(
     candidate_limit: int | None = _BOUNDARY_IDENTITY_CANDIDATE_LIMIT,
 ) -> bool:
     """Return whether indexed boundary content identifies one full identity."""
-    return _unique_boundary_identity_position(
-        occurrence_index,
-        last_position,
-        after_content=after_content,
-        span_contents=span_contents,
-        before_content=before_content,
-        before_delta=before_delta,
-        identity_matches_at=identity_matches_at,
-        candidate_limit=candidate_limit,
-    ) == expected_position
+    return (
+        _unique_boundary_identity_position(
+            occurrence_index,
+            last_position,
+            after_content=after_content,
+            span_contents=span_contents,
+            before_content=before_content,
+            before_delta=before_delta,
+            identity_matches_at=identity_matches_at,
+            candidate_limit=candidate_limit,
+        )
+        == expected_position
+    )
 
 
 def _unique_boundary_identity_position(
@@ -832,10 +808,7 @@ def _unique_boundary_identity_position(
         rarest_content is None
         or rarest_count is None
         or rarest_count == 0
-        or (
-            candidate_limit is not None
-            and rarest_count > candidate_limit
-        )
+        or (candidate_limit is not None and rarest_count > candidate_limit)
     ):
         return None
 
@@ -880,9 +853,7 @@ def _unique_live_removal_boundary_position(
             after_content=reference.after_content,
             span_contents=forbidden_sequence,
             before_content=(
-                reference.before_content
-                if reference.has_before_line
-                else None
+                reference.before_content if reference.has_before_line else None
             ),
             before_delta=-len(forbidden_sequence),
             identity_matches_at=lambda candidate: (
@@ -963,9 +934,7 @@ def unique_live_removal_context_bounds(
             after_content=reference.after_content,
             span_contents=(),
             before_content=(
-                reference.before_content
-                if reference.has_before_line
-                else None
+                reference.before_content if reference.has_before_line else None
             ),
             before_delta=-span_length,
             identity_matches_at=lambda candidate: (
@@ -1001,11 +970,7 @@ def trusted_target_span_matches_working(
 ) -> bool:
     """Return whether one worktree span and its boundaries map from the index."""
     line_count = working_end - working_start
-    if (
-        line_count <= 0
-        or working_start < 0
-        or working_end > len(working_lines)
-    ):
+    if line_count <= 0 or working_start < 0 or working_end > len(working_lines):
         return False
 
     first_trusted_line = (
@@ -1065,12 +1030,9 @@ def _trusted_line_maps_to_working(
     return (
         trusted_line >= 1
         and working_line >= 1
-        and mapping.get_target_line_from_source_line(trusted_line)
-        == working_line
-        and mapping.get_source_line_from_target_line(working_line)
-        == trusted_line
-        and trusted_target_lines[trusted_line - 1]
-        == working_lines[working_line - 1]
+        and mapping.get_target_line_from_source_line(trusted_line) == working_line
+        and mapping.get_source_line_from_target_line(working_line) == trusted_line
+        and trusted_target_lines[trusted_line - 1] == working_lines[working_line - 1]
     )
 
 
@@ -1081,11 +1043,14 @@ def _live_removal_boundary_is_unique(
     occurrence_index: LinePayloadOccurrenceIndex | None,
 ) -> bool:
     """Require a live deletion boundary to identify one target occurrence."""
-    return _unique_live_removal_boundary_position(
-        claim,
-        target_lines,
-        occurrence_index,
-    ) == expected_position
+    return (
+        _unique_live_removal_boundary_position(
+            claim,
+            target_lines,
+            occurrence_index,
+        )
+        == expected_position
+    )
 
 
 def _insertion_boundary_identity_matches_at(
@@ -1232,10 +1197,7 @@ def _source_mapping_identifies_missing_insertion_run(
         if mapping.get_target_line_from_source_line(source_line) is not None:
             return False
 
-    return (
-        mapping.get_target_line_from_source_line(run_start - 1)
-        == position
-    )
+    return mapping.get_target_line_from_source_line(run_start - 1) == position
 
 
 def _replacement_origin_boundary_identity_matches_at(
@@ -1306,10 +1268,7 @@ def _live_replacement_origin_boundary_is_unique(
         return False
     after_line = reference.after_line
     before_line = reference.before_line
-    if after_line is None or (
-        reference.has_before_line
-        and before_line is None
-    ):
+    if after_line is None or (reference.has_before_line and before_line is None):
         return True
 
     return _boundary_identity_occurs_once(
@@ -1357,8 +1316,7 @@ def live_coordinate_edits_are_safe(
             working_lines,
         )
         replacement_reference_count = sum(
-            len(unit.deletion_indices)
-            for unit in ownership.replacement_units
+            len(unit.deletion_indices) for unit in ownership.replacement_units
         )
         replacement_units_by_deletion = workspace.record_vector(
             replacement_reference_count,
@@ -1366,23 +1324,21 @@ def live_coordinate_edits_are_safe(
         )
         for unit_index, unit in enumerate(ownership.replacement_units):
             for deletion_index in unit.deletion_indices:
-                if (
-                    type(deletion_index) is int
-                    and 0 <= deletion_index < len(deletion_claims)
+                if type(deletion_index) is int and 0 <= deletion_index < len(
+                    deletion_claims
                 ):
-                    replacement_units_by_deletion.append((
-                        deletion_index,
-                        unit_index,
-                    ))
+                    replacement_units_by_deletion.append(
+                        (
+                            deletion_index,
+                            unit_index,
+                        )
+                    )
         sort_mapped_records(replacement_units_by_deletion)
         safe_legacy_replacement_lines = workspace.record_vector(
             len(deletion_claims),
             "Q",
         )
-        if (
-            mapped_source_lines is None
-            and source_to_working_mapping is not None
-        ):
+        if mapped_source_lines is None and source_to_working_mapping is not None:
             mapped_source_lines = _build_mapped_source_line_index(
                 workspace,
                 source_to_working_mapping,
@@ -1395,27 +1351,21 @@ def live_coordinate_edits_are_safe(
                 actual_start,
                 actual_end,
                 coordinate_was_reviewed,
-            ) = (
-                deletion_edit_bounds[deletion_index]
-            )
+            ) = deletion_edit_bounds[deletion_index]
             if not has_actual_bounds:
                 return False
             actual_bounds = (actual_start, actual_end)
             while (
-                replacement_reference_index
-                < len(replacement_units_by_deletion)
-                and replacement_units_by_deletion[
-                    replacement_reference_index
-                ][0] < deletion_index
+                replacement_reference_index < len(replacement_units_by_deletion)
+                and replacement_units_by_deletion[replacement_reference_index][0]
+                < deletion_index
             ):
                 replacement_reference_index += 1
             next_replacement_reference = replacement_reference_index
             while (
-                next_replacement_reference
-                < len(replacement_units_by_deletion)
-                and replacement_units_by_deletion[
-                    next_replacement_reference
-                ][0] == deletion_index
+                next_replacement_reference < len(replacement_units_by_deletion)
+                and replacement_units_by_deletion[next_replacement_reference][0]
+                == deletion_index
             ):
                 next_replacement_reference += 1
             if coordinate_was_reviewed:
@@ -1467,8 +1417,7 @@ def live_coordinate_edits_are_safe(
                             )
                             if (
                                 old_side is not None
-                                and old_side.state
-                                is _ReplacementOldSideState.FULL
+                                and old_side.state is _ReplacementOldSideState.FULL
                                 and old_side.target_position == actual_start
                                 and actual_end
                                 == actual_start + len(claim.content_lines)
@@ -1516,15 +1465,11 @@ def live_coordinate_edits_are_safe(
             has_cached_boundary = False
             while record_index < len(positioned_by_source):
                 claimed_line, position = positioned_by_source[record_index]
-                reference = presence_references.reference_for(
-                    claimed_line
-                )
+                reference = presence_references.reference_for(claimed_line)
                 group_stop = record_index + 1
                 previous_claimed_line = claimed_line
                 while group_stop < len(positioned_by_source):
-                    next_claimed_line, next_position = positioned_by_source[
-                        group_stop
-                    ]
+                    next_claimed_line, next_position = positioned_by_source[group_stop]
                     if (
                         next_claimed_line != previous_claimed_line + 1
                         or next_position != position
@@ -1565,9 +1510,7 @@ def live_coordinate_edits_are_safe(
                     )
                 )
                 for group_index in range(record_index, group_stop):
-                    current_claimed_line = positioned_by_source[
-                        group_index
-                    ][0]
+                    current_claimed_line = positioned_by_source[group_index][0]
                     while (
                         safe_line_index < len(safe_legacy_replacement_lines)
                         and safe_legacy_replacement_lines[safe_line_index][0]

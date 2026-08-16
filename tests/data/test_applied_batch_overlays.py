@@ -109,6 +109,36 @@ def test_fresh_overlay_requires_exact_repository_and_batch_identity(temp_git_rep
     assert not fresh_applied_batch_overlay_for_path("file.txt").revealed_owner_names
 
 
+def test_fresh_overlay_proves_only_exact_applied_file_provenance(temp_git_repo):
+    """A reapply no-op needs exact ownership and source-blob authority."""
+    _record_overlay(temp_git_repo)
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+    applied_metadata = {
+        "batch_source_commit": "a" * 40,
+        "change_type": "modified",
+        "presence_claims": [{"source_lines": ["1"]}],
+    }
+
+    assert view.contains_equivalent_file_provenance(
+        "file.txt",
+        applied_metadata,
+        "b" * 40,
+    )
+    assert not view.contains_equivalent_file_provenance(
+        "file.txt",
+        applied_metadata,
+        "c" * 40,
+    )
+    assert not view.contains_equivalent_file_provenance(
+        "file.txt",
+        {
+            **applied_metadata,
+            "presence_claims": [{"source_lines": ["2"]}],
+        },
+        "b" * 40,
+    )
+
+
 def test_overlay_treats_intent_to_add_as_absent_index_identity(temp_git_repo):
     """Fresh start's intent-to-add normalization must not stale an overlay."""
     untracked_path = temp_git_repo / "untracked.txt"

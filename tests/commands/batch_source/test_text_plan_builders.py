@@ -11,6 +11,7 @@ from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.core.text_lifecycle import TextFileChangeType
+from git_stage_batch.data.applied_batch_overlays import AppliedBatchOverlayView
 from git_stage_batch.data.file_target_identity import IndexIdentity
 from git_stage_batch.exceptions import MergeError
 import git_stage_batch.commands.batch_source.text_plan_builders as builders
@@ -233,6 +234,74 @@ def test_build_apply_text_file_action_plan_returns_merged_plan(
     }
 
     result.plan.close()
+
+
+def test_build_apply_text_file_action_plan_skips_exact_fresh_reapply(
+    monkeypatch,
+    tmp_path,
+):
+    """Identity-bound applied ownership should bypass ambiguous byte replay."""
+    ownership = _Ownership()
+    batch_buffer, worktree_buffer = _patch_apply_text_plan_io(
+        monkeypatch,
+        tmp_path,
+        ownership,
+    )
+    source_object_id = "a" * 40
+    monkeypatch.setattr(
+        builders,
+        "load_git_blob_as_buffer",
+        lambda *args, **kwargs: batch_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "merge_batch_from_line_sequences_as_buffer",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("an exact reapply reached content inference")
+        ),
+    )
+    owner_name = ":applied-batch-overlay:0"
+    applied_overlay = AppliedBatchOverlayView(
+        metadata_by_owner={
+            owner_name: {
+                "files": {
+                    "notes.txt": {
+                        "batch_source_commit": "commit",
+                        "change_type": "modified",
+                        "mode": "100755",
+                        "presence_claims": [],
+                        "deletions": [],
+                    },
+                },
+            },
+        },
+        source_object_by_owner={owner_name: source_object_id},
+        revealed_owner_names=frozenset({owner_name}),
+        batch_names=frozenset({"batch"}),
+        lifecycle_change_types=frozenset({"modified"}),
+        applied_source_line_ranges_by_batch={},
+        source_line_ranges_by_batch={},
+        index_preimage_source_line_ranges_by_batch={},
+    )
+
+    result = builders.build_apply_text_file_action_plan(
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100755",
+        },
+        selected_ids={1},
+        selection_ids_to_apply={7},
+        batch_source_object_id=source_object_id,
+        applied_overlay=applied_overlay,
+    )
+
+    assert result.plan is None
+    with pytest.raises(ValueError, match="buffer is closed"):
+        batch_buffer.to_bytes()
+    with pytest.raises(ValueError, match="buffer is closed"):
+        worktree_buffer.to_bytes()
 
 
 def test_build_apply_text_file_action_plan_closes_merge_on_lifecycle_failure(

@@ -117,7 +117,10 @@ class _LineageRunTable:
         self._pending_run: LineageRun | None = None
         self._closed = False
 
-        for run in sorted(runs, key=lambda item: (item.old_start, item.old_end)):
+        # Lineage producers already emit old coordinates monotonically. Stream
+        # them into mapped storage so a fragmented file does not first retain
+        # one Python object reference per run merely to sort an ordered input.
+        for run in runs:
             self.append(run)
 
     @property

@@ -567,6 +567,20 @@ class TestApplyFromBatch:
             "docs/vm-testing.md",
             "scripts/vm/guest-smoke-test.sh",
         )
+        expected_hashes = {
+            "include/uapi/drm/castkms_drm.h": (
+                "ba6131a73a93f5e39f6829d0574dab94ea530420"
+            ),
+            "src/castkms_capture.c": ("1d6653a0033a308c3730a8271f50377b1c92e113"),
+            "tools/castkms-capture-test.c": (
+                "9fd8d6254fa02d153ba433b4a7e56f996eafdbd7"
+            ),
+            "README.md": "cfe882ba30515ea6aecb6444b4ad75fbca8ba98c",
+            "docs/vm-testing.md": ("c15d42c3fe643f184c93a6c3921404ae3f52a752"),
+            "scripts/vm/guest-smoke-test.sh": (
+                "f36deb2b55fe48e358cfe4d44f657b1e894a4e2d"
+            ),
+        }
         before = {
             path: subprocess.run(
                 ["git", "hash-object", path],
@@ -592,6 +606,48 @@ class TestApplyFromBatch:
             for path in changed_paths
         }
         assert all(after[path] != before[path] for path in changed_paths)
+        assert after == expected_hashes
+
+        uapi = (functional_repo / "include/uapi/drm/castkms_drm.h").read_text()
+        assert uapi.count("#define DRM_CASTKMS_CAPTURE_UAPI_MINOR") == 1
+        assert "#define DRM_CASTKMS_CAPTURE_UAPI_MINOR\t4" in uapi
+        for structure in (
+            "drm_castkms_capture_query_caps",
+            "drm_castkms_capture_start",
+            "drm_castkms_capture_stop",
+            "drm_castkms_capture_register_buffer",
+            "drm_castkms_capture_unregister_buffer",
+        ):
+            assert uapi.count(f"struct {structure} {{") == 1
+
+        tool = (functional_repo / "tools/castkms-capture-test.c").read_text()
+        assert tool.count("static int parse_crtc_id(") == 1
+        assert tool.count("static int validate_query(") == 1
+        assert tool.count("int main(") == 1
+
+        build = subprocess.run(
+            ["make"],
+            cwd=functional_repo / "tools",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert build.returncode == 0, build.stdout + build.stderr
+
+        reapplied = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert reapplied.returncode == 0, reapplied.stderr
+        after_reapply = {
+            path: subprocess.run(
+                ["git", "hash-object", path],
+                cwd=functional_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for path in changed_paths
+        }
+        assert after_reapply == after
 
     def test_apply_batch_after_committing_neighboring_replacements(
         self,

@@ -674,6 +674,41 @@ def test_strict_absence_constraints_read_claim_payload_lazily() -> None:
         entries.close()
 
 
+def test_lenient_absence_constraints_read_claim_payload_lazily() -> None:
+    """Realization suppression must not collect a claim's old-side lines."""
+
+    class IndexOnlyLines:
+        def __init__(self) -> None:
+            self.read_count = 0
+
+        def __len__(self) -> int:
+            return 2
+
+        def __getitem__(self, index: int) -> bytes:
+            if index < 0 or index >= 2:
+                raise IndexError(index)
+            self.read_count += 1
+            return (b"old one\r\n", b"old two\r")[index]
+
+        def __iter__(self):
+            raise AssertionError("absence payload was materialized")
+
+    content_lines = IndexOnlyLines()
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1)
+    entries.append(b"old one\n")
+    entries.append(b"old two\n")
+    claim = AbsenceClaim(anchor_line=1, content_lines=content_lines)
+
+    result = apply_absence_constraints(entries, [claim], strict=False)
+    try:
+        assert list(result.content_chunks()) == [b"anchor\n"]
+        assert content_lines.read_count >= 2
+    finally:
+        result.close()
+        entries.close()
+
+
 def test_strict_absence_constraints_close_converted_predecessor(
     monkeypatch,
 ) -> None:
@@ -747,6 +782,46 @@ def test_strict_absence_anchor_queries_aggregate_duplicate_provenance(
 
     entries.close()
     assert source_group_reads <= duplicate_count * 4
+
+
+def test_strict_absence_index_preserves_provenance_initialization_error(
+    monkeypatch,
+) -> None:
+    """Temporary-index cleanup must not mask provenance cancellation."""
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1)
+
+    def cancel_initialization(_index, _source_records):
+        raise KeyboardInterrupt("provenance initialization cancelled")
+
+    def fail_temporary_close(_workspace, _source_records):
+        raise RuntimeError("temporary index close failed")
+
+    monkeypatch.setattr(
+        absence_constraints_module._ActiveRealizedLineIndex,
+        "_initialize_provenance",
+        cancel_initialization,
+    )
+    monkeypatch.setattr(
+        MatcherWorkspace,
+        "close_resource",
+        fail_temporary_close,
+    )
+
+    try:
+        with (
+            MatcherWorkspace() as workspace,
+            pytest.raises(
+                KeyboardInterrupt,
+                match="provenance initialization cancelled",
+            ),
+        ):
+            absence_constraints_module._ActiveRealizedLineIndex(
+                workspace,
+                entries,
+            )
+    finally:
+        entries.close()
 
 
 def test_discard_same_anchor_claims_avoids_line_scale_python_heap() -> None:
@@ -1317,6 +1392,79 @@ def test_coordinate_strategy_rejects_invalid_resolution_values(choice):
             resolution=resolution,
         )
 
+
+def test_indexed_absence_result_closes_when_workspace_cleanup_fails(
+    monkeypatch,
+) -> None:
+    """Mapped-index cleanup failure cannot strand its completed result."""
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1, is_claimed=True)
+    entries.append(b"old\n")
+    claim = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    captured_results = []
+    real_build_result = absence_constraints_module._ActiveRealizedLineIndex.build_result
+    real_workspace_close = MatcherWorkspace.close
+
+    def capture_result(index, lines):
+        result = real_build_result(index, lines)
+        captured_results.append(result)
+        return result
+
+    def cancel_workspace_close(workspace):
+        real_workspace_close(workspace)
+        raise KeyboardInterrupt("workspace close cancelled")
+
+    monkeypatch.setattr(
+        absence_constraints_module._ActiveRealizedLineIndex,
+        "build_result",
+        capture_result,
+    )
+    monkeypatch.setattr(MatcherWorkspace, "close", cancel_workspace_close)
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="workspace close cancelled"):
+            absence_constraints_module._apply_strict_absence_constraints_indexed(
+                entries,
+                [claim],
+                spool_dir=None,
+            )
+
+        assert len(captured_results) == 1
+        assert captured_results[0].closed is True
+    finally:
+        entries.close()
+
+
+def test_discard_restoration_closes_result_when_workspace_cleanup_fails(
+    monkeypatch,
+) -> None:
+    """A restored discard result must not survive a failed final handoff."""
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1)
+    claim = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    captured_results = []
+
+    class TrackingEntries(RealizedEntries):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            captured_results.append(self)
+
+    class CancellingWorkspace(MatcherWorkspace):
+        def close(self):
+            super().close()
+            raise KeyboardInterrupt("workspace close cancelled")
+
+    monkeypatch.setattr(discard_module, "RealizedEntries", TrackingEntries)
+    monkeypatch.setattr(discard_module, "MatcherWorkspace", CancellingWorkspace)
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="workspace close cancelled"):
+            discard_module._restore_absence_constraints(entries, [claim])
+
+        assert len(captured_results) == 1
+        assert captured_results[0].closed is True
+    finally:
+        entries.close()
 
 def test_candidate_enumeration_propagates_atomic_unit_errors(monkeypatch):
     """Candidate discovery must not reinterpret atomic selection failures."""

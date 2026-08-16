@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from bisect import bisect_right
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -79,16 +78,31 @@ def _sort_and_validate_anchor_pairs(
 
 def _line_range_is_contained(
     ranges: Sequence[tuple[int, int]],
-    range_starts: Sequence[int],
     start: int,
     end: int,
 ) -> bool:
     """Return whether one normalized range contains the full interval."""
-    range_index = bisect_right(range_starts, start) - 1
+    range_index = _rightmost_range_start_at_or_before(ranges, start)
     if range_index < 0:
         return False
     range_start, range_end = ranges[range_index]
     return range_start <= start and end <= range_end
+
+
+def _rightmost_range_start_at_or_before(
+    ranges: Sequence[tuple[int, int]],
+    line: int,
+) -> int:
+    """Locate a sorted range without copying its starts into a Python tuple."""
+    lower = 0
+    upper = len(ranges)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if ranges[middle][0] <= line:
+            lower = middle + 1
+        else:
+            upper = middle
+    return lower - 1
 
 
 def _validated_baseline_insertion_position(
@@ -251,7 +265,6 @@ def _source_run_has_distinctive_working_placement(
 def _append_legacy_replacement_presence_ranges(
     replacement_ranges: list[tuple[int, int]],
     presence_ranges: Sequence[tuple[int, int]],
-    presence_range_starts: Sequence[int],
     deletion_claims: Sequence[AbsenceClaim],
 ) -> None:
     """Exclude presence coupled to legacy immediate-source deletions."""
@@ -266,10 +279,10 @@ def _append_legacy_replacement_presence_ranges(
         else:
             continue
 
-        range_index = bisect_right(
-            presence_range_starts,
+        range_index = _rightmost_range_start_at_or_before(
+            presence_ranges,
             replacement_start,
-        ) - 1
+        )
         if range_index < 0:
             continue
         presence_start, presence_end = presence_ranges[range_index]
@@ -499,7 +512,6 @@ def acquire_discard_baseline_anchor_pairs(
     replacement_units = ownership.replacement_units
     presence_lines = ownership.presence_line_set()
     presence_ranges = presence_lines.ranges()
-    presence_range_starts = tuple(start for start, _end in presence_ranges)
     presence_reference_count = sum(
         len(claim.baseline_references)
         for claim in ownership.presence_claims
@@ -569,7 +581,6 @@ def acquire_discard_baseline_anchor_pairs(
                     or source_end + 1 in presence_lines
                     or not _line_range_is_contained(
                         presence_ranges,
-                        presence_range_starts,
                         source_start,
                         source_end,
                     )
@@ -646,7 +657,6 @@ def acquire_discard_baseline_anchor_pairs(
             _append_legacy_replacement_presence_ranges(
                 replacement_presence_ranges,
                 presence_ranges,
-                presence_range_starts,
                 deletion_claims,
             )
             _append_pure_insertion_anchor_pairs(

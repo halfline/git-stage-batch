@@ -357,6 +357,33 @@ def test_realized_entries_propagates_owned_resource_close_failure():
         resource.to_bytes()
 
 
+def test_realized_entries_retries_owned_resource_close_failure():
+    """Closed entry wrappers must keep retrying a retained resource failure."""
+
+    class RetryableLineBuffer(LineBuffer):
+        close_count = 0
+
+        def close(self):
+            self.close_count += 1
+            if self.close_count == 1:
+                raise KeyboardInterrupt("backing resource close cancelled")
+            super().close()
+
+    entries = RealizedEntries()
+    resource = RetryableLineBuffer.from_bytes(b"line\n")
+    entries.retain_line_buffer(resource)
+
+    with pytest.raises(KeyboardInterrupt, match="close cancelled"):
+        entries.close()
+    with pytest.raises(ValueError, match="realized entries are closed"):
+        len(entries)
+
+    entries.close()
+    assert resource.close_count == 2
+    with pytest.raises(ValueError, match="buffer is closed"):
+        resource.to_bytes()
+
+
 def test_absence_signature_streams_line_buffer_chunks(monkeypatch):
     """Absence signatures should hash buffer chunks without line indexing."""
     def fail_getitem(self, index):

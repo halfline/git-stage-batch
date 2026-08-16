@@ -21,7 +21,10 @@ from ...batch.merge.baseline_replacement_edits import (
 from ...batch.line_matching.match import match_lines
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
-from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    add_ownership_metadata,
+)
 from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...batch.ownership.attribution_metadata import (
     compact_ownership_metadata_for_attribution,
@@ -39,6 +42,7 @@ from ...core.text_lifecycle import (
 from ...core.text_lines import normalize_line_sequence_endings
 from ...data.file_target_identity import IndexIdentity
 from ...data.applied_batch_overlays import (
+    AppliedBatchOverlayView,
     selected_presence_was_introduced,
 )
 from ...data.file_modes import detect_file_mode_in_commit
@@ -119,6 +123,7 @@ def build_apply_text_file_action_plan(
     working_tree_artifact_path: str | Path | None = None,
     captured_working_tree_exists: bool | None = None,
     captured_index_identity: IndexIdentity | None = None,
+    applied_overlay: AppliedBatchOverlayView | None = None,
     spool_dir: str | Path | None = None,
 ) -> ApplyTextPlanBuildResult:
     """Build one deferred apply-from text action plan."""
@@ -224,6 +229,30 @@ def build_apply_text_file_action_plan(
                 spool_dir=spool_dir,
             )
             selected_ownership_metadata = ownership.to_attribution_metadata_dict()
+            if applied_overlay is not None and applied_overlay.revealed_owner_names:
+                selected_metadata = cast(
+                    BatchFileMetadataDict,
+                    {
+                        key: value
+                        for key, value in file_meta.items()
+                        if key in {"batch_source_commit", "mode"}
+                    },
+                )
+                selected_metadata["change_type"] = selected_text_target_change_type(
+                    text_change_type,
+                    selected_ids,
+                    working_lines,
+                ).value
+                add_ownership_metadata(
+                    selected_metadata,
+                    selected_ownership_metadata,
+                )
+                if applied_overlay.contains_equivalent_file_provenance(
+                    file_path,
+                    selected_metadata,
+                    batch_source_object_id,
+                ):
+                    return ApplyTextPlanBuildResult()
             try:
                 if ownership.is_empty():
                     if (

@@ -18,6 +18,7 @@ from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
 )
+from ...data.applied_batch_overlays import AppliedBatchOverlayView
 from ...exceptions import AtomicUnitError, CommandError, MergeError
 from ...git_paths import display_path
 from ...utils.buffer_io import write_buffer_to_path
@@ -70,6 +71,7 @@ class _ApplyInputMetadata(TypedDict):
     selection_ids: list[int] | None
     working_tree_artifact_path: str
     scratch_directory: str
+    applied_overlay: AppliedBatchOverlayView
 
 
 class _IncludeInputMetadata(_ApplyInputMetadata):
@@ -178,6 +180,10 @@ def compute_apply_text_plan_job(
             working_tree_artifact_path=working_tree_artifact_path,
             captured_working_tree_exists=working_tree_exists,
             captured_index_identity=captured_index_identity,
+            applied_overlay=input_metadata.get(
+                "applied_overlay",
+                AppliedBatchOverlayView.empty(),
+            ),
             spool_dir=scratch_directory,
         )
         if build_result.missing_source:

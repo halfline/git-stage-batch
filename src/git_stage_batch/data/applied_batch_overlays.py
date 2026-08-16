@@ -126,6 +126,29 @@ class AppliedBatchOverlayView:
         """Return an empty immutable view."""
         return cls({}, {}, frozenset(), frozenset(), frozenset(), {}, {}, {})
 
+    def contains_equivalent_file_provenance(
+        self,
+        file_path: str,
+        file_metadata: BatchFileMetadataDict,
+        source_object_id: str | None,
+    ) -> bool:
+        """Return whether exact fresh state proves this ownership is applied.
+
+        Content matching cannot distinguish a selected duplicate from live
+        unowned context.  This predicate is intentionally stronger: the view
+        is already bound to exact HEAD, index, worktree, and batch revisions,
+        and the application must also name the same source blob and compact
+        selected ownership.
+        """
+        if source_object_id is None:
+            return False
+        compact_metadata = _compact_applied_file_metadata(file_metadata)
+        return any(
+            self.source_object_by_owner.get(owner_name) == source_object_id
+            and owner_metadata.get("files", {}).get(file_path) == compact_metadata
+            for owner_name, owner_metadata in self.metadata_by_owner.items()
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class AppliedBatchOverlayAbortSnapshot:

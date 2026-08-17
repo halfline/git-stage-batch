@@ -2,6 +2,7 @@
 
 import os
 import sys
+from types import SimpleNamespace
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
@@ -72,6 +73,39 @@ def temp_git_repo(tmp_path, monkeypatch):
     initialize_abort_state()
 
     return repo
+
+
+def test_apply_source_resolution_prefers_embedded_state_snapshot(monkeypatch):
+    """Apply remains usable when a shallow fetch omits the source commit."""
+    calls = []
+
+    def list_tree(treeish, paths):
+        calls.append((treeish, tuple(paths)))
+        if treeish == "refs/git-stage-batch/state/portable":
+            return {"sources/file.txt": SimpleNamespace(blob_sha="source-blob")}
+        raise AssertionError("source commit fallback should not be read")
+
+    monkeypatch.setattr(apply_action, "list_git_tree_blobs", list_tree)
+    text_input = apply_action._ApplyTextInput(
+        ordinal=0,
+        file_path="file.txt",
+        file_meta={"source_path": "sources/file.txt"},
+        identity=None,  # type: ignore[arg-type]
+        worktree_artifact=None,  # type: ignore[arg-type]
+        scratch_directory=None,  # type: ignore[arg-type]
+        source_commit="missing-source-commit",
+        source_required=True,
+        index_identity=None,
+        applied_overlay=None,  # type: ignore[arg-type]
+    )
+
+    assert apply_action._resolve_apply_text_source_blobs(
+        "portable",
+        (text_input,),
+    ) == {(0, "file.txt"): "source-blob"}
+    assert calls == [
+        ("refs/git-stage-batch/state/portable", ("sources/file.txt",))
+    ]
 
 
 class TestCommandApplyFromBatch:

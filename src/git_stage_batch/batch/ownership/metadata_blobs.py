@@ -4,10 +4,27 @@ from __future__ import annotations
 
 from .metadata_types import (
     AbsenceClaimMetadata,
+    BatchOwnershipMetadata,
     BaselineReferenceMetadata,
     PresenceClaimMetadata,
     ReplacementUnitMetadata,
 )
+
+
+def ownership_metadata_blob_ids(data: BatchOwnershipMetadata) -> list[str]:
+    """Return every unique blob referenced by serialized ownership."""
+    return list(
+        dict.fromkeys(
+            [
+                *deletion_content_blob_ids(data.get("deletions", [])),
+                *deletion_reference_blob_ids(data.get("deletions", [])),
+                *presence_claim_reference_blob_ids(data.get("presence_claims", [])),
+                *replacement_origin_reference_blob_ids(
+                    data.get("replacement_units", [])
+                ),
+            ]
+        )
+    )
 
 def read_metadata_blob(
     blob_sha: str | None,

@@ -362,8 +362,14 @@ def _metadata_object_fields(model: BatchMetadata) -> list[tuple[str, str]]:
     for entry in model.files:
         source_commit = entry.values.get("batch_source_commit")
         if isinstance(source_commit, str):
+            source_path = entry.values.get("source_path")
+            source_object = (
+                f"{format_batch_state_ref_name(model.batch)}:{source_path}"
+                if isinstance(source_path, str)
+                else source_commit
+            )
             object_fields.append(
-                (f"files[{entry.path!r}].batch_source_commit", source_commit)
+                (f"files[{entry.path!r}].batch_source_commit", source_object)
             )
         deletions = entry.values.get("deletions", ())
         if not isinstance(deletions, tuple):

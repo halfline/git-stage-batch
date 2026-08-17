@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ..exceptions import CommandError
-from ..fixup.commutation import apply_patch_to_tree, load_tree_diff_as_buffer
+from ..fixup.commutation import (
+    PatchApplicationResult,
+    apply_patch_to_tree,
+    load_tree_diff_as_buffer,
+)
 from ..i18n import _
 from ..utils.git_object_io import (
     get_git_object_type,
@@ -146,6 +150,7 @@ def _apply_unit_output(
     output_index: int,
     *,
     env: dict[str, str] | None,
+    replay_cache: dict[tuple[str, str], PatchApplicationResult] | None = None,
 ) -> str:
     parent_tree = current_tree
     for unit_id in output.source_unit_ids:
@@ -153,6 +158,7 @@ def _apply_unit_output(
             current_tree,
             units[unit_id],
             env=env,
+            replay_cache=replay_cache,
         )
         if result.status != "APPLIED" or result.tree is None:
             raise CommandError(
@@ -205,6 +211,7 @@ def materialize_history_output_trees(
     }
     current_tree = document.snapshot.base_tree
     output_trees: list[str] = []
+    replay_cache: dict[tuple[str, str], PatchApplicationResult] = {}
     with ExitStack() as stack:
         units: dict[str, HistoryReplayUnit] = {}
         if unit_output_indexes:
@@ -243,6 +250,7 @@ def materialize_history_output_trees(
                     current_tree,
                     output_index,
                     env=env,
+                    replay_cache=replay_cache,
                 )
             else:
                 current_tree = _apply_whole_source_output(

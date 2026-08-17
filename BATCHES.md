@@ -135,6 +135,8 @@ The state commit contains:
   metadata
 - `sources/<path>`, which contains the embedded batch source for each file that
   has one
+- `objects/<blob-id>`, which keeps blobs referenced by ownership metadata
+  reachable when the state reference is fetched into a shallow clone
 
 The revision changes each time `sync_batch_state_refs()` publishes state. The
 function compares the revision it read with the current state reference before

@@ -9,6 +9,7 @@ from git_stage_batch.batch.state.lifecycle import create_batch, delete_batch, up
 from git_stage_batch.batch.state.compatibility_metadata import write_file_backed_batch_metadata
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 import git_stage_batch.batch.state.references as state_refs_module
 from git_stage_batch.batch.state.metadata_schema import (
     CURRENT_BATCH_METADATA_SCHEMA_VERSION,
@@ -117,6 +118,22 @@ def test_state_ref_contains_batch_json_and_source_snapshot(temp_git_repo):
 
     source_content = _git_show(f"{state_ref}:sources/file.txt")
     assert source_content == "line1\nline2\nline3\n"
+
+
+def test_state_ref_makes_ownership_blobs_reachable(temp_git_repo):
+    """A shallow state-ref fetch carries deletion and boundary payloads."""
+    create_batch("test-batch", "Test note")
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"removed\n"])],
+    )
+    add_file_to_batch("test-batch", "file.txt", ownership)
+
+    state_ref = get_batch_state_ref_name("test-batch")
+    batch_json = json.loads(_git_show(f"{state_ref}:batch.json"))
+    blob_id = batch_json["files"]["file.txt"]["deletions"][0]["blob"]
+
+    assert _git_rev_parse(f"{state_ref}:objects/{blob_id}") == blob_id
 
 
 def test_state_publication_consumes_validated_metadata_model(

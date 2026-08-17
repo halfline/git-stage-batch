@@ -1027,11 +1027,11 @@ static struct plane *initialize_properties(struct device *device)
         assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
         assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
 
-    def test_include_from_batch_rejects_reset_only_review_ids_without_cached_review(
+    def test_include_from_batch_accepts_complete_addition_boundary_without_cached_review(
         self,
         temp_git_repo,
     ):
-        """Explicit batch line actions must not reinterpret stale review IDs."""
+        """A complete shared-boundary addition remains actionable without cache."""
         prefix = [
             "class X {\n",
             "    @Test\n",
@@ -1080,11 +1080,11 @@ static struct plane *initialize_properties(struct device *device)
         )
         clear_last_file_review_state()
 
-        with pytest.raises(CommandError, match="Line selection #9-16"):
-            command_include_from_batch("test-batch", line_ids="7-16", file="Test.kt")
+        command_include_from_batch("test-batch", line_ids="7-16", file="Test.kt")
 
-        assert run_git_command(["diff", "--cached", "--", "Test.kt"]).stdout == ""
-        assert test_file.read_text() == "".join([*prefix, *suffix])
+        expected = "".join([*prefix, *missing_middle, *suffix])
+        assert run_git_command(["show", ":Test.kt"]).stdout == expected
+        assert test_file.read_text() == expected
 
     def test_include_from_batch_line_scoped_deleted_text_file_stages_deletion(
         self, temp_git_repo

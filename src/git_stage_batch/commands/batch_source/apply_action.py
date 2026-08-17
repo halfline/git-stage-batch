@@ -27,6 +27,7 @@ from ...batch.state.metadata_types import (
     BatchMetadataDict,
 )
 from ...batch.state.metadata_types import add_ownership_metadata
+from ...batch.state.references import get_batch_state_ref_name
 from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...core.models import RenderedBatchDisplay
 from ...core.text_lifecycle import TextFileChangeType
@@ -533,7 +534,7 @@ def _build_apply_text_jobs(
     text_inputs = capture.text_inputs
     jobs: list[OrderedFileJob[_text_plan_jobs.ApplyTextPlanJob]] = []
 
-    source_blob_by_target = _resolve_apply_text_source_blobs(text_inputs)
+    source_blob_by_target = _resolve_apply_text_source_blobs(batch_name, text_inputs)
     source_info_by_id = resolve_git_objects(source_blob_by_target.values())
     for text_input in text_inputs:
         ordinal = text_input.ordinal
@@ -797,11 +798,31 @@ def _reduce_apply_action_plans(
 
 
 def _resolve_apply_text_source_blobs(
+    batch_name: str,
     text_inputs: tuple[_ApplyTextInput, ...],
 ) -> dict[tuple[int, str], str]:
+    embedded_paths = list(
+        dict.fromkeys(
+            source_path
+            for text_input in text_inputs
+            if text_input.source_commit is not None
+            and (source_path := text_input.file_meta.get("source_path")) is not None
+        )
+    )
+    embedded_entries = (
+        list_git_tree_blobs(
+            get_batch_state_ref_name(batch_name),
+            embedded_paths,
+        )
+        if embedded_paths
+        else {}
+    )
     paths_by_commit: dict[str, list[str]] = {}
     for text_input in text_inputs:
         if text_input.source_commit is None:
+            continue
+        source_path = text_input.file_meta.get("source_path")
+        if source_path is not None and source_path in embedded_entries:
             continue
         paths_by_commit.setdefault(
             text_input.source_commit,
@@ -816,6 +837,14 @@ def _resolve_apply_text_source_blobs(
     for text_input in text_inputs:
         if text_input.source_commit is None:
             continue
+        source_path = text_input.file_meta.get("source_path")
+        if source_path is not None:
+            embedded_entry = embedded_entries.get(source_path)
+            if embedded_entry is not None:
+                source_blob_by_target[(text_input.ordinal, text_input.file_path)] = (
+                    embedded_entry.blob_sha
+                )
+                continue
         entry = entries_by_commit[text_input.source_commit].get(text_input.file_path)
         if entry is not None:
             source_blob_by_target[(text_input.ordinal, text_input.file_path)] = (

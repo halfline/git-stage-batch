@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from ..exceptions import CommandError
+from ..core.diff_parser import patch_requires_unidiff_zero
 from ..i18n import _
 from ..utils.git_command import run_git_command, stream_git_command
 from ..utils.git_index import git_read_tree, git_write_tree, temp_git_index
@@ -84,6 +85,15 @@ def _patch_chunks_for_units(
             yield from unit.patch_buffer.byte_chunks()
 
 
+def _units_require_unidiff_zero(units: tuple[FixupUnit, ...]) -> bool:
+    """Return whether any exact unit patch lacks unchanged context."""
+    return any(
+        patch_requires_unidiff_zero(unit.patch_buffer)
+        for unit in units
+        if unit.patch_buffer is not None
+    )
+
+
 def _validated_group_units(
     plan: FixupCreatePlan,
 ) -> dict[str, tuple[FixupUnit, ...]]:
@@ -153,7 +163,7 @@ def _prepare_groups(plan: FixupCreatePlan) -> tuple[_PreparedGroup, ...]:
                 plan.head_tree,
                 _patch_chunks_for_units(units),
                 three_way=False,
-                unidiff_zero=True,
+                unidiff_zero=_units_require_unidiff_zero(units),
             )
             if group_tree is None:
                 raise CommandError(
@@ -203,7 +213,7 @@ def _prepare_groups(plan: FixupCreatePlan) -> tuple[_PreparedGroup, ...]:
             plan.head_tree,
             _patch_chunks_for_units(all_units),
             three_way=False,
-            unidiff_zero=True,
+            unidiff_zero=_units_require_unidiff_zero(all_units),
         )
         if combined_tree is None or combined_tree != current_tree:
             raise CommandError(

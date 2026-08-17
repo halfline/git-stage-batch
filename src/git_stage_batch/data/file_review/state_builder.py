@@ -104,7 +104,12 @@ def _supplemental_batch_review_selections(
     *,
     visible_display_ids: set[int] | None,
 ) -> tuple[FileReviewSelectionState, ...]:
-    """Persist reset ownership atoms without making them pagination changes."""
+    """Persist ownership atoms without making them pagination changes.
+
+    A rendered diff may visually join independently mergeable batch units into
+    one change.  Retaining each unit's complete action set lets a later command
+    select one reviewed unit without partially selecting that visual change.
+    """
     selections: list[FileReviewSelectionState] = []
     primary_reset_groups = {
         change.display_ids
@@ -138,7 +143,10 @@ def _supplemental_batch_review_selections(
                 first_page=pages[0],
                 last_page=pages[-1],
                 reason=_coerce_actionable_reason(group.reason),
-                actions=(FileReviewAction.RESET_FROM_BATCH,),
+                actions=tuple(
+                    FileReviewAction(action)
+                    for action in group.actions
+                ),
             )
         )
     return tuple(selections)

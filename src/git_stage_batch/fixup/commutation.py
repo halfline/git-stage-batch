@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ..core.buffer import LineBuffer
+from ..core.diff_parser import patch_requires_unidiff_zero
 from ..utils.git_command import (
     run_git_command,
     stream_git_command,
@@ -208,7 +209,7 @@ def analyze_patch_placement(
             current_original_tree,
             patch_buffer.byte_chunks(),
             three_way=False,
-            unidiff_zero=True,
+            unidiff_zero=patch_requires_unidiff_zero(patch_buffer),
         )
         if current_modified_tree is None:
             return PlacementEvidence(
@@ -268,7 +269,7 @@ def relocate_patch_to_target(
             current_original_tree,
             patch_buffer.byte_chunks(),
             three_way=False,
-            unidiff_zero=True,
+            unidiff_zero=patch_requires_unidiff_zero(patch_buffer),
         )
         if current_modified_tree is None:
             return None

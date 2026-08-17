@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
@@ -20,6 +20,9 @@ from .presence_missing_claims import (
 )
 
 
+PRESENCE_AMBIGUITY_PREFIX = "presence:"
+
+
 @dataclass(frozen=True)
 class PresenceChoice:
     choice_index: int
@@ -28,6 +31,24 @@ class PresenceChoice:
     run_end: int
     target_after_line: int | None
     target_before_line: int | None
+
+
+def presence_resolution_decision(
+    decisions: Mapping[str, object],
+) -> tuple[str, int] | None:
+    """Return the sole well-formed presence decision, if one exists."""
+    selected_key: str | None = None
+    selected_choice = 0
+    for key, choice in decisions.items():
+        if not isinstance(key, str) or not key.startswith(PRESENCE_AMBIGUITY_PREFIX):
+            continue
+        if selected_key is not None or type(choice) is not int or choice < 1:
+            raise ValueError("invalid presence resolution")
+        selected_key = key
+        selected_choice = choice
+    if selected_key is None:
+        return None
+    return selected_key, selected_choice
 
 
 def presence_choices_for_missing_claimed_run(
@@ -179,16 +200,18 @@ def _contextual_choices(
     for gap_index in range(ambiguity.start_gap, ambiguity.end_gap + 1):
         if _line_slice_matches(working_lines, gap_index, claimed_run):
             continue
-        choices.append(PresenceChoice(
-            choice_index=len(choices) + 1,
-            gap_index=gap_index,
-            run_start=run_start,
-            run_end=run_end,
-            target_after_line=gap_index if gap_index > 0 else None,
-            target_before_line=(
-                gap_index + 1 if gap_index < len(working_lines) else None
-            ),
-        ))
+        choices.append(
+            PresenceChoice(
+                choice_index=len(choices) + 1,
+                gap_index=gap_index,
+                run_start=run_start,
+                run_end=run_end,
+                target_after_line=gap_index if gap_index > 0 else None,
+                target_before_line=(
+                    gap_index + 1 if gap_index < len(working_lines) else None
+                ),
+            )
+        )
         if len(choices) >= max_results:
             break
 
@@ -207,7 +230,7 @@ def presence_ambiguity_key(
         hasher.update(bytes(line))
     digest = hasher.hexdigest()[:12]
     return (
-        f"presence:{run_start}-{run_end}:claimed:{digest}:"
+        f"{PRESENCE_AMBIGUITY_PREFIX}{run_start}-{run_end}:claimed:{digest}:"
         f"between:{before_source_line}-{after_source_line}"
     )
 

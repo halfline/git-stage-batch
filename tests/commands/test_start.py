@@ -5,7 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
-from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.start import (
+    _already_batched_changes_message,
+    command_start,
+)
 from git_stage_batch.data.session import get_iteration_count
 from git_stage_batch.data.session_marker import session_is_active
 from git_stage_batch.exceptions import CommandError
@@ -219,3 +222,27 @@ class TestCommandStart:
 
         assert isinstance(exc_info.value.__cause__, RuntimeError)
         assert str(exc_info.value.__cause__) == "abort failed"
+
+
+@pytest.mark.parametrize(
+    ("batch_names", "expected"),
+    [
+        (
+            frozenset({"only"}),
+            "All working tree changes are currently saved in batch 'only'.",
+        ),
+        (
+            frozenset({"second", "first"}),
+            "All working tree changes are currently saved in batch 'first', "
+            "batch 'second'.",
+        ),
+        (
+            frozenset({"third", "first", "second"}),
+            "All working tree changes are currently saved in batch 'first', "
+            "batch 'second', batch 'third'.",
+        ),
+    ],
+)
+def test_already_batched_message_lists_sorted_batch_names(batch_names, expected):
+    """The empty-start diagnostic should be stable and grammatically clear."""
+    assert _already_batched_changes_message(batch_names) == expected

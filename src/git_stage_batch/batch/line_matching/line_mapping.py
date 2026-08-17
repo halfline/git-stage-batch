@@ -4,8 +4,30 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import TracebackType
 from typing import Protocol
+
+from ...core.mapped_storage import MappedIntVector
+from ...core.resource_cleanup import close_resources_preserving_first
+
+
+_MAX_UINT32 = (1 << 32) - 1
+
+
+def allocate_mapping_vector(
+    size: int,
+    max_line_number: int,
+    *,
+    spool_dir: str | Path | None = None,
+) -> MappedIntVector:
+    """Allocate one zero-filled line-number vector."""
+    return MappedIntVector(
+        size,
+        width=4 if max_line_number <= _MAX_UINT32 else 8,
+        fill=0,
+        spool_dir=spool_dir,
+    )
 
 
 class IntVector(Protocol):
@@ -37,21 +59,23 @@ class LineMapping:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def close(self) -> None:
         """Close owned vector storage."""
         if self._closed:
             return
 
-        _close_vector(self.source_to_target)
-        _close_vector(self.target_to_source)
+        _close_vectors(self.source_to_target, self.target_to_source)
         self._closed = True
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def is_source_line_present(
@@ -91,10 +115,55 @@ class LineMapping:
             raise ValueError("line mapping is closed")
 
 
+def allocate_line_mapping(
+    source_line_count: int,
+    target_line_count: int,
+    *,
+    spool_dir: str | Path | None = None,
+) -> LineMapping:
+    """Allocate an empty bidirectional mapping in bounded-heap storage."""
+    max_line_number = max(source_line_count, target_line_count)
+    source_to_target: MappedIntVector | None = None
+    target_to_source: MappedIntVector | None = None
+    try:
+        source_to_target = allocate_mapping_vector(
+            source_line_count,
+            max_line_number,
+            spool_dir=spool_dir,
+        )
+        target_to_source = allocate_mapping_vector(
+            target_line_count,
+            max_line_number,
+            spool_dir=spool_dir,
+        )
+        return LineMapping(source_to_target, target_to_source)
+    except BaseException:
+        try:
+            _close_vectors(source_to_target, target_to_source)
+        except BaseException:
+            pass
+        raise
+
+
 def _close_vector(vector: IntVector) -> None:
     close = getattr(vector, "close", None)
     if close is not None:
         close()
+
+
+def _close_vectors(*vectors: IntVector | None) -> None:
+    """Close every vector while preserving the first close failure."""
+    first_error: BaseException | None = None
+    for vector in vectors:
+        if vector is None:
+            continue
+        try:
+            _close_vector(vector)
+        except BaseException as error:
+            if first_error is None:
+                first_error = error
+    if first_error is not None:
+        raise first_error
 
 
 def _lookup_line_mapping(mapping: IntVector, line_number: int) -> int | None:

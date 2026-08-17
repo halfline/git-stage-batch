@@ -13,6 +13,7 @@ from ...core.mapped_storage import (
     MappedRecordVector,
     sort_mapped_records,
 )
+from ...core.resource_cleanup import close_resources_preserving_first
 
 
 _LINEAGE_RECORD_FORMAT = "QQQ"
@@ -94,10 +95,7 @@ def _lineage_run_from_record(record: tuple[int, ...]) -> LineageRun:
 
 
 def _lineage_runs_can_merge(left: LineageRun, right: LineageRun) -> bool:
-    return (
-        right.old_start == left.old_end + 1
-        and right.new_start == left.new_end + 1
-    )
+    return right.old_start == left.old_end + 1 and right.new_start == left.new_end + 1
 
 
 class _LineageRunTable:
@@ -117,7 +115,10 @@ class _LineageRunTable:
         self._pending_run: LineageRun | None = None
         self._closed = False
 
-        for run in sorted(runs, key=lambda item: (item.old_start, item.old_end)):
+        # Lineage producers already emit old coordinates monotonically. Stream
+        # them into mapped storage so a fragmented file does not first retain
+        # one Python object reference per run merely to sort an ordered input.
+        for run in runs:
             self.append(run)
 
     @property
@@ -161,10 +162,7 @@ class _LineageRunTable:
             return None
 
         pending = self._pending_run
-        if (
-            pending is not None
-            and pending.old_start <= old_line <= pending.old_end
-        ):
+        if pending is not None and pending.old_start <= old_line <= pending.old_end:
             return pending
 
         low = 0
@@ -192,6 +190,19 @@ class _LineageRunTable:
         if run is None:
             return None
         return run.translate(old_line)
+
+    def translate_range(
+        self,
+        old_start: int,
+        old_end: int,
+    ) -> tuple[int, int] | None:
+        """Translate a range only when one lineage run covers it wholly."""
+        if old_end < old_start:
+            return None
+        run = self.run_at(old_start)
+        if run is None or old_end > run.old_end:
+            return None
+        return run.translate_range(old_start, old_end)
 
     def append_translated_ranges(
         self,
@@ -264,23 +275,28 @@ class _LineageRunTable:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def _flush_pending(self) -> None:
         pending = self._pending_run
         if pending is None:
             return
-        self._runs.append((
-            pending.old_start,
-            pending.old_end,
-            pending.new_start,
-        ))
+        self._runs.append(
+            (
+                pending.old_start,
+                pending.old_end,
+                pending.new_start,
+            )
+        )
         self._pending_run = None
 
     def _run_at_index(self, index: int) -> LineageRun:
@@ -342,12 +358,14 @@ class _SourceExpansionTable:
         self._require_open()
         if expansion.source_start <= self._last_source_end:
             raise ValueError("source expansions must not overlap")
-        self._expansions.append((
-            expansion.source_start,
-            expansion.source_end,
-            expansion.new_start,
-            expansion.new_end,
-        ))
+        self._expansions.append(
+            (
+                expansion.source_start,
+                expansion.source_end,
+                expansion.new_start,
+                expansion.new_end,
+            )
+        )
         self._last_source_end = expansion.source_end
 
     def runs(self) -> Iterator[SourceSelectionExpansion]:
@@ -409,27 +427,32 @@ class BatchSourceLineage:
         *,
         spool_dir: str | Path | None = None,
     ) -> None:
-        source_run_table = _LineageRunTable(
-            source_runs,
-            spool_dir=spool_dir,
-        )
+        source_run_table: _LineageRunTable | None = None
+        working_run_table: _LineageRunTable | None = None
+        source_expansion_table: _SourceExpansionTable | None = None
         try:
+            source_run_table = _LineageRunTable(
+                source_runs,
+                spool_dir=spool_dir,
+            )
             working_run_table = _LineageRunTable(
                 working_runs,
                 spool_dir=spool_dir,
             )
-            try:
-                source_expansion_table = _SourceExpansionTable(
-                    source_expansions,
-                    spool_dir=spool_dir,
-                )
-            except BaseException:
-                working_run_table.close()
-                raise
+            source_expansion_table = _SourceExpansionTable(
+                source_expansions,
+                spool_dir=spool_dir,
+            )
         except BaseException:
-            source_run_table.close()
+            close_resources_preserving_first(
+                (source_expansion_table, working_run_table, source_run_table),
+                suppress_errors=True,
+            )
             raise
 
+        assert source_run_table is not None
+        assert working_run_table is not None
+        assert source_expansion_table is not None
         self._source_runs = source_run_table
         self._working_runs = working_run_table
         self._source_expansions = source_expansion_table
@@ -487,12 +510,11 @@ class BatchSourceLineage:
     ) -> LineRanges:
         self._require_open()
         source_selection = coerce_line_ranges(selection)
-        source_ranges = MappedRecordVector(
+        with MappedRecordVector(
             len(self._source_runs) + len(source_selection.ranges()),
             _TRANSLATED_RANGE_RECORD_FORMAT,
             spool_dir=self._spool_dir,
-        )
-        try:
+        ) as source_ranges:
             self._source_runs.append_translated_ranges(
                 source_selection,
                 source_ranges,
@@ -500,12 +522,11 @@ class BatchSourceLineage:
             if len(source_ranges) > 1:
                 sort_mapped_records(source_ranges)
 
-            expansion_ranges = MappedRecordVector(
+            with MappedRecordVector(
                 len(self._source_expansions),
                 _TRANSLATED_RANGE_RECORD_FORMAT,
                 spool_dir=self._spool_dir,
-            )
-            try:
+            ) as expansion_ranges:
                 self._source_expansions.append_translated_ranges(
                     source_selection,
                     expansion_ranges,
@@ -518,10 +539,6 @@ class BatchSourceLineage:
                         expansion_ranges,
                     )
                 )
-            finally:
-                expansion_ranges.close()
-        finally:
-            source_ranges.close()
 
     def first_unmapped_source_line(
         self,
@@ -534,17 +551,26 @@ class BatchSourceLineage:
         self._require_open()
         return self._working_runs.translate_line(line_number)
 
+    def translate_working_range(
+        self,
+        start_line: int,
+        end_line: int,
+    ) -> tuple[int, int] | None:
+        """Translate a wholly preserved working-line range."""
+        self._require_open()
+        return self._working_runs.translate_range(start_line, end_line)
+
     def close(self) -> None:
         if self._closed:
             return
-        try:
-            self._source_runs.close()
-        finally:
-            try:
-                self._working_runs.close()
-            finally:
-                self._source_expansions.close()
-                self._closed = True
+        close_resources_preserving_first(
+            (
+                self._source_expansions,
+                self._working_runs,
+                self._source_runs,
+            )
+        )
+        self._closed = True
 
     def __enter__(self) -> BatchSourceLineage:
         self._require_open()
@@ -556,12 +582,15 @@ class BatchSourceLineage:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def _require_open(self) -> None:
@@ -579,17 +608,10 @@ def _merged_compact_translated_ranges(
     current_start: int | None = None
     current_end: int | None = None
 
-    while (
-        source_index < len(source_ranges)
-        or expansion_index < len(expansion_ranges)
-    ):
-        if (
-            expansion_index >= len(expansion_ranges)
-            or (
-                source_index < len(source_ranges)
-                and source_ranges[source_index]
-                <= expansion_ranges[expansion_index]
-            )
+    while source_index < len(source_ranges) or expansion_index < len(expansion_ranges):
+        if expansion_index >= len(expansion_ranges) or (
+            source_index < len(source_ranges)
+            and source_ranges[source_index] <= expansion_ranges[expansion_index]
         ):
             start, end = source_ranges[source_index]
             source_index += 1

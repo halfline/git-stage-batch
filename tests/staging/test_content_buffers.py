@@ -105,6 +105,7 @@ def _build_target_working_tree_replacement_bytes(
     *,
     working_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool = True,
+    preserved_replacement_prefix_count: int = 0,
 ) -> bytes:
     with build_target_working_tree_buffer_with_replaced_lines(
         line_changes,
@@ -113,6 +114,7 @@ def _build_target_working_tree_replacement_bytes(
         working_lines,
         working_has_trailing_newline=working_has_trailing_newline,
         trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        preserved_replacement_prefix_count=preserved_replacement_prefix_count,
     ) as result:
         return result.to_bytes()
 
@@ -751,6 +753,48 @@ class TestBuildTargetIndexContent:
                 {2},
             )
 
+    def test_replace_selection_accepts_inner_addition_span(self):
+        """A transformed addition can be replaced without absorbing its peers."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 3, 1, 4),
+            lines=[
+                LineEntry(1, "-", 1, None, text_bytes=b"old-a"),
+                LineEntry(2, "-", 2, None, text_bytes=b"old-b"),
+                LineEntry(3, "-", 3, None, text_bytes=b"old-c"),
+                LineEntry(4, "+", None, 1, text_bytes=b"new-a"),
+                LineEntry(5, "+", None, 2, text_bytes=b"new-b"),
+                LineEntry(6, "+", None, 3, text_bytes=b"new-c"),
+                LineEntry(7, "+", None, 4, text_bytes=b"new-d"),
+            ],
+        )
+        working_content = b"new-a\nnew-b\nnew-c\nnew-d\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            with pytest.raises(
+                ValueError,
+                match="one complete replacement run",
+            ):
+                _build_target_working_tree_replacement_bytes(
+                    line_changes,
+                    {5},
+                    "replacement\n",
+                    working_lines,
+                    working_has_trailing_newline=True,
+                )
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {5},
+                "new-b\nold-b\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=1,
+            )
+
+        assert result == b"new-a\nnew-b\nold-b\nnew-c\nnew-d\n"
+
     def test_replace_selection_validation_avoids_line_scale_python_heap(self):
         """Position validation must scan changed rows without materializing them."""
         heap_peaks = []
@@ -785,6 +829,57 @@ class TestBuildTargetIndexContent:
                 tracemalloc.stop()
 
             assert span == (0, line_count - 1)
+            heap_peaks.append(peak_heap)
+
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + 16 * 1024
+
+    def test_inner_addition_validation_avoids_line_scale_python_heap(self):
+        """A large explicit inner addition span should retain scalar state."""
+        heap_peaks = []
+        for line_count in (1024, 8192):
+            lines = [
+                LineEntry(
+                    line_id,
+                    "-",
+                    line_id,
+                    None,
+                    text_bytes=b"old",
+                )
+                for line_id in range(1, line_count + 1)
+            ]
+            lines.extend(
+                LineEntry(
+                    line_count + offset,
+                    "+",
+                    None,
+                    offset,
+                    text_bytes=b"new",
+                )
+                for offset in range(1, line_count * 2 + 1)
+            )
+            line_changes = LineLevelChange(
+                path="test.txt",
+                header=HunkHeader(1, line_count, 1, line_count * 2),
+                lines=lines,
+            )
+            selected_start = line_count + line_count // 4
+            selected_stop = line_count + line_count * 3 // 4
+            replace_ids = set(range(selected_start, selected_stop))
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                span = content_buffers_module._replacement_selection_span_indices(
+                    line_changes,
+                    replace_ids,
+                    allow_incomplete_addition_span=True,
+                )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            assert span == (selected_start - 1, selected_stop - 2)
             heap_peaks.append(peak_heap)
 
         small_peak, large_peak = heap_peaks
@@ -1319,6 +1414,103 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
 
+    def test_working_tree_replace_preserves_prefix_while_trimming_suffix(self):
+        """A batch prefix can coexist with ordinary trailing-anchor trimming."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"keep3"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"keep4"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"keep1\nworking\nkeep3\nkeep4\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "keep1\nstaged\nlive\nkeep3\nkeep4\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=1,
+            )
+
+        assert result == b"keep1\nkeep1\nstaged\nlive\nkeep3\nkeep4\n"
+
+    def test_working_tree_suffix_trim_cannot_consume_preserved_prefix(self):
+        """Repeated suffix anchors must leave every owned prefix line intact."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"head"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"}"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"}"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"head\nworking\n}\n}\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "batch\n}\n}\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=2,
+            )
+
+        assert result == b"head\nbatch\n}\n}\n}\n"
+
+    def test_working_tree_suffix_validation_ignores_preserved_prefix(self):
+        """Protected repeated lines are not residual trailing anchors."""
+        header = HunkHeader(1, 5, 1, 5)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"head"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"}"),
+            LineEntry(3, "+", None, 3, text_bytes=b"}"),
+            LineEntry(None, " ", 3, 4, text_bytes=b"}"),
+            LineEntry(None, " ", 4, 5, text_bytes=b"}"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"head\n}\n}\n}\n}\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2, 3},
+                "}\n}\n}\n}\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=2,
+            )
+
+        assert result == working_content
+
+    def test_working_tree_rejects_oversized_preserved_prefix(self):
+        """The protected-prefix boundary must lie inside the replacement."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 1),
+            lines=[LineEntry(1, "+", None, 1, text_bytes=b"working")],
+        )
+
+        with (
+            LineBuffer.from_bytes(b"working\n") as working_lines,
+            pytest.raises(ValueError, match="prefix exceeds replacement"),
+        ):
+            _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1},
+                "replacement\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=2,
+            )
+
     def test_working_tree_replace_deletion_only_hunk_uses_new_anchor(self):
         """Pure deletion replacement should not move to the file end."""
         header = HunkHeader(2, 1, 1, 0)
@@ -1683,6 +1875,171 @@ class TestBuildTargetWorkingTreeContent:
 
         # Discarding both reverts to original
         assert result == "line1\nold line\nline2\n"
+
+    def test_discard_replacement_suffix_after_unselected_additions(self):
+        """A selected old row replaces its selected new suffix peer."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 6, 1, 10),
+            lines=[
+                LineEntry(None, " ", 1, 1, text_bytes=b"prefix"),
+                LineEntry(1, "-", 2, None, text_bytes=b"old_outer"),
+                LineEntry(2, "+", None, 2, text_bytes=b"new_outer"),
+                LineEntry(None, " ", 3, 3, text_bytes=b"{"),
+                LineEntry(3, "-", 4, None, text_bytes=b"old"),
+                LineEntry(4, "+", None, 4, text_bytes=b"outer-body"),
+                LineEntry(5, "+", None, 5, text_bytes=b"}"),
+                LineEntry(6, "+", None, 6, text_bytes=b"new_inner"),
+                LineEntry(7, "+", None, 7, text_bytes=b"{"),
+                LineEntry(8, "+", None, 8, text_bytes=b"new"),
+                LineEntry(None, " ", 5, 9, text_bytes=b"}"),
+                LineEntry(None, " ", 6, 10, text_bytes=b"tail"),
+            ],
+        )
+        working_text = (
+            "prefix\nnew_outer\n{\nouter-body\n}\n"
+            "new_inner\n{\nnew\n}\ntail\n"
+        )
+
+        result = _build_target_working_tree_content_text(
+            line_changes,
+            {3, 8},
+            working_text,
+        )
+
+        assert result == (
+            "prefix\nnew_outer\n{\nouter-body\n}\n"
+            "new_inner\n{\nold\n}\ntail\n"
+        )
+
+    def test_discard_one_to_many_tail_keeps_independent_deletion_anchor(self):
+        """An ordinary replacement tail does not relocate its old-side row."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 3, 1, 5),
+            lines=[
+                LineEntry(None, " ", 1, 1, text_bytes=b"keep"),
+                LineEntry(1, "-", 2, None, text_bytes=b"old"),
+                LineEntry(2, "+", None, 2, text_bytes=b"new-one"),
+                LineEntry(3, "+", None, 3, text_bytes=b"new-two"),
+                LineEntry(4, "+", None, 4, text_bytes=b"new-three"),
+                LineEntry(None, " ", 3, 5, text_bytes=b"tail"),
+            ],
+        )
+        working_text = "keep\nnew-one\nnew-two\nnew-three\ntail\n"
+
+        result = _build_target_working_tree_content_text(
+            line_changes,
+            {1, 4},
+            working_text,
+        )
+
+        assert result == "keep\nold\nnew-one\nnew-two\ntail\n"
+
+    def test_discard_replacement_suffix_scans_changed_rows_linearly(self):
+        """Suffix replacement placement visits changed rows a constant number of times."""
+
+        class CountingLines(list):
+            def __init__(self, entries):
+                super().__init__(entries)
+                self.read_count = 0
+
+            def __getitem__(self, index):
+                self.read_count += 1
+                return super().__getitem__(index)
+
+        addition_count = 4096
+        lines = CountingLines(
+            [
+                LineEntry(None, " ", 1, 1, text_bytes=b"{"),
+                LineEntry(1, "-", 2, None, text_bytes=b"old"),
+            ]
+            + [
+                LineEntry(
+                    addition_index + 2,
+                    "+",
+                    None,
+                    addition_index + 2,
+                    text_bytes=(
+                        b"{"
+                        if addition_index == addition_count - 2
+                        else b"new"
+                    ),
+                )
+                for addition_index in range(addition_count)
+            ]
+        )
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 2, 1, addition_count + 1),
+            lines=lines,
+        )
+        working_content = (
+            b"{\n"
+            + b"new\n" * (addition_count - 2)
+            + b"{\nnew\n"
+        )
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            with build_target_working_tree_buffer_from_lines(
+                line_changes,
+                {1, addition_count + 1},
+                working_lines,
+            ) as result:
+                assert result.byte_count == len(working_content)
+
+        assert lines.read_count < 6 * len(lines)
+
+    def test_discard_replacement_suffix_avoids_line_scale_python_heap(self):
+        """Suffix replacement placement streams without a second row-sized list."""
+        heap_peaks = []
+        for addition_count in (1024, 16384):
+            line_changes = LineLevelChange(
+                path="test.txt",
+                header=HunkHeader(1, 2, 1, addition_count + 1),
+                lines=[
+                    LineEntry(None, " ", 1, 1, text_bytes=b"{"),
+                    LineEntry(1, "-", 2, None, text_bytes=b"old"),
+                ]
+                + [
+                    LineEntry(
+                        addition_index + 2,
+                        "+",
+                        None,
+                        addition_index + 2,
+                        text_bytes=(
+                            b"{"
+                            if addition_index == addition_count - 2
+                            else b"new"
+                        ),
+                    )
+                    for addition_index in range(addition_count)
+                ],
+            )
+            discard_ids = {1, addition_count + 1}
+            working_content = (
+                b"{\n"
+                + b"new\n" * (addition_count - 2)
+                + b"{\nnew\n"
+            )
+
+            with LineBuffer.from_bytes(working_content) as working_lines:
+                gc.collect()
+                tracemalloc.start()
+                try:
+                    with build_target_working_tree_buffer_from_lines(
+                        line_changes,
+                        discard_ids,
+                        working_lines,
+                    ) as result:
+                        assert result.byte_count == len(working_content)
+                    _current_heap, peak_heap = tracemalloc.get_traced_memory()
+                finally:
+                    tracemalloc.stop()
+            heap_peaks.append(peak_heap)
+
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + 32 * 1024
 
     def test_partial_discard(self):
         """Test discarding only some changes."""

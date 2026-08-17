@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from types import TracebackType
 
-from ...core.line_selection import LineRanges
+from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.mapped_storage import MappedRecordVector
 from ...core.models import LineEntry
 from . import hunk_replacement_translation as _hunk_replacement_translation
@@ -14,7 +14,7 @@ from .absence_content import (
 )
 from .model import BatchOwnership
 from .absence_claims import AbsenceClaim
-from .claims import LineRangeBuilder, presence_claims_from_source_lines
+from .claims import presence_claims_from_source_lines
 from .line_entries import (
     LineEntryContentSequence as _LineEntryContentSequence,
     ReplacementUnitBuilder as _ReplacementUnitBuilder,
@@ -246,9 +246,7 @@ def _translate_hunk_selection_with_old_content(
                 claimed_source_lines.add_line(line.source_line)
                 baseline_reference = _baseline_reference_for_presence_line(line)
                 if baseline_reference is not None:
-                    presence_baseline_references[line.source_line] = (
-                        baseline_reference
-                    )
+                    presence_baseline_references[line.source_line] = baseline_reference
 
                 if line.kind == "+":
                     if flushed_deletion_indices:

@@ -7,6 +7,7 @@ import os
 import shutil
 
 from .batch_refs import batch_ref_snapshot_recovery_objects, snapshot_batch_refs
+from .applied_batch_overlays import snapshot_applied_batch_overlays_for_abort
 from .recovery_anchors import anchor_recovery_objects
 from ..utils.session_start_point import (
     resolve_session_start_point,
@@ -233,6 +234,7 @@ def initialize_abort_state() -> None:
 
 def _initialize_abort_state() -> None:
     """Build abort state, writing the active-session marker last."""
+    snapshot_applied_batch_overlays_for_abort()
     start_point = resolve_session_start_point()
     save_session_start_point(start_point)
     abort_head = start_point.head_commit or "UNBORN"

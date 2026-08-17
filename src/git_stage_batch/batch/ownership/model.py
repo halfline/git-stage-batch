@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ...core.line_selection import (
+    LineRangeBuilder as _LineRangeBuilder,
     LineRanges,
 )
 from .absence_claims import AbsenceClaim as _AbsenceClaim
@@ -27,9 +28,10 @@ class BatchOwnership:
 
     A batch owns content relative to its batch source commit:
     - presence_claims: Batch-source lines that must exist after application
-    - deletions: Suppression constraints for baseline content (absence claims)
+    - deletions: Suppression constraints for old-side content (absence claims)
     - replacement_units: Optional explicit coupling between claims and deletions
     """
+
     presence_claims: list[_PresenceClaim]
     deletions: list[_AbsenceClaim]  # Separate deletion constraints
     replacement_units: list[_ReplacementUnit] = field(default_factory=list)
@@ -64,10 +66,11 @@ class BatchOwnership:
 
     def presence_line_set(self) -> LineRanges:
         """Return all batch-source lines claimed present by this ownership."""
-        presence_lines = LineRanges.empty()
+        presence_lines = _LineRangeBuilder()
         for claim in self.presence_claims:
-            presence_lines = presence_lines.union(claim.source_line_set())
-        return presence_lines
+            for range_start, range_end in claim.source_line_set().ranges():
+                presence_lines.add_range(range_start, range_end)
+        return presence_lines.finish()
 
     def presence_baseline_references(self) -> dict[int, _BaselineReference]:
         """Return baseline references keyed by claimed batch-source line."""
@@ -76,21 +79,11 @@ class BatchOwnership:
             references.update(claim.baseline_references)
         return references
 
-    def presence_baseline_reference(
-        self,
-        source_line: int,
-    ) -> _BaselineReference | None:
-        """Return the effective baseline reference for one source line."""
-        for claim in reversed(self.presence_claims):
-            if source_line in claim.baseline_references:
-                return claim.baseline_references[source_line]
-        return None
-
     def to_metadata_dict(self) -> BatchOwnershipMetadata:
         """Convert to metadata dictionary format for storage."""
         data: BatchOwnershipMetadata = {
             "presence_claims": [claim.to_dict() for claim in self.presence_claims],
-            "deletions": [claim.to_dict() for claim in self.deletions]
+            "deletions": [claim.to_dict() for claim in self.deletions],
         }
         replacement_units = [
             unit.to_dict()
@@ -102,6 +95,22 @@ class BatchOwnership:
         if replacement_units:
             data["replacement_units"] = replacement_units
         return data
+
+    def to_attribution_metadata_dict(self) -> BatchOwnershipMetadata:
+        """Serialize only the compact claims required by attribution."""
+        presence_lines = LineRanges.from_specs(
+            source_line
+            for claim in self.presence_claims
+            for source_line in claim.source_lines
+        )
+        return {
+            "presence_claims": (
+                [{"source_lines": presence_lines.to_range_strings()}]
+                if presence_lines
+                else []
+            ),
+            "deletions": [claim.to_attribution_dict() for claim in self.deletions],
+        }
 
     def resolve(self) -> ResolvedBatchOwnership:
         """Resolve into representation for materialization and merge.
@@ -122,5 +131,6 @@ class ResolvedBatchOwnership:
         presence_line_set: Batch source line numbers (1-indexed, identity-based)
         deletion_claims: List of suppression constraints (order and structure preserved)
     """
+
     presence_line_set: LineRanges  # Batch source line numbers (1-indexed)
     deletion_claims: list[_AbsenceClaim]  # Separate constraints, not collapsed

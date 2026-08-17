@@ -16,7 +16,11 @@ from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer
-from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
+from ...core.diff_parser import (
+    acquire_unified_diff,
+    build_line_changes_from_patch_lines,
+    patch_requires_unidiff_zero,
+)
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ...core.text_lifecycle import TextFileChangeType
@@ -254,7 +258,7 @@ def discard_file_to_batch(
             apply_result = git_apply_to_worktree(
                 patch_lines_item,
                 reverse=True,
-                unidiff_zero=True,
+                unidiff_zero=patch_requires_unidiff_zero(patch_lines_item),
                 check=False,
             )
 

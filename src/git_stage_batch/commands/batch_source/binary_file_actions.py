@@ -7,10 +7,8 @@ import os
 
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
-from ...data.file_modes import detect_file_mode_in_commit
 from ...git_paths import display_path
 from ...utils.buffer_io import write_buffer_to_working_tree_path
-from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.git_object_io import create_git_blob
@@ -22,31 +20,6 @@ class BinaryWorktreeAction(Enum):
     ADDED = "added"
     DELETED = "deleted"
     REPLACED = "replaced"
-
-
-def discard_binary_file_to_worktree(
-    file_path: str,
-    baseline_commit: str,
-) -> BinaryWorktreeAction | None:
-    """Restore or remove one binary file using the batch baseline commit."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-
-    baseline_buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
-    if baseline_buffer is not None:
-        file_mode = detect_file_mode_in_commit(baseline_commit, file_path)
-        with baseline_buffer:
-            write_buffer_to_working_tree_path(
-                full_path,
-                baseline_buffer,
-                mode=file_mode,
-            )
-        return BinaryWorktreeAction.REPLACED
-
-    if os.path.lexists(full_path):
-        full_path.unlink()
-        return BinaryWorktreeAction.DELETED
-    return None
 
 
 def write_binary_file_to_worktree(

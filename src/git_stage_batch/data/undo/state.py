@@ -251,16 +251,18 @@ def restore_metadata_state(
     manifest: CheckpointState,
 ) -> None:
     """Restore scoped application state with legacy whole-directory support."""
-    for prefix, target_dir, tracked_paths in (
+    for prefix, target_dir, tracked_paths, filesystem_state in (
         (
             "session",
             get_session_directory_path(),
             manifest.get("tracked_session_paths"),
+            manifest.get("session_files"),
         ),
         (
             "batches",
             get_batches_directory_path(),
             manifest.get("tracked_batches_paths"),
+            manifest.get("batches_files"),
         ),
     ):
         if isinstance(tracked_paths, list):
@@ -269,12 +271,14 @@ def restore_metadata_state(
                 prefix=prefix,
                 target_dir=target_dir,
                 tracked_paths=tracked_paths,
+                filesystem_state=filesystem_state,
             )
         else:
             _undo_restore.restore_tree_prefix(
                 commit,
                 prefix=prefix,
                 target_dir=target_dir,
+                filesystem_state=filesystem_state,
             )
     repository_paths = manifest.get("tracked_repository_paths")
     if isinstance(repository_paths, list):
@@ -283,6 +287,7 @@ def restore_metadata_state(
             prefix="repository",
             target_dir=get_git_directory_path(),
             tracked_paths=repository_paths,
+            filesystem_state=manifest.get("repository_files"),
         )
 
 

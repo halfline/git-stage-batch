@@ -2,26 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
 from .entries import RealizedEntry as _RealizedEntry
 from .entry_storage import (
     RealizedEntries,
-    realized_entry_content_at,
     realized_entry_is_claimed_at,
     realized_entry_source_line_at,
 )
-from ...editor.piece_table import LineLike
 from ...exceptions import (
     AmbiguousAnchorError as _AmbiguousAnchorError,
     MissingAnchorError as _MissingAnchorError,
 )
 from ...i18n import _, ngettext
-from ...core.text_lines import normalize_line_endings as _normalize_line_endings
-
-
-def _normalize_line_content(content: LineLike) -> bytes:
-    return _normalize_line_endings(bytes(content))
 
 
 def find_realization_fallback_boundary(
@@ -67,8 +60,10 @@ def find_boundary_after_source_line(
     if source_line is None:
         return 0
 
-    matching_indices = []
-    claimed_indices = []
+    matching_count = 0
+    claimed_count = 0
+    matching_index = 0
+    claimed_index = 0
 
     if isinstance(entries, RealizedEntries):
         for run in entries.provenance_runs():
@@ -78,17 +73,21 @@ def find_boundary_after_source_line(
             if not run.source_start <= source_line < run.source_start + run_length:
                 continue
             index = run.dest_start + (source_line - run.source_start)
-            matching_indices.append(index)
+            matching_count += 1
+            matching_index = index
             if run.is_claimed:
-                claimed_indices.append(index)
+                claimed_count += 1
+                claimed_index = index
     else:
         for i in range(len(entries)):
             if realized_entry_source_line_at(entries, i) == source_line:
-                matching_indices.append(i)
+                matching_count += 1
+                matching_index = i
                 if realized_entry_is_claimed_at(entries, i):
-                    claimed_indices.append(i)
+                    claimed_count += 1
+                    claimed_index = i
 
-    if not matching_indices:
+    if matching_count == 0:
         raise _MissingAnchorError(
             _(
                 "Cannot locate anchor boundary after source line {line}: "
@@ -96,42 +95,43 @@ def find_boundary_after_source_line(
             ).format(line=source_line)
         )
 
-    if len(matching_indices) > 1:
-        if len(claimed_indices) == 1:
-            return claimed_indices[0] + 1
-        if len(claimed_indices) == 0:
+    if matching_count > 1:
+        if claimed_count == 1:
+            return claimed_index + 1
+        if claimed_count == 0:
             raise _AmbiguousAnchorError(
                 ngettext(
                     "Anchor ambiguity: source line {line} appears {count} time "
                     "in realized content but is not claimed",
                     "Anchor ambiguity: source line {line} appears {count} times "
                     "in realized content but none are claimed",
-                    len(matching_indices),
-                ).format(line=source_line, count=len(matching_indices))
+                    matching_count,
+                ).format(line=source_line, count=matching_count)
             )
         raise _AmbiguousAnchorError(
             ngettext(
                 "Anchor ambiguity: source line {line} claimed {count} time",
                 "Anchor ambiguity: source line {line} claimed {count} times",
-                len(claimed_indices),
+                claimed_count,
             ).format(
                 line=source_line,
-                count=len(claimed_indices),
+                count=claimed_count,
             )
         )
 
-    return matching_indices[0] + 1
+    return matching_index + 1
 
 
 def boundary_choices_after_source_line(
     entries: Sequence[_RealizedEntry],
     source_line: int | None,
-) -> tuple[int, ...]:
-    """Return all concrete boundary positions after a source line."""
+) -> Iterator[int]:
+    """Yield concrete boundary positions without collecting every match."""
     if source_line is None:
-        return (0,)
+        yield 0
+        return
 
-    matching_indices: list[int] = []
+    found = False
     if isinstance(entries, RealizedEntries):
         for run in entries.provenance_runs():
             if run.source_start == 0:
@@ -139,34 +139,18 @@ def boundary_choices_after_source_line(
             run_length = run.dest_end - run.dest_start
             if not run.source_start <= source_line < run.source_start + run_length:
                 continue
-            matching_indices.append(run.dest_start + (source_line - run.source_start))
+            found = True
+            yield run.dest_start + (source_line - run.source_start) + 1
     else:
         for index in range(len(entries)):
             if realized_entry_source_line_at(entries, index) == source_line:
-                matching_indices.append(index)
+                found = True
+                yield index + 1
 
-    if not matching_indices:
+    if not found:
         raise _MissingAnchorError(
             _(
                 "Cannot locate anchor boundary after source line {line}: "
                 "anchor not present in realized content"
             ).format(line=source_line)
         )
-
-    return tuple(index + 1 for index in matching_indices)
-
-
-def sequence_present_at_boundary(
-    entries: Sequence[_RealizedEntry],
-    boundary: int,
-    sequence: Sequence[bytes],
-) -> bool:
-    """Return whether a byte sequence is present at an exact boundary."""
-    if boundary + len(sequence) > len(entries):
-        return False
-
-    return all(
-        _normalize_line_content(realized_entry_content_at(entries, boundary + i))
-        == _normalize_line_endings(sequence[i])
-        for i in range(len(sequence))
-    )

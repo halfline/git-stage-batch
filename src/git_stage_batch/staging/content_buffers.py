@@ -6,6 +6,9 @@ from collections.abc import Collection, Iterator, Sequence
 from typing import overload
 
 from ..core.models import LineEntry, LineLevelChange
+from ..core.repeated_context_replacement import (
+    find_repeated_context_suffix_replacement,
+)
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
@@ -296,6 +299,8 @@ def _is_synthetic_gap_line(line_entry: LineEntry) -> bool:
 def _replacement_selection_span_indices(
     line_changes: LineLevelChange,
     replace_ids: set[int],
+    *,
+    allow_incomplete_addition_span: bool = False,
 ) -> tuple[int, int]:
     """Return the display span for one contiguous run of changed rows."""
     line_index = 0
@@ -307,14 +312,22 @@ def _replacement_selection_span_indices(
         run_start = line_index
         first_addition: int | None = None
         first_selected_index: int | None = None
+        last_selected_index: int | None = None
+        selected_count_in_run = 0
+        selected_indices_are_contiguous = True
         malformed_run = False
         while (
             line_index < len(line_changes.lines)
             and line_changes.lines[line_index].kind in ("+", "-")
         ):
             line = line_changes.lines[line_index]
-            if line.id in replace_ids and first_selected_index is None:
-                first_selected_index = line_index
+            if line.id in replace_ids:
+                selected_count_in_run += 1
+                if first_selected_index is None:
+                    first_selected_index = line_index
+                elif last_selected_index != line_index - 1:
+                    selected_indices_are_contiguous = False
+                last_selected_index = line_index
             if line.kind == "+":
                 if first_addition is None:
                     first_addition = line_index
@@ -347,6 +360,16 @@ def _replacement_selection_span_indices(
             and line_changes.lines[run_index].id in replace_ids
             for run_index in range(run_start, first_addition)
         )
+        deletion_side_is_available = all(
+            line_changes.lines[run_index].id is not None
+            for run_index in range(run_start, first_addition)
+        )
+        addition_span_is_contiguous = (
+            deletion_side_is_available
+            and first_selected_index >= first_addition
+            and selected_count_in_run == len(replace_ids)
+            and selected_indices_are_contiguous
+        )
         selected_addition_count = 0
         for run_index in range(first_addition, line_index):
             line_id = line_changes.lines[run_index].id
@@ -364,7 +387,8 @@ def _replacement_selection_span_indices(
             )
         )
         if replacement_core_is_incomplete and not (
-            deletion_side_is_complete and addition_prefix_is_partial
+            (allow_incomplete_addition_span and addition_span_is_contiguous)
+            or (deletion_side_is_complete and addition_prefix_is_partial)
         ):
             raise ValueError(
                 _(
@@ -415,11 +439,14 @@ def replacement_working_tree_span_indices(
     line_changes: LineLevelChange,
     replace_ids: set[int],
     working_line_count: int,
+    *,
+    allow_incomplete_addition_span: bool = False,
 ) -> tuple[int, int]:
     """Return the exact working-tree line span replaced by selected IDs."""
     span_start_index, span_end_index = _replacement_selection_span_indices(
         line_changes,
         replace_ids,
+        allow_incomplete_addition_span=allow_incomplete_addition_span,
     )
 
     def next_new_line_number(start_index: int) -> int | None:
@@ -478,16 +505,20 @@ def replacement_baseline_span_indices(
     line_changes: LineLevelChange,
     replace_ids: set[int],
     working_line_count: int,
+    *,
+    allow_incomplete_addition_span: bool = False,
 ) -> tuple[int, int]:
     """Return the old-file span consumed by a working-tree replacement."""
     span_start_index, span_end_index = _replacement_selection_span_indices(
         line_changes,
         replace_ids,
+        allow_incomplete_addition_span=allow_incomplete_addition_span,
     )
     working_start, working_end = replacement_working_tree_span_indices(
         line_changes,
         replace_ids,
         working_line_count,
+        allow_incomplete_addition_span=allow_incomplete_addition_span,
     )
     baseline_start = _old_index_for_new_anchor(
         line_changes,
@@ -860,13 +891,8 @@ def _target_working_tree_line_contents(
                 yield from copy_unchanged_lines_before(next_entry.new_line_number)
                 return
 
-    for index in range(0, min(working_pointer, working_line_count)):
-        yield _working_tree_line_content_at(working_lines, index)
-
-    for index, line_entry in enumerate(line_changes.lines):
-        if _is_synthetic_gap_line(line_entry):
-            continue
-
+    def process_line(index: int, line_entry: LineEntry) -> Iterator[bytes]:
+        nonlocal working_pointer
         if line_entry.kind == " ":
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if not working_line_matches(line_entry):
@@ -894,6 +920,51 @@ def _target_working_tree_line_contents(
             else:
                 yield _working_tree_line_content_at(working_lines, working_pointer)
                 working_pointer += 1
+
+    for index in range(0, min(working_pointer, working_line_count)):
+        yield _working_tree_line_content_at(working_lines, index)
+
+    index = 0
+    while index < len(line_changes.lines):
+        line_entry = line_changes.lines[index]
+        if _is_synthetic_gap_line(line_entry):
+            index += 1
+            continue
+
+        if line_entry.kind not in ("+", "-"):
+            yield from process_line(index, line_entry)
+            index += 1
+            continue
+
+        run_start = index
+        while (
+            index < len(line_changes.lines)
+            and line_changes.lines[index].kind in ("+", "-")
+        ):
+            index += 1
+        run_end = index
+        replacement = find_repeated_context_suffix_replacement(
+            line_changes.lines,
+            discard_ids,
+            run_start,
+            run_end,
+        )
+        if replacement is None:
+            for run_index in range(run_start, run_end):
+                yield from process_line(
+                    run_index,
+                    line_changes.lines[run_index],
+                )
+            continue
+
+        first_addition = replacement.first_addition
+        for run_index in range(first_addition, run_end):
+            yield from process_line(
+                run_index,
+                line_changes.lines[run_index],
+            )
+        for run_index in range(run_start, first_addition):
+            yield _line_entry_content(line_changes.lines[run_index])
 
     while 0 <= working_pointer < working_line_count:
         yield _working_tree_line_content_at(working_lines, working_pointer)
@@ -934,6 +1005,7 @@ def build_target_working_tree_buffer_with_replaced_lines(
     *,
     working_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool = True,
+    preserved_replacement_prefix_count: int = 0,
 ) -> LineBuffer:
     """Build working tree content by replacing a span in indexed lines."""
     replacement_payload = coerce_replacement_payload(replacement_text)
@@ -946,6 +1018,9 @@ def build_target_working_tree_buffer_with_replaced_lines(
             working_lines,
             working_has_trailing_newline=working_has_trailing_newline,
             trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+            preserved_replacement_prefix_count=(
+                preserved_replacement_prefix_count
+            ),
         )
 
 
@@ -958,8 +1033,13 @@ def _build_target_working_tree_buffer_with_replaced_lines(
     *,
     working_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool,
+    preserved_replacement_prefix_count: int,
 ) -> LineBuffer:
     """Build working content while replacement line storage is open."""
+    if not (
+        0 <= preserved_replacement_prefix_count <= len(replacement_lines)
+    ):
+        raise ValueError("preserved replacement prefix exceeds replacement")
     if not replace_ids:
         return _edit_lines_preserving_source_endings_as_buffer(
             working_lines,
@@ -974,6 +1054,7 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         line_changes,
         replace_ids,
         working_line_count,
+        allow_incomplete_addition_span=(preserved_replacement_prefix_count > 0),
     )
 
     if trim_unchanged_edge_anchors:
@@ -989,15 +1070,32 @@ def _build_target_working_tree_buffer_with_replaced_lines(
             min(working_line_count, replace_end + context_limit),
         )
 
-        prefix_trim = _longest_prefix_context_match(replacement_lines, before_context)
-        if prefix_trim:
-            replacement_lines = replacement_lines[prefix_trim:]
+        if not preserved_replacement_prefix_count:
+            prefix_trim = _longest_prefix_context_match(
+                replacement_lines,
+                before_context,
+            )
+            if prefix_trim:
+                replacement_lines = replacement_lines[prefix_trim:]
 
         suffix_trim = _longest_suffix_context_match(replacement_lines, after_context)
+        suffix_trim = min(
+            suffix_trim,
+            max(
+                len(replacement_lines) - preserved_replacement_prefix_count,
+                0,
+            ),
+        )
         if suffix_trim:
             replacement_lines = replacement_lines[:-suffix_trim]
 
-        if _longest_prefix_context_match(replacement_lines, before_context) >= 2:
+        if (
+            not preserved_replacement_prefix_count
+            and _longest_prefix_context_match(
+                replacement_lines,
+                before_context,
+            ) >= 2
+        ):
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines before "
@@ -1007,7 +1105,11 @@ def _build_target_working_tree_buffer_with_replaced_lines(
                 )
             )
 
-        if _longest_suffix_context_match(replacement_lines, after_context) >= 2:
+        remaining_suffix_overlap = min(
+            _longest_suffix_context_match(replacement_lines, after_context),
+            len(replacement_lines) - preserved_replacement_prefix_count,
+        )
+        if remaining_suffix_overlap >= 2:
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines after "

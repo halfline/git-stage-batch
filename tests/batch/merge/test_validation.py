@@ -1,26 +1,31 @@
 """Tests for merge-time validation and error handling.
 
 Tests cover:
-1. Line ending normalization in sequence matching
-2. Missing vs ambiguous anchor distinction
-3. Structural coherence checks for partial selections
+1. Missing vs ambiguous anchor distinction
+2. Structural coherence checks for partial selections
 """
+
+import gc
+import tracemalloc
 
 import pytest
 
 from git_stage_batch.batch.discard import discard_batch_from_line_sequences_as_buffer
+from git_stage_batch.batch.merge import validation
 from git_stage_batch.batch.merge.merge import (
     merge_batch_from_line_sequences_as_buffer,
 )
-from git_stage_batch.batch.realization.boundaries import (
-    find_boundary_after_source_line,
-    sequence_present_at_boundary,
-)
+from git_stage_batch.batch.realization.boundaries import find_boundary_after_source_line
 from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
+from git_stage_batch.core.line_selection import LineRanges
+from git_stage_batch.exceptions import (
+    MergeError,
+    MissingAnchorError,
+    AmbiguousAnchorError,
+)
 
 
 def merge_batch(
@@ -62,26 +67,77 @@ def discard_batch(
         return buffer.to_bytes()
 
 
-def test_sequence_present_normalizes_both_sides():
-    """Boundary sequence checks should normalize entries and sequences."""
-    # Create entries with CRLF
-    entries = [
-        RealizedEntry(content=b"line 1\r\n", source_line=1, is_claimed=True),
-        RealizedEntry(content=b"line 2\r\n", source_line=2, is_claimed=True),
-        RealizedEntry(content=b"line 3\n", source_line=3, is_claimed=False),
-    ]
+def test_missing_claim_context_validation_scans_source_once(monkeypatch):
+    """One mapped edge must not cause a scan per missing claimed line."""
+    line_count = 4_000
 
-    # Sequence with LF should match entry with CRLF
-    sequence_lf = [b"line 1\n", b"line 2\n"]
-    assert sequence_present_at_boundary(entries, 0, sequence_lf) is True
+    class CountingMapping:
+        def __init__(self) -> None:
+            self.lookup_count = 0
 
-    # Sequence with CRLF should match entry with LF
-    sequence_crlf = [b"line 3\r\n"]
-    assert sequence_present_at_boundary(entries, 2, sequence_crlf) is True
+        def is_source_line_present(self, source_line: int) -> bool:
+            self.lookup_count += 1
+            return source_line == line_count
 
-    # Non-matching content should still return False
-    sequence_wrong = [b"wrong line\n"]
-    assert sequence_present_at_boundary(entries, 0, sequence_wrong) is False
+    mapping = CountingMapping()
+    monkeypatch.setattr(
+        validation,
+        "_contextual_presence_placements",
+        lambda *args, **kwargs: (LineRanges.empty(), ()),
+    )
+    monkeypatch.setattr(
+        validation,
+        "_check_unbounded_trailing_context",
+        lambda *args, **kwargs: None,
+    )
+
+    validation.check_structural_validity(
+        mapping,  # type: ignore[arg-type]
+        LineRanges.from_ranges(((1, line_count - 1),)),
+        [],
+        [b"source\n"] * line_count,
+        [b"target\n"],
+    )
+
+    assert mapping.lookup_count == line_count
+
+
+def test_unclaimed_target_gap_slices_remain_lazy() -> None:
+    """Gap slicing must not build a tuple containing every target line."""
+
+    class CountingLines:
+        def __init__(self) -> None:
+            self.read_count = 0
+
+        def __len__(self) -> int:
+            return 1_000_000
+
+        def __getitem__(self, index: int) -> bytes:
+            if index < 0 or index >= len(self):
+                raise IndexError(index)
+            self.read_count += 1
+            return b"target\n"
+
+    class UnmappedLines:
+        @staticmethod
+        def get_source_line_from_target_line(_target_line: int) -> None:
+            return None
+
+    target_lines = CountingLines()
+    gap = validation._UnclaimedTargetGap(
+        target_lines,  # type: ignore[arg-type]
+        0,
+        len(target_lines),
+        UnmappedLines(),  # type: ignore[arg-type]
+        (),
+    )
+
+    sliced = gap[100:900_000:2]
+
+    assert len(sliced) == 449_950
+    assert target_lines.read_count == 0
+    assert sliced[-1] == b"target\n"
+    assert target_lines.read_count == 1
 
 
 def test_discard_missing_anchor_skipped_gracefully():
@@ -102,11 +158,7 @@ different line 3
     # Claim line 2, delete line after line 2
     # But line 2 doesn't exist in working tree (all lines different)
     ownership = BatchOwnership.from_presence_lines(
-        ["2"],
-        [AbsenceClaim(
-            anchor_line=2,
-            content_lines=[b"old content\n"]
-        )]
+        ["2"], [AbsenceClaim(anchor_line=2, content_lines=[b"old content\n"])]
     )
 
     # Should complete without error (skips absence claim gracefully)
@@ -139,7 +191,9 @@ def test_find_boundary_ambiguous_anchor_raises_specific_error():
     entries = [
         RealizedEntry(content=b"line 1\n", source_line=1, is_claimed=False),
         RealizedEntry(content=b"line 2\n", source_line=2, is_claimed=False),
-        RealizedEntry(content=b"line 2\n", source_line=2, is_claimed=False),  # Duplicate
+        RealizedEntry(
+            content=b"line 2\n", source_line=2, is_claimed=False
+        ),  # Duplicate
         RealizedEntry(content=b"line 3\n", source_line=3, is_claimed=False),
     ]
 
@@ -156,13 +210,47 @@ def test_find_boundary_uses_claimed_when_duplicates_exist():
     entries = [
         RealizedEntry(content=b"line 1\n", source_line=1, is_claimed=False),
         RealizedEntry(content=b"line 2\n", source_line=2, is_claimed=False),
-        RealizedEntry(content=b"line 2\n", source_line=2, is_claimed=True),  # Claimed one
+        RealizedEntry(
+            content=b"line 2\n", source_line=2, is_claimed=True
+        ),  # Claimed one
         RealizedEntry(content=b"line 3\n", source_line=3, is_claimed=False),
     ]
 
     # Should use the claimed occurrence (index 2) and return boundary after it (index 3)
     boundary = find_boundary_after_source_line(entries, 2)
     assert boundary == 3  # After the claimed occurrence
+
+
+def test_find_boundary_counts_duplicates_without_line_scale_heap():
+    """Ambiguity resolution should retain only counts and selected indexes."""
+    line_count = 50_000
+
+    class RepeatedEntries:
+        def __len__(self):
+            return line_count
+
+        def __getitem__(self, index):
+            if index < 0 or index >= len(self):
+                raise IndexError(index)
+            return RealizedEntry(
+                content=b"anchor\n",
+                source_line=2,
+                is_claimed=index == line_count - 1,
+            )
+
+    gc.collect()
+    tracemalloc.start()
+    try:
+        boundary = find_boundary_after_source_line(
+            RepeatedEntries(),  # type: ignore[arg-type]
+            2,
+        )
+        _current_heap, peak_heap = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert boundary == line_count
+    assert peak_heap < 64 * 1024
 
 
 def test_partial_selection_corruption_still_caught():
@@ -357,12 +445,15 @@ distinctive shared footer
 
     result = merge_batch(batch_source, ownership, working)
 
-    assert result == b"""distinctive shared header
+    assert (
+        result
+        == b"""distinctive shared header
 replacement target one
 replacement target two
 claimed addition
 distinctive shared footer
 """
+    )
 
 
 def test_append_only_interleaved_batch_first_application_succeeds():
@@ -401,19 +492,19 @@ A test project.
 
     ownership = BatchOwnership.from_presence_lines(
         ["3-4"],
-        [AbsenceClaim(
-            anchor_line=2,
-            content_lines=[b"A test project.\n"]
-        )],
+        [AbsenceClaim(anchor_line=2, content_lines=[b"A test project.\n"])],
     )
 
     result = merge_batch(batch_source, ownership, working)
 
-    assert result == b"""# Test Project
+    assert (
+        result
+        == b"""# Test Project
 
 A test project for git-stage-batch.
 
 """
+    )
 
 
 def test_crlf_normalization_in_discard_restoration():
@@ -434,10 +525,12 @@ def test_crlf_normalization_in_discard_restoration():
     # Claim line 2 (batch added it), deletion after line 1 with CRLF
     ownership = BatchOwnership.from_presence_lines(
         ["2"],
-        [AbsenceClaim(
-            anchor_line=1,
-            content_lines=[b"old content\r\n"]  # CRLF in deletion content
-        )]
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old content\r\n"],  # CRLF in deletion content
+            )
+        ],
     )
 
     # Discard: should remove batch-owned line 2, restore "old content"

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Iterator
 
 from ..exceptions import CommandError
+from ..core.diff_parser import patch_requires_unidiff_zero
 from ..fixup.commutation import (
     PatchApplicationResult,
     apply_patch_to_tree_result,
@@ -96,7 +97,7 @@ def apply_history_replay_unit(
         tree,
         unit.patch.patch_buffer.byte_chunks(),
         three_way=False,
-        unidiff_zero=True,
+        unidiff_zero=patch_requires_unidiff_zero(unit.patch.patch_buffer),
         env=env,
     )
     if replay_cache is not None:

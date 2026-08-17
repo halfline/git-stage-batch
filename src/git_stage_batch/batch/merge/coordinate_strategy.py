@@ -12,8 +12,14 @@ from .baseline_replacement_ranges import (
     replacement_source_range_capacity,
 )
 from .baseline_reference_positions import baseline_reference_insertion_position
+from .presence_reference_index import EffectivePresenceReferenceIndex
 from ..line_matching.match_workspace import MatcherWorkspace
-from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.line_selection import (
+    LineRangeBuilder,
+    LineRanges,
+    LineSelection,
+    coerce_line_ranges,
+)
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 
 if TYPE_CHECKING:
@@ -37,14 +43,19 @@ def has_recorded_baseline_coordinates(
     ownership: BatchOwnership,
     presence_line_set: LineSelection,
     deletion_claims: Sequence[AbsenceClaim],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> bool:
     """Return whether selected edit metadata includes a recorded coordinate."""
-    for presence_claim in ownership.presence_claims:
-        for claimed_line, presence_reference in (
-            presence_claim.baseline_references.items()
-        ):
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        presence_references = EffectivePresenceReferenceIndex(
+            workspace,
+            ownership,
+        )
+        for claimed_line, presence_reference in presence_references.items():
             if (
                 claimed_line in presence_line_set
+                and presence_reference is not None
                 and presence_reference.has_after_line
             ):
                 return True
@@ -65,50 +76,56 @@ def has_recorded_baseline_coordinates(
     return False
 
 
-def presence_lines_requiring_distinctive_context(
+def presence_context_line_sets(
     ownership: BatchOwnership,
     presence_line_set: LineSelection,
     deletion_claims: Sequence[AbsenceClaim],
     *,
     target_lines: Sequence[bytes] | None = None,
     spool_dir: str | Path | None = None,
-) -> LineRanges:
-    """Return presence lines lacking coordinate or replacement anchoring."""
+) -> tuple[LineRanges, LineRanges]:
+    """Return distinctive-context and recorded-context presence lines."""
     source_selection = coerce_line_ranges(presence_line_set)
     if not source_selection:
-        return LineRanges.empty()
-
-    coverage_capacity = sum(
-        len(claim.baseline_references)
-        for claim in ownership.presence_claims
-    ) + len(deletion_claims) + sum(
-        replacement_source_range_capacity(unit.presence_lines)
-        for unit in ownership.replacement_units
-        if _unit_has_nonempty_deletion(unit, deletion_claims)
-    )
-    if coverage_capacity == 0:
-        return source_selection
+        return LineRanges.empty(), LineRanges.empty()
 
     with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        presence_references = EffectivePresenceReferenceIndex(
+            workspace,
+            ownership,
+        )
+        coverage_capacity = len(presence_references) + len(deletion_claims) + sum(
+            replacement_source_range_capacity(unit.presence_lines)
+            for unit in ownership.replacement_units
+            if _unit_has_nonempty_deletion(unit, deletion_claims)
+        )
+        if coverage_capacity == 0:
+            return source_selection, LineRanges.empty()
+
+        recorded_lines = LineRangeBuilder()
         covered_ranges = workspace.record_vector(
             coverage_capacity,
             _SOURCE_RANGE_RECORD_FORMAT,
         )
-        for claim in ownership.presence_claims:
-            for claimed_line, reference in claim.baseline_references.items():
-                if (
-                    type(claimed_line) is int
-                    and claimed_line > 0
-                    and reference.has_after_line
-                    and (
-                        target_lines is None
-                        or baseline_reference_insertion_position(
-                            reference,
-                            target_lines,
-                        ) is not None
-                    )
-                ):
-                    covered_ranges.append((claimed_line, claimed_line))
+        for claimed_line, reference in presence_references.items():
+            if (
+                reference is not None
+                and reference.has_after_line
+                and claimed_line in source_selection
+            ):
+                recorded_lines.add_line(claimed_line)
+            if (
+                reference is not None
+                and reference.has_after_line
+                and (
+                    target_lines is None
+                    or baseline_reference_insertion_position(
+                        reference,
+                        target_lines,
+                    ) is not None
+                )
+            ):
+                covered_ranges.append((claimed_line, claimed_line))
 
         _append_legacy_replacement_coverage(
             covered_ranges,
@@ -137,7 +154,29 @@ def presence_lines_requiring_distinctive_context(
         covered_selection = LineRanges.from_ranges(
             (start, end) for start, end in covered_ranges
         )
-        return source_selection.difference(covered_selection)
+        return (
+            source_selection.difference(covered_selection),
+            recorded_lines.finish(),
+        )
+
+
+def presence_lines_requiring_distinctive_context(
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    deletion_claims: Sequence[AbsenceClaim],
+    *,
+    target_lines: Sequence[bytes] | None = None,
+    spool_dir: str | Path | None = None,
+) -> LineRanges:
+    """Return presence lines lacking coordinate or replacement anchoring."""
+    distinctive_lines, _recorded_lines = presence_context_line_sets(
+        ownership,
+        presence_line_set,
+        deletion_claims,
+        target_lines=target_lines,
+        spool_dir=spool_dir,
+    )
+    return distinctive_lines
 
 
 def _append_legacy_replacement_coverage(

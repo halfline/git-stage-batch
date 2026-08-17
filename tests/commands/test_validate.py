@@ -10,6 +10,9 @@ import git_stage_batch.utils.git_command as git_command_module
 
 from git_stage_batch.commands.validate import command_validate_batches
 from git_stage_batch.commands.new import command_new_batch
+from git_stage_batch.batch.state.metadata_schema import (
+    CURRENT_BATCH_METADATA_SCHEMA_VERSION,
+)
 from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import get_batch_metadata_file_path
 from git_stage_batch.exceptions import CommandError
@@ -96,7 +99,9 @@ def test_validate_reports_current_metadata_without_mutation(temp_git_repo, capsy
 
     report = json.loads(capsys.readouterr().out)
     assert report["batches"][0]["status"] == "ok"
-    assert report["batches"][0]["schema_version"] == 1
+    assert report["batches"][0][
+        "schema_version"
+    ] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
     after = subprocess.run(
         ["git", "rev-parse", "refs/git-stage-batch/state/current"],
         check=True,
@@ -104,6 +109,35 @@ def test_validate_reports_current_metadata_without_mutation(temp_git_repo, capsy
         text=True,
     ).stdout.strip()
     assert after == before
+
+
+def test_validate_previews_v1_metadata_migration(temp_git_repo, capsys):
+    command_new_batch("version-one")
+    state_ref = "refs/git-stage-batch/state/version-one"
+    payload = subprocess.run(
+        ["git", "show", f"{state_ref}:batch.json"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    metadata = json.loads(payload)
+    metadata["schema_version"] = 1
+    metadata_blob = _store_git_blob(
+        (json.dumps(metadata) + "\n").encode()
+    )
+    _replace_batch_state_entry(
+        "version-one",
+        mode="100644",
+        object_type="blob",
+        object_id=metadata_blob,
+    )
+
+    command_validate_batches(porcelain=True)
+
+    report = json.loads(capsys.readouterr().out)["batches"][0]
+    assert report["status"] == "ok"
+    assert report["schema_version"] == 1
+    assert report["migration_required"] is True
 
 
 def test_validate_previews_legacy_migration(temp_git_repo, capsys):

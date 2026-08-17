@@ -1,9 +1,368 @@
 """Functional tests for batch operations."""
 
 import subprocess
+from pathlib import Path
 
 
-from .conftest import git_stage_batch, get_unstaged_diff
+from .conftest import git_stage_batch, get_staged_diff, get_unstaged_diff
+
+
+def _install_castkms_primary_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_primary_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "73ab324457aa97fc118e8406b973a8050e6e1cd2",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-36-primary-plane-lookup-ownership"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "3226c34dc32ba37fc12ef3a4501dccd5ef5179e9",
+        f"refs/git-stage-batch/state/{batch_name}": "ad3641debe9fcba69b6018d096cf97f2969fd730",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_cursor_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_cursor_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "0f363e67dd7f8fca07c2c5063b55f2a85723e191",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-35-cursor-plane-lookup-ownership"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "1d0e9af52e3461111dd8a70fd78b005116d9c095",
+        f"refs/git-stage-batch/state/{batch_name}": "3243a7e460aa3e4e16e3be263d03dfab8efd42d2",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_hot_unplug_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_hot_unplug_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "9e0e83db0bd289ab6f2a26debfb03bca90a10937",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-32-config-hot-unplug"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "6e6ab7224e6fcfef38a980c4cc2871ae5190f457",
+        f"refs/git-stage-batch/state/{batch_name}": "1b0d99b0092653263a4c64bcdc27a882b0242422",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_raw_map_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_raw_map_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "ca977563d0480499285a739838df53df46d012db",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-31-raw-framebuffer-maps"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "68a98e92d69295c1a80b340fc97e5e74984fa167",
+        f"refs/git-stage-batch/state/{batch_name}": "ede272733ba7bff86d383059581cf1b73d976a53",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_capture03_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_capture03_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "94b9e9d09cb77ab1cb39e954e3a826feb37cf4ac",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-03-explicit-first-use"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "bc12ec85fd1e2f52466e37cd2301033a0ebc354c",
+        f"refs/git-stage-batch/state/{batch_name}": "8f31cd7bcd70c2e886eb600032b18ac1c3abd6cc",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git",
+            "restore",
+            "--source=cffda2bf8c96c53020f7dbd28fd1e0dbb581802b",
+            "--worktree",
+            ".",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "add", "-N", "."],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    return batch_name
+
+
+def _install_castkms_packed_bit_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_packed_bit_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "f108ceab14ee3175e13312a83b899011a8c52edc",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-28-packed-bit-final-sample"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "f019f94fbad93c8c379c5c165b3f50c7a2d3eac1",
+        f"refs/git-stage-batch/state/{batch_name}": "cac5c82acdd60b43456eb02c82b561d79e93dfde",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_wide_offset_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_wide_offset_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "7922200aaa5bc27b29b38ff8f607593d31e38827",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-24-wide-framebuffer-offsets"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "1d2cd693967c909301b0dc9ced537f2c9aa012b5",
+        f"refs/git-stage-batch/state/{batch_name}": "caa757d3b5bdd3ae7838714254bea0c3ce54c112",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_stride_guard_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(fixture_root.glob("castkms_stride_guard_replay_exact-*.pack"))
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "812d4beb9592b12048524b6f59049eec25dc03d3",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-23-int-range-scanout-guard"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}": "b2de98e6c965ea6e22945b0f13043c3a1072f033",
+        f"refs/git-stage-batch/state/{batch_name}": "f714d3d0af9cb864401fe2ee2b8eb3253645d539",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name
+
+
+def _install_castkms_ptrdiff_replay_fixture(
+    functional_repo,
+    *,
+    corrected_source_alternative: bool = True,
+):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_packs = [
+        next(fixture_root.glob("castkms_ptrdiff_replay_exact-*.pack")),
+    ]
+    if corrected_source_alternative:
+        fixture_packs.append(
+            fixture_root / "castkms_ptrdiff_source_alternative_exact.pack"
+        )
+    for fixture_pack in fixture_packs:
+        subprocess.run(
+            ["git", "index-pack", "--stdin"],
+            cwd=functional_repo,
+            input=fixture_pack.read_bytes(),
+            check=True,
+            capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "a59c3b7e422482f654186b79c87236c825d75741",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    refs = {
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission": "7f312fe101f4dc2dd9f55c2fadd07b005907009a",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission": (
+            "2f333bc3c08d6e10fa70d3fe1396057d0e2882f3"
+            if corrected_source_alternative
+            else "1ddc2c96e04556d24fd7216884127803fd28c333"
+        ),
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission-repair": "6f9cf6498bc0e51f6491de71fe8725a7b592b7ab",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission-repair": "d71f3b3c44de3df9326a27d627ad99d191e02887",
+    }
+    for ref, oid in refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, oid],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return "decompose-22-ptrdiff-stride-admission"
 
 
 class TestCreateBatch:
@@ -88,7 +447,9 @@ class TestIncludeToBatch:
         git_stage_batch("skip", check=False)
 
         # Include to second batch
-        result = git_stage_batch("include", "--to", "batch-b", "--line", "1", check=False)
+        result = git_stage_batch(
+            "include", "--to", "batch-b", "--line", "1", check=False
+        )
         if result.returncode == 0:
             # Both batches should have content
             batch_a = git_stage_batch("show", "--from", "batch-a")
@@ -122,8 +483,18 @@ class TestDiscardToBatch:
         """Discarding selected replacement lines to a batch can be applied back."""
         file_path = functional_repo / "file.txt"
         file_path.write_text("a\nb\n")
-        subprocess.run(["git", "add", "file.txt"], check=True, cwd=functional_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=functional_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
 
         file_path.write_text("A\nB\n")
 
@@ -171,7 +542,999 @@ class TestShowFromBatch:
 class TestApplyFromBatch:
     """Test applying changes from a batch."""
 
+    def test_apply_batch_to_independently_reconstructed_predecessor(
+        self,
+        functional_repo,
+    ):
+        """Independent source-relative edits must replay as one batch."""
+        batch_name = _install_castkms_capture03_replay_fixture(functional_repo)
+        changed_paths = (
+            "include/uapi/drm/castkms_drm.h",
+            "src/castkms_capture.c",
+            "tools/castkms-capture-test.c",
+            "README.md",
+            "docs/vm-testing.md",
+            "scripts/vm/guest-smoke-test.sh",
+        )
+        expected_hashes = {
+            "include/uapi/drm/castkms_drm.h": (
+                "ba6131a73a93f5e39f6829d0574dab94ea530420"
+            ),
+            "src/castkms_capture.c": ("1d6653a0033a308c3730a8271f50377b1c92e113"),
+            "tools/castkms-capture-test.c": (
+                "9fd8d6254fa02d153ba433b4a7e56f996eafdbd7"
+            ),
+            "README.md": "cfe882ba30515ea6aecb6444b4ad75fbca8ba98c",
+            "docs/vm-testing.md": ("c15d42c3fe643f184c93a6c3921404ae3f52a752"),
+            "scripts/vm/guest-smoke-test.sh": (
+                "f36deb2b55fe48e358cfe4d44f657b1e894a4e2d"
+            ),
+        }
+        before = {
+            path: subprocess.run(
+                ["git", "hash-object", path],
+                cwd=functional_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for path in changed_paths
+        }
 
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode == 0, result.stderr
+        after = {
+            path: subprocess.run(
+                ["git", "hash-object", path],
+                cwd=functional_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for path in changed_paths
+        }
+        assert all(after[path] != before[path] for path in changed_paths)
+        assert after == expected_hashes
+
+        uapi = (functional_repo / "include/uapi/drm/castkms_drm.h").read_text()
+        assert uapi.count("#define DRM_CASTKMS_CAPTURE_UAPI_MINOR") == 1
+        assert "#define DRM_CASTKMS_CAPTURE_UAPI_MINOR\t4" in uapi
+        for structure in (
+            "drm_castkms_capture_query_caps",
+            "drm_castkms_capture_start",
+            "drm_castkms_capture_stop",
+            "drm_castkms_capture_register_buffer",
+            "drm_castkms_capture_unregister_buffer",
+        ):
+            assert uapi.count(f"struct {structure} {{") == 1
+
+        tool = (functional_repo / "tools/castkms-capture-test.c").read_text()
+        assert tool.count("static int parse_crtc_id(") == 1
+        assert tool.count("static int validate_query(") == 1
+        assert tool.count("int main(") == 1
+
+        build = subprocess.run(
+            ["make"],
+            cwd=functional_repo / "tools",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert build.returncode == 0, build.stdout + build.stderr
+
+        reapplied = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert reapplied.returncode == 0, reapplied.stderr
+        after_reapply = {
+            path: subprocess.run(
+                ["git", "hash-object", path],
+                cwd=functional_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for path in changed_paths
+        }
+        assert after_reapply == after
+
+    def test_apply_batch_after_committing_neighboring_replacements(
+        self,
+        functional_repo,
+    ):
+        """Committed neighboring replacements must not block batch replay."""
+        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode == 0, result.stderr
+        header = (functional_repo / "src" / "castkms_config.h").read_text()
+        tests = (
+            functional_repo / "src" / "tests" / "castkms_config_test.c"
+        ).read_text()
+        assert "castkms_config_crtc_primary_plane(struct castkms_config_crtc" in header
+        assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
+
+    def test_discard_partially_applied_replacement_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding a file-scoped replay must restore the committed file."""
+        batch_name = _install_castkms_primary_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+        committed = path.read_text()
+
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        assert path.read_text() != committed
+
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_discard_applied_output_replacement_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding a reviewed output replacement must restore the file."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_output.c"
+        committed = path.read_text()
+
+        overview = git_stage_batch("apply", "--from", batch_name, check=False)
+        assert overview.returncode != 0
+        assert "apply candidate" in overview.stderr
+        git_stage_batch(
+            "show",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_output.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_apply_suggested_cursor_helper_line_selection(
+        self,
+        functional_repo,
+    ):
+        """The suggested helper line selection must apply after its adopters."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+
+        overview = git_stage_batch("apply", "--from", batch_name, check=False)
+        assert overview.returncode != 0
+        git_stage_batch(
+            "show",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            f"{batch_name}:apply:1",
+            "--file",
+            "src/castkms_output.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.h",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-10,17-18",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = (functional_repo / "src" / "castkms_config.c").read_text()
+        assert "castkms_crtc_get_plane(struct castkms_config_crtc" in source
+        assert "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_CURSOR)" in source
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "11-16",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = (functional_repo / "src/castkms_config.c").read_text()
+        assert "castkms_crtc_get_plane(crtc_cfg, DRM_PLANE_TYPE_PRIMARY)" in source
+        assert "castkms_config_crtc_cursor_plane(struct castkms_config *" not in source
+
+    def test_discard_partial_cursor_helper_replay_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding a partial helper replay must restore the committed file."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+        committed = path.read_text()
+
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-10,17-18",
+        )
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_discard_completed_cursor_helper_replay_restores_file(
+        self,
+        functional_repo,
+    ):
+        """Discarding both helper selections must restore the committed file."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "11-16",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-10,17-18",
+        )
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_apply_remaining_cursor_test_calls_after_middle_pairs(
+        self,
+        functional_repo,
+    ):
+        """Applying middle test pairs must leave surrounding calls replayable."""
+        batch_name = _install_castkms_cursor_replay_fixture(functional_repo)
+
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/tests/castkms_config_test.c",
+            "--line",
+            "5-8",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/tests/castkms_config_test.c",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/tests/castkms_config_test.c",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = (
+            functional_repo / "src" / "tests" / "castkms_config_test.c"
+        ).read_text()
+        assert "castkms_config_crtc_cursor_plane(config, crtc_cfg)" not in source
+
+    def test_apply_hot_unplug_guard_after_recommended_adopters(
+        self,
+        functional_repo,
+    ):
+        """Applying recommended adopters must leave their guard replayable."""
+        batch_name = _install_castkms_hot_unplug_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_config.c"
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--pages",
+            "all",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "1-2,15-22,24",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            "src/castkms_config.c",
+            "--line",
+            "3-14,23",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert "if (!drm_dev_enter(dev, &idx))" in source
+        assert "drm_dev_exit(idx);" in source
+        assert "config = castkmsdev->config;" in source
+
+    def test_apply_raw_map_tests_after_case_entries(self, functional_repo):
+        """Applying case entries must leave their test functions replayable."""
+        batch_name = _install_castkms_raw_map_replay_fixture(functional_repo)
+        relative_path = "src/tests/castkms_format_test.c"
+        path = functional_repo / relative_path
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "80-81",
+        )
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count("static void castkms_format_test_framebuffer_offset") == 1
+        assert (
+            source.count("static void castkms_format_test_distinct_multiplane_maps")
+            == 1
+        )
+        assert source.count("KUNIT_CASE(castkms_format_test_framebuffer_offset)") == 1
+        assert (
+            source.count("KUNIT_CASE(castkms_format_test_distinct_multiplane_maps)")
+            == 1
+        )
+
+        git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+        )
+        assert path.read_text() == committed
+
+    def test_apply_packed_bit_boundary_after_one_plane_boundary(
+        self,
+        functional_repo,
+    ):
+        """An adjacent reader fix should replay through an explicit selection."""
+        batch_name = _install_castkms_packed_bit_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--page",
+            "1",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "1-8",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count("if (out_pixel < end)") == 3
+        assert "\t\t\tout_pixel += 1;\n\n\t\t\tbit_offset" in source
+
+    def test_apply_wide_offset_helper_and_both_callers(self, functional_repo):
+        """A selected helper migration must carry continuation lines."""
+        batch_name = _install_castkms_wide_offset_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+        committed = path.read_text()
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--line",
+            "1-24,26-32,34-36",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert source.count("offset = castkms_packed_pixels_offset(") == 2
+        assert "\n\tpacked_pixels_offset(frame_info" not in source
+
+        result = git_stage_batch(
+            "discard",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert path.read_text() == committed
+
+    def test_apply_stride_guard_after_wide_offset_helper(self, functional_repo):
+        """An adjacent helper insertion must replay after its predecessor."""
+        batch_name = _install_castkms_stride_guard_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert "bool castkms_framebuffer_read_strides_are_valid" in source
+        assert "if (block_stride > INT_MAX)" in source
+        assert "if (block_stride > SSIZE_MAX)" not in source
+
+    def test_apply_ptrdiff_stride_migration_before_companion_repair(
+        self,
+        functional_repo,
+    ):
+        """The stride migration must replay before its companion is inverted."""
+        batch_name = _install_castkms_ptrdiff_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_formats.c"
+
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+        git_stage_batch(
+            "discard",
+            "--from",
+            f"{batch_name}-repair",
+        )
+        source = path.read_text()
+        assert "static ptrdiff_t get_block_step_bytes" in source
+        assert "if (block_stride > SSIZE_MAX)" in source
+        assert "if (block_stride > INT_MAX)" not in source
+        assert "drm_format_info_block_height(fb->format" in source
+
+    def test_legacy_ptrdiff_stride_migration_fails_without_semantic_intent(
+        self,
+        functional_repo,
+    ):
+        """An ambiguous legacy insertion must not preserve both alternatives."""
+        batch_name = _install_castkms_ptrdiff_replay_fixture(
+            functional_repo,
+            corrected_source_alternative=False,
+        )
+        path = functional_repo / "src" / "castkms_formats.c"
+        before = path.read_bytes()
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode != 0
+        assert "does not record whether adjacent historical source content" in (
+            result.stderr
+        )
+        assert path.read_bytes() == before
+
+    def test_start_reviews_changes_restored_from_batch(self, functional_repo):
+        """A restored batch should remain available to a fresh staging pass."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text("after\n")
+        git_stage_batch("new", "restored-change", "-m", "Restore one change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        git_stage_batch("apply", "--from", "restored-change")
+        assert file_path.read_text() == "after\n"
+        assert get_unstaged_diff("file.txt")
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 0, result.stderr
+        assert "file.txt" in result.stdout
+
+        git_stage_batch("include", "--files", "file.txt", "--no-auto-advance")
+        assert get_staged_diff("file.txt")
+
+    def test_partial_staging_keeps_remaining_restored_hunks_reviewable(
+        self,
+        functional_repo,
+    ):
+        """Staging one restored hunk must not hide the remaining applied work."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("base 1\nbase 2\nbase 3\nbase 4\nbase 5\nbase 6\nbase 7\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text(
+            "changed 1\n"
+            "base 1\nbase 2\nbase 3\nbase 4\nbase 5\nbase 6\nbase 7\n"
+            "changed 7\n"
+        )
+        git_stage_batch("new", "restored-change")
+        git_stage_batch(
+            "start",
+            "--unified",
+            "0",
+            "--no-auto-advance",
+        )
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+        git_stage_batch("apply", "--from", "restored-change")
+
+        first = git_stage_batch(
+            "start",
+            "--unified",
+            "0",
+            "--no-auto-advance",
+        )
+        assert "changed 1" in first.stdout
+        assert "changed 7" not in first.stdout
+
+        git_stage_batch("include", "--no-auto-advance")
+        remaining = git_stage_batch("again", "--no-auto-advance", check=False)
+
+        assert remaining.returncode == 0, remaining.stderr
+        assert "changed 7" in remaining.stdout
+
+        git_stage_batch("stop")
+        fresh = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert fresh.returncode == 0, fresh.stderr
+        assert "changed 7" in fresh.stdout
+
+    def test_start_names_batches_that_already_own_all_changes(
+        self,
+        functional_repo,
+    ):
+        """A fresh start should explain why unchanged saved work is hidden."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text("after\n")
+        git_stage_batch("new", "saved-change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "include",
+            "--to",
+            "saved-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 2
+        assert (
+            "All working tree changes are currently saved in batch 'saved-change'."
+        ) in result.stderr
+
+    def test_start_names_each_batch_that_owns_the_hidden_changes(
+        self,
+        functional_repo,
+    ):
+        """The no-change diagnostic should identify every masking batch."""
+        first_path = functional_repo / "first.txt"
+        second_path = functional_repo / "second.txt"
+        first_path.write_text("before first\n")
+        second_path.write_text("before second\n")
+        subprocess.run(
+            ["git", "add", "first.txt", "second.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        first_path.write_text("after first\n")
+        second_path.write_text("after second\n")
+
+        git_stage_batch("new", "alpha")
+        git_stage_batch("new", "beta")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "include",
+            "--to",
+            "alpha",
+            "--file",
+            "first.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch(
+            "include",
+            "--to",
+            "beta",
+            "--file",
+            "second.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 2
+        assert (
+            "All working tree changes are currently saved in batch 'alpha', "
+            "batch 'beta'."
+        ) in result.stderr
+
+    def test_external_edit_invalidates_restored_batch_review_provenance(
+        self,
+        functional_repo,
+    ):
+        """Applied provenance must not survive a later worktree mutation."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text("after\n")
+        git_stage_batch("new", "restored-change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+        git_stage_batch("apply", "--from", "restored-change")
+
+        file_path.write_text("after\nindependent\n")
+        result = git_stage_batch("start", "--no-auto-advance")
+
+        assert "independent" in result.stdout
+        assert "[#3] + independent" in result.stdout
+        assert "[#2] + after" in result.stdout
+
+    def test_fresh_start_reviews_consecutive_batch_applications(
+        self,
+        functional_repo,
+    ):
+        """Layered applies should retain each still-fresh ownership overlay."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        file_path.write_text("base\nalpha\ncontext\nbeta\n")
+        git_stage_batch("new", "alpha")
+        git_stage_batch("new", "beta")
+        first_view = git_stage_batch("start", "--no-auto-advance").stdout
+        alpha_line_id = next(
+            line.split("]", 1)[0].removeprefix("[#")
+            for line in first_view.splitlines()
+            if "+ alpha" in line
+        )
+        git_stage_batch(
+            "discard",
+            "--to",
+            "alpha",
+            "--line",
+            alpha_line_id,
+            "--no-auto-advance",
+        )
+        second_view = git_stage_batch("again", "--no-auto-advance").stdout
+        assert "+ context" in second_view
+        beta_line_ids = [
+            line.split("]", 1)[0].removeprefix("[#")
+            for line in second_view.splitlines()
+            if "+ context" in line or "+ beta" in line
+        ]
+        assert len(beta_line_ids) == 2
+        git_stage_batch(
+            "discard",
+            "--to",
+            "beta",
+            "--line",
+            ",".join(beta_line_ids),
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        assert file_path.read_text() == "base\n"
+        git_stage_batch("apply", "--from", "alpha")
+        git_stage_batch("apply", "--from", "beta")
+        assert file_path.read_text() == "base\nalpha\ncontext\nbeta\n"
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 0, result.stderr
+        assert "+ alpha" in result.stdout
+        assert "+ context" in result.stdout
+        assert "+ beta" in result.stdout
+
+    def test_undo_apply_restores_applied_batch_review_provenance(
+        self,
+        functional_repo,
+    ):
+        """Undo should restore both worktree bytes and provenance state."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text("after\n")
+        git_stage_batch("new", "restored-change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+
+        git_stage_batch("apply", "--from", "restored-change")
+        overlay_path = (
+            functional_repo / ".git" / "git-stage-batch" / "applied-batch-overlays.json"
+        )
+        assert overlay_path.exists()
+        git_stage_batch("undo")
+
+        assert file_path.read_text() == "before\n"
+        assert not overlay_path.exists()
+        git_stage_batch("apply", "--from", "restored-change")
+        result = git_stage_batch("again", "--no-auto-advance", check=False)
+        assert result.returncode == 0, result.stderr
+        assert "file.txt" in result.stdout
 
     def test_apply_from_batch_stages_changes(self, repo_with_changes):
         """Test applying from batch stages the changes."""
@@ -266,7 +1629,9 @@ class TestOddEvenLinesBatches:
 
         # Add to git
         subprocess.run(["git", "add", "numbers.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add numbers file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add numbers file"], check=True, capture_output=True
+        )
 
         # Add 10 new lines (only additions, simpler for line ID tracking)
         test_file.write_text(
@@ -322,10 +1687,16 @@ class TestOddEvenLinesBatches:
         test_file.write_text("Header\n")
 
         subprocess.run(["git", "add", "sequence.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add sequence file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add sequence file"],
+            check=True,
+            capture_output=True,
+        )
 
         # Add 10 new lines
-        test_file.write_text("Header\n" + "\n".join([f"Added line {i}" for i in range(1, 11)]) + "\n")
+        test_file.write_text(
+            "Header\n" + "\n".join([f"Added line {i}" for i in range(1, 11)]) + "\n"
+        )
 
         # Create batches and discard
         git_stage_batch("new", "odd-lines")
@@ -376,10 +1747,14 @@ class TestOddEvenLinesBatches:
         test_file.write_text("Start\n")
 
         subprocess.run(["git", "add", "reverse.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add reverse file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add reverse file"], check=True, capture_output=True
+        )
 
         # Add 10 new lines
-        test_file.write_text("Start\n" + "\n".join([f"New {i}" for i in range(1, 11)]) + "\n")
+        test_file.write_text(
+            "Start\n" + "\n".join([f"New {i}" for i in range(1, 11)]) + "\n"
+        )
 
         # Create batches and discard
         git_stage_batch("new", "odd-lines")
@@ -423,7 +1798,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "test.txt"
         test_file.write_text("Line 1\n")
         subprocess.run(["git", "add", "test.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add test file"], check=True, capture_output=True
+        )
         test_file.write_text("Line 1\nLine 2\n")
 
         # Verify batch doesn't exist yet
@@ -457,7 +1834,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "revert.txt"
         test_file.write_text("Original\n")
         subprocess.run(["git", "add", "revert.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"], check=True, capture_output=True
+        )
         test_file.write_text("Original\nAdded line 1\nAdded line 2\nAdded line 3\n")
 
         # Create batch BEFORE session (empty is the original state)
@@ -465,12 +1844,17 @@ class TestBatchAbortReversion:
 
         # Start session and modify the batch by adding lines
         git_stage_batch("start")
-        git_stage_batch("include", "--to", "existing-batch", "--line", "1,2,3", check=False)
+        git_stage_batch(
+            "include", "--to", "existing-batch", "--line", "1,2,3", check=False
+        )
 
         # Verify batch has content now
         modified_show = git_stage_batch("show", "--from", "existing-batch")
         assert modified_show.returncode == 0
-        assert "Added line 1" in modified_show.stdout or "Added line 2" in modified_show.stdout
+        assert (
+            "Added line 1" in modified_show.stdout
+            or "Added line 2" in modified_show.stdout
+        )
 
         # Abort - should revert to original empty state
         git_stage_batch("abort")
@@ -488,7 +1872,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "dropped.txt"
         test_file.write_text("Content\n")
         subprocess.run(["git", "add", "dropped.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"], check=True, capture_output=True
+        )
         test_file.write_text("Content\nNew line\n")
 
         # Create batch before session
@@ -524,7 +1910,9 @@ class TestBatchAbortReversion:
         test_file = functional_repo / "multi.txt"
         test_file.write_text("Base\n")
         subprocess.run(["git", "add", "multi.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"], check=True, capture_output=True
+        )
         test_file.write_text("Base\nLine 1\nLine 2\nLine 3\n")
 
         # Create some batches before session
@@ -678,7 +2066,7 @@ class TestComplexBatchWorkflows:
         subprocess.run(
             ["git", "commit", "-m", "Applied batch changes"],
             check=True,
-            capture_output=True
+            capture_output=True,
         )
 
         # Batch still exists
@@ -695,16 +2083,24 @@ class TestBatchRebaseWorkflow:
         file1 = functional_repo / "feature.txt"
         file1.write_text("# Feature\n\ndef main():\n    pass\n")
         subprocess.run(["git", "add", "feature.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add feature skeleton"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add feature skeleton"],
+            check=True,
+            capture_output=True,
+        )
 
         # Add unrelated commit
         file2 = functional_repo / "other.txt"
         file2.write_text("Other file\n")
         subprocess.run(["git", "add", "other.txt"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add other file"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add other file"], check=True, capture_output=True
+        )
 
         # Make changes at tip - add a new function
-        file1.write_text("# Feature\n\ndef main():\n    pass\n\ndef helper():\n    return 42\n")
+        file1.write_text(
+            "# Feature\n\ndef main():\n    pass\n\ndef helper():\n    return 42\n"
+        )
 
         # Batch the tip changes (just the new helper function)
         git_stage_batch("new", "improvements")
@@ -726,7 +2122,7 @@ class TestBatchRebaseWorkflow:
             env=env,
             capture_output=True,
             text=True,
-            check=False
+            check=False,
         )
 
         # Should be in rebase state, stopped at first commit
@@ -743,17 +2139,12 @@ class TestBatchRebaseWorkflow:
         # Amend the commit with the improvements
         subprocess.run(["git", "add", "feature.txt"], check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "--amend", "--no-edit"],
-            check=True,
-            capture_output=True
+            ["git", "commit", "--amend", "--no-edit"], check=True, capture_output=True
         )
 
         # Continue the rebase
         continue_result = subprocess.run(
-            ["git", "rebase", "--continue"],
-            capture_output=True,
-            text=True,
-            check=False
+            ["git", "rebase", "--continue"], capture_output=True, text=True, check=False
         )
 
         # Rebase should complete successfully
@@ -761,17 +2152,14 @@ class TestBatchRebaseWorkflow:
 
         # Verify the improvement is now in the first commit
         first_commit_hash = subprocess.run(
-            ["git", "rev-parse", "HEAD~1"],
-            capture_output=True,
-            text=True,
-            check=True
+            ["git", "rev-parse", "HEAD~1"], capture_output=True, text=True, check=True
         ).stdout.strip()
 
         show_result = subprocess.run(
             ["git", "show", first_commit_hash],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
 
         # The helper function should be in the first commit now

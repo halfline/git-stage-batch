@@ -10,7 +10,13 @@ from pathlib import Path
 import stat
 import subprocess
 
-from .index_entries import IndexEntry
+from .index_entries import (
+    IndexEntry,
+    IndexPathEntries,
+    IndexStageEntry,
+    read_index_path_entries,
+    read_intent_to_add_paths,
+)
 from ..exceptions import RepositoryDataInvalid, RepositoryPathInaccessible
 from ..utils.git_command import stream_git_command_bytes
 from ..utils.git_repository import (
@@ -35,10 +41,12 @@ class WorktreeIdentity:
 
 @dataclass(frozen=True, slots=True)
 class IndexIdentity:
-    """Stage-zero identity for one index mutation target."""
+    """Compact identity for every index state of one mutation target."""
 
     mode: str | None
     object_id: str | None
+    intent_to_add: bool = False
+    unmerged_entries: tuple[IndexStageEntry, ...] = ()
 
     @property
     def exists(self) -> bool:
@@ -48,18 +56,64 @@ class IndexIdentity:
     @property
     def content_object_id(self) -> str | None:
         """Return the object ID when the entry has loadable content."""
-        if self.object_id is None or not any(
-            character != "0" for character in self.object_id
+        if (
+            self.intent_to_add
+            or self.object_id is None
+            or not any(character != "0" for character in self.object_id)
         ):
             return None
         return self.object_id
 
 
-def index_identity_from_entry(entry: IndexEntry | None) -> IndexIdentity:
+def index_identity_from_entry(
+    entry: IndexEntry | None,
+    *,
+    intent_to_add: bool = False,
+    unmerged_entries: tuple[IndexStageEntry, ...] = (),
+) -> IndexIdentity:
     """Convert an optional stage-zero entry to its compact identity."""
     if entry is None:
-        return IndexIdentity(None, None)
-    return IndexIdentity(entry.mode, entry.object_id)
+        return IndexIdentity(
+            None,
+            None,
+            intent_to_add=False,
+            unmerged_entries=unmerged_entries,
+        )
+    return IndexIdentity(
+        entry.mode,
+        entry.object_id,
+        intent_to_add=intent_to_add,
+        unmerged_entries=unmerged_entries,
+    )
+
+
+def index_identity_from_path_entries(
+    entries: IndexPathEntries,
+    *,
+    intent_to_add: bool = False,
+) -> IndexIdentity:
+    """Convert all stages for one path to one comparable identity."""
+    return index_identity_from_entry(
+        entries.stage_zero,
+        intent_to_add=intent_to_add,
+        unmerged_entries=entries.unmerged_entries,
+    )
+
+
+def read_index_identities(
+    file_paths: Iterable[str],
+) -> dict[str, IndexIdentity]:
+    """Return compact stage, conflict, and intent identities by scoped path."""
+    unique_paths = list(dict.fromkeys(file_paths))
+    path_entries = read_index_path_entries(unique_paths)
+    intent_paths = read_intent_to_add_paths(unique_paths)
+    return {
+        file_path: index_identity_from_path_entries(
+            path_entries[file_path],
+            intent_to_add=file_path in intent_paths,
+        )
+        for file_path in unique_paths
+    }
 
 
 def capture_worktree_identity(
@@ -126,9 +180,7 @@ def capture_worktree_identity(
                 else None
             ),
         )
-    raise RepositoryDataInvalid(
-        f"Unsupported working-tree path kind: {file_path}"
-    )
+    raise RepositoryDataInvalid(f"Unsupported working-tree path kind: {file_path}")
 
 
 def capture_worktree_identities(

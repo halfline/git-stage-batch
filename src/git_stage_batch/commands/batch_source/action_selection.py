@@ -78,6 +78,7 @@ def resolve_apply_action_selection(
             context.raw_selector,
             line_ids=line_ids,
             file=file,
+            resolved_file_paths=context.resolved_file_paths,
         ),
     )
 
@@ -164,6 +165,7 @@ def resolve_discard_action_selection(
             context.raw_selector,
             line_ids=line_ids,
             file=file,
+            resolved_file_paths=context.resolved_file_paths,
         ),
     )
 
@@ -179,18 +181,21 @@ def _resolve_batch_source_action_files(
     dict[str, BatchFileMetadataDict],
     set[int] | None,
 ]:
-    file = resolve_current_batch_atomic_file_scope(
-        context.batch_name,
-        context.all_files,
-        context.file,
-        patterns,
-        line_ids,
-    )
+    file = context.file
+    if context.resolved_file_paths is None:
+        file = resolve_current_batch_atomic_file_scope(
+            context.batch_name,
+            context.all_files,
+            file,
+            patterns,
+            line_ids,
+        )
     files = resolve_batch_file_scope(
         context.batch_name,
         context.all_files,
         file,
         patterns,
+        resolved_file_paths=context.resolved_file_paths,
     )
     selected_ids = require_single_file_context_for_line_selection(
         context.batch_name,
@@ -248,6 +253,7 @@ def _operation_parts(
     *,
     line_ids: str | None,
     file: str | None,
+    resolved_file_paths: tuple[str, ...] | None = None,
     replacement_payload: ReplacementPayload | None = None,
 ) -> tuple[str, ...]:
     parts = [command_name, "--from", raw_selector]
@@ -255,6 +261,9 @@ def _operation_parts(
         parts.extend(["--line", line_ids])
     if file is not None:
         parts.extend(["--file", file])
+    if resolved_file_paths is not None:
+        for file_path in resolved_file_paths:
+            parts.extend(["--file", file_path])
     if replacement_payload is not None:
         parts.extend(["--as", replacement_payload.display_text or "<stdin>"])
     return tuple(parts)

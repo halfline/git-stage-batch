@@ -5,12 +5,15 @@ from __future__ import annotations
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
-from ...core.line_selection import LineRanges
+from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.models import LineEntry
+from ...core.repeated_context_replacement import (
+    RepeatedContextSuffixReplacement,
+    find_repeated_context_suffix_replacement,
+)
 from . import hunk_line_ranges as _hunk_line_ranges
 from .absence_content import AbsenceContentBuilder
 from .absence_claims import AbsenceClaim
-from .claims import LineRangeBuilder
 from .line_entries import (
     baseline_reference_for_file_line_range,
     baseline_reference_for_old_line_range,
@@ -72,9 +75,7 @@ def translate_hunk_replacement_line_runs(
     replacement_run_iterator = iter(replacement_line_runs)
     try:
         origin_run_iterator = iter(
-            ()
-            if replacement_origin_line_runs is None
-            else replacement_origin_line_runs
+            () if replacement_origin_line_runs is None else replacement_origin_line_runs
         )
         try:
             return _translate_hunk_replacement_line_runs(
@@ -171,9 +172,7 @@ def _translate_hunk_replacement_line_runs(
                 consumed_new_display_ids.add_line(new_line.id)
             baseline_reference = baseline_reference_for_presence_line(new_line)
             if baseline_reference is not None:
-                presence_baseline_references[new_line.source_line] = (
-                    baseline_reference
-                )
+                presence_baseline_references[new_line.source_line] = baseline_reference
 
         absence_claims.append(
             AbsenceClaim(
@@ -217,6 +216,7 @@ def _translate_hunk_replacement_line_runs(
         new_end: int,
         *,
         replacement_run: ReplacementLineRun,
+        align_suffix: bool = False,
     ) -> tuple[ReplacementUnitOrigin, int, int] | None:
         """Project a displayed replacement range through live HEAD."""
         nonlocal next_origin_run
@@ -230,10 +230,7 @@ def _translate_hunk_replacement_line_runs(
         if replacement_runs_are_origin_runs:
             origin_run = replacement_run
         else:
-            while (
-                next_origin_run is not None
-                and next_origin_run.new_end < new_start
-            ):
+            while next_origin_run is not None and next_origin_run.new_end < new_start:
                 next_origin_run = next(origin_run_iterator, None)
             origin_run = next_origin_run
         if (
@@ -243,21 +240,27 @@ def _translate_hunk_replacement_line_runs(
         ):
             return None
 
-        if (
-            new_start == origin_run.new_start
-            and new_end == origin_run.new_end
-        ):
+        if new_start == origin_run.new_start and new_end == origin_run.new_end:
             origin_old_start = origin_run.old_start
             origin_old_end = origin_run.old_end
         else:
             origin_old_count = origin_run.old_end - origin_run.old_start + 1
             origin_new_count = origin_run.new_end - origin_run.new_start + 1
-            if origin_old_count != origin_new_count:
+            selected_new_count = new_end - new_start + 1
+            if origin_old_count == origin_new_count:
+                origin_old_start = (
+                    origin_run.old_start + new_start - origin_run.new_start
+                )
+                origin_old_end = origin_old_start + selected_new_count - 1
+            elif (
+                align_suffix
+                and new_end == origin_run.new_end
+                and selected_new_count <= origin_old_count
+            ):
+                origin_old_end = origin_run.old_end
+                origin_old_start = origin_old_end - selected_new_count + 1
+            else:
                 return None
-            origin_old_start = (
-                origin_run.old_start + new_start - origin_run.new_start
-            )
-            origin_old_end = origin_old_start + new_end - new_start
 
         if cached_origin_run != origin_run:
             cached_origin_run = origin_run
@@ -267,6 +270,69 @@ def _translate_hunk_replacement_line_runs(
             )
         assert cached_origin is not None
         return cached_origin, origin_old_start, origin_old_end
+
+    def repeated_context_suffix_selection(
+        old_scan: _hunk_line_ranges.HunkLineRangeScan,
+        new_scan: _hunk_line_ranges.HunkLineRangeScan,
+        replacement_run: ReplacementLineRun,
+    ) -> (
+        tuple[
+            int,
+            int,
+            RepeatedContextSuffixReplacement,
+            int,
+            int,
+            int,
+            int,
+        ]
+        | None
+    ):
+        """Return one selected raw suffix aligned to a semantic run's end."""
+        scan_start = min(old_scan.start_index, new_scan.start_index)
+        scan_stop = max(old_scan.stop_index, new_scan.stop_index)
+        line_index = scan_start
+        while line_index < scan_stop:
+            if hunk_lines[line_index].kind not in ("+", "-"):
+                line_index += 1
+                continue
+
+            run_start = line_index
+            while line_index < scan_stop and hunk_lines[line_index].kind in ("+", "-"):
+                line_index += 1
+            run_end = line_index
+            suffix = find_repeated_context_suffix_replacement(
+                hunk_lines,
+                selected_display_ids,
+                run_start,
+                run_end,
+            )
+            if suffix is None:
+                continue
+
+            old_start = hunk_lines[run_start].old_line_number
+            old_end = hunk_lines[suffix.first_addition - 1].old_line_number
+            new_start = hunk_lines[suffix.selected_suffix_start].new_line_number
+            new_end = hunk_lines[run_end - 1].new_line_number
+            if (
+                old_start is None
+                or old_end is None
+                or new_start is None
+                or new_end is None
+                or old_end != replacement_run.old_end
+                or new_end != replacement_run.new_end
+                or old_end - old_start != new_end - new_start
+            ):
+                continue
+            return (
+                run_start,
+                run_end,
+                suffix,
+                old_start,
+                old_end,
+                new_start,
+                new_end,
+            )
+        return None
 
     for replacement_run in replacement_run_iterator:
         legacy_replacement_origin = (
@@ -298,6 +364,53 @@ def _translate_hunk_replacement_line_runs(
         old_cursor = old_scan.stop_index
         new_cursor = new_scan.stop_index
 
+        suffix_selection = (
+            repeated_context_suffix_selection(
+                old_scan,
+                new_scan,
+                replacement_run,
+            )
+            if not old_scan.complete or not new_scan.complete
+            else None
+        )
+        if suffix_selection is not None:
+            (
+                run_start,
+                run_end,
+                suffix,
+                selected_old_start,
+                selected_old_end,
+                selected_new_start,
+                selected_new_end,
+            ) = suffix_selection
+            origin_projection = origin_projection_for_new_range(
+                selected_new_start,
+                selected_new_end,
+                replacement_run=replacement_run,
+                align_suffix=True,
+            )
+            add_replacement_unit(
+                ((run_start, suffix.first_addition),),
+                (
+                    hunk_lines[index]
+                    for index in range(suffix.selected_suffix_start, run_end)
+                ),
+                old_start=selected_old_start,
+                old_end=selected_old_end,
+                origin=(
+                    origin_projection[0]
+                    if origin_projection is not None
+                    else legacy_replacement_origin
+                ),
+                origin_old_start=(
+                    origin_projection[1] if origin_projection is not None else None
+                ),
+                origin_old_end=(
+                    origin_projection[2] if origin_projection is not None else None
+                ),
+            )
+            continue
+
         if not old_scan.complete or not new_scan.complete:
             continue
 
@@ -318,12 +431,10 @@ def _translate_hunk_replacement_line_runs(
                 old_line = hunk_lines[old_index]
                 new_line = hunk_lines[new_index]
                 old_selected = (
-                    old_line.id is not None
-                    and old_line.id in selected_display_ids
+                    old_line.id is not None and old_line.id in selected_display_ids
                 )
                 new_selected = (
-                    new_line.id is not None
-                    and new_line.id in selected_display_ids
+                    new_line.id is not None and new_line.id in selected_display_ids
                 )
                 if old_selected and new_selected:
                     if (
@@ -389,16 +500,13 @@ def _translate_hunk_replacement_line_runs(
                     else legacy_replacement_origin
                 ),
                 origin_old_start=(
-                    origin_projection[1]
-                    if origin_projection is not None
-                    else None
+                    origin_projection[1] if origin_projection is not None else None
                 ),
                 origin_old_end=(
-                    origin_projection[2]
-                    if origin_projection is not None
-                    else None
+                    origin_projection[2] if origin_projection is not None else None
                 ),
             )
+            continue
 
     consumed_old_ids = consumed_old_display_ids.finish()
     consumed_new_ids = consumed_new_display_ids.finish()

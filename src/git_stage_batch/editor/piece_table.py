@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from array import array
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, SupportsBytes
 
@@ -34,6 +34,15 @@ class LineRange:
     start: int
     end: int
     owner: LineOwner | None
+
+
+@dataclass(frozen=True, slots=True)
+class LinePieceTableCheckpoint:
+    """Constant-size state needed to roll back one append."""
+
+    run_count: int
+    last_run_end: int | None
+    source_count: int
 
 
 SOURCE_RUN = 0
@@ -75,6 +84,30 @@ class LinePieceTable:
     def set_run_end(self, index: int, end: int) -> None:
         self._run_ends[index] = end
 
+    def checkpoint(self) -> LinePieceTableCheckpoint:
+        """Return constant-size state for an atomic caller-side append."""
+        return LinePieceTableCheckpoint(
+            run_count=len(self._run_kinds),
+            last_run_end=(self._run_ends[-1] if self._run_ends else None),
+            source_count=len(self._sources),
+        )
+
+    def restore(self, checkpoint: LinePieceTableCheckpoint) -> None:
+        """Roll back appends performed after ``checkpoint``."""
+        del self._run_kinds[checkpoint.run_count :]
+        del self._run_source_ids[checkpoint.run_count :]
+        del self._run_starts[checkpoint.run_count :]
+        del self._run_ends[checkpoint.run_count :]
+        if checkpoint.run_count and checkpoint.last_run_end is not None:
+            self._run_ends[-1] = checkpoint.last_run_end
+
+        while len(self._sources) > checkpoint.source_count:
+            source_id = len(self._sources) - 1
+            source = self._sources.pop()
+            key = (id(source.lines), id(source.owner))
+            if self._source_lookup.get(key) == source_id:
+                del self._source_lookup[key]
+
     def append_line_range(
         self,
         lines: Sequence[LineLike],
@@ -84,21 +117,6 @@ class LinePieceTable:
     ) -> None:
         source_id = self._source_id(lines, owner)
         self._append_run(_INDEXED_RUN, source_id, start, end)
-
-    def append_line_ranges(self, ranges: Sequence[LineRange]) -> None:
-        for line_range in ranges:
-            self.append_line_range(
-                line_range.lines,
-                line_range.start,
-                line_range.end,
-                line_range.owner,
-            )
-
-    def active_owners(self) -> Iterator[LineOwner]:
-        for source_id in self._run_source_ids:
-            owner = self._sources[source_id].owner
-            if owner is not None:
-                yield owner
 
     def _source_id(
         self,
@@ -114,7 +132,11 @@ class LinePieceTable:
 
         source_id = len(self._sources)
         self._sources.append(LineSource(lines, owner))
-        self._source_lookup[key] = source_id
+        try:
+            self._source_lookup[key] = source_id
+        except BaseException:
+            self._sources.pop()
+            raise
         return source_id
 
     def _append_run(
@@ -136,7 +158,15 @@ class LinePieceTable:
             self._run_ends[-1] = end
             return
 
-        self._run_kinds.append(kind)
-        self._run_source_ids.append(source_id)
-        self._run_starts.append(start)
-        self._run_ends.append(end)
+        original_length = len(self._run_kinds)
+        try:
+            self._run_kinds.append(kind)
+            self._run_source_ids.append(source_id)
+            self._run_starts.append(start)
+            self._run_ends.append(end)
+        except BaseException:
+            del self._run_kinds[original_length:]
+            del self._run_source_ids[original_length:]
+            del self._run_starts[original_length:]
+            del self._run_ends[original_length:]
+            raise

@@ -18,6 +18,7 @@ from ...batch.ownership.metadata_blobs import (
 )
 from ...batch.ownership.metadata_loading import ownership_from_metadata_dict
 from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.state.references import get_batch_state_ref_name
 from ...core.buffer import LineBuffer
 from ...core.models import FileModeChange
 from ...data.file_review.records import ReviewSource
@@ -59,7 +60,11 @@ def show_batch_source_file_list(
         if file_meta.get("file_type") not in {"binary", "gitlink", "mode"}
     }
     source_name_by_path = {
-        file_path: f"{file_meta['batch_source_commit']}:{file_path}"
+        file_path: (
+            f"{get_batch_state_ref_name(batch_name)}:{source_path}"
+            if (source_path := file_meta.get("source_path")) is not None
+            else f"{file_meta['batch_source_commit']}:{file_path}"
+        )
         for file_path, file_meta in text_files.items()
     }
     deletion_ids = list(

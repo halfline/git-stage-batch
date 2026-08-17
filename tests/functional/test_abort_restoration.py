@@ -328,6 +328,79 @@ def test_abort_stash_conflict_keeps_session_for_retry(functional_repo):
     assert b"A  new.txt" in status
 
 
+def test_abort_restores_pre_session_applied_batch_provenance(functional_repo):
+    """Abort should discard apply provenance created during the session."""
+    file_path = functional_repo / "file.txt"
+    file_path.write_text("before\n")
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add file"],
+        check=True,
+        capture_output=True,
+    )
+    file_path.write_text("after\n")
+    git_stage_batch("new", "restored-change")
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch(
+        "discard",
+        "--to",
+        "restored-change",
+        "--file",
+        "file.txt",
+        "--no-auto-advance",
+    )
+    git_stage_batch("stop")
+
+    overlay_path = (
+        functional_repo
+        / ".git"
+        / "git-stage-batch"
+        / "applied-batch-overlays.json"
+    )
+    assert not overlay_path.exists()
+    (functional_repo / "README.md").write_text("dirty before session\n")
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("apply", "--from", "restored-change")
+    assert overlay_path.exists()
+
+    git_stage_batch("abort")
+
+    assert file_path.read_text() == "before\n"
+    assert not overlay_path.exists()
+
+
+def test_abort_preflights_applied_batch_provenance_snapshot(functional_repo):
+    """Corrupt overlay recovery state must fail before abort mutates the tree."""
+    readme_path = functional_repo / "README.md"
+    readme_path.write_text("dirty at session start\n")
+    git_stage_batch("start", "--no-auto-advance")
+    readme_path.write_text("changed during session\n")
+
+    git_dir = functional_repo / ".git"
+    marker_path = git_dir / "git-stage-batch" / "session" / "abort" / "head.txt"
+    snapshot_path = (
+        git_dir
+        / "git-stage-batch"
+        / "session"
+        / "abort"
+        / "applied-batch-overlays.json"
+    )
+    absent_path = snapshot_path.with_suffix(".absent")
+    absent_path.unlink()
+    snapshot_path.write_text("{not-json", encoding="utf-8")
+
+    failed_abort = git_stage_batch("abort", check=False)
+
+    assert failed_abort.returncode != 0
+    assert "Applied-batch state is corrupt" in failed_abort.stderr
+    assert marker_path.exists()
+    assert readme_path.read_text() == "changed during session\n"
+
+
 @pytest.mark.parametrize(
     "damage",
     [

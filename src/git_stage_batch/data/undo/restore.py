@@ -27,16 +27,18 @@ from ...utils.git_repository import (
     get_git_repository_root_path,
     is_git_repository_root_path,
 )
-from ..recovery_types import CheckpointState, is_checkpoint_state
+from ..recovery_types import (
+    CheckpointState,
+    FilesystemState,
+    is_checkpoint_state,
+)
 
 
 def _read_json_blob(blob_sha: str) -> CheckpointState:
     with load_git_blob_as_buffer(blob_sha) as buffer:
         value: object = json.loads(buffer.to_bytes().decode("utf-8"))
     if not is_checkpoint_state(value):
-        raise CommandError(
-            _("Undo checkpoint JSON contains invalid state metadata.")
-        )
+        raise CommandError(_("Undo checkpoint JSON contains invalid state metadata."))
     return value
 
 
@@ -45,9 +47,12 @@ def _write_blob_to_worktree_path(
     target_path: Path,
     *,
     mode: str,
+    permissions: int | None = None,
 ) -> None:
     with load_git_blob_as_buffer(blob_sha) as buffer:
         write_buffer_to_working_tree_path(target_path, buffer, mode=mode)
+    if permissions is not None and not target_path.is_symlink():
+        os.chmod(target_path, permissions)
 
 
 def _tree_entries(commit: str, prefix: str) -> list[tuple[str, str, str]]:
@@ -89,7 +94,13 @@ def read_json_from_commit(commit: str, path: str) -> CheckpointState:
     return _read_json_blob(blob_sha)
 
 
-def restore_tree_prefix(commit: str, *, prefix: str, target_dir: Path) -> None:
+def restore_tree_prefix(
+    commit: str,
+    *,
+    prefix: str,
+    target_dir: Path,
+    filesystem_state: FilesystemState | None = None,
+) -> None:
     """Restore one tree prefix from an undo snapshot commit."""
     if target_dir.exists():
         shutil.rmtree(target_dir)
@@ -101,7 +112,19 @@ def restore_tree_prefix(commit: str, *, prefix: str, target_dir: Path) -> None:
         relative_path = Path(tree_path).relative_to(prefix)
         target_path = target_dir / relative_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_blob_to_worktree_path(blob_sha, target_path, mode=mode)
+        saved_state = (
+            None
+            if filesystem_state is None
+            else filesystem_state.get(relative_path.as_posix())
+        )
+        _write_blob_to_worktree_path(
+            blob_sha,
+            target_path,
+            mode=mode,
+            permissions=(
+                None if saved_state is None else saved_state.get("permissions")
+            ),
+        )
 
 
 def restore_tree_paths(
@@ -110,6 +133,7 @@ def restore_tree_paths(
     prefix: str,
     target_dir: Path,
     tracked_paths: list[str],
+    filesystem_state: FilesystemState | None = None,
 ) -> None:
     """Restore only tracked relative paths from one checkpoint tree prefix."""
     saved_entries = {
@@ -127,10 +151,20 @@ def restore_tree_paths(
             continue
         mode, blob_sha = saved_entry
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_blob_to_worktree_path(blob_sha, target_path, mode=mode)
+        saved_state = (
+            None if filesystem_state is None else filesystem_state.get(relative_name)
+        )
+        _write_blob_to_worktree_path(
+            blob_sha,
+            target_path,
+            mode=mode,
+            permissions=(
+                None if saved_state is None else saved_state.get("permissions")
+            ),
+        )
 
 
-def tree_prefix_state(commit: str, prefix: str) -> dict[str, dict[str, str]]:
+def tree_prefix_state(commit: str, prefix: str) -> FilesystemState:
     """Return relative path, mode, and blob identity for a tree prefix."""
     return {
         Path(tree_path).relative_to(prefix).as_posix(): {
@@ -217,7 +251,12 @@ def restore_worktree(commit: str, manifest: CheckpointState) -> None:
                 )
             )
         mode, blob_sha = blob_info
-        _write_blob_to_worktree_path(blob_sha, target_path, mode=mode)
+        _write_blob_to_worktree_path(
+            blob_sha,
+            target_path,
+            mode=mode,
+            permissions=entry.get("permissions"),
+        )
 
 
 def _remove_worktree_path(target_path: Path) -> None:

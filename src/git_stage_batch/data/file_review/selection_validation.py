@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import Protocol
 
-from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.line_selection import (
+    LineRangeBuilder,
+    LineRanges,
+    LineSelection,
+    coerce_line_ranges,
+)
 from ...exceptions import CommandError
 from ...i18n import _
 from . import records as _records
@@ -14,12 +18,6 @@ from . import records as _records
 
 def _format_line_ranges(selection: LineRanges) -> str:
     return selection.to_line_spec()
-
-
-@dataclass(frozen=True)
-class _ReviewValidationGroup:
-    display_ids: LineRanges
-    is_splittable: bool
 
 
 class ReviewSelectionForValidation(Protocol):
@@ -42,14 +40,16 @@ def shown_review_selections_for_action(
     review_action = _records.coerce_review_action(action)
     shown_pages = (
         set(range(1, review_state.page_count + 1))
-        if review_state.entire_file_shown else
-        set(review_state.shown_pages)
+        if review_state.entire_file_shown
+        else set(review_state.shown_pages)
     )
     return [
         selection
         for selection in review_state.selections
         if review_action in selection.actions
-        and set(range(selection.first_page, selection.last_page + 1)).issubset(shown_pages)
+        and set(range(selection.first_page, selection.last_page + 1)).issubset(
+            shown_pages
+        )
     ]
 
 
@@ -59,63 +59,65 @@ def validate_review_scoped_line_selection(
 ) -> None:
     """Validate a union of complete actionable review selections."""
     requested_ranges = coerce_line_ranges(requested_ids)
-    groups: list[_ReviewValidationGroup] = []
+    matched_ids = LineRangeBuilder()
+    partial_atomic_groups: list[LineRanges] = []
     for selection in valid_selections:
-        display_ids = LineRanges.from_lines(selection.display_ids)
-        if display_ids:
-            groups.append(
-                _ReviewValidationGroup(
-                    display_ids=display_ids,
-                    is_splittable=selection.is_splittable,
+        display_id_builder = LineRangeBuilder()
+        for display_id in selection.display_ids:
+            display_id_builder.add_line(display_id)
+        display_ids = display_id_builder.finish()
+        if not display_ids:
+            continue
+
+        display_ranges = display_ids.ranges()
+        if selection.is_splittable:
+            for display_start, display_end in display_ranges:
+                eligible_ids = requested_ranges.intersection_with_range(
+                    display_start,
+                    display_end,
                 )
-            )
+                for range_start, range_end in eligible_ids.ranges():
+                    matched_ids.add_range(range_start, range_end)
+            continue
+        if all(
+            requested_ranges.contains_range(display_start, display_end)
+            for display_start, display_end in display_ranges
+        ):
+            eligible_ids = display_ids
+        else:
+            if any(
+                requested_ranges.intersects_range(display_start, display_end)
+                for display_start, display_end in display_ranges
+            ):
+                partial_atomic_groups.append(display_ids)
+            continue
 
-    def can_cover(remaining_ids: LineRanges) -> bool:
-        if not remaining_ids:
-            return True
-        first_id = remaining_ids.first()
-        if first_id is None:
-            return True
-        for group in groups:
-            if first_id not in group.display_ids:
-                continue
-            if group.is_splittable:
-                selected_from_group = remaining_ids.intersection(group.display_ids)
-                if can_cover(remaining_ids.difference(selected_from_group)):
-                    return True
-                continue
-            if group.display_ids.difference(remaining_ids):
-                continue
-            if can_cover(remaining_ids.difference(group.display_ids)):
-                return True
-        return False
+        for range_start, range_end in eligible_ids.ranges():
+            matched_ids.add_range(range_start, range_end)
 
-    if can_cover(requested_ranges):
+    outside_ids = requested_ranges.difference(matched_ids.finish())
+    if not outside_ids:
         return
 
-    matched_ids = LineRanges.empty()
-    for group in groups:
-        if group.is_splittable:
-            matched_ids = matched_ids.union(requested_ranges.intersection(group.display_ids))
-        elif not group.display_ids.difference(requested_ranges):
-            matched_ids = matched_ids.union(group.display_ids)
-
-    outside_ids = requested_ranges.difference(matched_ids)
-    for group in groups:
-        if group.is_splittable:
-            continue
-        overlap = outside_ids.intersection(group.display_ids)
-        if overlap and overlap != group.display_ids:
+    for display_ids in partial_atomic_groups:
+        if any(
+            outside_ids.intersects_range(display_start, display_end)
+            for display_start, display_end in display_ids.ranges()
+        ):
             raise CommandError(
-                _("Line selection #{requested} only partly selects a reviewed change.\nUse: --line {required}").format(
+                _(
+                    "Line selection #{requested} only partly selects a reviewed change.\nUse: --line {required}"
+                ).format(
                     requested=_format_line_ranges(requested_ranges),
-                    required=_format_line_ranges(group.display_ids),
+                    required=_format_line_ranges(display_ids),
                 )
             )
 
     if outside_ids:
         raise CommandError(
-            _("Line selection #{ids} is not valid from the current file review.").format(
+            _(
+                "Line selection #{ids} is not valid from the current file review."
+            ).format(
                 ids=_format_line_ranges(outside_ids),
             )
         )

@@ -98,7 +98,7 @@ def validate_batch_metadata_structure(
         )
 
     # Validate files structure if present
-    source_commits: list[tuple[str, str]] = []
+    source_commits: list[tuple[str, str, str | None]] = []
     if "files" in metadata:
         files = metadata["files"]
         if not isinstance(files, dict):
@@ -134,11 +134,18 @@ def validate_batch_metadata_structure(
             # Validate batch source commit exists
             batch_source_commit = file_meta.get("batch_source_commit")
             if batch_source_commit:
-                source_commits.append((file_path, batch_source_commit))
+                source_commits.append(
+                    (file_path, batch_source_commit, file_meta.get("source_path"))
+                )
 
     object_names = [
         *([baseline] if baseline else []),
-        *(commit for _file_path, commit in source_commits),
+        *(commit for _file_path, commit, _source_path in source_commits),
+        *(
+            f"{get_batch_state_ref_name(batch_name)}:{source_path}"
+            for _file_path, _commit, source_path in source_commits
+            if source_path
+        ),
     ]
     batch_object_names = [
         object_name
@@ -156,8 +163,16 @@ def validate_batch_metadata_structure(
                 baseline=baseline
             )
         )
-    for file_path, batch_source_commit in source_commits:
-        if not _git_object_exists(batch_source_commit, object_info_by_name):
+    for file_path, batch_source_commit, source_path in source_commits:
+        embedded_source = (
+            f"{get_batch_state_ref_name(batch_name)}:{source_path}"
+            if source_path
+            else None
+        )
+        if not _git_object_exists(batch_source_commit, object_info_by_name) and not (
+            embedded_source
+            and _git_object_exists(embedded_source, object_info_by_name)
+        ):
             raise BatchMetadataError(
                 _("Batch '{name}' has invalid batch_source_commit for file '{file}': {commit}\n"
                   "The batch source commit does not exist in the repository.\n"

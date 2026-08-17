@@ -107,6 +107,13 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             command_name="discard",
             line_ids=args.line_ids,
         )
+        if resolved_batch_scope.is_multiple and args.line_ids is None:
+            command_discard_from_batch(
+                args.from_batch,
+                line_ids=args.line_ids,
+                file_paths=resolved_batch_scope.files,
+            )
+            return
         run_for_each_resolved_file(
             resolved_batch_scope,
             lambda file: command_discard_from_batch(
@@ -115,8 +122,6 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
                 file,
             ),
             line_ids=args.line_ids,
-            undo_operation=f"discard --from {shlex.quote(args.from_batch)}",
-            worktree_paths=resolved_batch_scope.files,
         )
     elif args.to_batch:
         resolved_live_scope = resolve_live_file_scope(

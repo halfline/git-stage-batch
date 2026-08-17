@@ -37,6 +37,7 @@ from ...utils.git_index import (
     temp_git_index,
 )
 from ...utils.git_object_io import create_git_blob, read_git_blobs_as_bytes
+from ..ownership.metadata_blobs import ownership_metadata_blob_ids
 from ...utils.paths import get_batch_metadata_file_path
 
 
@@ -291,6 +292,15 @@ def sync_batch_state_refs(
                 create_git_blob(_buffer_chunks(update.data))
                 for update in buffer_updates
             ]
+            metadata_blob_ids = list(
+                dict.fromkeys(
+                    blob_id
+                    for file_metadata in metadata.files
+                    for blob_id in ownership_metadata_blob_ids(
+                        file_metadata.to_dict()
+                    )
+                )
+            )
             git_update_index_entries(
                 [
                     GitIndexEntryUpdate(
@@ -299,6 +309,14 @@ def sync_batch_state_refs(
                         blob_sha=blob_sha,
                     )
                     for update, blob_sha in zip(buffer_updates, blob_shas, strict=True)
+                ]
+                + [
+                    GitIndexEntryUpdate(
+                        file_path=f"objects/{blob_id}",
+                        mode="100644",
+                        blob_sha=blob_id,
+                    )
+                    for blob_id in metadata_blob_ids
                 ],
                 env=env,
             )

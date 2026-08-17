@@ -21,6 +21,7 @@ from .mapped_storage import (
     byte_storage_from_chunks,
     byte_storage_from_path,
 )
+from .resource_cleanup import close_resources_preserving_first
 from .text_lines import AcquirableLineSequence
 
 
@@ -52,17 +53,26 @@ class _BufferBacking:
     def release(self) -> None:
         if self._closed:
             return
-        self._reference_count -= 1
-        if self._reference_count > 0:
+        if self._reference_count > 1:
+            self._reference_count -= 1
             return
 
-        self._closed = True
+        failure: BaseException | None = None
         try:
             if isinstance(self.data, mmap.mmap):
                 self.data.close()
-        finally:
+        except BaseException as error:
+            failure = error
+        try:
             if self.file_handle is not None:
                 self.file_handle.close()
+        except BaseException as error:
+            if failure is None:
+                failure = error
+        if failure is not None:
+            raise failure
+        self._reference_count = 0
+        self._closed = True
 
 
 class _LineSpanVector:
@@ -104,15 +114,21 @@ class LineBuffer(Sequence[bytes]):
         try:
             self._initialize_line_index()
         except BaseException:
-            self._backing.release()
+            try:
+                self._backing.release()
+            except BaseException:
+                pass
             raise
 
     def _initialize_line_index(self) -> None:
         scan_complete = len(self._data) == 0
         line_spans = _LineSpanVector(spool_dir=self._spool_dir)
         self._line_spans = line_spans
+        self._line_spans_are_explicit = False
         self._scan_position = 0
         self._scan_complete = scan_complete
+        self._line_spans_released = False
+        self._backing_released = False
         self._closed = False
 
     @classmethod
@@ -128,7 +144,10 @@ class LineBuffer(Sequence[bytes]):
         try:
             buffer._initialize_line_index()
         except BaseException:
-            buffer._backing.release()
+            try:
+                buffer._backing.release()
+            except BaseException:
+                pass
             raise
         return buffer
 
@@ -179,6 +198,54 @@ class LineBuffer(Sequence[bytes]):
             spool_dir=spool_dir,
         )
 
+    @classmethod
+    def from_line_chunks(
+        cls,
+        lines: Iterable[_BytesLike],
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> LineBuffer:
+        """Create a buffer whose supplied chunks retain explicit line bounds."""
+        line_spans = _LineSpanVector(spool_dir=spool_dir)
+        byte_count = 0
+
+        def indexed_chunks() -> Iterator[_BytesLike]:
+            nonlocal byte_count
+            for line in lines:
+                if not isinstance(line, (bytes, bytearray, memoryview)):
+                    raise TypeError(
+                        f"expected bytes-like object, got {type(line).__name__}"
+                    )
+                line_size = line.nbytes if isinstance(line, memoryview) else len(line)
+                next_byte_count = byte_count + line_size
+                line_spans.append(byte_count, next_byte_count)
+                byte_count = next_byte_count
+                yield line
+
+        try:
+            data, file_handle = byte_storage_from_chunks(
+                indexed_chunks(),
+                spool_dir=spool_dir,
+            )
+        except BaseException:
+            close_resources_preserving_first(
+                (line_spans,),
+                suppress_errors=True,
+            )
+            raise
+
+        buffer = cls.__new__(cls)
+        buffer._backing = _BufferBacking(data, file_handle)
+        buffer._spool_dir = spool_dir
+        buffer._line_spans = line_spans
+        buffer._line_spans_are_explicit = True
+        buffer._scan_position = byte_count
+        buffer._scan_complete = True
+        buffer._line_spans_released = False
+        buffer._backing_released = False
+        buffer._closed = False
+        return buffer
+
     def clone(
         self,
         *,
@@ -186,9 +253,35 @@ class LineBuffer(Sequence[bytes]):
     ) -> LineBuffer:
         """Return an independently closable buffer sharing immutable storage."""
         self._require_open()
+        clone_spool_dir = self._spool_dir if spool_dir is None else spool_dir
+        if self._line_spans_are_explicit:
+            line_spans = _LineSpanVector(spool_dir=clone_spool_dir)
+            try:
+                for index in range(self._line_span_count()):
+                    line_spans.append(*self._get_line_span(index))
+                backing = self._backing.retain()
+            except BaseException:
+                close_resources_preserving_first(
+                    (line_spans,),
+                    suppress_errors=True,
+                )
+                raise
+
+            buffer = LineBuffer.__new__(LineBuffer)
+            buffer._backing = backing
+            buffer._spool_dir = clone_spool_dir
+            buffer._line_spans = line_spans
+            buffer._line_spans_are_explicit = True
+            buffer._scan_position = self._scan_position
+            buffer._scan_complete = True
+            buffer._line_spans_released = False
+            buffer._backing_released = False
+            buffer._closed = False
+            return buffer
+
         return LineBuffer._from_backing(
             self._backing,
-            spool_dir=self._spool_dir if spool_dir is None else spool_dir,
+            spool_dir=clone_spool_dir,
         )
 
     @property
@@ -199,18 +292,32 @@ class LineBuffer(Sequence[bytes]):
 
     def close(self) -> None:
         """Close any open mmap and file resources."""
-        if self._closed:
+        if self._line_spans_released and self._backing_released:
             return
         self._closed = True
-        try:
-            self._line_spans.close()
-        finally:
-            self._backing.release()
+        failure: BaseException | None = None
+        if not self._line_spans_released:
+            try:
+                self._line_spans.close()
+            except BaseException as error:
+                failure = error
+            else:
+                self._line_spans_released = True
+        if not self._backing_released:
+            try:
+                self._backing.release()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+            else:
+                self._backing_released = True
+        if failure is not None:
+            raise failure
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def to_bytes(self) -> bytes:
@@ -227,7 +334,7 @@ class LineBuffer(Sequence[bytes]):
             raise ValueError("chunk size must be positive")
 
         for start in range(0, len(self._data), chunk_size):
-            yield self._data[start:start + chunk_size]
+            yield self._data[start : start + chunk_size]
 
     def __enter__(self) -> LineBuffer:
         self._require_open()
@@ -239,7 +346,10 @@ class LineBuffer(Sequence[bytes]):
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def acquire_lines(self) -> _AcquiredBufferLineSequence:
         """Return a context manager for scoped no-copy line views."""
@@ -410,7 +520,7 @@ class _BufferLineView:
             return False
 
         view = self._memoryview()
-        tail = view[len(view) - len(suffix_bytes):]
+        tail = view[len(view) - len(suffix_bytes) :]
         try:
             return tail == suffix_bytes
         finally:
@@ -424,7 +534,7 @@ class _BufferLineView:
         self._require_active()
         base = memoryview(self._owner.data)
         try:
-            return base[self._start:self._end]
+            return base[self._start : self._end]
         finally:
             base.release()
 
@@ -613,9 +723,8 @@ class _AcquiredBufferLineSliceContext(Generic[_LineT]):
 
 
 def _slice_uses_negative_bounds(line_slice: slice) -> bool:
-    return (
-        (line_slice.start is not None and line_slice.start < 0)
-        or (line_slice.stop is not None and line_slice.stop < 0)
+    return (line_slice.start is not None and line_slice.start < 0) or (
+        line_slice.stop is not None and line_slice.stop < 0
     )
 
 
@@ -641,9 +750,7 @@ def buffer_byte_chunks(
 
     for chunk in buffer:
         if not isinstance(chunk, (bytes, bytearray, memoryview)):
-            raise TypeError(
-                f"expected bytes-like object, got {type(chunk).__name__}"
-        )
+            raise TypeError(f"expected bytes-like object, got {type(chunk).__name__}")
         yield bytes(chunk)
 
 
@@ -660,11 +767,7 @@ def buffer_matches(left: BufferInput, right: BufferInput) -> bool:
     """Return whether two buffer inputs contain the same bytes."""
     left_count = _known_byte_count(left)
     right_count = _known_byte_count(right)
-    if (
-        left_count is not None
-        and right_count is not None
-        and left_count != right_count
-    ):
+    if left_count is not None and right_count is not None and left_count != right_count:
         return False
 
     return _buffer_chunks_match(

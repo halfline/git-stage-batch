@@ -169,6 +169,8 @@ def test_batch_source_lineage_translates_ranges():
             LineRanges.from_ranges([(2, 8)])
         ).ranges() == ((11, 13), (20, 20))
         assert lineage.translate_working_line(21) == 31
+        assert lineage.translate_working_range(20, 21) == (30, 31)
+        assert lineage.translate_working_range(19, 20) is None
 
 
 def test_batch_source_lineage_expands_complete_owned_replacements():
@@ -232,6 +234,32 @@ def test_fragmented_source_lineage_translation_avoids_line_scale_python_heap():
     assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
+def test_lineage_constructor_streams_ordered_runs_without_python_sort_heap():
+    """Ordered run producers must flow directly into mapped lineage storage."""
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        gc.collect()
+        tracemalloc.start()
+        try:
+            with BatchSourceLineage(
+                source_runs=(
+                    LineageRun(
+                        old_start=line_number,
+                        old_end=line_number,
+                        new_start=line_number,
+                    )
+                    for line_number in range(1, line_count + 1)
+                )
+            ):
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
+
+
 def test_batch_source_lineage_finds_unmapped_source_ranges():
     """Unmapped-source lookup should scan runs without expanding selections."""
     with BatchSourceLineage(
@@ -283,6 +311,45 @@ def test_batch_source_lineage_closes_mapped_storage():
     assert lineage.byte_count == 0
     with pytest.raises(ValueError, match="batch source lineage is closed"):
         lineage.translate_source_line(1)
+
+
+def test_batch_source_lineage_close_attempts_every_table_and_can_retry():
+    """One table cancellation must not strand sibling lineage storage."""
+
+    class RetryableTable:
+        def __init__(self, *, cancel_once=False):
+            self.cancel_once = cancel_once
+            self.close_count = 0
+
+        @property
+        def byte_count(self):
+            return 8
+
+        def close(self):
+            self.close_count += 1
+            if self.cancel_once:
+                self.cancel_once = False
+                raise KeyboardInterrupt("lineage close cancelled")
+
+    lineage = BatchSourceLineage.__new__(BatchSourceLineage)
+    lineage._source_runs = RetryableTable(cancel_once=True)
+    lineage._working_runs = RetryableTable()
+    lineage._source_expansions = RetryableTable()
+    lineage._closed = False
+
+    with pytest.raises(KeyboardInterrupt, match="lineage close cancelled"):
+        lineage.close()
+
+    assert lineage._source_runs.close_count == 1
+    assert lineage._working_runs.close_count == 1
+    assert lineage._source_expansions.close_count == 1
+    assert lineage.closed is False
+
+    lineage.close()
+    assert lineage._source_runs.close_count == 2
+    assert lineage._working_runs.close_count == 2
+    assert lineage._source_expansions.close_count == 2
+    assert lineage.closed is True
 
 
 def test_source_lineage_remaps_guarded_presence_ranges():
@@ -395,7 +462,7 @@ def test_merge_presence_claims_keeps_strongest_baseline_reference_sides():
 
     merged = merge_batch_ownership(existing, new)
 
-    assert merged.presence_baseline_reference(1) == BaselineReference(
+    assert merged.presence_baseline_references()[1] == BaselineReference(
         after_line=7,
         after_content=b"after\n",
         before_line=11,

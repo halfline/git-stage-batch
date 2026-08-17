@@ -270,6 +270,21 @@ def get_abort_intent_to_add_entries_file_path() -> Path:
     return get_abort_state_directory_path() / "intent-to-add-entries.json"
 
 
+def get_abort_applied_batch_overlays_file_path() -> Path:
+    """Get the abort snapshot of durable applied-batch overlay state."""
+    return get_abort_state_directory_path() / "applied-batch-overlays.json"
+
+
+def get_abort_applied_batch_overlays_absent_file_path() -> Path:
+    """Get the marker recording absent applied-batch state at session start."""
+    return get_abort_state_directory_path() / "applied-batch-overlays.absent"
+
+
+def get_abort_applied_batch_overlay_fresh_index_file_path() -> Path:
+    """Get the session-start list of overlays with a fresh index identity."""
+    return get_abort_state_directory_path() / "applied-batch-overlays-index.json"
+
+
 def get_staged_renames_file_path() -> Path:
     """Get the path to start-time staged rename metadata."""
     return get_abort_state_directory_path() / "staged-renames.json"
@@ -395,6 +410,16 @@ def get_batches_directory_path() -> Path:
         Path to batches directory
     """
     return get_state_directory_path() / "batches"
+
+
+def get_applied_batch_overlays_file_path() -> Path:
+    """Get durable worktree-local provenance for explicit batch applications."""
+    return get_state_directory_path() / "applied-batch-overlays.json"
+
+
+def get_session_applied_batch_overlay_paths_file_path() -> Path:
+    """Get paths whose applied overlays were written in this session."""
+    return get_session_directory_path() / "applied-batch-overlay-paths.txt"
 
 
 def get_batch_directory_path(batch_name: str) -> Path:

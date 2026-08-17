@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Callable
 
 from . import candidate_inputs as _candidate_inputs
 from ...batch.operation_candidate_types import OperationCandidatePreview
@@ -12,6 +13,10 @@ from ...batch.operation_candidates import (
     build_include_candidate_previews as _build_include_candidate_previews,
 )
 from ...batch.replacement import build_replacement_batch_view_from_lines
+from ...batch.merge.legacy_intent import (
+    reject_ambiguous_legacy_presence_replay,
+)
+from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
@@ -34,6 +39,9 @@ def plan_apply_candidate_previews(
     selected_ids: set[int] | None,
     selection_ids: set[int] | None,
     spool_dir: str | Path | None = None,
+    capture_selected_ownership: (
+        Callable[[BatchOwnershipMetadata], None] | None
+    ) = None,
 ) -> tuple[OperationCandidatePreview, ...]:
     """Build apply previews from normalized source and target inputs."""
     with acquire_batch_ownership_for_display_ids_from_lines(
@@ -42,6 +50,21 @@ def plan_apply_candidate_previews(
         selection_ids,
         spool_dir=spool_dir,
     ) as ownership:
+        reject_ambiguous_legacy_presence_replay(
+            file_path,
+            batch_source_lines,
+            ownership,
+            worktree_lines,
+            legacy_unmarked_source_alternatives=(
+                file_meta.get("legacy_unmarked_source_alternatives") is True
+                and selection_ids is None
+            ),
+            spool_dir=spool_dir,
+        )
+        if capture_selected_ownership is not None:
+            capture_selected_ownership(
+                ownership.to_attribution_metadata_dict()
+            )
         return _build_apply_candidate_previews(
             batch_name=batch_name,
             file_path=file_path,
@@ -100,6 +123,31 @@ def plan_include_candidate_previews(
             replacement_view = stack.enter_context(replacement_view)
             source_for_candidates = replacement_view.source_buffer
             candidate_ownership = replacement_view.ownership
+
+        legacy_unmarked_source_alternatives = (
+            file_meta.get("legacy_unmarked_source_alternatives") is True
+            and selection_ids is None
+        )
+        reject_ambiguous_legacy_presence_replay(
+            file_path,
+            source_for_candidates,
+            candidate_ownership,
+            index_lines,
+            legacy_unmarked_source_alternatives=(
+                legacy_unmarked_source_alternatives
+            ),
+            spool_dir=spool_dir,
+        )
+        reject_ambiguous_legacy_presence_replay(
+            file_path,
+            source_for_candidates,
+            candidate_ownership,
+            worktree_lines,
+            legacy_unmarked_source_alternatives=(
+                legacy_unmarked_source_alternatives
+            ),
+            spool_dir=spool_dir,
+        )
 
         return _build_include_candidate_previews(
             batch_name=batch_name,

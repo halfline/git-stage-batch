@@ -19,6 +19,7 @@ from git_stage_batch.batch.merge.merge import (
     merge_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.claims import PresenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import (
@@ -64,6 +65,96 @@ def test_discard_anchors_complete_copied_bof_insertion():
         )
 
     assert anchors == ((1, 3),)
+
+
+def test_discard_insertion_anchors_do_not_flatten_reference_map(
+    monkeypatch,
+) -> None:
+    """Insertion anchors should keep per-line references in mapped storage."""
+    baseline = [b"A\n", b"B\n"]
+    source = [b"A\n", b"X\n", b"B\n"]
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"A\n",
+        before_line=2,
+        before_content=b"B\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        baseline_references={2: reference},
+    )
+
+    def fail_flatten():
+        raise AssertionError("baseline references were copied into a dict")
+
+    monkeypatch.setattr(
+        ownership,
+        "presence_baseline_references",
+        fail_flatten,
+    )
+
+    with match_lines(source, source) as source_to_working:
+        anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership,
+            source_to_working_mapping=source_to_working,
+            working_lines=source,
+        )
+
+    assert anchors == ((1, 1), (2, 3))
+
+
+def test_discard_insertion_anchors_keep_last_overlapping_reference() -> None:
+    """Storage-backed reference compaction must preserve last-claim-wins."""
+    baseline = [b"A\n", b"B\n"]
+    source = [b"A\n", b"X\n", b"B\n"]
+    valid_reference = BaselineReference(
+        after_line=1,
+        after_content=b"A\n",
+        before_line=2,
+        before_content=b"B\n",
+        has_before_line=True,
+    )
+    wrong_reference = BaselineReference(
+        after_line=None,
+        before_line=1,
+        before_content=b"A\n",
+        has_before_line=True,
+    )
+
+    def ownership_with_references(
+        first: BaselineReference,
+        last: BaselineReference,
+    ) -> BatchOwnership:
+        return BatchOwnership(
+            [
+                PresenceClaim(["2"], {2: first}),
+                PresenceClaim(["2"], {2: last}),
+            ],
+            [],
+        )
+
+    with match_lines(source, source) as source_to_working:
+        valid_anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership_with_references(wrong_reference, valid_reference),
+            source_to_working_mapping=source_to_working,
+            working_lines=source,
+        )
+    with match_lines(source, source) as source_to_working:
+        invalid_anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership_with_references(valid_reference, wrong_reference),
+            source_to_working_mapping=source_to_working,
+            working_lines=source,
+        )
+
+    assert valid_anchors == ((1, 1), (2, 3))
+    assert invalid_anchors == ()
 
 
 def test_discard_does_not_reanchor_removed_repeated_bof_insertion():
@@ -467,6 +558,25 @@ def test_live_target_anchor_requires_verified_deletion_boundary():
     ) == ((3, 2),)
 
 
+def test_live_target_anchor_tracks_one_shifted_verified_boundary():
+    """A unique live deletion boundary may move from recorded coordinates."""
+    source = [b"head\n", b"\n", b"new\n", b"tail\n"]
+    target = [b"staged\n", b"head\n", b"\n", b"old\n", b"tail\n"]
+    claim = AbsenceClaim(
+        anchor_line=2,
+        content_lines=[b"old\n"],
+        baseline_reference=BaselineReference(
+            after_line=2,
+            after_content=b"\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        ),
+    )
+
+    assert _deletion_anchor_pairs(source, target, [claim]) == ((2, 3),)
+
+
 def test_live_target_rejects_repeated_verified_deletion_boundary():
     """A stale coordinate must not select one of several identical blocks."""
     source = [
@@ -760,6 +870,66 @@ def test_live_target_accepts_one_unique_composite_deletion_boundary():
     )
 
     assert _deletion_anchor_pairs(source, target, [claim]) == ((1, 1),)
+
+
+def test_bounded_live_removal_refuses_common_candidates(monkeypatch):
+    """Bounded relocation must not scan every repeated target block."""
+    target = [line for _ in range(17) for line in (b"A\n", b"O\n", b"B\n")]
+    claim = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"O\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"A\n",
+            before_line=3,
+            before_content=b"B\n",
+            has_before_line=True,
+        ),
+    )
+
+    def refuse_iteration(*_args, **_kwargs):
+        raise AssertionError("common candidates must be rejected before iteration")
+
+    monkeypatch.setattr(
+        LinePayloadOccurrenceIndex,
+        "matching_line_indexes",
+        refuse_iteration,
+    )
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(workspace, target)
+        assert baseline_anchor_matching.unique_live_removal_edit(
+            claim,
+            target,
+            occurrence_index,
+            candidate_limit=16,
+        ) is None
+
+
+def test_live_deletion_anchors_bound_common_candidates(monkeypatch):
+    """Many claims cannot repeatedly scan a common boundary identity."""
+    target = [line for _ in range(17) for line in (b"A\n", b"O\n", b"B\n")]
+    claim = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"O\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"A\n",
+            before_line=3,
+            before_content=b"B\n",
+            has_before_line=True,
+        ),
+    )
+
+    def refuse_iteration(*_args, **_kwargs):
+        raise AssertionError("common candidates must be rejected before iteration")
+
+    monkeypatch.setattr(
+        LinePayloadOccurrenceIndex,
+        "matching_line_indexes",
+        refuse_iteration,
+    )
+
+    assert _deletion_anchor_pairs([b"A\n"], target, [claim] * 128) == ()
 
 
 def test_live_target_rejects_repeated_replacement_parent_boundary():

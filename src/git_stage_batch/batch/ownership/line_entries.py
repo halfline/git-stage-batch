@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import overload
 
 from ...core.models import LineEntry
-from .claims import LineRangeBuilder
+from ...core.line_selection import LineRangeBuilder
 from .references import BaselineReference
 from .replacement_units import ReplacementUnit, ReplacementUnitOrigin
 from .replacement_line_runs import ReplacementLineRun
@@ -42,12 +42,10 @@ class LineEntryContentSequence(Sequence[bytes]):
         return len(self._lines)
 
     @overload
-    def __getitem__(self, index: int) -> bytes:
-        ...
+    def __getitem__(self, index: int) -> bytes: ...
 
     @overload
-    def __getitem__(self, index: slice) -> Sequence[bytes]:
-        ...
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
 
     def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):
@@ -66,9 +64,7 @@ def baseline_reference_for_old_line_range(
     return BaselineReference(
         after_line=after_line,
         after_content=(
-            old_line_content.get(after_line)
-            if after_line is not None else
-            None
+            old_line_content.get(after_line) if after_line is not None else None
         ),
         has_after_line=True,
         before_line=before_line if before_content is not None else None,
@@ -88,16 +84,12 @@ def baseline_reference_for_file_line_range(
     return BaselineReference(
         after_line=after_line,
         after_content=(
-            bytes(old_file_lines[after_line - 1])
-            if after_line is not None
-            else None
+            bytes(old_file_lines[after_line - 1]) if after_line is not None else None
         ),
         has_after_line=True,
         before_line=before_line,
         before_content=(
-            bytes(old_file_lines[before_line - 1])
-            if before_line is not None
-            else None
+            bytes(old_file_lines[before_line - 1]) if before_line is not None else None
         ),
         has_before_line=True,
     )

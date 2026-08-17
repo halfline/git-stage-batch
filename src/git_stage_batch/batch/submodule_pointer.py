@@ -119,9 +119,9 @@ def _checkout_submodule_pointer(file_path: str, oid: str, action: str) -> None:
     )
     if checkout_result.returncode != 0:
         raise CommandError(
-            _(
-                "Failed to update submodule pointer for {file}: {error}"
-            ).format(file=display_path(file_path), error=checkout_result.stderr)
+            _("Failed to update submodule pointer for {file}: {error}").format(
+                file=display_path(file_path), error=checkout_result.stderr
+            )
         )
 
 
@@ -261,3 +261,15 @@ def discard_submodule_pointer_from_batch(
 
     old_oid = _submodule_pointer_oid(file_path, file_meta, "old_oid", action=action)
     _ensure_submodule_worktree(file_path, old_oid, action)
+
+
+def validate_discard_submodule_pointer(
+    file_path: str,
+    file_meta: BatchFileMetadataDict,
+) -> None:
+    """Validate metadata needed by a deferred submodule discard action."""
+    action = pgettext("submodule action verb", "discard")
+    change_type = _change_type(file_path, file_meta, action)
+    if change_type == "added":
+        return
+    _submodule_pointer_oid(file_path, file_meta, "old_oid", action=action)

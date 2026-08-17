@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 import sys
 from typing import Callable
+from typing import cast
 
 from . import action_completion as _action_completion
 from . import action_context as _action_context
@@ -20,7 +22,13 @@ from . import text_file_actions as _text_file_actions
 from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
 from ...batch.operation_candidate_types import CandidatePreviewCount
-from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    BatchMetadataDict,
+)
+from ...batch.state.metadata_types import add_ownership_metadata
+from ...batch.state.references import get_batch_state_ref_name
+from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...core.models import RenderedBatchDisplay
 from ...core.text_lifecycle import TextFileChangeType
 from ...batch.binary_file_content import read_binary_file_from_batch
@@ -29,12 +37,26 @@ from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
 )
 from ...data.session import snapshot_file_if_untracked
+from ...data.session_marker import session_is_active
+from ...data.applied_batch_overlays import (
+    AppliedBatchOverlayView,
+    applied_batch_overlays_repository_path,
+    build_applied_file_provenances,
+    fresh_applied_batch_overlay_for_path,
+    load_applied_batch_overlay_snapshot,
+    record_applied_batch_overlays,
+)
 from ...data.file_target_identity import (
+    IndexIdentity,
     WorktreeIdentity,
     capture_worktree_identities,
     capture_worktree_identity,
+    read_index_identities,
 )
-from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
+from ...data.undo.checkpoints import (
+    UndoCheckpointStatus,
+    transaction_checkpoint,
+)
 from ...exceptions import (
     AtomicUnitError,
     CommandError,
@@ -62,6 +84,8 @@ class _ApplyTextInput:
     scratch_directory: Path
     source_commit: str | None
     source_required: bool
+    index_identity: IndexIdentity | None
+    applied_overlay: AppliedBatchOverlayView
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,25 +109,30 @@ def _print_binary_worktree_result(
 
     if action is _binary_file_actions.BinaryWorktreeAction.DELETED:
         print(
-            _("✓ Deleted binary file: {file}").format(
-                file=display_path(file_path)
-            ),
+            _("✓ Deleted binary file: {file}").format(file=display_path(file_path)),
             file=sys.stderr,
         )
     elif action is _binary_file_actions.BinaryWorktreeAction.ADDED:
         print(
-            _("✓ Applied new binary file: {file}").format(
-                file=display_path(file_path)
-            ),
+            _("✓ Applied new binary file: {file}").format(file=display_path(file_path)),
             file=sys.stderr,
         )
     else:
         print(
-            _("✓ Replaced binary file: {file}").format(
-                file=display_path(file_path)
-            ),
+            _("✓ Replaced binary file: {file}").format(file=display_path(file_path)),
             file=sys.stderr,
         )
+
+
+def _print_binary_worktree_results(
+    results: tuple[
+        tuple[str, _binary_file_actions.BinaryWorktreeAction | None],
+        ...,
+    ],
+) -> None:
+    """Print binary apply results after their outer transaction commits."""
+    for file_path, action in results:
+        _print_binary_worktree_result(file_path, action)
 
 
 def execute_apply_action(
@@ -122,13 +151,15 @@ def execute_apply_action(
     operation_parts = list(selection.operation_parts)
     repository_root = get_git_repository_root_path()
     report_progress("planning", "not-started")
-    with FileJobWorkspace() as workspace:
+    workspace = FileJobWorkspace()
+    with _action_plans.resource_cleanup((workspace,)) as close_workspace:
         (
             apply_plans,
             mode_actions,
             expected_worktree_identities,
         ) = _build_apply_action_plans(
             batch_name=batch_name,
+            batch_metadata=context.metadata,
             files=files,
             selected_ids=selected_ids,
             selection_ids_to_apply=selection_ids_to_apply,
@@ -136,26 +167,104 @@ def execute_apply_action(
             repository_root=repository_root,
             workspace=workspace,
         )
-        try:
-            _require_unchanged_worktree_targets(
+        with _action_plans.resource_cleanup(apply_plans) as close_apply_plans:
+            expected_index_identities = {
+                plan.file_path: plan.expected_index_identity
+                for plan in apply_plans
+                if (
+                    isinstance(
+                        plan,
+                        (
+                            _action_plans.ApplyTextFileActionPlan,
+                            _action_plans.SubmodulePointerActionPlan,
+                        ),
+                    )
+                    and plan.expected_index_identity is not None
+                )
+            }
+            index_mutation_paths = [
+                plan.file_path
+                for plan in apply_plans
+                if (
+                    isinstance(
+                        plan,
+                        _action_plans.SubmodulePointerActionPlan,
+                    )
+                    and plan.file_meta.get("change_type") == "added"
+                )
+            ]
+            publication_worktree_paths = list(
+                dict.fromkeys(
+                    [plan.file_path for plan in apply_plans]
+                    + [file_path for file_path, _file_meta in mode_actions]
+                )
+            )
+            selected_metadata_by_path = {
+                plan.file_path: plan.selected_file_metadata
+                for plan in apply_plans
+                if (
+                    isinstance(plan, _action_plans.ApplyTextFileActionPlan)
+                    and plan.selected_file_metadata is not None
+                )
+            }
+            applied_file_provenance = build_applied_file_provenances(
+                batch_name,
+                {
+                    file_path: files[file_path]
+                    for file_path in selected_metadata_by_path
+                },
+                selection_ids_to_apply,
+                selected_file_metadata_by_path=selected_metadata_by_path,
+                introduced_selected_presence_by_path={
+                    plan.file_path: plan.introduced_selected_presence
+                    for plan in apply_plans
+                    if isinstance(
+                        plan,
+                        _action_plans.ApplyTextFileActionPlan,
+                    )
+                },
+                index_preimage_source_ranges_by_path={
+                    plan.file_path: plan.index_preimage_source_ranges
+                    for plan in apply_plans
+                    if isinstance(
+                        plan,
+                        _action_plans.ApplyTextFileActionPlan,
+                    )
+                },
+            )
+            _require_unchanged_apply_targets(
+                expected_index_identities,
                 expected_worktree_identities,
             )
             publication_started = False
             checkpoint_status: UndoCheckpointStatus | None = None
+            binary_worktree_results: list[
+                tuple[
+                    str,
+                    _binary_file_actions.BinaryWorktreeAction | None,
+                ]
+            ] = []
             report_progress("checkpoint", "not-started")
             try:
-                with undo_checkpoint(
+                with transaction_checkpoint(
                     terminal_safe_shell_join(operation_parts),
-                    worktree_paths=list(files),
-                    rollback_on_error=True,
+                    worktree_paths=publication_worktree_paths,
+                    index_paths=index_mutation_paths,
+                    repository_paths=[applied_batch_overlays_repository_path()],
                 ) as checkpoint_status:
+                    _require_unchanged_apply_targets(
+                        expected_index_identities,
+                        expected_worktree_identities,
+                    )
+                    checkpoint_status.arm_rollback()
                     publication_started = True
                     report_progress(
                         "publication",
                         checkpoint_status.rollback,
                     )
                     for plan in apply_plans:
-                        snapshot_file_if_untracked(plan.file_path)
+                        if session_is_active():
+                            snapshot_file_if_untracked(plan.file_path)
                         if isinstance(plan, _action_plans.ApplyTextFileActionPlan):
                             _text_file_actions.write_text_file_to_worktree(
                                 plan.file_path,
@@ -175,7 +284,7 @@ def execute_apply_action(
                                     "but the batch content is missing"
                                 ),
                             )
-                            _print_binary_worktree_result(plan.file_path, action)
+                            binary_worktree_results.append((plan.file_path, action))
                         elif isinstance(
                             plan,
                             _action_plans.SubmodulePointerActionPlan,
@@ -188,6 +297,20 @@ def execute_apply_action(
                             raise TypeError("unsupported apply action plan")
                     for file_path, file_meta in mode_actions:
                         _file_mode_actions.apply_new_file_mode(file_path, file_meta)
+                    revision = context.metadata.get("revision")
+                    if not isinstance(revision, str) or not revision:
+                        raise ValueError(
+                            "validated batch metadata omitted its revision"
+                        )
+                    record_applied_batch_overlays(
+                        batch_name=batch_name,
+                        batch_revision=revision,
+                        files=applied_file_provenance,
+                        before_worktree_identities=expected_worktree_identities,
+                        expected_index_identities=expected_index_identities,
+                    )
+                    close_apply_plans()
+                    close_workspace()
             except BaseException as error:
                 if publication_started:
                     report_progress(
@@ -210,12 +333,22 @@ def execute_apply_action(
             else:
                 assert checkpoint_status is not None
                 report_progress("publication", checkpoint_status.rollback)
-        finally:
-            _action_plans.close_action_plans(apply_plans)
-
+                if binary_worktree_results:
+                    checkpoint_status.defer_success(
+                        partial(
+                            _print_binary_worktree_results,
+                            tuple(binary_worktree_results),
+                        )
+                    )
     assert checkpoint_status is not None
     report_progress("completion", checkpoint_status.rollback)
-    _action_completion.finish_batch_source_action_review(context, files)
+    checkpoint_status.defer_success(
+        partial(
+            _action_completion.finish_batch_source_action_review,
+            context,
+            tuple(files),
+        )
+    )
 
 
 def _build_apply_action_plans(
@@ -227,12 +360,17 @@ def _build_apply_action_plans(
     rendered: RenderedBatchDisplay | None,
     repository_root: Path,
     workspace: FileJobWorkspace,
+    batch_metadata: BatchMetadataDict | None = None,
 ) -> tuple[
     list[_action_plans.BatchSourceActionPlan],
     list[tuple[str, BatchFileMetadataDict]],
     dict[str, WorktreeIdentity],
 ]:
     capture = _capture_apply_plan_inputs(
+        batch_name=batch_name,
+        batch_metadata=(
+            {"files": files} if batch_metadata is None else batch_metadata
+        ),
         files=files,
         selected_ids=selected_ids,
         workspace=workspace,
@@ -265,6 +403,8 @@ def _build_apply_action_plans(
 
 def _capture_apply_plan_inputs(
     *,
+    batch_name: str,
+    batch_metadata: BatchMetadataDict,
     files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     workspace: FileJobWorkspace,
@@ -277,6 +417,27 @@ def _capture_apply_plan_inputs(
     binary_metadata_by_ordinal: dict[int, BatchFileMetadataDict] = {}
     worktree_identities: dict[str, WorktreeIdentity] = {}
     text_inputs: list[_ApplyTextInput] = []
+    index_paths = tuple(
+        file_path
+        for file_path, file_meta in files.items()
+        if (
+            (
+                is_batch_submodule_pointer(file_meta)
+                and file_meta.get("change_type") == "added"
+            )
+            or (
+                not _file_mode_actions.is_file_mode_action(file_meta)
+                and file_meta.get("file_type") != "binary"
+                and not is_batch_submodule_pointer(file_meta)
+                and _text_plan_jobs.apply_text_plan_requires_source(
+                    file_meta,
+                    selected_ids,
+                )
+            )
+        )
+    )
+    index_identities = read_index_identities(index_paths)
+    applied_overlay_snapshot = load_applied_batch_overlay_snapshot()
 
     for ordinal, (file_path, file_meta) in enumerate(files.items()):
         try:
@@ -291,7 +452,13 @@ def _capture_apply_plan_inputs(
             if is_batch_submodule_pointer(file_meta):
                 worktree_identities[file_path] = capture_worktree_identity(file_path)
                 plans_by_ordinal[ordinal] = _action_plans.SubmodulePointerActionPlan(
-                    file_path, file_meta
+                    file_path,
+                    file_meta,
+                    (
+                        index_identities[file_path]
+                        if file_meta.get("change_type") == "added"
+                        else None
+                    ),
                 )
                 continue
 
@@ -329,6 +496,15 @@ def _capture_apply_plan_inputs(
                     scratch_directory=scratch_directory,
                     source_commit=source_commit,
                     source_required=source_required,
+                    index_identity=(
+                        index_identities[file_path] if source_required else None
+                    ),
+                    applied_overlay=fresh_applied_batch_overlay_for_path(
+                        file_path,
+                        batch_metadata_by_name={batch_name: batch_metadata},
+                        snapshot=applied_overlay_snapshot,
+                        worktree_identity=identity,
+                    ),
                 )
             )
         except CommandError as error:
@@ -358,7 +534,7 @@ def _build_apply_text_jobs(
     text_inputs = capture.text_inputs
     jobs: list[OrderedFileJob[_text_plan_jobs.ApplyTextPlanJob]] = []
 
-    source_blob_by_target = _resolve_apply_text_source_blobs(text_inputs)
+    source_blob_by_target = _resolve_apply_text_source_blobs(batch_name, text_inputs)
     source_info_by_id = resolve_git_objects(source_blob_by_target.values())
     for text_input in text_inputs:
         ordinal = text_input.ordinal
@@ -392,6 +568,7 @@ def _build_apply_text_jobs(
                     ),
                     "working_tree_artifact_path": str(text_input.worktree_artifact),
                     "scratch_directory": str(text_input.scratch_directory),
+                    "applied_overlay": text_input.applied_overlay,
                 },
             )
             output_path = workspace.output_path(ordinal, "merged-output")
@@ -403,6 +580,7 @@ def _build_apply_text_jobs(
                 output_path=str(output_path),
                 details_artifact_path=str(details_path),
                 expected_worktree_identity=text_input.identity,
+                expected_index_identity=text_input.index_identity,
             )
             jobs.append(
                 OrderedFileJob(
@@ -504,6 +682,30 @@ def _reduce_apply_action_plans(
         if type(details) is not dict:
             raise TypeError("apply text-plan details must be a dictionary")
         if result.outcome == "plan":
+            assert result.selected_ownership_artifact_path is not None
+            ownership_metadata = workspace.read_pickle(
+                result.selected_ownership_artifact_path
+            )
+            if type(ownership_metadata) is not dict:
+                raise TypeError(
+                    "apply text-plan ownership metadata must be a dictionary"
+                )
+            selected_metadata = cast(
+                BatchFileMetadataDict,
+                {
+                    key: value
+                    for key, value in files[result.file_path].items()
+                    if key in {"batch_source_commit", "mode"}
+                },
+            )
+            assert result.change_type is not None
+            selected_metadata["change_type"] = TextFileChangeType(
+                result.change_type
+            ).value
+            add_ownership_metadata(
+                selected_metadata,
+                cast(BatchOwnershipMetadata, ownership_metadata),
+            )
             buffer = (
                 None
                 if result.output_path is None
@@ -517,6 +719,10 @@ def _reduce_apply_action_plans(
                 buffer,
                 result.file_mode,
                 TextFileChangeType(result.change_type),
+                selected_metadata,
+                result.introduced_selected_presence,
+                result.index_preimage_source_ranges,
+                result.expected_index_identity,
             )
         elif result.outcome == "noop":
             continue
@@ -592,11 +798,31 @@ def _reduce_apply_action_plans(
 
 
 def _resolve_apply_text_source_blobs(
+    batch_name: str,
     text_inputs: tuple[_ApplyTextInput, ...],
 ) -> dict[tuple[int, str], str]:
+    embedded_paths = list(
+        dict.fromkeys(
+            source_path
+            for text_input in text_inputs
+            if text_input.source_commit is not None
+            and (source_path := text_input.file_meta.get("source_path")) is not None
+        )
+    )
+    embedded_entries = (
+        list_git_tree_blobs(
+            get_batch_state_ref_name(batch_name),
+            embedded_paths,
+        )
+        if embedded_paths
+        else {}
+    )
     paths_by_commit: dict[str, list[str]] = {}
     for text_input in text_inputs:
         if text_input.source_commit is None:
+            continue
+        source_path = text_input.file_meta.get("source_path")
+        if source_path is not None and source_path in embedded_entries:
             continue
         paths_by_commit.setdefault(
             text_input.source_commit,
@@ -611,6 +837,14 @@ def _resolve_apply_text_source_blobs(
     for text_input in text_inputs:
         if text_input.source_commit is None:
             continue
+        source_path = text_input.file_meta.get("source_path")
+        if source_path is not None:
+            embedded_entry = embedded_entries.get(source_path)
+            if embedded_entry is not None:
+                source_blob_by_target[(text_input.ordinal, text_input.file_path)] = (
+                    embedded_entry.blob_sha
+                )
+                continue
         entry = entries_by_commit[text_input.source_commit].get(text_input.file_path)
         if entry is not None:
             source_blob_by_target[(text_input.ordinal, text_input.file_path)] = (
@@ -619,18 +853,35 @@ def _resolve_apply_text_source_blobs(
     return source_blob_by_target
 
 
-def _worktree_target_changed_error(file_path: str) -> CommandError:
-    return CommandError(
-        _(
+def _apply_target_changed_error(
+    file_path: str,
+    *,
+    target: str,
+) -> CommandError:
+    if target == "index":
+        message = _(
+            "Index changed while apply was being calculated: "
+            "{file}. Retry the apply command."
+        )
+    else:
+        message = _(
             "Working tree file changed while apply was being calculated: "
             "{file}. Retry the apply command."
-        ).format(file=display_path(file_path))
-    )
+        )
+    return CommandError(message.format(file=display_path(file_path)))
 
 
-def _require_unchanged_worktree_targets(
+def _require_unchanged_apply_targets(
+    expected_index_identities: dict[str, IndexIdentity],
     expected_identities: dict[str, WorktreeIdentity],
 ) -> None:
+    current_index_identities = read_index_identities(expected_index_identities)
+    for file_path, expected_identity in expected_index_identities.items():
+        if (
+            expected_identity.unmerged_entries
+            or current_index_identities[file_path] != expected_identity
+        ):
+            raise _apply_target_changed_error(file_path, target="index")
     current_identities = capture_worktree_identities(tuple(expected_identities))
     stale_path = next(
         (
@@ -641,7 +892,7 @@ def _require_unchanged_worktree_targets(
         None,
     )
     if stale_path is not None:
-        raise _worktree_target_changed_error(stale_path)
+        raise _apply_target_changed_error(stale_path, target="worktree")
 
 
 def _require_unchanged_worktree_target(
@@ -649,4 +900,4 @@ def _require_unchanged_worktree_target(
     expected_identity: WorktreeIdentity,
 ) -> None:
     if capture_worktree_identity(file_path) != expected_identity:
-        raise _worktree_target_changed_error(file_path)
+        raise _apply_target_changed_error(file_path, target="worktree")

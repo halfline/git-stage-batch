@@ -9,6 +9,9 @@ from ..data.start_time_changes import (
     restore_unstaged_start_time_renames,
 )
 from ..data.session import clear_session_state
+from ..data.applied_batch_overlays import (
+    rebind_applied_batch_overlays_after_session,
+)
 from ..data.session_marker import session_is_active
 from ..data.session_ownership import (
     release_session_ownership,
@@ -55,6 +58,7 @@ def command_stop() -> None:
 
     restore_unstaged_start_time_renames()
     restore_unstaged_start_time_deletions()
+    rebind_applied_batch_overlays_after_session()
 
     # Clear all session state (preserves batches and batch-sources)
     clear_session_state()

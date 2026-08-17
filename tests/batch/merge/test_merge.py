@@ -8,10 +8,14 @@ import pytest
 
 import git_stage_batch.batch.merge.baseline_presence_edits as baseline_presence_edits_module
 import git_stage_batch.batch.merge.baseline_replacement_edits as baseline_replacement_edits_module
+import git_stage_batch.batch.merge.absence_constraints as absence_constraints_module
 import git_stage_batch.batch.merge.candidate_enumeration as candidate_enumeration_module
 import git_stage_batch.batch.merge.merge as merge_module
+import git_stage_batch.batch.merge.presence_constraints as presence_constraints_module
 import git_stage_batch.batch.merge.validation as validation_module
 import git_stage_batch.batch.realization.provenance as provenance_module
+import git_stage_batch.batch.discard as discard_module
+import git_stage_batch.batch.discard_reversal as discard_reversal_module
 from git_stage_batch.batch.merge.baseline_correspondence import (
     RegionKind,
     build_baseline_correspondence,
@@ -26,10 +30,14 @@ from git_stage_batch.batch.discard import (
     discard_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.line_matching.match import match_lines
+from git_stage_batch.batch.line_matching.line_mapping import LineMapping
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.batch.merge.candidates import (
     MergeCandidateSetOutcome,
     MergeResolution,
+)
+from git_stage_batch.batch.merge.absence_constraints import (
+    apply_absence_constraints,
 )
 from git_stage_batch.batch.merge.coordinate_strategy import (
     AMBIGUITY_KEY,
@@ -44,15 +52,18 @@ from git_stage_batch.batch.merge.merge import (
 )
 from git_stage_batch.batch.merge.presence_constraints import satisfy_constraints
 from git_stage_batch.batch.merge.presence_context import (
+    PresencePlacementAmbiguityError,
     contextual_presence_placements,
 )
 from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.realization.entry_storage import (
     RealizedEntries,
+    RealizedEntryContentSequence,
     realized_entry_content_chunks,
 )
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.line_selection import LineRanges
+from git_stage_batch.core.mapped_storage import MappedRecordVector
 from git_stage_batch.exceptions import AtomicUnitError, MergeError
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import (
@@ -67,6 +78,413 @@ from git_stage_batch.core.text_lines import normalize_line_sequence_endings
 
 
 _LINE_SCALE_HEAP_LIMIT = 256 * 1024
+
+
+def test_contextual_presence_does_not_share_unrelated_eof_placement() -> None:
+    """One EOF claim cannot waive a sibling run's ordering ambiguity."""
+    source = [
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"old three\n",
+        b"claimed inner\n",
+        b"old tail\n",
+        b"claimed edge\n",
+    ]
+    target = [b"head\n", b"target one\n", b"target two\n"]
+    with match_lines(source, target) as mapping:
+        with pytest.raises(MergeError, match="different version"):
+            contextual_presence_placements(
+                source,
+                target,
+                LineRanges.from_specs(["5", "7"]),
+                mapping,
+            )
+
+
+def test_contextual_presence_skips_adjacent_finished_removal_span() -> None:
+    """A finished removal span must not hide the next covering span."""
+    source = [
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"old three\n",
+        b"claimed\n",
+        b"old tail\n",
+        b"footer\n",
+    ]
+    target = [b"head\n", b"target one\n", b"target two\n", b"footer\n"]
+    with match_lines(source, target) as mapping:
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            LineRanges.from_specs(["5"]),
+            mapping,
+            collapsing_target_spans=((0, 1), (1, 3)),
+        )
+
+    assert [placement.gap_index for placement in placements] == [1]
+
+
+def test_contextual_presence_coalesces_overlapping_removal_spans() -> None:
+    """Nested removal spans should form one linear-time collapse region."""
+    source = [
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"old three\n",
+        b"claimed\n",
+        b"old tail\n",
+        b"footer\n",
+    ]
+    target = [b"head\n", b"target one\n", b"target two\n", b"footer\n"]
+    with match_lines(source, target) as mapping:
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            LineRanges.from_specs(["5"]),
+            mapping,
+            collapsing_target_spans=((0, 2), (0, 3)),
+        )
+
+    assert [placement.gap_index for placement in placements] == [0]
+
+
+def test_contextual_presence_joins_split_runs_in_collapsed_source_island() -> None:
+    """Selected siblings may omit a stale line at one exact target gap."""
+    source = b"""header
+
+first one
+first two
+first three
+stale sibling
+second one
+second two
+second three
+second four
+
+footer
+"""
+    target = b"""header
+
+
+footer
+"""
+    ownership = BatchOwnership.from_presence_lines(["3-5,7-10"])
+
+    result = merge_batch(source, ownership, target)
+
+    assert (
+        result
+        == b"""header
+
+first one
+first two
+first three
+second one
+second two
+second three
+second four
+
+footer
+"""
+    )
+
+
+def test_recorded_presence_uses_exact_repeated_context_inside_mapped_edges() -> None:
+    """Repeated local lines can prove one source-relative insertion gap."""
+    source = [
+        b"unique head\n",
+        b"same\n",
+        b"same\n",
+        b"claimed\n",
+        b"same\n",
+        b"same\n",
+        b"unique tail\n",
+    ]
+    target = [
+        b"unique head\n",
+        b"same\n",
+        b"same\n",
+        b"same\n",
+        b"same\n",
+        b"unique tail\n",
+    ]
+    selected = LineRanges.from_specs(["4"])
+
+    with LineMapping(
+        source_to_target=[1, 0, 0, 0, 0, 0, 6],
+        target_to_source=[1, 0, 0, 0, 0, 7],
+    ) as mapping:
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            selected,
+            mapping,
+            require_distinctive_context=True,
+            distinctive_context_lines=selected,
+            recorded_context_lines=selected,
+        )
+
+    assert [
+        (placement.gap_index, placement.exact_context_gap) for placement in placements
+    ] == [(3, True)]
+
+
+def test_recorded_split_presence_omits_unselected_source_between_exact_edges() -> None:
+    """Recorded sibling insertions can share one exact predecessor gap."""
+    source = b"head\nsame\nfirst\nomitted\nsecond\nsame\ntail\n"
+    target = b"head\nsame\nsame\ntail\n"
+    empty_baseline = BaselineReference(
+        after_line=None,
+        before_line=None,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3,5"],
+        baseline_references={3: empty_baseline, 5: empty_baseline},
+    )
+
+    assert merge_batch(source, ownership, target) == (
+        b"head\nsame\nfirst\nsecond\nsame\ntail\n"
+    )
+
+
+def test_recorded_presence_does_not_duplicate_partially_present_run() -> None:
+    """Recorded coordinates defer when structural matching retained siblings."""
+    source = b"head\nA\nB\nC\nD\ntail\n"
+    working = b"head\nA\nB\nD\ntail\n"
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-5"],
+        [],
+        baseline_references={line: reference for line in range(2, 6)},
+    )
+
+    assert merge_batch(
+        source,
+        ownership,
+        working,
+        trusted_target_content=b"head\ntail\n",
+    ) == source
+
+
+def test_contextual_presence_split_runs_do_not_cross_live_target_content() -> None:
+    """Split source siblings cannot silently choose a side of live content."""
+    source = b"""header
+
+first one
+first two
+first three
+stale sibling
+second one
+second two
+second three
+second four
+
+footer
+"""
+    target = b"""header
+
+live sibling
+
+footer
+"""
+    ownership = BatchOwnership.from_presence_lines(["3-5,7-10"])
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(source, ownership, target)
+
+
+def test_selected_missing_deletion_anchor_is_validated_by_presence_placement() -> None:
+    """A selected anchor can be reintroduced beyond a fixed neighbor window."""
+    source = (
+        b"head\n"
+        b"new 1\nnew 2\nnew 3\nnew 4\nnew 5\nnew 6\nnew 7\n"
+        b"future 1\nfuture 2\nfuture 3\nfuture 4\n"
+        b"tail\n"
+    )
+    working = b"head\nold\ntail\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-8"],
+        [AbsenceClaim(anchor_line=8, content_lines=[b"old\n"])],
+    )
+
+    assert merge_batch(source, ownership, working) == (
+        b"head\nnew 1\nnew 2\nnew 3\nnew 4\nnew 5\nnew 6\nnew 7\ntail\n"
+    )
+
+
+def test_absence_does_not_remove_matching_claimed_presence() -> None:
+    """An old-side payload reused as selected content remains present."""
+    source = b"head\nnew\ncarried\ntail\n"
+    working = b"head\ncarried\ntail\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"carried\n"])],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert merge_batch(source, ownership, working) == source
+
+
+def test_contextual_presence_split_runs_keep_broad_source_skew_ambiguous() -> None:
+    """A collapsed target does not excuse a broad unowned source gap."""
+    source = b"""header
+
+first one
+first two
+first three
+stale one
+stale two
+stale three
+second one
+second two
+second three
+second four
+
+footer
+"""
+    target = b"""header
+
+
+footer
+"""
+    ownership = BatchOwnership.from_presence_lines(["3-5,9-12"])
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(source, ownership, target)
+
+
+def test_contextual_presence_split_run_cluster_scan_stays_linear(
+    monkeypatch,
+) -> None:
+    """Many exact split islands must not rescan earlier source islands."""
+    cluster_count = 256
+    source: list[bytes] = []
+    target: list[bytes] = []
+    selected_lines: list[int] = []
+    for cluster_index in range(cluster_count):
+        source_start = len(source) + 1
+        source.extend(
+            (
+                f"before-{cluster_index}\n".encode(),
+                f"first-{cluster_index}\n".encode(),
+                f"stale-{cluster_index}\n".encode(),
+                f"second-{cluster_index}\n".encode(),
+                f"after-{cluster_index}\n".encode(),
+            )
+        )
+        target.extend((source[-5], source[-1]))
+        selected_lines.extend((source_start + 1, source_start + 3))
+    selected = LineRanges.from_lines(selected_lines)
+    mapping_lookups = 0
+
+    with match_lines(source, target) as mapping:
+        original_lookup = mapping.get_target_line_from_source_line
+
+        def count_mapping_lookup(source_line):
+            nonlocal mapping_lookups
+            mapping_lookups += 1
+            return original_lookup(source_line)
+
+        monkeypatch.setattr(
+            mapping,
+            "get_target_line_from_source_line",
+            count_mapping_lookup,
+        )
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            selected,
+            mapping,
+            require_distinctive_context=True,
+        )
+
+    assert len(placements) == cluster_count * 2
+    assert mapping_lookups < cluster_count * 10
+
+
+def test_distinctive_context_queries_share_linear_neighbor_indexes(
+    monkeypatch,
+) -> None:
+    """Overlapping broad context searches must scan source mappings once."""
+    run_count = 256
+    gap_lines = [f"gap-{line_index}\n".encode() for line_index in range(run_count * 2)]
+    source = [b"unique before\n", b"common\n"]
+    source.extend(gap_lines)
+    source.extend((b"common\n", b"unique after\n"))
+    target = [
+        b"unique before\n",
+        b"common\n",
+        b"common\n",
+        b"unique after\n",
+    ]
+    selected = LineRanges.from_ranges(
+        (source_line, source_line) for source_line in range(3, 3 + len(gap_lines), 2)
+    )
+    mapping_lookups = 0
+
+    with match_lines(source, target) as mapping:
+        original_lookup = mapping.get_target_line_from_source_line
+
+        def count_mapping_lookup(source_line):
+            nonlocal mapping_lookups
+            mapping_lookups += 1
+            return original_lookup(source_line)
+
+        monkeypatch.setattr(
+            mapping,
+            "get_target_line_from_source_line",
+            count_mapping_lookup,
+        )
+        with pytest.raises(MergeError, match="different version"):
+            contextual_presence_placements(
+                source,
+                target,
+                selected,
+                mapping,
+                require_distinctive_context=True,
+            )
+
+    assert mapping_lookups < len(source) * 8
+
+
+def test_realization_fallback_tracks_target_coordinates_after_removal() -> None:
+    """Earlier removals must not stale a later baseline target coordinate."""
+    lines = [b"head\n", b"old a\n", b"middle\n", b"old b\n", b"tail\n"]
+    entries = RealizedEntries()
+    entries.append_line_range_from(
+        lines,
+        0,
+        len(lines),
+        source_line_start=1,
+        target_line_start=1,
+    )
+    result = apply_absence_constraints(
+        entries,
+        [
+            AbsenceClaim(anchor_line=4, content_lines=[b"old b\n"]),
+            AbsenceClaim(anchor_line=2, content_lines=[b"old a\n"]),
+        ],
+        strict=False,
+        realization_fallback_target_positions=((0, 3), (1, 1)),
+    )
+    try:
+        assert b"".join(realized_entry_content_chunks(result)) == (
+            b"head\nmiddle\ntail\n"
+        )
+    finally:
+        result.close()
+        entries.close()
 
 
 class _IndexGuardedLineBuffer(LineBuffer):
@@ -88,6 +506,19 @@ class _SourceLookupGuardedRealizedEntries(RealizedEntries):
 
     def source_line_at(self, index):
         raise AssertionError("source lookup should not be used")
+
+
+class _ProvenanceCountingRealizedEntries(RealizedEntries):
+    """Realized entries that count streamed provenance runs."""
+
+    def __init__(self):
+        super().__init__()
+        self.provenance_run_count = 0
+
+    def provenance_runs(self, start=0, stop=None):
+        for run in super().provenance_runs(start, stop):
+            self.provenance_run_count += 1
+            yield run
 
 
 class _GuardedLine:
@@ -132,6 +563,658 @@ class _CloseTrackingIterator:
         self.closed = True
 
 
+def test_realization_fallback_streams_provenance_once() -> None:
+    """Target-ordered fallback lookup must not rescan every earlier run."""
+    claim_count = 512
+    entries = _ProvenanceCountingRealizedEntries()
+    lines = [b"target\n"]
+    for line_index in range(claim_count):
+        entries.append_line_range_from(
+            lines,
+            0,
+            1,
+            source_line_start=line_index * 2 + 1,
+            target_line_start=line_index + 1,
+        )
+    claims = [
+        AbsenceClaim(anchor_line=None, content_lines=[b"missing\n"])
+        for _ in range(claim_count)
+    ]
+    fallback_positions = tuple(
+        (claim_index, claim_index) for claim_index in range(claim_count)
+    )
+
+    result = apply_absence_constraints(
+        entries,
+        claims,
+        strict=False,
+        realization_fallback_target_positions=fallback_positions,
+    )
+    try:
+        assert result is entries
+        assert entries.provenance_run_count < claim_count * 5
+    finally:
+        result.close()
+
+
+def test_realization_removal_planning_avoids_line_scale_python_heap() -> None:
+    """Per-claim fallback coordinates should remain in mapped storage."""
+    claims = [AbsenceClaim(anchor_line=None, content_lines=[]) for _ in range(8192)]
+
+    gc.collect()
+    tracemalloc.start()
+    try:
+        result = satisfy_constraints(
+            [],
+            [],
+            LineRanges.empty(),
+            claims,
+            strict=False,
+        )
+        try:
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            result.close()
+    finally:
+        tracemalloc.stop()
+
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+
+def test_strict_absence_constraints_plan_fragmented_removals_once(
+    monkeypatch,
+) -> None:
+    """Many strict removals must not rebuild the realized file per claim."""
+    claim_count = 1024
+    entries = RealizedEntries()
+    claims = []
+    for claim_index in range(claim_count):
+        entries.append(
+            f"anchor {claim_index}\n".encode(),
+            source_line=claim_index + 1,
+        )
+        entries.append(f"old {claim_index}\n".encode())
+        claims.append(
+            AbsenceClaim(
+                anchor_line=claim_index + 1,
+                content_lines=[f"old {claim_index}\n".encode()],
+            )
+        )
+
+    def fail_incremental_rebuild(*_args, **_kwargs):
+        raise AssertionError("absence constraints rebuilt per claim")
+
+    monkeypatch.setattr(
+        RealizedEntries,
+        "without_range",
+        fail_incremental_rebuild,
+    )
+
+    result = apply_absence_constraints(entries, claims)
+    try:
+        assert len(result) == claim_count
+        chunks = iter(result.content_chunks())
+        assert [next(chunks), next(chunks)] == [
+            b"anchor 0\n",
+            b"anchor 1\n",
+        ]
+    finally:
+        result.close()
+        entries.close()
+
+
+def test_strict_absence_constraints_read_claim_payload_lazily() -> None:
+    """Strict suppression must not copy a claim's complete old-side payload."""
+
+    class IndexOnlyLines:
+        def __init__(self) -> None:
+            self.read_count = 0
+
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> bytes:
+            if index != 0:
+                raise IndexError(index)
+            self.read_count += 1
+            return b"old\nembedded\r\n"
+
+        def __iter__(self):
+            raise AssertionError("absence payload was materialized")
+
+    content_lines = IndexOnlyLines()
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1)
+    entries.append(b"old\rembedded\r\n")
+    claim = AbsenceClaim(anchor_line=1, content_lines=content_lines)
+
+    result = apply_absence_constraints(entries, [claim])
+    try:
+        assert list(result.content_chunks()) == [b"anchor\n"]
+        assert content_lines.read_count == 1
+    finally:
+        result.close()
+        entries.close()
+
+
+def test_lenient_absence_constraints_read_claim_payload_lazily() -> None:
+    """Realization suppression must not collect a claim's old-side lines."""
+
+    class IndexOnlyLines:
+        def __init__(self) -> None:
+            self.read_count = 0
+
+        def __len__(self) -> int:
+            return 2
+
+        def __getitem__(self, index: int) -> bytes:
+            if index < 0 or index >= 2:
+                raise IndexError(index)
+            self.read_count += 1
+            return (b"old one\r\n", b"old two\r")[index]
+
+        def __iter__(self):
+            raise AssertionError("absence payload was materialized")
+
+    content_lines = IndexOnlyLines()
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1)
+    entries.append(b"old one\n")
+    entries.append(b"old two\n")
+    claim = AbsenceClaim(anchor_line=1, content_lines=content_lines)
+
+    result = apply_absence_constraints(entries, [claim], strict=False)
+    try:
+        assert list(result.content_chunks()) == [b"anchor\n"]
+        assert content_lines.read_count >= 2
+    finally:
+        result.close()
+        entries.close()
+
+
+def test_strict_absence_constraints_close_converted_predecessor(
+    monkeypatch,
+) -> None:
+    """A changed result must release an internally converted entry store."""
+    captured_entries = []
+    original_conversion = absence_constraints_module.as_realized_entries
+
+    def capture_conversion(entries):
+        converted = original_conversion(entries)
+        captured_entries.append(converted)
+        return converted
+
+    monkeypatch.setattr(
+        absence_constraints_module,
+        "as_realized_entries",
+        capture_conversion,
+    )
+    entries = [
+        RealizedEntry(b"anchor\n", source_line=1),
+        RealizedEntry(b"old\n", source_line=None),
+    ]
+
+    result = apply_absence_constraints(
+        entries,
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+    )
+    try:
+        assert list(result.content_chunks()) == [b"anchor\n"]
+        assert len(captured_entries) == 1
+        assert captured_entries[0].closed
+    finally:
+        result.close()
+
+
+def test_strict_absence_anchor_queries_aggregate_duplicate_provenance(
+    monkeypatch,
+) -> None:
+    """Repeated anchor queries must not rescan every duplicate source copy."""
+    duplicate_count = 2048
+    entries = RealizedEntries()
+    for duplicate_index in range(duplicate_count):
+        entries.append(
+            f"copy {duplicate_index}\n".encode(),
+            source_line=1,
+        )
+    entries.append(b"claimed copy\n", source_line=1, is_claimed=True)
+
+    with MatcherWorkspace() as workspace:
+        active = absence_constraints_module._ActiveRealizedLineIndex(
+            workspace,
+            entries,
+        )
+        source_groups = active._source_groups
+        source_group_reads = 0
+        original_getitem = MappedRecordVector.__getitem__
+
+        def count_source_group_reads(vector, index):
+            nonlocal source_group_reads
+            if vector is source_groups:
+                source_group_reads += 1
+            return original_getitem(vector, index)
+
+        monkeypatch.setattr(
+            MappedRecordVector,
+            "__getitem__",
+            count_source_group_reads,
+        )
+
+        for _query_index in range(duplicate_count):
+            assert active.boundary_after_source_line(1) == duplicate_count + 1
+
+    entries.close()
+    assert source_group_reads <= duplicate_count * 4
+
+
+def test_strict_absence_index_preserves_provenance_initialization_error(
+    monkeypatch,
+) -> None:
+    """Temporary-index cleanup must not mask provenance cancellation."""
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1)
+
+    def cancel_initialization(_index, _source_records):
+        raise KeyboardInterrupt("provenance initialization cancelled")
+
+    def fail_temporary_close(_workspace, _source_records):
+        raise RuntimeError("temporary index close failed")
+
+    monkeypatch.setattr(
+        absence_constraints_module._ActiveRealizedLineIndex,
+        "_initialize_provenance",
+        cancel_initialization,
+    )
+    monkeypatch.setattr(
+        MatcherWorkspace,
+        "close_resource",
+        fail_temporary_close,
+    )
+
+    try:
+        with (
+            MatcherWorkspace() as workspace,
+            pytest.raises(
+                KeyboardInterrupt,
+                match="provenance initialization cancelled",
+            ),
+        ):
+            absence_constraints_module._ActiveRealizedLineIndex(
+                workspace,
+                entries,
+            )
+    finally:
+        entries.close()
+
+
+def test_discard_same_anchor_claims_avoids_line_scale_python_heap() -> None:
+    """Ordered same-anchor restoration retains only constant Python state."""
+    claim_count = 8192
+    claims = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+        for _ in range(claim_count)
+    ]
+
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        gc.collect()
+        tracemalloc.start()
+        try:
+            result = discard_module._restore_absence_constraints(
+                entries,
+                claims,
+            )
+            try:
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                result.close()
+        finally:
+            tracemalloc.stop()
+
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+
+def test_discard_fragmented_claim_restoration_scans_provenance_linearly() -> None:
+    """Many anchored insertions must not rescan prior provenance runs."""
+    claim_count = 512
+    entries = _ProvenanceCountingRealizedEntries()
+    claims = []
+    for claim_index in range(claim_count):
+        source_line = claim_index * 2 + 1
+        entries.append(
+            f"present {claim_index}\n".encode(),
+            source_line=source_line,
+            target_line=claim_index + 1,
+        )
+        claims.append(
+            AbsenceClaim(
+                anchor_line=source_line,
+                content_lines=[f"restored {claim_index}\n".encode()],
+            )
+        )
+
+    result = discard_module._restore_absence_constraints(entries, claims)
+    try:
+        assert len(result) == claim_count * 2
+        assert entries.provenance_run_count < claim_count * 3
+    finally:
+        result.close()
+        entries.close()
+
+
+def test_discard_same_anchor_claims_preserve_unterminated_boundaries() -> None:
+    """Adjacent restored claims must not collapse when one lacks a newline."""
+    claims = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"first"]),
+        AbsenceClaim(anchor_line=1, content_lines=[b"second\n"]),
+    ]
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        result = discard_module._restore_absence_constraints(entries, claims)
+        try:
+            assert len(result) == 3
+            assert result.content_at(1) == b"first"
+            assert result.content_at(2) == b"second\n"
+        finally:
+            result.close()
+
+
+def test_discard_same_anchor_claims_preserve_metadata_order() -> None:
+    """Queued restorations follow claim order, not blob or payload order."""
+    claims = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"z-first\n"]),
+        AbsenceClaim(anchor_line=1, content_lines=[b"a-second\n"]),
+    ]
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        entries.append(b"tail\n", source_line=2)
+        result = discard_module._restore_absence_constraints(entries, claims)
+        try:
+            assert list(result.content_chunks()) == [
+                b"head\n",
+                b"z-first\n",
+                b"a-second\n",
+                b"tail\n",
+            ]
+        finally:
+            result.close()
+
+
+def test_discard_restored_claim_buffer_survives_borrowed_result() -> None:
+    """A slice should retain restored spool content after its source closes."""
+    claims = [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])]
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        restored = discard_module._restore_absence_constraints(entries, claims)
+        borrowed = restored.slice(1, 2)
+        restored.close()
+        try:
+            assert borrowed.content_at(0) == b"old\n"
+        finally:
+            borrowed.close()
+
+
+def test_discard_restoration_closes_converted_predecessor(
+    monkeypatch,
+) -> None:
+    """A changed rollback result releases its internally converted store."""
+    captured_entries = []
+    original_conversion = discard_module.as_realized_entries
+
+    def capture_conversion(entries):
+        converted = original_conversion(entries)
+        captured_entries.append(converted)
+        return converted
+
+    monkeypatch.setattr(
+        discard_module,
+        "as_realized_entries",
+        capture_conversion,
+    )
+    entries = [RealizedEntry(b"head\n", source_line=1)]
+
+    restored = discard_module._restore_absence_constraints(
+        entries,
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+    )
+    try:
+        assert list(restored.content_chunks()) == [b"head\n", b"old\n"]
+        assert len(captured_entries) == 1
+        assert captured_entries[0].closed
+    finally:
+        restored.close()
+
+
+def test_discard_trust_is_limited_to_exact_selected_anchors() -> None:
+    """Trusted by-hunk reversal is limited to exact selected matches."""
+    with discard_module._acquire_trusted_discard_presence_anchors(
+        [b"present\n", b"missing\n"],
+        [b"present\n"],
+        LineRanges.from_ranges([(1, 2)]),
+        LineRanges.from_ranges([(1, 2)]),
+    ) as (anchors, trusted_lines):
+        assert list(anchors) == [(1, 1)]
+        assert trusted_lines == LineRanges.from_ranges([(1, 1)])
+
+
+def test_discard_trusted_anchor_ranges_do_not_expand_contiguous_lines(
+    monkeypatch,
+) -> None:
+    """A large contiguous trusted selection stays range-backed."""
+    line_count = 4096
+    lines = [
+        f"unique line {line_number}\n".encode() for line_number in range(line_count)
+    ]
+
+    def fail_line_expansion(*_args, **_kwargs):
+        raise AssertionError("trusted anchors expanded into Python line tuples")
+
+    monkeypatch.setattr(LineRanges, "from_lines", fail_line_expansion)
+
+    with discard_module._acquire_trusted_discard_presence_anchors(
+        lines,
+        lines,
+        LineRanges.from_ranges(((1, line_count),)),
+        LineRanges.from_ranges(((1, line_count),)),
+    ) as (anchors, trusted_lines):
+        assert len(anchors) == line_count
+        assert trusted_lines.ranges() == ((1, line_count),)
+
+
+def test_replacement_old_side_boundary_scans_mapping_once() -> None:
+    """Split validation must not rescan a long unmapped suffix per child."""
+    child_count = 256
+    source = [b"head\n"] + [b"new\n"] * child_count + [b"tail\n"]
+    working = [b"head\n"] + [b"old\n"] * child_count + [b"tail\n"]
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=child_count + 2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    deletions = []
+    replacement_units = []
+    for offset in range(child_count):
+        source_line = offset + 2
+        deletions.append(
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=BaselineReference(
+                    after_line=offset + 1,
+                    after_content=b"head\n" if offset == 0 else b"old\n",
+                    before_line=offset + 3,
+                    before_content=(
+                        b"tail\n" if offset + 1 == child_count else b"old\n"
+                    ),
+                    has_before_line=True,
+                ),
+            )
+        )
+        replacement_units.append(
+            ReplacementUnit(
+                [str(source_line)],
+                [offset],
+                ReplacementUnitOrigin(
+                    2,
+                    child_count + 1,
+                    2,
+                    child_count + 1,
+                    parent_reference,
+                ),
+            )
+        )
+    ownership = BatchOwnership.from_presence_lines(
+        [f"2-{child_count + 1}"],
+        deletions,
+        replacement_units=replacement_units,
+    )
+    mapping_reads = 0
+
+    with match_lines(source, working) as mapping:
+        original_mapping = mapping.source_to_target
+
+        class CountingMapping:
+            def __len__(self):
+                return len(original_mapping)
+
+            def __getitem__(self, index):
+                nonlocal mapping_reads
+                mapping_reads += 1
+                return original_mapping[index]
+
+        mapping.source_to_target = CountingMapping()
+        validation_module.has_missing_origin_replacement_claims(
+            ownership,
+            ownership.presence_line_set(),
+            source,
+            working,
+            mapping,
+        )
+
+    assert mapping_reads < child_count * 8
+
+
+def test_mapped_old_side_preflight_caps_dense_child_classification(
+    monkeypatch,
+) -> None:
+    """Ordinary replay should fail closed before dense groups become quadratic."""
+    child_count = 64
+    source = (
+        [b"head\n"]
+        + [f"new {child_index}\n".encode() for child_index in range(child_count)]
+        + [b"tail\n"]
+    )
+    origin = ReplacementUnitOrigin(
+        2,
+        child_count + 1,
+        2,
+        child_count + 1,
+    )
+    deletions = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+        for _child_index in range(child_count)
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        [f"2-{child_count + 1}"],
+        deletions,
+        replacement_units=[
+            ReplacementUnit(
+                [str(child_index + 2)],
+                [child_index],
+                origin,
+            )
+            for child_index in range(child_count)
+        ],
+    )
+    classification_count = 0
+
+    def count_classification(*_args, **_kwargs):
+        nonlocal classification_count
+        classification_count += 1
+        return validation_module.ReplacementOldSideRealization(
+            validation_module.ReplacementOldSideState.ABSENT
+        )
+
+    monkeypatch.setattr(
+        validation_module,
+        "_replacement_old_side_realization",
+        count_classification,
+    )
+
+    with match_lines(source, source) as mapping:
+        unsafe = validation_module.has_unsafe_mapped_origin_old_side_claims(
+            ownership,
+            ownership.presence_line_set(),
+            source,
+            source,
+            mapping,
+            max_classifications=16,
+        )
+
+    assert unsafe
+    assert classification_count == 16
+
+
+def test_mapped_replacement_group_scans_metadata_once() -> None:
+    """An already-realized sibling group must not rescan every suffix."""
+    child_count = 256
+    source = [b"head\n"] + [b"new\n"] * child_count + [b"tail\n"]
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=child_count + 2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    deletions = [
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"old\n"],
+            baseline_reference=BaselineReference(after_line=offset + 1),
+        )
+        for offset in range(child_count)
+    ]
+    units = [
+        ReplacementUnit(
+            [str(offset + 2)],
+            [offset],
+            ReplacementUnitOrigin(
+                2,
+                child_count + 1,
+                2,
+                child_count + 1,
+                parent_reference,
+            ),
+        )
+        for offset in range(child_count)
+    ]
+    unit_reads = 0
+
+    class CountingUnits(list):
+        def __getitem__(self, index):
+            nonlocal unit_reads
+            unit_reads += 1
+            return super().__getitem__(index)
+
+    ownership = BatchOwnership.from_presence_lines(
+        [f"2-{child_count + 1}"],
+        deletions,
+        replacement_units=CountingUnits(units),
+    )
+    with match_lines(source, source) as mapping:
+        assert not validation_module.has_missing_origin_replacement_claims(
+            ownership,
+            ownership.presence_line_set(),
+            source,
+            source,
+            mapping,
+        )
+
+    assert unit_reads < child_count * 8
+
+
 def test_candidate_comparison_preserves_structural_chunk_boundaries():
     """Stream comparison must not fragment the selected structural output."""
     structural_chunks = [b"alpha\n", b"beta\n", b"gamma\n"]
@@ -174,8 +1257,7 @@ def test_distinctive_presence_context_avoids_line_scale_python_heap():
     line_count = 8192
     changed_index = line_count // 2
     source_content = b"".join(
-        f"line-{line_index:08d}\n".encode()
-        for line_index in range(line_count)
+        f"line-{line_index:08d}\n".encode() for line_index in range(line_count)
     )
     target_content = b"".join(
         (
@@ -319,6 +1401,55 @@ def test_coordinate_candidate_is_closed_when_structural_planning_refuses(
     assert coordinate_candidate.closed
 
 
+def test_coordinate_candidate_cleanup_preserves_stream_failure(monkeypatch):
+    """Candidate cleanup cancellation must not replace stream failure."""
+    source = [b"a\n", b"new\n", b"b\n"]
+    target = [b"a\n", b"b\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [],
+        baseline_references={
+            2: BaselineReference(
+                after_line=1,
+                after_content=b"a\n",
+                before_line=2,
+                before_content=b"b\n",
+                has_before_line=True,
+            )
+        },
+    )
+
+    class FailingCandidate:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise RuntimeError("coordinate stream failed")
+
+        def close(self):
+            raise KeyboardInterrupt("coordinate cleanup cancelled")
+
+    monkeypatch.setattr(
+        merge_module._baseline_edits,
+        "try_apply_baseline_coordinate_edits",
+        lambda *_args, **_kwargs: FailingCandidate(),
+    )
+
+    with pytest.raises(RuntimeError, match="coordinate stream failed"):
+        merge_batch_from_line_sequences_as_buffer(
+            source,
+            ownership,
+            target,
+            resolution=MergeResolution(
+                {
+                    AMBIGUITY_KEY: (
+                        CoordinateStrategyChoice.RECORDED_COORDINATES.value
+                    )
+                }
+            ),
+        )
+
+
 @pytest.mark.parametrize("choice", [0, 3, True, "1", None])
 def test_coordinate_strategy_rejects_invalid_resolution_values(choice):
     """Only serialized values of the strategy enum are valid choices."""
@@ -334,6 +1465,306 @@ def test_coordinate_strategy_rejects_invalid_resolution_values(choice):
             [b"same\n"],
             resolution=resolution,
         )
+
+
+@pytest.mark.parametrize(
+    "resolution",
+    [
+        MergeResolution({}),
+        MergeResolution({"unknown:choice": 1}),
+        MergeResolution({"presence:stale": True}),
+        MergeResolution({"presence:stale": 1, "absence:stale": 1}),
+    ],
+)
+def test_merge_rejects_malformed_resolution_shape(resolution):
+    """Only one typed decision from a known candidate family is admissible."""
+    with pytest.raises(
+        MergeError,
+        match="Selected merge resolution is no longer valid",
+    ):
+        merge_batch_from_line_sequences_as_buffer(
+            [b"same\n"],
+            BatchOwnership([], []),
+            [b"same\n"],
+            resolution=resolution,
+        )
+
+
+@pytest.mark.parametrize("ambiguity_key", ["presence:stale", "absence:stale"])
+def test_merge_rejects_unconsumed_structural_resolution(ambiguity_key):
+    """A namespace prefix alone cannot grant reviewed-placement authority."""
+    with pytest.raises(
+        MergeError,
+        match="Selected merge resolution is no longer valid",
+    ):
+        merge_batch_from_line_sequences_as_buffer(
+            [b"same\n"],
+            BatchOwnership([], []),
+            [b"same\n"],
+            resolution=MergeResolution({ambiguity_key: 1}),
+        )
+
+
+def test_presence_resolution_does_not_waive_unrelated_structural_refusal(
+    monkeypatch,
+):
+    """Review authority is limited to the presence ambiguity it names."""
+    source = [b"head\n", b"claimed\n", b"tail\n"]
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+
+    monkeypatch.setattr(
+        merge_module,
+        "_check_merge_structural_validity",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            MergeError("unrelated structural refusal")
+        ),
+    )
+
+    with (
+        match_lines(source, source) as mapping,
+        pytest.raises(MergeError, match="unrelated structural refusal"),
+    ):
+        merge_module._build_structural_realized_entries(
+            source,
+            ownership,
+            source,
+            ownership.presence_line_set(),
+            ownership.deletions,
+            controlled_source_lines=ownership.presence_line_set(),
+            source_alternative_lines=LineRanges.empty(),
+            source_to_working_mapping=mapping,
+            resolution=MergeResolution({"presence:reviewed": 1}),
+            spool_dir=None,
+        )
+
+
+def test_presence_resolution_may_waive_only_placement_ambiguity(monkeypatch):
+    """A reviewed choice may continue past its matching ambiguity class."""
+    source = [b"head\n", b"claimed\n", b"tail\n"]
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    reached_presence_realization = False
+
+    def refuse_ambiguous_placement(*_args, **_kwargs):
+        raise PresencePlacementAmbiguityError("reviewable placement")
+
+    def realize_reviewed_presence(*_args, **_kwargs):
+        nonlocal reached_presence_realization
+        reached_presence_realization = True
+        return RealizedEntries()
+
+    monkeypatch.setattr(
+        merge_module,
+        "_check_merge_structural_validity",
+        refuse_ambiguous_placement,
+    )
+    monkeypatch.setattr(
+        merge_module._presence_constraints,
+        "satisfy_constraints",
+        realize_reviewed_presence,
+    )
+
+    mapping = match_lines(source, source)
+    try:
+        result = merge_module._build_structural_realized_entries(
+            source,
+            ownership,
+            source,
+            ownership.presence_line_set(),
+            ownership.deletions,
+            controlled_source_lines=ownership.presence_line_set(),
+            source_alternative_lines=LineRanges.empty(),
+            source_to_working_mapping=mapping,
+            resolution=MergeResolution({"presence:reviewed": 1}),
+            spool_dir=None,
+        )
+    finally:
+        mapping.close()
+
+    result.close()
+    assert reached_presence_realization
+
+
+def test_presence_result_closes_when_owned_mapping_close_fails(monkeypatch):
+    """A cleanup failure cannot strand a result that will not be returned."""
+
+    class Mapping:
+        def close(self):
+            raise KeyboardInterrupt("mapping close cancelled")
+
+    class Result:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    result = Result()
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "match_lines",
+        lambda *_args, **_kwargs: Mapping(),
+    )
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "_apply_presence_constraints_with_mapping",
+        lambda *_args, **_kwargs: result,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="mapping close cancelled"):
+        presence_constraints_module.apply_presence_constraints(
+            [b"line\n"],
+            [b"line\n"],
+            LineRanges.empty(),
+        )
+
+    assert result.closed is True
+
+
+def test_presence_cleanup_does_not_replace_primary_error(monkeypatch):
+    """Mapping cleanup cancellation must not mask realization failure."""
+
+    class Mapping:
+        def close(self):
+            raise KeyboardInterrupt("mapping close cancelled")
+
+    def fail_realization(*_args, **_kwargs):
+        raise RuntimeError("realization failed")
+
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "match_lines",
+        lambda *_args, **_kwargs: Mapping(),
+    )
+    monkeypatch.setattr(
+        presence_constraints_module,
+        "_apply_presence_constraints_with_mapping",
+        fail_realization,
+    )
+
+    with pytest.raises(RuntimeError, match="realization failed"):
+        presence_constraints_module.apply_presence_constraints(
+            [b"line\n"],
+            [b"line\n"],
+            LineRanges.empty(),
+        )
+
+
+def test_structural_result_closes_when_mapping_cleanup_fails(monkeypatch):
+    """Structural handoff must close a result rejected by final cleanup."""
+
+    class Result:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    result = Result()
+    source = [b"line\n"]
+    ownership = BatchOwnership.from_presence_lines([], [])
+    monkeypatch.setattr(
+        merge_module._presence_constraints,
+        "satisfy_constraints",
+        lambda *_args, **_kwargs: result,
+    )
+    monkeypatch.setattr(
+        merge_module,
+        "_close_owned_mappings",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            KeyboardInterrupt("mapping close cancelled")
+        ),
+    )
+
+    with (
+        match_lines(source, source) as mapping,
+        pytest.raises(KeyboardInterrupt, match="mapping close cancelled"),
+    ):
+        merge_module._build_structural_realized_entries(
+            source,
+            ownership,
+            source,
+            LineRanges.empty(),
+            (),
+            controlled_source_lines=LineRanges.empty(),
+            source_alternative_lines=LineRanges.empty(),
+            source_to_working_mapping=mapping,
+            resolution=None,
+            spool_dir=None,
+        )
+
+    assert result.closed is True
+
+
+def test_indexed_absence_result_closes_when_workspace_cleanup_fails(
+    monkeypatch,
+) -> None:
+    """Mapped-index cleanup failure cannot strand its completed result."""
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1, is_claimed=True)
+    entries.append(b"old\n")
+    claim = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    captured_results = []
+    real_build_result = absence_constraints_module._ActiveRealizedLineIndex.build_result
+    real_workspace_close = MatcherWorkspace.close
+
+    def capture_result(index, lines):
+        result = real_build_result(index, lines)
+        captured_results.append(result)
+        return result
+
+    def cancel_workspace_close(workspace):
+        real_workspace_close(workspace)
+        raise KeyboardInterrupt("workspace close cancelled")
+
+    monkeypatch.setattr(
+        absence_constraints_module._ActiveRealizedLineIndex,
+        "build_result",
+        capture_result,
+    )
+    monkeypatch.setattr(MatcherWorkspace, "close", cancel_workspace_close)
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="workspace close cancelled"):
+            absence_constraints_module._apply_strict_absence_constraints_indexed(
+                entries,
+                [claim],
+                spool_dir=None,
+            )
+
+        assert len(captured_results) == 1
+        assert captured_results[0].closed is True
+    finally:
+        entries.close()
+
+
+def test_discard_restoration_closes_result_when_workspace_cleanup_fails(
+    monkeypatch,
+) -> None:
+    """A restored discard result must not survive a failed final handoff."""
+    entries = RealizedEntries()
+    entries.append(b"anchor\n", source_line=1)
+    claim = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    captured_results = []
+
+    class TrackingEntries(RealizedEntries):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            captured_results.append(self)
+
+    class CancellingWorkspace(MatcherWorkspace):
+        def close(self):
+            super().close()
+            raise KeyboardInterrupt("workspace close cancelled")
+
+    monkeypatch.setattr(discard_module, "RealizedEntries", TrackingEntries)
+    monkeypatch.setattr(discard_module, "MatcherWorkspace", CancellingWorkspace)
+
+    try:
+        with pytest.raises(KeyboardInterrupt, match="workspace close cancelled"):
+            discard_module._restore_absence_constraints(entries, [claim])
+
+        assert len(captured_results) == 1
+        assert captured_results[0].closed is True
+    finally:
+        entries.close()
 
 
 def test_candidate_enumeration_propagates_atomic_unit_errors(monkeypatch):
@@ -369,10 +1800,7 @@ def test_candidate_enumeration_marks_an_ordinary_merge_as_unambiguous():
     )
 
     assert candidate_set.candidates == ()
-    assert (
-        candidate_set.outcome
-        is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
-    )
+    assert candidate_set.outcome is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
 
 
 def test_large_merge_without_coordinates_plans_baseline_once(monkeypatch):
@@ -384,14 +1812,10 @@ def test_large_merge_without_coordinates_plans_baseline_once(monkeypatch):
         [AbsenceClaim(anchor_line=None, content_lines=[b"remove me\n"])],
     )
     planning_modes = []
-    original_plan = (
-        merge_module._baseline_edits.try_apply_baseline_coordinate_edits
-    )
+    original_plan = merge_module._baseline_edits.try_apply_baseline_coordinate_edits
 
     def count_plan(*args, **kwargs):
-        planning_modes.append(
-            kwargs.get("trust_baseline_coordinates", False)
-        )
+        planning_modes.append(kwargs.get("trust_baseline_coordinates", False))
         return original_plan(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -414,7 +1838,7 @@ def test_unanchored_presence_reuses_fallback_line_mapping(monkeypatch):
     """Baseline probing and structural placement should share one mapping."""
     source = [f"line {index}\n".encode() for index in range(1000)]
     missing_index = len(source) // 2
-    target = source[:missing_index] + source[missing_index + 1:]
+    target = source[:missing_index] + source[missing_index + 1 :]
     ownership = BatchOwnership.from_presence_lines([str(missing_index + 1)], [])
     mapping_calls = 0
     real_match_lines = merge_module.match_lines
@@ -434,6 +1858,40 @@ def test_unanchored_presence_reuses_fallback_line_mapping(monkeypatch):
         assert merged.to_bytes() == b"".join(source)
 
     assert mapping_calls == 1
+
+
+def test_merge_closes_initial_mapping_when_trusted_mapping_is_cancelled(
+    monkeypatch,
+) -> None:
+    """Cancellation during later mapping setup closes earlier owned storage."""
+    real_match_lines = merge_module.match_lines
+    acquired_mappings = []
+
+    def cancel_second_mapping(*args, **kwargs):
+        if acquired_mappings:
+            raise KeyboardInterrupt
+        mapping = real_match_lines(*args, **kwargs)
+        acquired_mappings.append(mapping)
+        return mapping
+
+    monkeypatch.setattr(merge_module, "match_lines", cancel_second_mapping)
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[ReplacementUnit(presence_lines=["2"], deletion_indices=[0])],
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        merge_batch(
+            b"head\nnew\ntail\n",
+            ownership,
+            b"head\nold\ntail\n",
+            trusted_target_content=b"head\nold\ntail\n",
+        )
+
+    assert len(acquired_mappings) == 1
+    with pytest.raises(ValueError, match="line mapping is closed"):
+        list(acquired_mappings[0].mapped_line_pairs())
 
 
 def test_reviewed_replacement_reuses_resolution_preflight_mapping(monkeypatch):
@@ -459,12 +1917,15 @@ def test_reviewed_replacement_reuses_resolution_preflight_mapping(monkeypatch):
 
     monkeypatch.setattr(merge_module, "match_lines", count_mapping)
 
-    assert merge_batch(
-        source,
-        ownership,
-        working,
-        resolution=candidate_set.candidates[0].resolution,
-    ) == b"a-head\na-new\na-tail\nhead\nnew2\ntail\n"
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            working,
+            resolution=candidate_set.candidates[0].resolution,
+        )
+        == b"a-head\na-new\na-tail\nhead\nnew2\ntail\n"
+    )
     assert mapping_calls == 1
 
 
@@ -506,14 +1967,10 @@ def test_coordinate_candidate_discovery_reuses_initial_comparison(monkeypatch):
         },
     )
     planning_modes = []
-    original_plan = (
-        merge_module._baseline_edits.try_apply_baseline_coordinate_edits
-    )
+    original_plan = merge_module._baseline_edits.try_apply_baseline_coordinate_edits
 
     def count_plan(*args, **kwargs):
-        planning_modes.append(
-            kwargs.get("trust_baseline_coordinates", False)
-        )
+        planning_modes.append(kwargs.get("trust_baseline_coordinates", False))
         return original_plan(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -570,9 +2027,7 @@ def test_merge_routes_mapping_and_output_storage_to_invocation_spool(
     observed_spools = []
     provenance_spools = []
     original_match_lines = merge_module.match_lines
-    original_provenance_storage = (
-        provenance_module.ChunkedMappedRecordVector
-    )
+    original_provenance_storage = provenance_module.ChunkedMappedRecordVector
 
     def record_match(*args, **kwargs):
         observed_spools.append(kwargs.get("spool_dir"))
@@ -769,17 +2224,22 @@ def merge_batch(
     working_content: bytes,
     *,
     source_to_working_mapping=None,
+    trusted_target_content: bytes | None = None,
     resolution=None,
 ) -> bytes:
     """Return merged bytes through the buffer-returning production API."""
     with (
         LineBuffer.from_bytes(batch_source_content) as source_lines,
         LineBuffer.from_bytes(working_content) as working_lines,
+        LineBuffer.from_bytes(trusted_target_content or b"") as trusted_target_lines,
         merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
             working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            trusted_target_lines=(
+                None if trusted_target_content is None else trusted_target_lines
+            ),
             resolution=resolution,
         ) as buffer,
     ):
@@ -791,17 +2251,29 @@ def discard_batch(
     ownership: BatchOwnership,
     working_content: bytes,
     baseline_content: bytes,
+    *,
+    trusted_presence_lines: LineRanges | None = None,
+    trusted_target_content: bytes | None = None,
+    applied_presence_lines: LineRanges | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
 ) -> bytes:
     """Return discarded bytes through the buffer-returning production API."""
     with (
         LineBuffer.from_bytes(batch_source_content) as source_lines,
         LineBuffer.from_bytes(working_content) as working_lines,
         LineBuffer.from_bytes(baseline_content) as baseline_lines,
+        LineBuffer.from_bytes(trusted_target_content or b"") as trusted_target_lines,
         discard_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
             working_lines,
             baseline_lines,
+            trusted_presence_lines=trusted_presence_lines,
+            trusted_target_lines=(
+                None if trusted_target_content is None else trusted_target_lines
+            ),
+            applied_presence_lines=applied_presence_lines,
+            index_preimage_presence_lines=(index_preimage_presence_lines),
         ) as buffer,
     ):
         return buffer.to_bytes()
@@ -952,9 +2424,7 @@ class TestMatchLines:
     def test_acquires_line_buffer_lines(self):
         """LineBuffer inputs are matched through scoped line acquisition."""
         with (
-            _IndexGuardedLineBuffer.from_bytes(
-                b"line1\nline2\nline3\n"
-            ) as source,
+            _IndexGuardedLineBuffer.from_bytes(b"line1\nline2\nline3\n") as source,
             _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nextra\nline2\nline3\n"
             ) as target,
@@ -1148,6 +2618,999 @@ class TestMatchLines:
         assert mapping.get_source_line_from_target_line(2) is None
 
 
+def _mixed_transformed_and_split_replacement_ownership() -> BatchOwnership:
+    first_origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=2,
+        new_start=2,
+        new_end=2,
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=3,
+            before_content=b"mid\n",
+            has_before_line=True,
+        ),
+    )
+    split_origin = ReplacementUnitOrigin(
+        old_start=4,
+        old_end=5,
+        new_start=4,
+        new_end=5,
+        baseline_reference=BaselineReference(
+            after_line=3,
+            after_content=b"mid\n",
+            before_line=6,
+            before_content=b"tail\n",
+            has_before_line=True,
+        ),
+    )
+    return BatchOwnership.from_presence_lines(
+        ["2", "4-5"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-a\n"],
+                baseline_reference=first_origin.baseline_reference,
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b"old-b1\n"],
+                baseline_reference=BaselineReference(
+                    after_line=3,
+                    after_content=b"mid\n",
+                    before_line=5,
+                    before_content=b"old-b2\n",
+                    has_before_line=True,
+                ),
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b"old-b2\n"],
+                baseline_reference=BaselineReference(
+                    after_line=4,
+                    after_content=b"old-b1\n",
+                    before_line=6,
+                    before_content=b"tail\n",
+                    has_before_line=True,
+                ),
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(["2"], [0], origin=first_origin),
+            ReplacementUnit(["4"], [1], origin=split_origin),
+            ReplacementUnit(["5"], [2], origin=split_origin),
+        ],
+    )
+
+
+def test_trusted_target_composes_transformed_and_split_replacements() -> None:
+    """One plan may combine a trusted transform and an exact split parent."""
+    source = b"head\nnew-a\nmid\nnew-b1\nnew-b2\ntail\n"
+    working = b"head\ntransformed-a1\ntransformed-a2\nmid\nold-b1\nold-b2\ntail\n"
+    ownership = _mixed_transformed_and_split_replacement_ownership()
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(source, ownership, working)
+
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            working,
+            trusted_target_content=working,
+        )
+        == source
+    )
+
+
+def test_trusted_target_refuses_changed_transformed_replacement() -> None:
+    """Index trust cannot authorize a worktree-modified replacement span."""
+    source = b"head\nnew-a\nmid\nnew-b1\nnew-b2\ntail\n"
+    trusted = b"head\ntransformed-a1\ntransformed-a2\nmid\nold-b1\nold-b2\ntail\n"
+    working = trusted.replace(b"transformed-a2", b"worktree-edit")
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            source,
+            _mixed_transformed_and_split_replacement_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )
+
+
+def _legacy_reordered_replacement_ownership() -> BatchOwnership:
+    """Build a legacy replacement behind a duplicate historical boundary."""
+    reference = BaselineReference(
+        after_line=3,
+        after_content=b"marker\n",
+        before_line=5,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    return BatchOwnership.from_presence_lines(
+        ["3-4"],
+        [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"historical old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["3-4"], [0])],
+    )
+
+
+def _mapped_source_predecessor_ownership() -> BatchOwnership:
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    return BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2-3"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 3, reference),
+            )
+        ],
+    )
+
+
+def test_trusted_target_replaces_mapped_source_predecessor() -> None:
+    """A retained source predecessor may fill one complete origin gap."""
+    source = b"head\nshared\nnew tail\nshared\nprior tail\ntail\n"
+    working = b"head\nshared\nprior tail\ntail\n"
+    ownership = _mapped_source_predecessor_ownership()
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(source, ownership, working)
+
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            working,
+            trusted_target_content=b"head\nhistorical old\ntail\n",
+        )
+        == b"head\nshared\nnew tail\ntail\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("working", "trusted"),
+    [
+        (
+            b"head\nshared\nworktree edit\nprior tail\ntail\n",
+            b"head\nhistorical old\ntail\n",
+        ),
+        (
+            b"head\nshared\nprior tail\ntail\n",
+            b"head\ndifferent old\ntail\n",
+        ),
+        (
+            b"head\nshared\nprior tail\nshared\nprior tail\ntail\n",
+            b"head\nhistorical old\ntail\n",
+        ),
+    ],
+    ids=[
+        "unmapped-worktree-line",
+        "different-index-old-side",
+        "duplicate-live-predecessor",
+    ],
+)
+def test_mapped_source_predecessor_requires_complete_trusted_gap(
+    working: bytes,
+    trusted: bytes,
+) -> None:
+    """Predecessor replay refuses target or index content outside its proof."""
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nshared\nnew tail\nshared\nprior tail\ntail\n",
+            _mapped_source_predecessor_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )
+
+
+def test_mapped_source_predecessor_requires_shared_selected_prefix() -> None:
+    """An unrelated retained insertion cannot borrow the trusted old side."""
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew one\nnew two\nprior one\nprior two\ntail\n",
+            _mapped_source_predecessor_ownership(),
+            b"head\nprior one\nprior two\ntail\n",
+            trusted_target_content=b"head\nhistorical old\ntail\n",
+        )
+
+
+def test_trusted_target_replays_legacy_replacement_past_duplicate_source() -> None:
+    """Saved context and index identity may place a transformed legacy span."""
+    source = (
+        b"start\nmarker\nnew one\nnew two\nlegacy sibling\n"
+        b"marker\nhistorical old\ntail\n"
+    )
+    trusted = b"start\nlegacy sibling\nmarker\ntransformed old\ntail\n"
+
+    assert (
+        merge_batch(
+            source,
+            _legacy_reordered_replacement_ownership(),
+            trusted,
+            trusted_target_content=trusted,
+        )
+        == b"start\nlegacy sibling\nmarker\nnew one\nnew two\ntail\n"
+    )
+
+
+def test_trusted_target_removes_shifted_historical_source_duplicate() -> None:
+    """Deletion-only replay also builds the trusted worktree mapping it needs."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical old\n"],
+                baseline_reference=reference,
+            )
+        ],
+    )
+    source = b"head\nhistorical old\ntail\n"
+    trusted = b"staged\nhead\nhistorical old\ntail\n"
+
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            trusted,
+            trusted_target_content=trusted,
+        )
+        == b"staged\nhead\ntail\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("trusted", "working"),
+    [
+        (
+            b"start\nlegacy sibling\nmarker\ntransformed old\ntail\n",
+            b"start\nlegacy sibling\nmarker\nworktree edit\ntail\n",
+        ),
+        (
+            b"start\nlegacy sibling\nmarker\ntransformed old\ntail\n"
+            b"marker\ntransformed old\ntail\n",
+            b"start\nlegacy sibling\nmarker\ntransformed old\ntail\n"
+            b"marker\ntransformed old\ntail\n",
+        ),
+    ],
+    ids=["worktree-edit", "repeated-context"],
+)
+def test_trusted_legacy_replacement_requires_one_unchanged_span(
+    trusted: bytes,
+    working: bytes,
+) -> None:
+    """Legacy replay refuses an edited span or repeated saved boundary."""
+    source = (
+        b"start\nmarker\nnew one\nnew two\nlegacy sibling\n"
+        b"marker\nhistorical old\ntail\n"
+    )
+
+    with pytest.raises(MergeError):
+        merge_batch(
+            source,
+            _legacy_reordered_replacement_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )
+
+
+def _trusted_shared_boundary_replacement_ownership() -> BatchOwnership:
+    """Build a split replacement whose parent includes one shared boundary."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=5,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=4,
+        new_start=2,
+        new_end=4,
+        baseline_reference=parent_reference,
+    )
+    deletions = [
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"historical old one\n"],
+            baseline_reference=BaselineReference(after_line=1),
+        ),
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"historical old two\n"],
+            baseline_reference=BaselineReference(after_line=2),
+        ),
+    ]
+    return BatchOwnership.from_presence_lines(
+        ["2-3"],
+        deletions,
+        replacement_units=[
+            ReplacementUnit(["2"], [0], origin),
+            ReplacementUnit(["3"], [1], origin),
+        ],
+    )
+
+
+def test_trusted_target_replays_group_before_mapped_shared_boundary() -> None:
+    """A transformed old side is replaceable inside exact trusted mappings."""
+    source = b"head\nnew one\nnew two\nshared\ntail\n"
+    trusted = b"head\ntransformed one\ntransformed two\nshared\ntail\n"
+
+    assert (
+        merge_batch(
+            source,
+            _trusted_shared_boundary_replacement_ownership(),
+            trusted,
+            trusted_target_content=trusted,
+        )
+        == source
+    )
+
+
+@pytest.mark.parametrize(
+    "working",
+    [
+        b"head\nworktree edit\ntransformed two\nshared\ntail\n",
+        b"head\ntransformed one\nextra\ntransformed two\nshared\ntail\n",
+    ],
+    ids=["worktree-edit", "extra-gap-line"],
+)
+def test_trusted_target_group_requires_exact_unchanged_gap(working: bytes) -> None:
+    """Trusted group replay refuses changed or oversized target gaps."""
+    trusted = b"head\ntransformed one\ntransformed two\nshared\ntail\n"
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew one\nnew two\nshared\ntail\n",
+            _trusted_shared_boundary_replacement_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )
+
+
+def _partial_reordered_replacement_ownership() -> BatchOwnership:
+    mapped_reference = BaselineReference(
+        after_line=1,
+        after_content=b"a-head\n",
+        before_line=3,
+        before_content=b"a-tail\n",
+        has_before_line=True,
+    )
+    parent_reference = BaselineReference(
+        after_line=4,
+        after_content=b"head\n",
+        before_line=7,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    return BatchOwnership.from_presence_lines(
+        ["2", "6"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"a-old\n"],
+                baseline_reference=mapped_reference,
+            ),
+            AbsenceClaim(
+                anchor_line=4,
+                content_lines=[b"old-owned\n"],
+                baseline_reference=BaselineReference(
+                    after_line=4,
+                    after_content=b"head\n",
+                    before_line=6,
+                    before_content=b"old-sibling\n",
+                    has_before_line=True,
+                ),
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, mapped_reference),
+            ),
+            ReplacementUnit(
+                ["6"],
+                [1],
+                ReplacementUnitOrigin(5, 6, 5, 6, parent_reference),
+            ),
+        ],
+    )
+
+
+def test_trusted_target_places_partial_replacement_after_updated_sibling() -> None:
+    """An index-matched sibling can position its selected reordered child."""
+    source = b"a-head\na-new\na-tail\nhead\nnew-sibling\nnew-owned\ntail\n"
+    trusted = b"a-head\na-new\na-tail\nhead\nold-owned\nnew-sibling\ntail\n"
+
+    assert (
+        merge_batch(
+            source,
+            _partial_reordered_replacement_ownership(),
+            trusted,
+            trusted_target_content=trusted,
+        )
+        == source
+    )
+
+
+def test_trusted_target_places_only_selected_replacement_after_sibling() -> None:
+    """A reviewed lone child must retain its source order with a sibling."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=4,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    child_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"new-sibling\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-owned\n"],
+                baseline_reference=child_reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["3"],
+                [0],
+                ReplacementUnitOrigin(
+                    2,
+                    3,
+                    2,
+                    3,
+                    parent_reference,
+                ),
+            )
+        ],
+    )
+    source = b"head\nnew-sibling\nnew-owned\ntail\n"
+    trusted = b"head\nold-owned\nnew-sibling\ntail\n"
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            source,
+            ownership,
+            trusted,
+            trusted_target_content=trusted,
+        )
+
+    candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+        source.splitlines(keepends=True),
+        ownership,
+        trusted.splitlines(keepends=True),
+    )
+
+    assert candidate_set.outcome is MergeCandidateSetOutcome.REVIEW_REQUIRED
+    assert len(candidate_set.candidates) == 1
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            trusted,
+            trusted_target_content=trusted,
+            resolution=candidate_set.candidates[0].resolution,
+        )
+        == source
+    )
+
+
+def test_partial_replacement_refuses_untrusted_historical_order() -> None:
+    """Historical child coordinates cannot override mapped source ordering."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=4,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    child_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"new-sibling\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-owned\n"],
+                baseline_reference=child_reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["3"],
+                [0],
+                ReplacementUnitOrigin(
+                    2,
+                    3,
+                    2,
+                    3,
+                    parent_reference,
+                ),
+            )
+        ],
+    )
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew-sibling\nnew-owned\ntail\n",
+            ownership,
+            b"head\nold-owned\nnew-sibling\ntail\n",
+        )
+
+
+def test_fragmented_replacement_refuses_crossing_mapped_source_line() -> None:
+    """One replacement payload cannot move across an interleaved sibling."""
+    replacement_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"sibling\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "4"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=replacement_reference,
+            )
+        ],
+        baseline_references={
+            2: replacement_reference,
+            4: replacement_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(["2", "4"], [0]),
+        ],
+    )
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew-a\nsibling\nnew-b\ntail\n",
+            ownership,
+            b"head\nold\nsibling\ntail\n",
+        )
+
+
+def test_trusted_target_preserves_edited_partial_replacement_sibling() -> None:
+    """An unstaged sibling edit is not moved through the trusted-index path."""
+    source = b"a-head\na-new\na-tail\nhead\nnew-sibling\nnew-owned\ntail\n"
+    trusted = b"a-head\na-new\na-tail\nhead\nold-owned\nnew-sibling\ntail\n"
+    working = b"a-head\na-new\na-tail\nhead\nold-owned\nworktree-sibling\ntail\n"
+
+    assert merge_batch(
+        source,
+        _partial_reordered_replacement_ownership(),
+        working,
+        trusted_target_content=trusted,
+    ) == (b"a-head\na-new\na-tail\nhead\nnew-owned\nworktree-sibling\ntail\n")
+
+
+def test_trusted_partial_replay_indexes_each_split_parent_once(monkeypatch) -> None:
+    """Separated missing children share one bounded parent occurrence index."""
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=9,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=8,
+        new_start=2,
+        new_end=8,
+        baseline_reference=parent_reference,
+    )
+    old_contents = (
+        [b"old-0a\n", b"old-0b\n"],
+        [b"old-1\n"],
+        [b"old-2a\n", b"old-2b\n"],
+        [b"old-3\n"],
+        [b"old-4\n"],
+    )
+    old_offsets = (0, 2, 3, 5, 6)
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "3", "4", "5", "6-8"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=content,
+                baseline_reference=BaselineReference(
+                    after_line=1 + offset,
+                    after_content=b"historical boundary\n",
+                ),
+            )
+            for content, offset in zip(old_contents, old_offsets)
+        ],
+        replacement_units=[
+            ReplacementUnit(source_lines, [index], origin)
+            for index, source_lines in enumerate((["2"], ["3"], ["4"], ["5"], ["6-8"]))
+        ],
+    )
+    source = b"head\nnew-0\nnew-1\nnew-2\nnew-3\nnew-4a\nnew-4b\nnew-4c\ntail\n"
+    trusted = b"head\nnew-0\nold-1\nnew-2\nold-3\nnew-4a\nnew-4b\nnew-4c\ntail\n"
+    original_index = baseline_replacement_edits_module.LinePayloadOccurrenceIndex
+    index_builds = 0
+
+    def build_index(*args, **kwargs):
+        nonlocal index_builds
+        index_builds += 1
+        return original_index(*args, **kwargs)
+
+    monkeypatch.setattr(
+        baseline_replacement_edits_module,
+        "LinePayloadOccurrenceIndex",
+        build_index,
+    )
+
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            trusted,
+            trusted_target_content=trusted,
+        )
+        == source
+    )
+    assert index_builds == 1
+
+
+def test_trusted_partial_replay_releases_each_finished_parent_index(
+    monkeypatch,
+) -> None:
+    """Separated replacement parents retain at most one scoped index."""
+    first_parent = BaselineReference(
+        after_line=1,
+        after_content=b"head-1\n",
+        before_line=4,
+        before_content=b"tail-1\n",
+        has_before_line=True,
+    )
+    second_parent = BaselineReference(
+        after_line=6,
+        after_content=b"head-2\n",
+        before_line=9,
+        before_content=b"tail-2\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3", "8"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-1\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    after_content=b"head-1\n",
+                    before_line=3,
+                    before_content=b"sibling-1\n",
+                    has_before_line=True,
+                ),
+            ),
+            AbsenceClaim(
+                anchor_line=6,
+                content_lines=[b"old-2\n"],
+                baseline_reference=BaselineReference(
+                    after_line=6,
+                    after_content=b"head-2\n",
+                    before_line=8,
+                    before_content=b"sibling-2\n",
+                    has_before_line=True,
+                ),
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["3"],
+                [0],
+                ReplacementUnitOrigin(2, 3, 2, 3, first_parent),
+            ),
+            ReplacementUnit(
+                ["8"],
+                [1],
+                ReplacementUnitOrigin(7, 8, 7, 8, second_parent),
+            ),
+        ],
+    )
+    source = (
+        b"head-1\nsibling-1\nnew-1\ntail-1\nseparator\n"
+        b"head-2\nsibling-2\nnew-2\ntail-2\n"
+    )
+    trusted = (
+        b"head-1\nsibling-1\nold-1\ntail-1\nseparator\n"
+        b"head-2\nsibling-2\nold-2\ntail-2\n"
+    )
+    original_index = baseline_replacement_edits_module.LinePayloadOccurrenceIndex
+    capacities = []
+    close_count = 0
+
+    class TrackingIndex(original_index):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            capacities.append(self._positions.capacity)
+
+        def close(self):
+            nonlocal close_count
+            if self._workspace is not None:
+                close_count += 1
+            super().close()
+
+    monkeypatch.setattr(
+        baseline_replacement_edits_module,
+        "LinePayloadOccurrenceIndex",
+        TrackingIndex,
+    )
+
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            trusted,
+            trusted_target_content=trusted,
+        )
+        == source
+    )
+    assert capacities == [2, 2]
+    assert close_count == 2
+
+
+def test_discard_does_not_restore_unrealized_replacement_old_side() -> None:
+    """Discard must preserve a transformed unit whose new side is absent."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=2,
+                    new_start=2,
+                    new_end=2,
+                    baseline_reference=reference,
+                ),
+            )
+        ],
+    )
+    working = b"head\ntransformed\ntail\n"
+
+    assert (
+        discard_batch(
+            b"head\nnew\ntail\n",
+            ownership,
+            working,
+            b"head\nold\ntail\n",
+        )
+        == working
+    )
+
+
+def test_discard_restores_fresh_replacement_index_preimage() -> None:
+    """Discard restores exact index bytes overwritten by a trusted apply."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+    source = b"head\nnew\ntail\n"
+    baseline = b"head\nhistorical-old\ntail\n"
+    trusted = b"head\ntransformed-one\ntransformed-two\ntail\n"
+
+    assert (
+        discard_batch(
+            source,
+            ownership,
+            source,
+            baseline,
+            trusted_presence_lines=LineRanges.from_specs(["2"]),
+            trusted_target_content=trusted,
+            index_preimage_presence_lines=LineRanges.from_specs(["2"]),
+        )
+        == trusted
+    )
+
+
+def test_discard_locates_exact_preimage_beside_equal_preexisting_line() -> None:
+    """Index lineage distinguishes the applied occurrence from equal content."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+    source = b"head\nsame\ntail\nsame\n"
+    trusted = b"head\nindex-old\ntail\nsame\n"
+
+    assert (
+        discard_batch(
+            source,
+            ownership,
+            source,
+            b"head\nhistorical-old\ntail\nsame\n",
+            trusted_presence_lines=LineRanges.from_specs(["2"]),
+            trusted_target_content=trusted,
+            index_preimage_presence_lines=LineRanges.from_specs(["2"]),
+        )
+        == trusted
+    )
+
+
+def test_discard_refuses_ambiguous_exact_preimage_occurrence() -> None:
+    """Exact-preimage authority cannot fall back to historical old text."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+    source = b"head\nsame\ntail\nsame\n"
+
+    with pytest.raises(MergeError, match="live occurrence is ambiguous"):
+        discard_batch(
+            source,
+            ownership,
+            source,
+            b"head\nhistorical-old\ntail\nsame\n",
+            trusted_presence_lines=LineRanges.from_specs(["2"]),
+            trusted_target_content=b"head\nindex-old\ntail\nother\n",
+            index_preimage_presence_lines=LineRanges.from_specs(["2"]),
+        )
+
+
+def test_discard_does_not_infer_unrecorded_index_preimage() -> None:
+    """Index bytes are not restored without apply-time preimage provenance."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical-old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 2, reference),
+            )
+        ],
+    )
+
+    assert (
+        discard_batch(
+            b"head\nnew\ntail\n",
+            ownership,
+            b"head\nnew\ntail\n",
+            b"head\nhistorical-old\ntail\n",
+            trusted_presence_lines=LineRanges.from_specs(["2"]),
+            trusted_target_content=(b"head\ntransformed-one\ntransformed-two\ntail\n"),
+        )
+        == b"head\nhistorical-old\ntail\n"
+    )
+
+
 class TestMergeLineSequences:
     """Tests for merge helpers accepting non-list line sequences."""
 
@@ -1230,6 +3693,18 @@ class TestMergeLineSequences:
             b"line2\n",
         ]
 
+    def test_realized_entry_content_strided_slice_remains_lazy(self):
+        """A strided content view must not materialize payload-line tuples."""
+        entries = RealizedEntries(
+            RealizedEntry(f"line {index}\n".encode(), source_line=index + 1)
+            for index in range(5)
+        )
+
+        sliced = RealizedEntryContentSequence(entries)[::-2]
+
+        assert not isinstance(sliced, tuple)
+        assert list(sliced) == [b"line 4\n", b"line 2\n", b"line 0\n"]
+
     def test_realized_entry_pending_read_does_not_flush_or_block_coalescing(self):
         """Reading a pending provenance run keeps it available for coalescing."""
         lines = [b"line1\n", b"line2\n"]
@@ -1260,8 +3735,16 @@ class TestMergeLineSequences:
         result.copy_slice_from(entries, 1, 4)
 
         assert list(result.content_chunks()) == [b"two\n", b"three\n", b"four\n"]
-        assert [result.source_line_at(index) for index in range(len(result))] == [2, 3, 4]
-        assert [result.target_line_at(index) for index in range(len(result))] == [11, 12, 13]
+        assert [result.source_line_at(index) for index in range(len(result))] == [
+            2,
+            3,
+            4,
+        ]
+        assert [result.target_line_at(index) for index in range(len(result))] == [
+            11,
+            12,
+            13,
+        ]
         runs = list(result.provenance_runs())
         assert len(runs) == 1
         assert (runs[0].dest_start, runs[0].dest_end) == (0, 3)
@@ -1338,8 +3821,18 @@ class TestMergeLineSequences:
             target_line_start=None,
         )
 
-        assert [entries.source_line_at(index) for index in range(4)] == [None, None, 30, 31]
-        assert [entries.target_line_at(index) for index in range(4)] == [10, 11, None, None]
+        assert [entries.source_line_at(index) for index in range(4)] == [
+            None,
+            None,
+            30,
+            31,
+        ]
+        assert [entries.target_line_at(index) for index in range(4)] == [
+            10,
+            11,
+            None,
+            None,
+        ]
 
     def test_closed_realized_entries_reject_access(self):
         """Public realized-entry APIs reject use after close."""
@@ -1357,7 +3850,6 @@ class TestMergeLineSequences:
             lambda: list(entries.content_chunks()),
             lambda: entries.slice(0, 1),
             lambda: entries.without_range(0, 1),
-            lambda: entries.insert_entries(0, donor),
             lambda: entries.append(b"new\n"),
             lambda: entries.append_line_from([b"new\n"], 0),
             lambda: entries.append_line_range_from([b"new\n"], 0, 1),
@@ -1379,8 +3871,8 @@ class TestMergeLineSequences:
         assert entries.closed
         assert provenance.closed
 
-    def test_realized_entry_slice_without_range_and_insert_preserve_provenance(self):
-        """Structural copy operations preserve content and provenance."""
+    def test_realized_entry_slice_and_without_range_preserve_provenance(self):
+        """Structural slice operations preserve content and provenance."""
         lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
         entries = RealizedEntries()
         entries.append_line_range_from(
@@ -1390,40 +3882,20 @@ class TestMergeLineSequences:
             source_line_start=1,
             target_line_start=11,
         )
-        inserted = RealizedEntries()
-        inserted.append_line_range_from(
-            [b"inserted\n"],
-            0,
-            1,
-            source_line_start=None,
-            target_line_start=None,
-            is_claimed=True,
-        )
-
         sliced = entries.slice(1, 3)
         without = entries.without_range(1, 3)
-        combined = entries.insert_entries(2, inserted)
 
         assert list(sliced.content_chunks()) == [b"two\n", b"three\n"]
         assert [sliced.source_line_at(index) for index in range(len(sliced))] == [2, 3]
-        assert [sliced.target_line_at(index) for index in range(len(sliced))] == [12, 13]
-        assert list(without.content_chunks()) == [b"one\n", b"four\n"]
-        assert [without.source_line_at(index) for index in range(len(without))] == [1, 4]
-        assert list(combined.content_chunks()) == [
-            b"one\n",
-            b"two\n",
-            b"inserted\n",
-            b"three\n",
-            b"four\n",
+        assert [sliced.target_line_at(index) for index in range(len(sliced))] == [
+            12,
+            13,
         ]
-        assert [combined.source_line_at(index) for index in range(len(combined))] == [
+        assert list(without.content_chunks()) == [b"one\n", b"four\n"]
+        assert [without.source_line_at(index) for index in range(len(without))] == [
             1,
-            2,
-            None,
-            3,
             4,
         ]
-        assert combined.is_claimed_at(2) is True
 
     def test_realized_entry_getitem_reconstructs_entry(self):
         """__getitem__ returns the expected RealizedEntry view."""
@@ -1488,6 +3960,125 @@ class TestMergeLineSequences:
         finally:
             result.close()
 
+    def test_reverse_presence_uses_indexed_content_without_piece_rescans(self):
+        """Repeated discard slices must not restart fragmented editor scans."""
+        baseline = [b"one\n", b"old\n", b"three\n"]
+        source = [b"one\n", b"new\n", b"three\n"]
+        correspondence = build_baseline_correspondence(baseline, source)
+        entries = RealizedEntries()
+        for source_line, content in enumerate(source, start=1):
+            entries.append_line_range_from(
+                (content,),
+                0,
+                1,
+                source_line_start=source_line,
+                target_line_start=source_line,
+            )
+
+        def reject_piece_scan(*_args, **_kwargs):
+            raise AssertionError("fragmented editor scan should not be used")
+
+        entries._editor._line_sources = reject_piece_scan
+        try:
+            result = reverse_presence_constraints(
+                entries,
+                {2},
+                correspondence,
+                indexed_content_lines=source,
+            )
+        finally:
+            entries.close()
+
+        try:
+            assert list(result.content_chunks()) == baseline
+        finally:
+            result.close()
+
+    def test_reverse_presence_refuses_mixed_applied_hunk_expansion(self):
+        """Applied rollback must not expand a partly coupled baseline hunk."""
+        baseline = [b"head\n", b"old-a\n", b"old-b\n", b"tail\n"]
+        source = [b"head\n", b"new-a\n", b"new-b\n", b"tail\n"]
+        correspondence = build_baseline_correspondence(baseline, source)
+        assert correspondence.get_region_for_source_line(2).kind == (
+            RegionKind.REPLACE_BY_HUNK
+        )
+        entries = RealizedEntries()
+        entries.append_line_range_from(
+            source,
+            0,
+            len(source),
+            source_line_start=1,
+            target_line_start=1,
+        )
+
+        try:
+            with pytest.raises(MergeError, match="lacking an independent old side"):
+                reverse_presence_constraints(
+                    entries,
+                    {2, 3},
+                    correspondence,
+                    trusted_insertion_lines={2},
+                    separately_restored_ranges=((2, 2),),
+                )
+        finally:
+            entries.close()
+
+    def test_reverse_presence_closes_partial_result_on_failure(
+        self,
+        monkeypatch,
+    ):
+        """A refused rollback must release its partially built output."""
+        created_results = []
+
+        class TrackingRealizedEntries(RealizedEntries):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                created_results.append(self)
+
+        monkeypatch.setattr(
+            discard_reversal_module,
+            "RealizedEntries",
+            TrackingRealizedEntries,
+        )
+        correspondence = build_baseline_correspondence([], [])
+        entries = [RealizedEntry(b"owned\n", source_line=1)]
+
+        with pytest.raises(MergeError, match="no baseline restoration region"):
+            reverse_presence_constraints(entries, {1}, correspondence)
+
+        assert len(created_results) == 1
+        assert created_results[0].closed
+
+    def test_reverse_presence_defers_fully_coupled_applied_hunk(self):
+        """Every coupled line may defer old-side restoration to its claim."""
+        baseline = [b"head\n", b"old-a\n", b"old-b\n", b"tail\n"]
+        source = [b"head\n", b"new-a\n", b"new-b\n", b"tail\n"]
+        correspondence = build_baseline_correspondence(baseline, source)
+        entries = RealizedEntries()
+        entries.append_line_range_from(
+            source,
+            0,
+            len(source),
+            source_line_start=1,
+            target_line_start=1,
+        )
+
+        try:
+            result = reverse_presence_constraints(
+                entries,
+                {2, 3},
+                correspondence,
+                trusted_insertion_lines={2},
+                separately_restored_ranges=((2, 3),),
+            )
+        finally:
+            entries.close()
+
+        try:
+            assert list(result.content_chunks()) == [b"head\n", b"tail\n"]
+        finally:
+            result.close()
+
     def test_baseline_correspondence_accepts_non_list_sequences(self, line_sequence):
         """Baseline correspondence accepts sized sliceable line sequences."""
         baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
@@ -1520,11 +4111,14 @@ class TestMergeLineSequences:
         source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
         working = line_sequence([b"line1\n", b"line3\n"])
 
-        assert can_merge_batch_from_line_sequences(
-            source,
-            BatchOwnership.from_presence_lines(["2"], []),
-            working,
-        ) is True
+        assert (
+            can_merge_batch_from_line_sequences(
+                source,
+                BatchOwnership.from_presence_lines(["2"], []),
+                working,
+            )
+            is True
+        )
 
     def test_merge_from_line_sequences_can_return_buffer(self, line_sequence):
         """Merge can return a buffer without materializing through the bytes API."""
@@ -1558,9 +4152,7 @@ class TestMergeLineSequences:
             _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nline2\nline3\n"
             ) as source_buffer,
-            _IndexGuardedLineBuffer.from_bytes(
-                b"line1\nline3\n"
-            ) as working_buffer,
+            _IndexGuardedLineBuffer.from_bytes(b"line1\nline3\n") as working_buffer,
         ):
             source = normalize_line_sequence_endings(source_buffer)
             working = normalize_line_sequence_endings(working_buffer)
@@ -1578,9 +4170,7 @@ class TestMergeLineSequences:
     def test_discard_chunks_acquire_normalized_line_buffer_lines(self):
         """Discard realization uses scoped normalized line acquisition."""
         with (
-            _IndexGuardedLineBuffer.from_bytes(
-                b"line1\nnew\nline3\n"
-            ) as source_buffer,
+            _IndexGuardedLineBuffer.from_bytes(b"line1\nnew\nline3\n") as source_buffer,
             _IndexGuardedLineBuffer.from_bytes(
                 b"line1\nnew\nline3\n"
             ) as working_buffer,
@@ -1621,7 +4211,9 @@ class TestMergeBatch:
         working = b"line1\nline3\nline5\n"  # Missing lines 2, 4
         claimed = ["2"]  # Claim line 2
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # Should insert line2 between line1 and line3
         assert result == b"line1\nline2\nline3\nline5\n"
@@ -1632,7 +4224,9 @@ class TestMergeBatch:
         working = b"line1\r\nline3\r\n"
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         assert result == b"line1\r\nline2\r\nline3\r\n"
 
@@ -1642,7 +4236,9 @@ class TestMergeBatch:
         working = b"line1\nextra1\nline2\nextra2\nline3\n"
         claimed = ["2"]  # Claim line2
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # Should preserve extras
         assert result == working
@@ -1749,7 +4345,9 @@ class TestMergeBatch:
                 distinctive_context_lines=selected,
             )
 
-    def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(self):
+    def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(
+        self,
+    ):
         """Already-satisfied additions may be interleaved with unclaimed source lines."""
         source = b"line1\nline2\nline3\nline4\n"
         ownership = BatchOwnership.from_presence_lines(
@@ -1770,7 +4368,9 @@ class TestMergeBatch:
 
         assert result == source
 
-    def test_baseline_referenced_noncontiguous_presence_inserts_subset_when_missing(self):
+    def test_baseline_referenced_noncontiguous_presence_inserts_subset_when_missing(
+        self,
+    ):
         """Baseline-coordinate insertion can stage selected additions without siblings."""
         source = b"line1\nline2\nline3\nline4\n"
         working = b"line1\n"
@@ -2115,9 +4715,7 @@ class TestMergeBatch:
         working = b"head\nold1\nold2\ntail\nnew1\nnew2\n"
         ownership = _two_line_replacement_origin_ownership()
 
-        assert merge_batch(source, ownership, working) == (
-            b"head\ntail\nnew1\nnew2\n"
-        )
+        assert merge_batch(source, ownership, working) == (b"head\ntail\nnew1\nnew2\n")
 
         with pytest.raises(
             MergeError,
@@ -2127,11 +4725,13 @@ class TestMergeBatch:
                 source,
                 ownership,
                 working,
-                resolution=MergeResolution({
-                    AMBIGUITY_KEY: (
-                        CoordinateStrategyChoice.RECORDED_COORDINATES.value
-                    ),
-                }),
+                resolution=MergeResolution(
+                    {
+                        AMBIGUITY_KEY: (
+                            CoordinateStrategyChoice.RECORDED_COORDINATES.value
+                        ),
+                    }
+                ),
             )
 
     def test_mapped_full_replacement_origin_refuses_partial_old_side(self):
@@ -2173,12 +4773,15 @@ class TestMergeBatch:
         assert [candidate.summary for candidate in candidate_set.candidates] == [
             "replace target lines 5 with source lines 6",
         ]
-        assert merge_batch(
-            source,
-            ownership,
-            working,
-            resolution=candidate_set.candidates[0].resolution,
-        ) == b"a-head\na-new\na-tail\nhead\nnew2\ntail\n"
+        assert (
+            merge_batch(
+                source,
+                ownership,
+                working,
+                resolution=candidate_set.candidates[0].resolution,
+            )
+            == b"a-head\na-new\na-tail\nhead\nnew2\ntail\n"
+        )
 
     def test_mapped_full_replacement_origin_refuses_fragmented_old_side(self):
         """Mapped replacement content cannot hide fragmented old-side lines."""
@@ -2246,8 +4849,7 @@ class TestMergeBatch:
         )
 
         assert (
-            candidate_set.outcome
-            is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
+            candidate_set.outcome is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
         )
 
     @pytest.mark.parametrize(
@@ -2297,8 +4899,7 @@ class TestMergeBatch:
         )
 
         assert (
-            candidate_set.outcome
-            is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
+            candidate_set.outcome is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
         )
 
     def test_mapped_split_replacement_origin_refuses_partial_old_side(self):
@@ -2380,10 +4981,7 @@ class TestMergeBatch:
 
     def test_reviewed_unit_rejects_unrelated_mixed_replacement_replay(self):
         """A reviewed unit cannot bypass a mixed independent replacement."""
-        source = (
-            b"a-head\na-new1\na-new2\na-tail\n"
-            b"head\nnew1\nnew2\ntail\n"
-        )
+        source = b"a-head\na-new1\na-new2\na-tail\nhead\nnew1\nnew2\ntail\n"
         replacement_reference = BaselineReference(
             after_line=1,
             after_content=b"a-head\n",
@@ -2421,9 +5019,7 @@ class TestMergeBatch:
                 ),
             ],
         )
-        review_target = (
-            b"a-head\na-new1\na-new2\na-tail\nhead\nold2\ntail\n"
-        )
+        review_target = b"a-head\na-new1\na-new2\na-tail\nhead\nold2\ntail\n"
         candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
             source.splitlines(keepends=True),
             ownership,
@@ -2432,10 +5028,7 @@ class TestMergeBatch:
         )
         assert candidate_set.outcome is MergeCandidateSetOutcome.REVIEW_REQUIRED
 
-        replayed = (
-            b"a-head\na-old1\na-old2\na-new1\na-tail\n"
-            b"head\nold2\ntail\n"
-        )
+        replayed = b"a-head\na-old1\na-old2\na-new1\na-tail\nhead\nold2\ntail\n"
         with pytest.raises(
             MergeError,
             match="Selected merge resolution is no longer valid",
@@ -2539,11 +5132,13 @@ class TestMergeBatch:
                 source,
                 ownership,
                 mapped_elsewhere,
-                resolution=MergeResolution({
-                    AMBIGUITY_KEY: (
-                        CoordinateStrategyChoice.RECORDED_COORDINATES.value
-                    ),
-                }),
+                resolution=MergeResolution(
+                    {
+                        AMBIGUITY_KEY: (
+                            CoordinateStrategyChoice.RECORDED_COORDINATES.value
+                        ),
+                    }
+                ),
             )
 
         candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
@@ -2682,6 +5277,217 @@ class TestMergeBatch:
 
         assert result == b"head\nnew1\nnew2\ntail\n"
 
+    def test_adjacent_split_children_replay_complete_parent(self):
+        """Adjacent selected children collectively replace their old parent."""
+        source = b"head\nnew1\nnew2\ntail\n"
+        baseline = b"head\nold1\nold2\ntail\n"
+        parent_reference = BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[b"old1\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head\n",
+                        before_line=3,
+                        before_content=b"old2\n",
+                        has_before_line=True,
+                    ),
+                ),
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1\n",
+                        before_line=4,
+                        before_content=b"tail\n",
+                        has_before_line=True,
+                    ),
+                ),
+            ],
+            replacement_units=[
+                ReplacementUnit(
+                    ["2"],
+                    [0],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+                ReplacementUnit(
+                    ["3"],
+                    [1],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+            ],
+        )
+
+        assert merge_batch(source, ownership, baseline) == source
+        assert discard_batch(source, ownership, source, baseline) == baseline
+
+    def test_shifted_adjacent_split_children_replay_complete_parent(self):
+        """Shifted child coordinates may still prove a complete parent."""
+        source = b"saved\nhead\nnew1\nnew2\ntail\n"
+        baseline = b"head\nold1\nold2\ntail\n"
+        parent_reference = BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["3-4"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old1\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head\n",
+                        before_line=3,
+                        before_content=b"old2\n",
+                        has_before_line=True,
+                    ),
+                ),
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1\n",
+                        before_line=4,
+                        before_content=b"tail\n",
+                        has_before_line=True,
+                    ),
+                ),
+            ],
+            replacement_units=[
+                ReplacementUnit(
+                    ["3"],
+                    [0],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+                ReplacementUnit(
+                    ["4"],
+                    [1],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+            ],
+        )
+
+        assert merge_batch(source, ownership, baseline) == (b"head\nnew1\nnew2\ntail\n")
+
+    @pytest.mark.parametrize(
+        ("presence", "first_child", "second_child", "working"),
+        [
+            ("3", "3", None, b"head\nold1\nold2\ntail\n"),
+            ("3-4", "3", "5", b"head\nold1\nold2\ntail\n"),
+            ("3-4", "3", "4", b"head\nold1\nlocal\nold2\ntail\n"),
+            ("3-4", "3", "4", b"head\nold2\nold1\ntail\n"),
+        ],
+        ids=[
+            "missing-child",
+            "noncontiguous-new-side",
+            "fragmented-old-side",
+            "reordered-old-side",
+        ],
+    )
+    def test_shifted_split_children_require_complete_parent_proof(
+        self,
+        presence,
+        first_child,
+        second_child,
+        working,
+    ):
+        """Shift tolerance must not admit partial or reordered parents."""
+        parent_reference = BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        deletions = [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"old1\n"],
+                baseline_reference=BaselineReference(after_line=1),
+            ),
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"old2\n"],
+                baseline_reference=BaselineReference(after_line=2),
+            ),
+        ]
+        units = [
+            ReplacementUnit(
+                [first_child],
+                [0],
+                ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+            )
+        ]
+        if second_child is not None:
+            units.append(
+                ReplacementUnit(
+                    [second_child],
+                    [1],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                )
+            )
+        ownership = BatchOwnership.from_presence_lines(
+            [presence],
+            deletions,
+            replacement_units=units,
+        )
+
+        with pytest.raises(MergeError, match="original replacement boundary"):
+            merge_batch(
+                b"saved\nhead\nnew1\nnew2\nextra\ntail\n",
+                ownership,
+                working,
+            )
+
+    def test_unique_legacy_deletion_anchors_moved_insertion(self):
+        """A unique old side can prove a moved replacement insertion."""
+        source = b"head\nnew\nneighbor\ntail\n"
+        working = b"head\nold\nneighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[b"old\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head\n",
+                        before_line=3,
+                        before_content=b"neighbor\n",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                2: BaselineReference(
+                    after_line=3,
+                    after_content=b"neighbor\n",
+                    before_line=4,
+                    before_content=b"tail\n",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        assert merge_batch(source, ownership, working) == (
+            b"head\nneighbor\nnew\ntail\n"
+        )
+
     def test_split_replacement_origin_refuses_missing_parent_boundary(self):
         """Split replacement units should fail rather than guess a new location."""
         source = b"head\nnew1\nnew2\ntail\n"
@@ -2818,18 +5624,24 @@ class TestMergeBatch:
             "replace target lines 4 with source lines 3",
         ]
         first, second = candidate_set.candidates
-        assert merge_batch(
-            source,
-            ownership,
-            working,
-            resolution=first.resolution,
-        ) == b"head\nnew2\nmid\nold2\ntail\n"
-        assert merge_batch(
-            source,
-            ownership,
-            working,
-            resolution=second.resolution,
-        ) == b"head\nold2\nmid\nnew2\ntail\n"
+        assert (
+            merge_batch(
+                source,
+                ownership,
+                working,
+                resolution=first.resolution,
+            )
+            == b"head\nnew2\nmid\nold2\ntail\n"
+        )
+        assert (
+            merge_batch(
+                source,
+                ownership,
+                working,
+                resolution=second.resolution,
+            )
+            == b"head\nold2\nmid\nnew2\ntail\n"
+        )
 
     def test_baseline_referenced_independent_presence_and_absence(self):
         """Independent baseline-coordinate insertions and removals can compose."""
@@ -2936,7 +5748,11 @@ class TestMergeBatch:
         working = b"line1\nblock_start\nblock_end\nline2\nline3\n"
 
         # Create absence claim for multi-line sequence
-        deletions = [AbsenceClaim(anchor_line=1, content_lines=[b"block_start\n", b"block_end\n"])]
+        deletions = [
+            AbsenceClaim(
+                anchor_line=1, content_lines=[b"block_start\n", b"block_end\n"]
+            )
+        ]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
 
@@ -2955,12 +5771,16 @@ class TestMergeBatch:
         even_claimed = ["2", "4", "6", "8", "10"]
 
         # Apply even lines first
-        result1 = merge_batch(source, BatchOwnership.from_presence_lines(even_claimed, []), working)
+        result1 = merge_batch(
+            source, BatchOwnership.from_presence_lines(even_claimed, []), working
+        )
         assert result1 == b"line2\nline4\nline6\nline8\nline10\n"
 
         # Now apply odd lines on top of even
         odd_claimed = ["1", "3", "5", "7", "9"]
-        result2 = merge_batch(source, BatchOwnership.from_presence_lines(odd_claimed, []), result1)
+        result2 = merge_batch(
+            source, BatchOwnership.from_presence_lines(odd_claimed, []), result1
+        )
 
         # Should interleave correctly
         expected = b"\n".join([f"line{i}".encode() for i in range(1, 11)]) + b"\n"
@@ -2973,12 +5793,16 @@ class TestMergeBatch:
 
         # Apply odd first
         odd_claimed = ["1", "3", "5", "7", "9"]
-        result1 = merge_batch(source, BatchOwnership.from_presence_lines(odd_claimed, []), working)
+        result1 = merge_batch(
+            source, BatchOwnership.from_presence_lines(odd_claimed, []), working
+        )
         assert result1 == b"line1\nline3\nline5\nline7\nline9\n"
 
         # Then apply even
         even_claimed = ["2", "4", "6", "8", "10"]
-        result2 = merge_batch(source, BatchOwnership.from_presence_lines(even_claimed, []), result1)
+        result2 = merge_batch(
+            source, BatchOwnership.from_presence_lines(even_claimed, []), result1
+        )
 
         # Should produce same result as even-then-odd
         expected = b"\n".join([f"line{i}".encode() for i in range(1, 11)]) + b"\n"
@@ -2995,7 +5819,9 @@ class TestMergeBatch:
         # Claim line 2 (first "dup")
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # Should insert first dup based on alignment, not text search
         # Result should have both dups in correct positions
@@ -3012,7 +5838,9 @@ class TestMergeBatch:
         # Claim line 2 (first blank line)
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # Should insert first blank line at correct position via alignment
         assert result == b"line1\n\nline3\n\nline5\n"
@@ -3028,7 +5856,9 @@ class TestMergeBatch:
         # Claim line 2 (first "}")
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # Should insert first brace at correct position via alignment
         assert result == b"func1() {\n}\nfunc2() {\n}\nfunc3() {\n}\n"
@@ -3041,7 +5871,9 @@ class TestMergeBatch:
         # Claim all source lines (no-op for content, but tests preservation)
         claimed = ["1", "2", "3"]
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # Extras should remain in their positions
         assert result == b"A\nX\nB\nY\nC\nZ\n"
@@ -3057,7 +5889,9 @@ class TestMergeBatch:
         # Claim line 2 (A in batch source)
         claimed = ["2"]
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # A should already be present at line 3, so shouldn't duplicate
         # (semantic matching finds it despite different position)
@@ -3072,7 +5906,9 @@ class TestMergeBatch:
         # Claim lines 2-4
         claimed = ["2-4"]
 
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         assert result == b"line1\nline2\nline3\nline4\nline5\n"
 
@@ -3365,18 +6201,24 @@ footer
             "delete target line 7",
         ]
         first, second = candidate_set.candidates
-        assert merge_batch(
-            source,
-            ownership,
-            working,
-            resolution=first.resolution,
-        ) == b"a\nsame\nend\nmid\nsame\nremove\nend\nb\n"
-        assert merge_batch(
-            source,
-            ownership,
-            working,
-            resolution=second.resolution,
-        ) == b"a\nsame\nremove\nend\nmid\nsame\nend\nb\n"
+        assert (
+            merge_batch(
+                source,
+                ownership,
+                working,
+                resolution=first.resolution,
+            )
+            == b"a\nsame\nend\nmid\nsame\nremove\nend\nb\n"
+        )
+        assert (
+            merge_batch(
+                source,
+                ownership,
+                working,
+                resolution=second.resolution,
+            )
+            == b"a\nsame\nremove\nend\nmid\nsame\nend\nb\n"
+        )
 
     def test_merge_multiple_deletions(self):
         """Test merge with multiple deletion constraints at different positions."""
@@ -3385,7 +6227,7 @@ footer
 
         deletions = [
             AbsenceClaim(anchor_line=None, content_lines=[b"unwanted1\n"]),
-            AbsenceClaim(anchor_line=2, content_lines=[b"unwanted2\n"])
+            AbsenceClaim(anchor_line=2, content_lines=[b"unwanted2\n"]),
         ]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
@@ -3401,7 +6243,7 @@ footer
         # Two deletion constraints for same content (e.g., from incremental batching)
         deletions = [
             AbsenceClaim(anchor_line=None, content_lines=[b"unwanted\n"]),
-            AbsenceClaim(anchor_line=2, content_lines=[b"unwanted\n"])
+            AbsenceClaim(anchor_line=2, content_lines=[b"unwanted\n"]),
         ]
 
         result = merge_batch(source, BatchOwnership([], deletions), working)
@@ -3432,7 +6274,9 @@ footer
         claimed = [str(i) for i in range(100, 10001, 100)]
 
         # Structural matching should complete quickly for shifted large files.
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
 
         # Verify result has both extras and source
         assert result.startswith(b"extra1\n")
@@ -3451,7 +6295,9 @@ class TestMergeErrors:
         claimed = ["100"]  # Out of range
 
         with pytest.raises(MergeError, match="out of range"):
-            merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+            merge_batch(
+                source, BatchOwnership.from_presence_lines(claimed, []), working
+            )
 
     def test_merge_error_deletion_anchor_out_of_range(self):
         """Test error when deletion anchor is out of range."""
@@ -3476,7 +6322,9 @@ class TestMergeErrors:
 
         # Should fail because cannot reliably place line 5
         with pytest.raises(MergeError, match="Cannot reliably place"):
-            merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+            merge_batch(
+                source, BatchOwnership.from_presence_lines(claimed, []), working
+            )
 
     def test_merge_succeeds_with_minimal_context(self):
         """Test that merge succeeds when there's minimal but sufficient context."""
@@ -3489,7 +6337,9 @@ class TestMergeErrors:
         claimed = ["3"]
 
         # Should succeed because lines 2 and 4 provide context
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
         assert result == b"line1\nline2\nline3\nline4\nline5\n"
 
     def test_merge_succeeds_with_only_trailing_context(self):
@@ -3503,7 +6353,9 @@ class TestMergeErrors:
         claimed = ["2"]
 
         # Should succeed - line3 provides trailing context
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
         assert b"line2" in result
 
     def test_merge_succeeds_with_only_leading_context(self):
@@ -3517,7 +6369,9 @@ class TestMergeErrors:
         claimed = ["4"]
 
         # Should succeed - line3 provides leading context
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
         assert b"line4" in result
 
     def test_merge_requires_context_even_at_edges(self):
@@ -3531,7 +6385,9 @@ class TestMergeErrors:
         claimed = ["1"]
 
         # Should succeed - line2 provides context
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, []), working
+        )
         assert b"line1" in result
 
     def test_merge_edge_lines_fail_without_neighbors(self):
@@ -3546,7 +6402,9 @@ class TestMergeErrors:
 
         # Should fail - file completely rewritten
         with pytest.raises(MergeError, match="file completely rewritten"):
-            merge_batch(source, BatchOwnership.from_presence_lines(claimed, []), working)
+            merge_batch(
+                source, BatchOwnership.from_presence_lines(claimed, []), working
+            )
 
     def test_merge_error_batch_created_from_later_file_state(self):
         """Test error when batch was created from later file state with extra context.
@@ -3588,7 +6446,11 @@ class TestMergeErrors:
 
         # This correctly raises MergeError because deletion anchor doesn't exist
         with pytest.raises(MergeError, match="anchor not present"):
-            merge_batch(source_later, BatchOwnership.from_presence_lines(claimed, deletions), working_early)
+            merge_batch(
+                source_later,
+                BatchOwnership.from_presence_lines(claimed, deletions),
+                working_early,
+            )
 
     def test_merge_produces_corruption_with_mismatched_context(self):
         """Reproduce corruption when merging batch from later state to earlier state.
@@ -3646,19 +6508,27 @@ parser_include = subparsers.add_parser(
         # Batch wants to:
         # 1. Delete line 4 (old set_defaults) with anchor after line 3
         # 2. Add lines 5-6 (--porcelain arg + new set_defaults)
-        deletions = [AbsenceClaim(
-            anchor_line=3,
-            content_lines=[b"parser_status.set_defaults(func=lambda _: commands.command_status())\n"]
-        )]
+        deletions = [
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[
+                    b"parser_status.set_defaults(func=lambda _: commands.command_status())\n"
+                ],
+            )
+        ]
         claimed = ["5", "6"]  # New argument and new set_defaults
 
         # Apply the merge
-        result = merge_batch(source, BatchOwnership.from_presence_lines(claimed, deletions), working)
+        result = merge_batch(
+            source, BatchOwnership.from_presence_lines(claimed, deletions), working
+        )
 
         # Check that old and new set_defaults are not both present.
         result_str = result.decode()
         old_setdefaults = "lambda _: commands.command_status()"
-        new_setdefaults = "lambda args: commands.command_status(porcelain=args.porcelain)"
+        new_setdefaults = (
+            "lambda args: commands.command_status(porcelain=args.porcelain)"
+        )
 
         has_old = old_setdefaults in result_str
         has_new = new_setdefaults in result_str
@@ -3734,7 +6604,9 @@ line3_c
         # This should fail because Section A doesn't exist in working tree
         # The anchor line 2 doesn't map correctly
         with pytest.raises(MergeError):
-            merge_batch(source, BatchOwnership.from_presence_lines(claimed, deletions), working)
+            merge_batch(
+                source, BatchOwnership.from_presence_lines(claimed, deletions), working
+            )
 
 
 class TestDiscardBatch:
@@ -3770,9 +6642,7 @@ class TestDiscardBatch:
 
     def test_discard_uses_replacement_edges_around_copied_baseline_content(self):
         """Recorded replacement edges prevent copied content stealing alignment."""
-        baseline = (
-            b"old-header\n{\n common\n old-only\n}\nold-sep\ntail\n"
-        )
+        baseline = b"old-header\n{\n common\n old-only\n}\nold-sep\ntail\n"
         batch_source = (
             b"new-header\n{\n common\n new-only\n}\nold-sep\n"
             b"old-header\n{\n common\n}\ntail\n"
@@ -3811,9 +6681,7 @@ class TestDiscardBatch:
         ownership = BatchOwnership.from_presence_lines(
             ["1", "4", "7-10"],
             deletions,
-            baseline_references={
-                line: copied_reference for line in range(7, 11)
-            },
+            baseline_references={line: copied_reference for line in range(7, 11)},
             replacement_units=[
                 ReplacementUnit(["1"], [0]),
                 ReplacementUnit(["4"], [1]),
@@ -3843,10 +6711,7 @@ class TestDiscardBatch:
         result = discard_batch(batch_source, ownership, working, baseline)
 
         assert result == baseline + b"LOCAL\n"
-        assert (
-            discard_batch(batch_source, ownership, result, baseline)
-            == result
-        )
+        assert discard_batch(batch_source, ownership, result, baseline) == result
 
     def test_discard_repeated_bof_copy_is_idempotent(self):
         """Repeated boundary lines do not make a second discard destructive."""
@@ -3871,10 +6736,7 @@ class TestDiscardBatch:
         )
 
         assert result == baseline
-        assert (
-            discard_batch(batch_source, ownership, result, baseline)
-            == baseline
-        )
+        assert discard_batch(batch_source, ownership, result, baseline) == baseline
 
     @pytest.mark.parametrize(
         "first_gap",
@@ -3888,11 +6750,7 @@ class TestDiscardBatch:
         """Discard never removes an insertion from an unrelated source clone."""
         baseline = b"H\nA\nB\nT\n"
         batch_source = b"H\nA\nX\nB\nT\n"
-        working = (
-            b"P\nH\nA\n"
-            + first_gap
-            + b"B\nT\nU\nH\nA\nX\nB\nT\n"
-        )
+        working = b"P\nH\nA\n" + first_gap + b"B\nT\nU\nH\nA\nX\nB\nT\n"
         reference = BaselineReference(
             after_line=2,
             after_content=b"A\n",
@@ -3930,7 +6788,9 @@ class TestDiscardBatch:
         working = b"line1\ninserted\nline2\n"
 
         # Claim the inserted line
-        ownership = BatchOwnership.from_presence_lines(["2"], [])  # Line 2 of batch_source is "inserted"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"], []
+        )  # Line 2 of batch_source is "inserted"
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -3944,7 +6804,9 @@ class TestDiscardBatch:
         working = b"inserted\nline1\nline2\n"
 
         # Claim the inserted line
-        ownership = BatchOwnership.from_presence_lines(["1"], [])  # Line 1 of batch_source is "inserted"
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"], []
+        )  # Line 1 of batch_source is "inserted"
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -3954,11 +6816,15 @@ class TestDiscardBatch:
     def test_discard_combined_claimed_and_insertion(self):
         """Test discarding both claimed lines and insertions."""
         baseline = b"A\nB\nC\n"
-        batch_source = b"A\nB_modified\ninserted\nC\n"  # Modified B and added "inserted"
+        batch_source = (
+            b"A\nB_modified\ninserted\nC\n"  # Modified B and added "inserted"
+        )
         working = b"A\nB_modified\ninserted\nC\n"
 
         # Claim both modified B and the insertion
-        ownership = BatchOwnership.from_presence_lines(["2", "3"], [])  # Lines 2 and 3 of batch_source
+        ownership = BatchOwnership.from_presence_lines(
+            ["2", "3"], []
+        )  # Lines 2 and 3 of batch_source
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -3972,7 +6838,9 @@ class TestDiscardBatch:
         working = b"line1\ninsert1\ninsert2\nline2\n"
 
         # Claim both inserted lines
-        ownership = BatchOwnership.from_presence_lines(["2", "3"], [])  # Lines 2 and 3 of batch_source
+        ownership = BatchOwnership.from_presence_lines(
+            ["2", "3"], []
+        )  # Lines 2 and 3 of batch_source
 
         result = discard_batch(batch_source, ownership, working, baseline)
 
@@ -4003,6 +6871,110 @@ class TestDiscardBatch:
         with pytest.raises(MergeError, match="batch owns 1 of 3 lines"):
             discard_batch(batch_source, ownership, working, baseline)
 
+    def test_discard_restores_live_legacy_replacement_before_unowned_neighbor(
+        self,
+    ):
+        """Legacy replacement reversal must not restore a changed neighbor."""
+        baseline = b"head\nold-call\nbaseline-neighbor\ntail\n"
+        batch_source = b"head\nnew-call-a\nnew-call-b\ncurrent-neighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old-call\n"])],
+        )
+        assert not ownership.replacement_units
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+        )
+
+        assert result == b"head\nold-call\ncurrent-neighbor\ntail\n"
+
+    def test_discard_does_not_restore_missing_legacy_replacement(self):
+        """An unapplied legacy new side must not introduce its historical old side."""
+        baseline = b"head\nold-call\nbaseline-neighbor\ntail\n"
+        batch_source = b"head\nnew-call-a\nnew-call-b\ncurrent-neighbor\ntail\n"
+        working = b"head\ncurrent-neighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old-call\n"])],
+        )
+
+        assert (
+            discard_batch(
+                batch_source,
+                ownership,
+                working,
+                baseline,
+            )
+            == working
+        )
+
+    def test_discard_preserves_applied_presence_that_preexisted_in_index(self):
+        """A selected no-op line must survive rollback of its adjacent edit."""
+        baseline = b"head\nold-a\nbaseline-neighbor\ntail\n"
+        batch_source = b"head\nnew-a\ncurrent-neighbor\ntail\n"
+        trusted_target = b"head\nold-a\ncurrent-neighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old-a\n"])],
+            replacement_units=[ReplacementUnit(["2"], [0])],
+        )
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+            trusted_target_content=trusted_target,
+            applied_presence_lines=LineRanges.from_ranges([(2, 3)]),
+        )
+
+        assert result == trusted_target
+
+    def test_discard_does_not_reverse_preexisting_explicit_replacement(self):
+        """An explicit replacement already satisfied before apply is a no-op."""
+        baseline = b"head\nold\ntail\n"
+        batch_source = b"head\nnew\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+            replacement_units=[ReplacementUnit(["2"], [0])],
+        )
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+            trusted_target_content=batch_source,
+            applied_presence_lines=LineRanges.from_ranges([(2, 2)]),
+        )
+
+        assert result == batch_source
+
+    def test_discard_does_not_reverse_preexisting_legacy_replacement(self):
+        """A legacy replacement already satisfied before apply is also a no-op."""
+        baseline = b"head\nold\ntail\n"
+        batch_source = b"head\nnew\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        )
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+            trusted_target_content=batch_source,
+            applied_presence_lines=LineRanges.from_ranges([(2, 2)]),
+        )
+
+        assert result == batch_source
+
     def test_discard_rejects_partial_ambiguous_repeated_replacement(self):
         """Repeated baseline/source content must not be guessed partially."""
         baseline = b"A\nA\nA\n"
@@ -4029,7 +7001,9 @@ class TestDiscardBatch:
         working = b"line1\nline2\n"  # But working tree doesn't have it
 
         # Claim the inserted line
-        ownership = BatchOwnership.from_presence_lines(["2"], [])  # Line 2 of batch_source
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"], []
+        )  # Line 2 of batch_source
 
         result = discard_batch(batch_source, ownership, working, baseline)
 

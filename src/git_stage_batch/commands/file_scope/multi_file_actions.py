@@ -14,10 +14,9 @@ from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
     capture_worktree_identities,
-    index_identity_from_entry,
+    read_index_identities,
 )
 from ...data.hunk_tracking import select_next_change_after_action
-from ...data.index_entries import read_index_entries
 from ...data.live_diff import (
     acquire_prepared_live_diff,
     group_live_diff_by_file,
@@ -107,8 +106,8 @@ def run_for_each_resolved_file(
                 file_scope.files,
                 worktree_paths=worktree_paths,
             )
-            if undo_operation is not None else
-            nullcontext()
+            if undo_operation is not None
+            else nullcontext()
         )
         with checkpoint:
             for file_path in file_scope.files:
@@ -213,9 +212,7 @@ def _require_prepared_change_paths_covered(
 ) -> None:
     """Reject prepared changes that reach beyond the undo before-image."""
     prepared_paths = paths_for_live_changes(
-        change
-        for file_path in files
-        for change in changes_by_file[file_path]
+        change for file_path in files for change in changes_by_file[file_path]
     )
     missing_paths = sorted(set(prepared_paths) - set(checkpoint_paths))
     if missing_paths:
@@ -226,9 +223,7 @@ def _require_prepared_change_paths_covered(
                 "The matched files changed while the undo checkpoint was being "
                 "prepared. Review them again and retry. Uncaptured paths: {paths}",
                 len(missing_paths),
-            ).format(
-                paths=", ".join(display_path(path) for path in missing_paths)
-            )
+            ).format(paths=", ".join(display_path(path) for path in missing_paths))
         )
 
 
@@ -237,12 +232,8 @@ def _capture_live_action_targets(
 ) -> _LiveActionTargetSnapshot:
     """Capture repository identities used to prepare a mutating live action."""
     unique_paths = tuple(dict.fromkeys(paths))
-    index_entries = read_index_entries(unique_paths)
     return _LiveActionTargetSnapshot(
-        index_by_path={
-            path: index_identity_from_entry(index_entries.get(path))
-            for path in unique_paths
-        },
+        index_by_path=read_index_identities(unique_paths),
         worktree_by_path=capture_worktree_identities(unique_paths),
     )
 
@@ -257,11 +248,14 @@ def _require_live_action_targets_unchanged(
     target_paths = tuple(
         dict.fromkeys(paths if paths is not None else expected.index_by_path)
     )
-    current_index_entries = read_index_entries(target_paths)
+    current_index_identities = read_index_identities(target_paths)
     current_worktree = capture_worktree_identities(target_paths)
     for path in target_paths:
-        current_index = index_identity_from_entry(current_index_entries.get(path))
-        if current_index != expected.index_by_path[path]:
+        current_index = current_index_identities[path]
+        if (
+            expected.index_by_path[path].unmerged_entries
+            or current_index != expected.index_by_path[path]
+        ):
             raise _live_action_target_changed_error(
                 operation=operation,
                 path=path,

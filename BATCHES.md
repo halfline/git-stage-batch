@@ -64,12 +64,13 @@ These names refer to different file contents. They are not interchangeable.
 | **Current working tree** | The file on disk now. It may differ from both the baseline and the batch source. |
 | **Batch ownership** | A `BatchOwnership` value containing the saved requirements for one text file |
 | **Presence claim** | Batch-source lines that must be present after the saved change is applied |
-| **Absence claim** | Baseline bytes that must be absent after the saved change is applied. The stored metadata key is `deletions`. |
+| **Absence claim** | Bytes that must be absent after the saved change is applied. They normally come from the baseline; a source-alternative claim comes from an explicit live replacement. The stored metadata key is `deletions`. |
 | **Replacement unit** | Stored metadata that ties presence claims and absence claims together because they are the new and old sides of one replacement |
 | **Ownership unit** | An `OwnershipUnit` value derived for display and selection. A replacement or deletion-only value must be selected in full. |
 | **Realized batch content** | The complete file content produced from the baseline, batch source, and ownership. The source uses the word “realized” in names such as `realized_file_content.py`. |
-| **Baseline reference** | Exact before-and-after baseline line positions and bytes recorded for a claim. Merge code uses them only when those positions and bytes still match. |
+| **Baseline reference** | Recorded before-and-after positions and bytes for a claim. They normally describe the baseline; a source-alternative reference describes the post-discard live target. Merge may use the recorded position or a separately proved relocation. |
 | **Attribution** | A calculated answer to which visible working-tree changes are already owned by which batches. It is recalculated; it is not stored as ownership. |
+| **Applied overlay** | Worktree-local, identity-bound provenance that records ownership intentionally restored by `apply --from`. It makes only that applied ownership reviewable and is not canonical batch metadata. |
 | **Display line identifier** | A number printed beside a changed line for a later user selection. It is not a batch-source line number. |
 | **Merge candidate** | One numbered result calculated after ordinary merge cannot choose a single structural placement. A later command can name the reviewed result. |
 
@@ -134,6 +135,8 @@ The state commit contains:
   metadata
 - `sources/<path>`, which contains the embedded batch source for each file that
   has one
+- `objects/<blob-id>`, which keeps blobs referenced by ownership metadata
+  reachable when the state reference is fetched into a shallow clone
 
 The revision changes each time `sync_batch_state_refs()` publishes state. The
 function compares the revision it read with the current state reference before
@@ -148,6 +151,17 @@ references and removes the historical storage for that batch.
 
 [`batch/state/metadata_schema.py`](src/git_stage_batch/batch/state/metadata_schema.py)
 validates stored fields before the rest of the program uses them.
+Schema version 2 adds source-alternative absence claims. Version 1 and
+historical unversioned metadata are migrated in memory; the next successful
+publication writes the current schema.
+Because older schemas did not record whether an unowned source suffix was the
+other side of an explicit transformed replacement, migration marks text
+ownership with that uncertainty. Whole-file replay refuses a legacy claimed
+insertion when it occupies a collapsed gap between mapped historical neighbors
+and no saved boundary or replacement unit proves insertion semantics. A
+reviewed line selection is the user's explicit confirmation to apply the shown
+insertion. This prevents an unreviewed replay from silently preserving both
+alternatives.
 
 A text-file entry normally contains:
 
@@ -161,6 +175,10 @@ A text-file entry normally contains:
 
 An absence claim stores the removed bytes in a Git blob and records that blob's
 object identifier. It does not repeat those bytes inline in `batch.json`.
+An explicit transformed discard can also mark an absence claim as a
+`source_alternative`. That old side came from the live replacement payload,
+not the batch baseline, and is always coupled to the owned payload prefix by a
+replacement unit.
 
 Binary files, submodule pointers, and file mode changes use separate file types
 and store only fields applicable to the complete file change. They do not use
@@ -191,13 +209,45 @@ A staging session includes batch references in its recovery state.
 - [`data/batch_refs.py`](src/git_stage_batch/data/batch_refs.py) records every
   current batch content and state reference. `abort` restores those references,
   restores a dropped batch, and removes a batch created after session start.
-- [`data/undo_checkpoints.py`](src/git_stage_batch/data/undo_checkpoints.py)
+- [`data/undo/checkpoints.py`](src/git_stage_batch/data/undo/checkpoints.py)
   records references changed by one command. `undo` and `redo` restore only the
   command checkpoints they traverse.
 
 An action that changes a batch must run inside the existing command checkpoint
 flow. `abort` and `undo` serve different scopes: `abort` returns all batches to
 session-start state, while `undo` reverses one recorded operation.
+
+Batch-source commands that publish worktree state use `transaction_checkpoint()`.
+An active session receives the normal undo node; outside a session, a uniquely
+referenced Git snapshot exists only for the publication and is removed after
+success or completed rollback. The checkpoint starts unarmed: plans verify
+their captured worktree and relevant full index identities once before the
+snapshot and again inside it. A full index identity includes the stage-zero
+mode and object, the intent-to-add bit, and every stage 1/2/3 conflict entry.
+Checkpoint creation refuses a declared path that is already unmerged; an
+unmerged or other index change that races either identity check is stale and is
+left untouched. The caller arms rollback immediately before its first
+mutation, so a stale second check also preserves the external edit it detected.
+
+Nested transactions share the publication arm state and outermost success
+boundary. Each nested context separately records whether it reached its own
+publication boundary, so a caught inner refusal before its first write does not
+poison an already-armed outer operation. Output, review completion, and other
+success-only effects registered through the shared boundary run only after the
+outer transaction and its durable checkpoint have committed. A refusal or
+rollback drops them, including when an inner operation returned successfully
+before a later sibling failed. Deferred plans and their mapped workspaces close
+before that commit; a teardown failure therefore rolls publication back instead
+of reporting failure after leaving changed files behind. Transient snapshots
+retain only the declared index paths and repository-state files alongside their
+worktree scope.
+
+Checkpoint trees use Git modes for stored blobs, while compatible manifest
+records also retain each regular file's exact Unix permission bits. Automatic
+rollback, undo, and redo therefore restore permissions such as `0600` for
+worktree files and scoped session, batch, and repository metadata. Checkpoints
+written before that field existed remain readable and fall back to their saved
+Git mode.
 
 ## How `include --to` saves a live change
 
@@ -232,6 +282,10 @@ storage modules instead of `text_file_storage.py`.
 `discard --to <name>` records the same saved ownership but also removes the
 selected content from the working tree. Its command path lives in the matching
 discard modules under `commands/selection/` and `commands/file_scope/`.
+When `--as-stdin` preserves the selected lines as an owned payload prefix and
+retains a different suffix in the working tree, the command records those two
+sides as one source-alternative replacement. This keeps a later replay from
+inserting the owned prefix beside the retained alternative.
 
 ## How text ownership is stored
 
@@ -239,19 +293,26 @@ discard modules under `commands/selection/` and `commands/file_scope/`.
 `BatchOwnership` with three fields:
 
 - `presence_claims`: source line ranges and optional baseline references
-- `deletions`: separate `AbsenceClaim` values containing an anchor and removed
-  baseline bytes
+- `deletions`: separate `AbsenceClaim` values containing an anchor and exact
+  old-side bytes
 - `replacement_units`: optional links between presence ranges and entries in
   `deletions`
 
-An absence anchor is either a batch-source line after which the baseline bytes
-were removed or `None` for the beginning of the file. The anchor is a placement
+An absence anchor is either the batch-source line after which the old-side bytes
+belong or `None` for the beginning of the file. The anchor is a placement
 boundary, not an instruction to search the whole file and delete the first
 matching text.
 
 The metadata key remains `deletions` for compatibility. Code that loads it
 constructs `AbsenceClaim` values because the stored requirement is “these exact
-baseline bytes must be absent at this boundary.”
+old-side bytes must be absent at this boundary.”
+
+Most absence claims describe baseline bytes. A `source_alternative` claim
+instead describes the exact live side retained by an explicit transformed
+discard. Its saved boundary is measured in that post-discard target, and its
+replacement unit supplies the owned side from the batch source. Source
+advancement remaps the compact anchor and presence ranges without expanding
+either side into Python line objects.
 
 [`batch/ownership/hunk_translation.py`](src/git_stage_batch/batch/ownership/hunk_translation.py)
 and [`batch/ownership/translation.py`](src/git_stage_batch/batch/ownership/translation.py)
@@ -272,6 +333,11 @@ receives:
 It selects every claimed source line, removes baseline sequences described by
 applicable absence claims, and preserves the source line-ending style. The
 result becomes the file stored in the batch content commit.
+
+Source-alternative claims are omitted from this baseline-derived realization:
+their old side was never baseline content. Their presence side is still
+realized normally, while live apply and include operations enforce the coupled
+replacement against the retained alternative.
 
 Building stored content is less strict than merging into a current working
 file. If an absence claim does not match its expected boundary while the stored
@@ -307,10 +373,28 @@ single-file review permits only action groups completely shown on the selected
 pages. These checks prevent an identifier from acting on an unseen or stale
 line.
 
+The renderer may join adjacent additions into one visual change even when they
+remain separate ownership units. The saved review retains each unit's complete
+action set, so selecting one independently reviewed unit is not mistaken for a
+partial selection of the larger visual run.
+
+Legacy metadata can lack an explicit replacement unit for a multi-line new
+side. When a merge action selects the inferred deletion/first-line pair, the
+transient selected ownership carries the rest of that contiguous presence run
+as the same replacement. This completion is not written back to batch metadata,
+and reset keeps its original fine-grained ownership units. If a stronger merge
+proof newly makes a visual replacement containing apply-capable and reset-only
+children actionable as one composite, an older generated all-other-actions
+command is also accepted for that composite. The compatibility completion is
+used only when the command selects every other action-capable identifier;
+ordinary partial selections do not acquire omitted changes.
+
 ## How `include --from` and `apply --from` add saved changes
 
 `include --from <name>` changes both the index and working tree.
-`apply --from <name>` changes only the working tree.
+`apply --from <name>` changes only the working tree, except that an added
+submodule pointer needs an intent-to-add index entry so Git can expose it as an
+unstaged pointer change.
 
 Their command modules are:
 
@@ -327,6 +411,33 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
+When `apply --from ... --files` resolves more than one path, the resolved paths
+remain one ordered, literal file scope. Apply builds and validates every file
+plan before publishing any of them, then writes the accepted worktree targets
+and their applied-overlay state under one undo checkpoint. If any selected file
+cannot be planned or publication fails, no file or overlay from that invocation
+is left partially applied. This guarantee also applies without an active
+session. Applying an added submodule pointer declares its intent-to-add index
+entry as part of the same transaction and validates that entry before
+publication; ordinary worktree-only apply paths do not acquire broader index
+rollback authority.
+
+Include builds every selected file plan before opening one transaction whose
+index and worktree scope covers all selected paths. It publishes neither a
+later file nor an earlier one when planning fails, and a publication exception
+rolls the whole scope back. A pre-resolved `include --from ... --files` scope
+stays one ordered set of literal paths through that planning and publication;
+it does not fall back to independently committed per-file transient
+transactions. Reviewed include candidates use the same
+index-scoped transaction for their single materialized target. Both flows
+capture the complete scoped index identity, including intent-to-add and every
+unmerged stage, before merge planning. They repeat that check inside the
+unarmed transaction, then arm rollback immediately before the first write. A
+pre-existing conflict or an index/worktree change introduced after capture is
+therefore refused without overwriting concurrent state. Their review-complete
+state and success output are deferred until the outermost transaction commits,
+so a nested success cannot survive an enclosing rollback.
+
 For text files, [`batch/merge/merge.py`](src/git_stage_batch/batch/merge/merge.py) receives
 the batch source, ownership, and current target bytes. It tries to satisfy the
 presence and absence requirements against that target.
@@ -340,8 +451,137 @@ line and every absence claim:
 - a missing claimed run needs surrounding mapped content or an exact recorded
   baseline boundary
 - an absence anchor must still identify the intended structural boundary
-- a replacement fallback requires the recorded baseline bytes at the recorded
-  baseline position
+- a replacement fallback requires the recorded baseline bytes at a verified
+  live boundary
+
+A source-alternative replacement uses the same exact-boundary discipline, but
+its recorded old bytes and boundary come from the post-discard live target. The
+old side must still match there (or at its sole complete relocated identity)
+before the owned source side replaces it. Ordinary presence claims never gain
+permission to remove an adjacent unowned source line.
+
+When successive replacement metadata reuses one intermediate payload, the
+same bytes can be an earlier unit's old side and a later unit's selected new
+side. Before planning, replay verifies that every explicit old side is the
+exact source span immediately after its linked replacement unit. Verified old
+sides are then removed from effective presence ownership, and a deletion whose
+anchor was inside a superseded span is moved to the nearest surviving source
+boundary. This collapses a replacement chain to the retained selected side
+rather than reintroducing an intermediate alternative.
+
+An ordinary line mapping is also insufficient when a low-entropy selected line
+can consume the target occurrence belonging to unowned source context. If a
+mapped selected payload also occurs outside the selection, replay performs a
+second mapping through a lazy source view that masks selected lines. That pass
+may displace the selected mapping across one contiguous context run when that
+run contains a globally unique source/target line. A verified
+source-alternative span authorizes only its own competing context lines, not
+unrelated repeated neighbors in the same run. A complete saved presence run may
+also authorize its immediately adjacent context, but only when the complete
+recorded boundary occurs once in the live target. Repeated context without one
+of those proofs remains ambiguous and fails closed. The
+occurrence indexes, correction records, and resulting mapping use mapped
+storage; slice views and claim payloads stay lazy instead of becoming Python
+collections of file lines.
+
+Recorded baseline coordinates are the first placement proof, not permanently
+fixed worktree offsets. Earlier replay may insert or remove neighboring lines.
+When that happens, a legacy replacement or deletion anchor may follow the sole
+live occurrence of its complete saved after/deleted-span/before identity. An
+independent deletion that is also visible as unowned historical source text
+needs the stronger proof that its complete span and both boundaries map
+byte-for-byte from the current index to the worktree. When another selected
+change already requires a source-to-target mapping, an independent deletion may
+instead use the exact gap between its mapped surviving source anchors. The gap
+must contain the complete saved old side or none of it; matching bytes elsewhere
+are unrelated and remain untouched. Mapped deletion gaps selected together must
+not overlap, so each target region is inspected at most once.
+
+A missing insertion may likewise follow a boundary neighbor that occurs once,
+or a conservatively mapped source predecessor when the target still matches
+both saved boundary neighbors. A stale saved reference may be superseded by a
+two-sided source mapping only when the source neighbors immediately surrounding
+the missing run map to consecutive target lines and at least one neighbor occurs
+once in the target. If one already-applied presence run has split its saved
+boundary, the planner retains and reuses the mapping needed to recognize that
+run when validating other missing runs in the same plan. Unowned source-only
+lines between a missing run and later mapped content do not defeat that
+predecessor-and-boundary proof. Repeated boundaries without that mapped source
+proof remain ambiguous and fail closed. Occurrence lookup and source scanning
+use storage-backed indexes; each placement phase reuses its occurrence index,
+mapping, and mapped-line index across claims. This reconciliation therefore
+does not keep per-file line tables on the Python heap or compare every selected
+line with every target line. It is a live-target fallback only; the explicit
+recorded-coordinate candidate remains fixed at the stored positions so reviewed
+strategy choices stay distinct.
+
+Structural presence placement also reconciles split owned insertions as one
+missing source island when the same nearest mapped source boundaries surround
+them. The target boundary lines must be consecutive, so there is no live target
+content whose ordering would be guessed, and fewer than three unowned source
+lines may be omitted from the island. This permits a later batch to insert next
+to a committed predecessor even when one stale, unowned source line split its
+saved presence ranges. A nonempty target gap or broader unowned source skew
+still requires distinctive context and otherwise fails closed. The island scan
+uses compact missing ranges and does not construct a per-line Python index.
+
+Presence recorded against an empty baseline can also identify an independent
+addition inside a nonempty predecessor file. When exact unselected source lines
+extend inward from both mapped boundaries and consume the complete target gap,
+recorded runs adjacent to either side share that proven insertion position.
+Unselected source-only content between sibling runs remains omitted. This proof
+is unavailable to unrecorded claims, so broad source skew without the persisted
+insertion intent still fails closed. The ordered prefix and suffix scans retain
+only scalar cursors and do not copy file lines onto the Python heap.
+
+For adjacent selectable children of one historical replacement, the persisted
+parent coordinates describe the comparison that discovered the replacement;
+the child presence ranges describe the current batch-source coordinates. Source
+advancement can shift those coordinate spaces. Structural validation therefore
+accepts the children collectively only when their source ranges are contiguous,
+their exact old- and new-side counts cover the whole recorded parent, every new
+line is missing, and the complete old side remains contiguous at the verified
+parent boundary.
+
+When a complete replacement's historical old bytes were transformed by a
+later commit or staged change, `apply --from` may instead use the current index
+as a trusted target. The replacement is accepted only when the immediate source
+boundaries map to the same index and worktree boundaries and every worktree line
+inside that span maps unchanged from the index. An unstaged edit inside the span
+therefore still causes refusal. The owned children may end immediately before
+an unchanged line that belonged to the historical parent: the mapped source
+neighbors must then bracket exactly the deletion-sized interior gap, and the
+deletion references must cover that gap consecutively. This proof scans the
+source, index, and worktree spans once and retains only compact ranges in mapped
+storage. Consecutive split children that satisfy the complete-parent proof only
+together are exposed as one atomic review selection.
+
+Source advancement can also retain a committed predecessor immediately after a
+newer replacement side. For a file with exactly one complete, unshifted
+replacement unit, the planner may cross that retained predecessor to the next
+shared index/worktree boundary. It does so only when the index gap is the exact
+historical old side, the selected new side maps an initial shared prefix, and
+the complete contiguous predecessor equals the live gap while its mapped suffix
+supplies the rest. A target-only line, a different index old side, an unrelated
+retained insertion, a partial unit, or a second replacement unit keeps the
+replay fail-closed. The scan uses only scalar cursors and existing storage-backed
+line mappings, so even a large retained predecessor does not create line-scale
+Python heap state.
+
+Older replacement units without parent-origin metadata can use the same trusted
+target proof when a duplicate historical source alternative hides an immediate
+source boundary. Their saved after/span-length/before context must identify one
+live span, at most a small bounded number of context candidates are inspected,
+and that span plus both boundaries must map unchanged from the index. This is a
+runtime compatibility proof: it does not rewrite the batch metadata.
+
+A batch may own only one child of a historical parent whose unowned sibling was
+already committed and reordered. In a multi-unit replay, the coordinate planner
+may remove that child's exact old bytes and insert its new bytes separately when
+the index and worktree agree on the complete parent, a unique line proves the
+old child's location inside that bounded parent, and the immediate mapped source
+neighbors agree on one insertion boundary. A lone reordered child remains a
+reviewed candidate rather than silently changing the existing review workflow.
 
 [`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. The merge helpers separate these structural and
@@ -354,14 +594,16 @@ exact-coordinate responsibilities:
   proves recorded boundaries identify the intended live-target positions and
   supplies safe deletion anchors to structural matching.
 - [`batch/merge/baseline_replacement_edits.py`](src/git_stage_batch/batch/merge/baseline_replacement_edits.py)
-  plans replacement edits at verified baseline positions and records which
+  plans replacement edits at verified live boundaries and records which
   source ranges supply their new content.
 - [`batch/merge/baseline_removal_edits.py`](src/git_stage_batch/batch/merge/baseline_removal_edits.py)
-  plans removals that are not part of replacement units and detects when
-  claimed content is already absent.
+  plans removals that are not part of replacement units, follows verified
+  mapped source gaps when recorded offsets moved, and detects when claimed
+  content is already absent.
 - [`batch/merge/baseline_presence_edits.py`](src/git_stage_batch/batch/merge/baseline_presence_edits.py)
-  plans insertions for required source lines at recorded baseline positions
-  and checks that structurally matched lines survive other planned edits.
+  plans insertions for required source lines at recorded, uniquely relocated,
+  or mapped-and-verified baseline boundaries and checks that structurally
+  matched lines survive other planned edits.
 - [`batch/merge/baseline_edits.py`](src/git_stage_batch/batch/merge/baseline_edits.py)
   coordinates the separate replacement, removal, and insertion plans and opens
   the resulting edit stream.
@@ -369,6 +611,9 @@ exact-coordinate responsibilities:
   resolves which matching baseline bytes an absence claim may suppress.
 - [`batch/merge/presence_constraints.py`](src/git_stage_batch/batch/merge/presence_constraints.py)
   places missing claimed content.
+- [`batch/merge/presence_context.py`](src/git_stage_batch/batch/merge/presence_context.py)
+  proves one unambiguous target gap for each missing presence run or compatible
+  split-run island.
 
 If the required boundary is missing or several placements are possible, the
 operation refuses. It does not choose the first similar text. That refusal
@@ -382,12 +627,27 @@ absences are already satisfied before writing.
 ## How `discard --from` removes saved changes
 
 `discard --from <name>` removes the selected batch's effect from the working
-tree and does not change the index.
+tree. Text, binary, and mode actions do not change the index. Restoring the
+absence that preceded an added submodule pointer also removes that pointer's
+intent-to-add index entry, so that exact index path participates in validation
+and rollback.
+
+This removal accepts only an absent entry or the existing intent-to-add
+sentinel. It refuses both independently staged content and unmerged index
+stages, rather than treating either state as an expendable empty entry.
 
 [`commands/discard_from.py`](src/git_stage_batch/commands/discard_from.py) uses
 the same action-context, selection, planning, refusal, and completion modules as
 the other batch-source actions. Text reversal reaches the discard functions
 under `batch/`.
+
+An explicit multi-file scope remains one ordered literal command, rather than
+running one independently checkpointed command per path. Discard captures every
+selected worktree target (and immutable text input artifact), builds every text,
+binary, mode, and submodule plan, and reports any planning failure before it
+opens the transaction. It then repeats the identity checks inside the unarmed
+checkpoint and publishes the plans in order. A later exception or cancellation
+rolls back every earlier publication both inside and outside a session.
 
 The reversal code compares the batch source with the baseline. It determines
 whether each region is unchanged, inserted, a line-for-line replacement, or a
@@ -403,6 +663,43 @@ Start with these files when following that reversal:
   reverses presence requirements.
 - [`batch/realization/boundaries.py`](src/git_stage_batch/batch/realization/boundaries.py)
   checks exact boundaries in the current realized sequence.
+
+When selectable children divide one historical replacement, consecutive
+children may share the same source anchor. Reversal restores those absence
+claims in recorded order at successive offsets from that anchor. The queued
+insertions remain in mapped storage and are materialized through one line
+buffer, avoiding repeated whole-result rebuilding and line-scale Python
+objects.
+
+Older batches can express the same relationship without a stored replacement
+unit: a deletion immediately before a contiguous presence range is its legacy
+replacement form. Reversal couples the live suffix of that range to the
+deletion just as merge does. This lets it remove the new side and restore the
+old side without expanding a historical whole-file replacement hunk over an
+unowned neighboring line. Candidate suffixes in each disjoint presence range
+are scanned together, so overlapping legacy claims do not repeatedly scan the
+same source lines.
+
+Reversal restores a replacement's old side only when at least one selected
+new-side line actually maps into the working tree. Thus a whole-file discard can
+remove a partially replayed batch without inserting historical old content for
+replacement units that were never replayed. Deletion-only claims are unaffected.
+
+For a complete replacement that apply proved was overwriting an index-matched
+worktree span, the applied overlay also records its compact source-line range.
+If the overlay, index, worktree boundaries, and exact applied source lines are
+still fresh at discard time, reversal restores the exact current-index span.
+This preserves committed or staged transformations of the historical old side
+instead of reconstructing stale bytes from the batch's older deletion claim.
+The in-memory overlay view also derives every application's selected presence
+ranges from its already stored compact attribution claims. If a selected line
+was a no-op because the identical source line already existed in the captured
+index, discard preserves it only when source-to-index, source-to-worktree, and
+index-to-worktree mappings identify the same line and all three byte sequences
+agree. The selected ranges are reconstructed rather than duplicated. One
+optional application boolean records that the overlay is still bound to its
+original apply-time index target; index drift or session rebinding removes that
+authority. This changes no canonical batch metadata.
 
 The same refusal rule applies: when the current file no longer provides one
 safe reversal, the command stops without guessing.
@@ -484,11 +781,87 @@ The same calculation includes consumed selections from
 Those records hide changes already handled during the current session even when
 they are not persistent named-batch ownership.
 
+It also includes applied overlays from
+[`data/applied_batch_overlays.py`](src/git_stage_batch/data/applied_batch_overlays.py).
+Ordinarily, named ownership hides an equivalent live change. `apply --from`
+records the exact selected attribution claims as an overlay so the intentionally
+restored change remains available to a later fresh `start` and `include --files`
+pass. Merge-only baseline references and replacement-unit coupling are omitted;
+presence line ranges and deletion blob/anchor pairs are sufficient to identify
+the visible ownership.
+The overlay lives in `.git/git-stage-batch/applied-batch-overlays.json`; it does
+not modify the batch state ref or `batch.json`.
+
+Apply plans also record when every selected presence occurrence was introduced
+in that apply's exact output. A newly introduced occurrence can share content
+with a preexisting line; its before-to-after mapping must still prove one exact,
+ordered occurrence. While the overlay
+remains fresh, `discard --from` may use the already stored selected ranges as
+trusted equal-line anchors. This lets reversal remove a reviewed replacement
+that crossed a neighboring committed replacement without relaxing ordinary
+structural matching. Only selected lines with a unique, collectively ordered
+live occurrence become anchors; an ambiguous line does not invalidate its
+independently proven siblings. This general selected-range authorization is
+all-or-nothing, so a partly preexisting selection does not acquire it. Every
+still-fresh application contributes its proven ranges, so a later partial apply
+does not drop rollback authority for an earlier partial apply on the same path.
+Separately, every fresh application's selected ranges are available only in the
+in-memory view for the byte-for-byte preexisting-line proof described in the
+discard section; they are reconstructed from `file_metadata` and are not a new
+persisted range field or general anchor authorization. An optional
+`index_target_is_original` marker authorizes this proof only until the overlay's
+index target is rebound.
+
+The optional `index_preimage_source_lines` application field records complete
+replacement ranges whose pre-apply worktree span exactly matched the index. It
+contains normalized range strings and must be a subset of that application's
+selected presence. It is worktree-local applied-overlay metadata, not canonical
+batch metadata. Overlays written by older versions simply lack the optional
+introduced-presence, original-index marker, and index-preimage fields. Each
+preimage range is proved
+independently, so it can authorize that exact range even when another selected
+claim was preexisting and the whole selection received no general
+authorization. Apply and discard plans read the captured index object, then
+verify that the index is still identical before publishing either the worktree
+change or this authority. If discard cannot locate an authorized applied
+occurrence unambiguously, it refuses the reversal instead of falling back to
+the replacement's historical old text.
+
+An applied overlay is accepted only while all of these still match its record:
+
+- the batch metadata revision
+- `HEAD`
+- the path's index entry (an absent entry and `start`'s intent-to-add sentinel
+  are equivalent; unresolved higher-stage entries never match either state)
+- the exact worktree path kind, mode, size, and streamed content digest
+
+Recording or rebinding an overlay while that path is unmerged drops the path's
+overlay record, so resolving the conflict to an absent entry cannot revive old
+authority.
+
+Any external worktree edit, pre-session staging operation, commit, or batch
+mutation makes the old overlay inapplicable. Staging part of a fresh overlay
+through git-stage-batch during an active session keeps its remaining ownership
+reviewable; `stop` binds the overlay to the final index state. Exact-index
+preimage authority is withheld during index drift and removed when an overlay
+is rebound to a changed index. Multiple
+consecutive `apply --from` operations on the same unchanged target carry forward
+the still-fresh ownership, so layered recomposition remains reviewable as a
+whole. Active-session undo checkpoints and abort recovery include the overlay
+file.
+
+When a fresh `start` finds only changes hidden by ordinary named-batch
+ownership, it reports the sorted batch names instead of the generic “No changes
+to process” diagnostic. Applied-overlay ownership remains reviewable, so it does
+not appear in that list.
+
 Ownership and attribution answer different questions:
 
 - ownership records what a batch saved in batch-source line numbers
 - attribution calculates which current visible changes satisfy that saved
   ownership now
+- an applied overlay records that the user intentionally restored particular
+  ownership and wants it visible for the exact current repository state
 
 ## Why `include --line` creates a temporary batch
 

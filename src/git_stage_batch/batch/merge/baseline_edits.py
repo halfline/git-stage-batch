@@ -29,11 +29,15 @@ from .baseline_replacement_edits import (
 from .baseline_replacement_ranges import (
     replacement_source_range_capacity as _replacement_source_range_capacity,
 )
+from .presence_reference_index import EffectivePresenceReferenceIndex
 from ..line_matching.sequence_equality import (
     line_sequences_equal as _line_sequences_match,
 )
 from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
+from .validation import (
+    build_mapped_source_line_index as _build_mapped_source_line_index,
+)
 
 if TYPE_CHECKING:
     from ..line_matching.line_mapping import LineMapping
@@ -52,12 +56,12 @@ def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
 
 
 def _has_complete_baseline_references(
-    ownership: BatchOwnership,
+    presence_references: EffectivePresenceReferenceIndex,
     presence_line_set: LineSelection,
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
 ) -> bool:
     for claimed_line in presence_line_set:
-        reference = ownership.presence_baseline_reference(claimed_line)
+        reference = presence_references.reference_for(claimed_line)
         if reference is None or not reference.has_after_line:
             return False
     for claim in deletion_claims:
@@ -72,12 +76,19 @@ def try_apply_baseline_coordinate_edits(
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
     presence_line_set: LineSelection,
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
     *,
+    allow_adjacent_unmapped_presence: bool = False,
+    allow_mapped_independent_removals: bool = False,
+    allow_mixed_mapped_replacement_islands: bool = False,
+    prefer_source_mapping_for_presence: bool = False,
     resolution: _MergeResolution | None = None,
     max_resolution_choices: int = _DEFAULT_RESOLUTION_CHOICE_LIMIT,
     trust_baseline_coordinates: bool = False,
     source_to_working_mapping: LineMapping | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    source_to_trusted_target_mapping: LineMapping | None = None,
+    trusted_target_to_working_mapping: LineMapping | None = None,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes] | None:
     """Return content edited at recorded baseline coordinates, if safe.
@@ -90,6 +101,20 @@ def try_apply_baseline_coordinate_edits(
     already-present insertion checks while retaining boundary, removal-content,
     and plan-consistency checks.
 
+    ``allow_adjacent_unmapped_presence`` permits a missing claimed source run
+    to be inserted immediately after its mapped predecessor. Callers should
+    enable it only with a mapping constrained by trusted deletion anchors.
+
+    ``allow_mapped_independent_removals`` and
+    ``allow_mixed_mapped_replacement_islands`` are realization-only recovery
+    proofs for a trusted predecessor. They permit structurally relocated old
+    sides and a partially mapped, fully selected replacement island,
+    respectively; ordinary live-target callers leave both disabled.
+
+    ``prefer_source_mapping_for_presence`` tries that mapping before recorded
+    presence coordinates. This leaves those coordinates available to a later
+    fallback when source/replacement context cannot place the claimed lines.
+
     Return ``None`` if any selected edit cannot be planned safely. A plan that
     changes content returns a lazy stream that owns its planning workspace until
     the stream is exhausted or closed.
@@ -97,20 +122,27 @@ def try_apply_baseline_coordinate_edits(
     if _selection_outside_bounds(presence_line_set, len(source_lines)):
         return None
 
-    if _line_sequences_match(
-        source_lines, working_lines
-    ) and _has_complete_baseline_references(
-        ownership,
-        presence_line_set,
-        deletion_claims,
-    ) and _all_deletions_are_already_absent(
-        deletion_claims,
-        working_lines,
-    ):
-        return iter(working_lines)
-
     workspace = MatcherWorkspace(spool_dir=spool_dir)
     try:
+        presence_references = EffectivePresenceReferenceIndex(
+            workspace,
+            ownership,
+        )
+        if (
+            _line_sequences_match(source_lines, working_lines)
+            and _has_complete_baseline_references(
+                presence_references,
+                presence_line_set,
+                deletion_claims,
+            )
+            and _all_deletions_are_already_absent(
+                deletion_claims,
+                working_lines,
+            )
+        ):
+            workspace.close()
+            return iter(working_lines)
+
         deletion_edit_bounds = workspace.record_vector(
             len(deletion_claims),
             "QQQQ",
@@ -124,10 +156,20 @@ def try_apply_baseline_coordinate_edits(
             presence_line_set,
             deletion_claims,
             deletion_edit_bounds,
+            presence_references,
+            allow_adjacent_unmapped_presence=allow_adjacent_unmapped_presence,
+            allow_mapped_independent_removals=(allow_mapped_independent_removals),
+            allow_mixed_mapped_replacement_islands=(
+                allow_mixed_mapped_replacement_islands
+            ),
+            prefer_source_mapping_for_presence=(prefer_source_mapping_for_presence),
             resolution=resolution,
             max_resolution_choices=max_resolution_choices,
             trust_baseline_coordinates=trust_baseline_coordinates,
             source_to_working_mapping=source_to_working_mapping,
+            trusted_target_lines=trusted_target_lines,
+            source_to_trusted_target_mapping=(source_to_trusted_target_mapping),
+            trusted_target_to_working_mapping=(trusted_target_to_working_mapping),
             spool_dir=spool_dir,
         )
         if plan is None:
@@ -156,13 +198,21 @@ def _build_baseline_edit_plan(
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
     presence_line_set: LineSelection,
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
+    presence_references: EffectivePresenceReferenceIndex,
     *,
+    allow_adjacent_unmapped_presence: bool,
+    allow_mapped_independent_removals: bool,
+    allow_mixed_mapped_replacement_islands: bool,
+    prefer_source_mapping_for_presence: bool,
     resolution: _MergeResolution | None,
     max_resolution_choices: int,
     trust_baseline_coordinates: bool,
     source_to_working_mapping: LineMapping | None,
+    trusted_target_lines: Sequence[bytes] | None,
+    source_to_trusted_target_mapping: LineMapping | None,
+    trusted_target_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
 ) -> _BaselineEditPlan | None:
     """Build and validate one storage-backed exact-coordinate edit plan."""
@@ -175,13 +225,9 @@ def _build_baseline_edit_plan(
     plan = _BaselineEditPlan(
         workspace,
         edit_capacity=(
-            len(replacement_units)
-            + len(deletion_claims)
-            + len(presence_lines)
+            len(replacement_units) + len(deletion_claims) + len(presence_lines)
         ),
-        source_range_capacity=(
-            replacement_source_range_capacity + len(presence_lines)
-        ),
+        source_range_capacity=(replacement_source_range_capacity + len(presence_lines)),
     )
     replacement_source_ranges = workspace.record_vector(
         replacement_source_range_capacity,
@@ -191,10 +237,18 @@ def _build_baseline_edit_plan(
         len(presence_lines),
         "Q",
     )
+    mapped_source_lines = (
+        None
+        if source_to_working_mapping is None
+        else _build_mapped_source_line_index(
+            workspace,
+            source_to_working_mapping,
+        )
+    )
     if not _plan_replacement_unit_edits(
         workspace,
         plan,
-        len(source_lines),
+        source_lines,
         working_lines,
         replacement_units,
         deletion_claims,
@@ -203,7 +257,14 @@ def _build_baseline_edit_plan(
         mapped_replacement_target_lines,
         resolution,
         max_resolution_choices=max_resolution_choices,
+        selected_presence=presence_lines,
         source_to_working_mapping=source_to_working_mapping,
+        trusted_target_lines=trusted_target_lines,
+        source_to_trusted_target_mapping=source_to_trusted_target_mapping,
+        trusted_target_to_working_mapping=(trusted_target_to_working_mapping),
+        trust_baseline_coordinates=trust_baseline_coordinates,
+        allow_mixed_mapped_replacement_islands=(allow_mixed_mapped_replacement_islands),
+        mapped_source_lines=mapped_source_lines,
         spool_dir=spool_dir,
     ):
         return None
@@ -213,49 +274,70 @@ def _build_baseline_edit_plan(
     ):
         return None
     if not _plan_independent_removal_edits(
+        workspace,
         plan,
         working_lines,
         deletion_claims,
         deletion_edit_bounds,
+        selected_presence=presence_lines,
+        source_to_working_mapping=source_to_working_mapping,
+        mapped_source_lines=mapped_source_lines,
+        trusted_target_lines=trusted_target_lines,
+        trusted_target_to_working_mapping=(trusted_target_to_working_mapping),
+        allow_mapped_fallback=(
+            allow_mapped_independent_removals or not trust_baseline_coordinates
+        ),
+        spool_dir=spool_dir,
     ):
         return None
     if mapped_replacement_target_lines:
         sort_mapped_records(mapped_replacement_target_lines)
-        if (
-            not plan.sort_target_spans_and_validate()
-            or plan.removes_any_target_lines(mapped_replacement_target_lines)
+        if not plan.sort_target_spans_and_validate() or plan.removes_any_target_lines(
+            mapped_replacement_target_lines
         ):
             return None
     workspace.close_resource(mapped_replacement_target_lines)
 
-    positioned_insertion_lines = _plan_presence_insertions(
+    presence_insertion_plan = _plan_presence_insertions(
         plan,
         workspace,
         source_lines,
         working_lines,
-        ownership,
+        presence_references,
         presence_lines,
         replacement_source_ranges,
+        allow_adjacent_unmapped_presence=allow_adjacent_unmapped_presence,
+        prefer_source_mapping=prefer_source_mapping_for_presence,
         trust_baseline_coordinates=trust_baseline_coordinates,
         source_to_working_mapping=source_to_working_mapping,
         spool_dir=spool_dir,
     )
-    if positioned_insertion_lines is None:
+    if presence_insertion_plan is None:
         return None
+    positioned_insertion_lines, owned_presence_mapping = presence_insertion_plan
 
-    workspace.close_resource(replacement_source_ranges)
-    if (
-        not trust_baseline_coordinates
-        and not _live_coordinate_edits_are_safe(
+    try:
+        workspace.close_resource(replacement_source_ranges)
+        if not trust_baseline_coordinates and not _live_coordinate_edits_are_safe(
             ownership,
+            presence_references,
             working_lines,
             deletion_claims,
             deletion_edit_bounds,
             positioned_insertion_lines,
+            source_to_working_mapping=source_to_working_mapping,
+            presence_source_to_working_mapping=(
+                source_to_working_mapping or owned_presence_mapping
+            ),
+            mapped_source_lines=mapped_source_lines,
             spool_dir=spool_dir,
-        )
-    ):
-        return None
+        ):
+            return None
+    finally:
+        if owned_presence_mapping is not None:
+            owned_presence_mapping.close()
+        if mapped_source_lines is not None:
+            workspace.close_resource(mapped_source_lines)
 
     workspace.close_resource(positioned_insertion_lines)
     if not plan.sort_and_validate():

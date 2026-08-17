@@ -50,7 +50,11 @@ def _worktree_target() -> candidate_inputs.CandidateWorktreeTarget:
 
 
 def test_apply_planning_owns_ownership_and_builder_arguments(monkeypatch):
-    ownership = object()
+    class _Ownership:
+        def to_attribution_metadata_dict(self):
+            return {"claimed_lines": ["9"]}
+
+    ownership = _Ownership()
     ownership_context = _Context(ownership)
     source = LineBuffer.from_bytes(b"source\n")
     worktree = LineBuffer.from_bytes(b"worktree\n")
@@ -72,6 +76,7 @@ def test_apply_planning_owns_ownership_and_builder_arguments(monkeypatch):
         build_apply_candidate_previews,
     )
 
+    selected_ownership = []
     try:
         previews = planning.plan_apply_candidate_previews(
             batch_name="cleanup",
@@ -83,6 +88,7 @@ def test_apply_planning_owns_ownership_and_builder_arguments(monkeypatch):
             worktree_target=_worktree_target(),
             selected_ids={3},
             selection_ids={9},
+            capture_selected_ownership=selected_ownership.append,
         )
     finally:
         source.close()
@@ -96,6 +102,7 @@ def test_apply_planning_owns_ownership_and_builder_arguments(monkeypatch):
     assert calls["build"]["selection_ids"] == {9}
     assert calls["build"]["worktree_file_mode"] == "100755"
     assert calls["build"]["worktree_exists"]
+    assert selected_ownership == [{"claimed_lines": ["9"]}]
     assert ownership_context.closed
 
 

@@ -212,14 +212,37 @@ def _anchor_consistent_with_diff_position(
 def filter_owned_diff_fragments(
     line_changes: LineLevelChange,
     attribution: FileAttribution,
+    *,
+    revealed_owner_names: frozenset[str] = frozenset(),
 ) -> tuple[bool, LineLevelChange | None]:
     """Filter displayed diff fragments that correspond to owned units."""
+    should_skip, filtered, _masked_owners = filter_owned_diff_fragments_with_owners(
+        line_changes,
+        attribution,
+        revealed_owner_names=revealed_owner_names,
+    )
+    return should_skip, filtered
+
+
+def filter_owned_diff_fragments_with_owners(
+    line_changes: LineLevelChange,
+    attribution: FileAttribution,
+    *,
+    revealed_owner_names: frozenset[str] = frozenset(),
+) -> tuple[bool, LineLevelChange | None, frozenset[str]]:
+    """Filter owned fragments and return owners that suppressed visible lines."""
     display_to_unit = project_attribution_to_diff(attribution, line_changes)
     filtered_lines: list[LineEntry] = []
+    masked_owner_names: set[str] = set()
 
     for idx, line_entry in enumerate(line_changes.lines):
         attr_unit = display_to_unit.get(idx)
-        if attr_unit and attr_unit.owning_batches:
+        if (
+            attr_unit
+            and attr_unit.owning_batches
+            and not attr_unit.owning_batches.intersection(revealed_owner_names)
+        ):
+            masked_owner_names.update(attr_unit.owning_batches)
             continue
 
         filtered_lines.append(line_entry)
@@ -228,7 +251,7 @@ def filter_owned_diff_fragments(
     has_changes_after_filter = any(line.kind in ("+", "-") for line in filtered_lines)
 
     if had_changes and not has_changes_after_filter:
-        return (True, None)
+        return (True, None, frozenset(masked_owner_names))
 
     return (
         False,
@@ -237,4 +260,5 @@ def filter_owned_diff_fragments(
             header=line_changes.header,
             lines=filtered_lines,
         ),
+        frozenset(masked_owner_names),
     )

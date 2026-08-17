@@ -28,7 +28,13 @@ ALLOWED_EXPLICIT_ANY = frozenset({
     "src/git_stage_batch/batch/state/metadata_schema.py::"
     "_migrate_v0_to_v1::return",
     "src/git_stage_batch/batch/state/metadata_schema.py::"
-    "_decode_v1::param:data",
+    "_migrate_v1_to_v2::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_migrate_v1_to_v2::return",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_migrate_v1_to_v2::variable:migrated_files",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_decode_current::param:data",
     "src/git_stage_batch/batch/state/metadata_schema.py::"
     "_decode_file_metadata::param:path",
     "src/git_stage_batch/batch/state/metadata_schema.py::"

@@ -101,7 +101,15 @@ class AtomicUnitError(MergeError):
 class NoMoreHunks(Exception):
     """Raised when there are no more hunks or binary files to process."""
 
-    pass
+    def __init__(
+        self,
+        *,
+        all_changes_already_batched: bool = False,
+        batch_names: frozenset[str] = frozenset(),
+    ) -> None:
+        super().__init__()
+        self.all_changes_already_batched = all_changes_already_batched
+        self.batch_names = batch_names
 
 
 class BatchMetadataError(Exception):

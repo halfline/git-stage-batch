@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...batch.state.metadata_types import (
@@ -33,6 +34,7 @@ class BatchSourceActionContext:
     scope_resolution: ActionScopeResolution
     metadata: BatchMetadataDict
     all_files: dict[str, BatchFileMetadataDict]
+    resolved_file_paths: tuple[str, ...] | None = None
 
 
 def resolve_batch_source_action_context(
@@ -44,6 +46,7 @@ def resolve_batch_source_action_context(
     line_ids: str | None,
     file: str | None,
     patterns: list[str] | None,
+    resolved_file_paths: Sequence[str] | None = None,
 ) -> BatchSourceActionContext:
     """Resolve shared batch-source command inputs before action-specific work."""
     selector = candidate_selectors.resolve_batch_source_action_selector(
@@ -59,6 +62,7 @@ def resolve_batch_source_action_context(
         line_ids=line_ids,
         file=file,
         patterns=patterns,
+        resolved_file_paths=resolved_file_paths,
     )
 
 
@@ -70,6 +74,7 @@ def resolve_plain_batch_source_action_context(
     line_ids: str | None,
     file: str | None,
     patterns: list[str] | None,
+    resolved_file_paths: Sequence[str] | None = None,
 ) -> BatchSourceActionContext:
     """Resolve shared action inputs for commands that require a plain batch."""
     batch_name = require_plain_batch_name(raw_selector, command_name)
@@ -82,6 +87,7 @@ def resolve_plain_batch_source_action_context(
         line_ids=line_ids,
         file=file,
         patterns=patterns,
+        resolved_file_paths=resolved_file_paths,
     )
 
 
@@ -94,7 +100,19 @@ def _resolve_batch_source_action_context(
     line_ids: str | None,
     file: str | None,
     patterns: list[str] | None,
+    resolved_file_paths: Sequence[str] | None,
 ) -> BatchSourceActionContext:
+    if resolved_file_paths is not None and (
+        file is not None or patterns is not None
+    ):
+        raise ValueError(
+            "resolved batch file paths cannot be combined with file or patterns"
+        )
+    exact_file_paths = (
+        None
+        if resolved_file_paths is None
+        else tuple(dict.fromkeys(resolved_file_paths))
+    )
     batch_name = selector.batch_name
     scope_resolution = resolve_batch_source_action_scope(
         review_action,
@@ -103,6 +121,7 @@ def _resolve_batch_source_action_context(
         line_ids=line_ids,
         file=file,
         patterns=patterns,
+        resolved_file_paths=exact_file_paths,
     )
     file = scope_resolution.file
 
@@ -126,4 +145,5 @@ def _resolve_batch_source_action_context(
         scope_resolution=scope_resolution,
         metadata=metadata,
         all_files=all_files,
+        resolved_file_paths=exact_file_paths,
     )

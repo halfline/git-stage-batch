@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.batch_source.discard_action as discard_action
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.start import command_start
@@ -168,6 +169,53 @@ class TestBinaryDiscard:
         # Verify only data1.bin removed
         assert not file1.exists()
         assert file2.exists()
+
+    def test_failed_multi_file_discard_does_not_report_rolled_back_binary(
+        self,
+        binary_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """A binary success message must wait for transaction completion."""
+        files = [binary_repo / "data1.bin", binary_repo / "data2.bin"]
+        for index, file_path in enumerate(files):
+            file_path.write_bytes(bytes((index, 0, 255)))
+
+        command_start()
+        create_batch("test-batch", "Multiple binaries")
+        for file_path in files:
+            add_binary_file_to_batch(
+                "test-batch",
+                BinaryFileChange(
+                    old_path="/dev/null",
+                    new_path=file_path.name,
+                    change_type="added",
+                ),
+            )
+
+        original_write = (
+            discard_action._binary_file_actions.write_binary_file_to_worktree
+        )
+        calls = 0
+
+        def fail_second_write(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected binary write failure")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(
+            discard_action._binary_file_actions,
+            "write_binary_file_to_worktree",
+            fail_second_write,
+        )
+
+        with pytest.raises(CommandError, match="injected binary write failure"):
+            command_discard_from_batch("test-batch")
+
+        assert all(file_path.exists() for file_path in files)
+        assert "✓ Removed binary file" not in capsys.readouterr().err
 
     def test_discard_binary_with_line_selection_fails(self, binary_repo):
         """Test that --lines flag fails for binary files with clear error."""

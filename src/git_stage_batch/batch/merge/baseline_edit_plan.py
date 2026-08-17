@@ -154,7 +154,7 @@ class BaselineEditPlan:
             assert next_position is not None
 
             for working_index in range(position, next_position):
-                yield working_lines[working_index]
+                yield bytes(working_lines[working_index])
 
             while (
                 payload_range_index < len(self._payload_ranges)
@@ -164,7 +164,7 @@ class BaselineEditPlan:
                     payload_range_index
                 ]
                 for source_line in range(source_start, source_end + 1):
-                    yield source_lines[source_line - 1]
+                    yield bytes(source_lines[source_line - 1])
                 payload_range_index += 1
 
             if (
@@ -177,7 +177,7 @@ class BaselineEditPlan:
                 position = next_position
 
         for working_index in range(position, len(working_lines)):
-            yield working_lines[working_index]
+            yield bytes(working_lines[working_index])
 
     def _add_target_span(
         self,
@@ -284,5 +284,5 @@ class BaselineEditStream(Iterator[bytes]):
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass

@@ -1,7 +1,11 @@
 """Coverage for transformed appends after earlier same-file discards."""
 
+import json
 from pathlib import Path
 import subprocess
+import tarfile
+
+import pytest
 
 from .conftest import git_stage_batch
 
@@ -590,3 +594,820 @@ EXPORT_SYMBOL_IF_KUNIT(castkms_format_registries_are_valid);
     assert _show_file(functional_repo, "refs/git-stage-batch/batches/selector") == (
         expected_batch
     )
+
+
+def test_transformed_plane_selector_preserves_intermediate_callback(
+    functional_repo,
+):
+    """A selector split should retain a callback changed by an inner batch."""
+    old_switch = """pixel_read_line_t select_reader(u32 format)
+{
+	switch (format) {
+	case FORMAT_P010:
+	case FORMAT_P012:
+	case FORMAT_P016:
+		return &legacy_p0xx_reader;
+	case FORMAT_YUV420:
+	case FORMAT_YUV422:
+		return &planar_reader;
+	default:
+		BUG();
+	}
+}
+"""
+    live_switch = old_switch.replace(
+        "\t\treturn &legacy_p0xx_reader;\n",
+        "\t\treturn &p0xx_reader;\n",
+    ).replace("\t\tBUG();\n", "\t\treturn NULL;\n")
+    batch_selector = """pixel_read_line_t select_reader(u32 format)
+{
+	for (unsigned int i = 0; i < ARRAY_SIZE(plane_formats); i++)
+		if (plane_formats[i].format == format)
+			return plane_formats[i].read_line;
+
+	return NULL;
+}
+"""
+    descriptor_table = """struct plane_format {
+	u32 format;
+	pixel_read_line_t read_line;
+};
+
+static const struct plane_format plane_formats[] = {
+	{ FORMAT_P010, p0xx_reader },
+	{ FORMAT_YUV420, planar_reader },
+};
+
+"""
+    validator = """bool registries_are_valid(void)
+{
+	for (unsigned int i = 0; i < ARRAY_SIZE(plane_formats); i++) {
+		if (select_reader(plane_formats[i].format) !=
+		    plane_formats[i].read_line)
+			return false;
+	}
+
+	return true;
+}
+"""
+    prior = "".join(f"prior-change-{number:03}\n" for number in range(1, 260))
+    baseline = "prefix\n" + old_switch + "suffix\n"
+    final = (
+        "prefix\n" + prior + descriptor_table + batch_selector
+        + "EXPORT(select_reader);\n" + validator + "suffix\n"
+    )
+    path = _commit_file(functional_repo, baseline)
+    path.write_text(final)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    prior_ids = _display_id_range(view, "prior-change-001", "prior-change-259")
+    git_stage_batch(
+        "discard", "--to", "prior", "--line", prior_ids,
+        "--no-auto-advance",
+    )
+
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    first = _display_id_for_text(view, "\tswitch (format) {")
+    last = _display_id_for_text(view, "\treturn NULL;")
+    batch_body = batch_selector.split("{\n", 1)[1]
+    live_body = live_switch.split("{\n", 1)[1]
+    result = git_stage_batch(
+        "discard", "--to", "selector", "--line", f"{first}-{last}",
+        "--as-stdin", "--no-auto-advance",
+        input_text=batch_body + live_body,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    expected_live = (
+        "prefix\n" + descriptor_table + live_switch
+        + "EXPORT(select_reader);\n" + validator + "suffix\n"
+    )
+    expected_batch = "prefix\n" + batch_selector + "suffix\n"
+    assert path.read_text() == expected_live
+    assert _show_file(
+        functional_repo, "refs/git-stage-batch/batches/selector"
+    ) == expected_batch
+    assert "return &p0xx_reader;" in path.read_text()
+
+
+def test_active_castkms_selector_preserves_intermediate_p0xx_callback(
+    functional_repo,
+):
+    """A resumed multi-batch selector split must retain its P0XX callback."""
+    fixture_packs = (
+        next(FIXTURE_ROOT.glob("p0xx_selector_exact_v2-*.pack")),
+        next(FIXTURE_ROOT.glob("p0xx_selector_exact_supplement-*.pack")),
+        next(FIXTURE_ROOT.glob("p0xx_selector_exact_objects-*.pack")),
+    )
+    for fixture_pack in fixture_packs:
+        subprocess.run(
+            ["git", "index-pack", "--stdin"],
+            cwd=functional_repo,
+            input=fixture_pack.read_bytes(),
+            check=True,
+            capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git", "checkout", "--detach",
+            "2447067692411cddc11a2ada3bc36ac676c0c3fe",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+
+    refs_path = FIXTURE_ROOT / "p0xx_selector_exact_refs.txt"
+    for line in refs_path.read_text().splitlines():
+        ref, object_id = line.split()
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+
+    git_dir = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir"],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    state_dir = git_dir / "git-stage-batch"
+    state_dir.mkdir()
+    session_archive = FIXTURE_ROOT / "p0xx_selector_exact_session.tar.gz"
+    with tarfile.open(session_archive) as archive:
+        archive.extractall(state_dir, filter="data")
+
+    active_path = state_dir / "active-session.json"
+    active = json.loads(active_path.read_text())
+    active["worktree_git_dir"] = str(git_dir)
+    active["marker_path"] = str(state_dir / "session/abort/head.txt")
+    active_path.write_text(json.dumps(active, indent=2) + "\n")
+
+    path = functional_repo / "src" / "castkms_formats.c"
+    snapshot = state_dir / "session/selected/working-tree.snapshot"
+    path.write_bytes(snapshot.read_bytes())
+    live_before = path.read_text()
+    batch_body = """\tfor (unsigned int i = 0; i < ARRAY_SIZE(castkms_plane_formats); i++)
+\t\tif (castkms_plane_formats[i].format == format)
+\t\t\treturn castkms_plane_formats[i].read_line;
+
+\treturn NULL;
+}
+"""
+    live_body = """\tswitch (format) {
+\tcase DRM_FORMAT_ARGB8888:
+\t\treturn &ARGB8888_read_line;
+\tcase DRM_FORMAT_ABGR8888:
+\t\treturn &ABGR8888_read_line;
+\tcase DRM_FORMAT_BGRA8888:
+\t\treturn &BGRA8888_read_line;
+\tcase DRM_FORMAT_RGBA8888:
+\t\treturn &RGBA8888_read_line;
+\tcase DRM_FORMAT_XRGB8888:
+\t\treturn &XRGB8888_read_line;
+\tcase DRM_FORMAT_XBGR8888:
+\t\treturn &XBGR8888_read_line;
+\tcase DRM_FORMAT_RGB888:
+\t\treturn &RGB888_read_line;
+\tcase DRM_FORMAT_BGR888:
+\t\treturn &BGR888_read_line;
+\tcase DRM_FORMAT_ARGB16161616:
+\t\treturn &ARGB16161616_read_line;
+\tcase DRM_FORMAT_ABGR16161616:
+\t\treturn &ABGR16161616_read_line;
+\tcase DRM_FORMAT_XRGB16161616:
+\t\treturn &XRGB16161616_read_line;
+\tcase DRM_FORMAT_XBGR16161616:
+\t\treturn &XBGR16161616_read_line;
+\tcase DRM_FORMAT_RGB565:
+\t\treturn &RGB565_read_line;
+\tcase DRM_FORMAT_BGR565:
+\t\treturn &BGR565_read_line;
+\tcase DRM_FORMAT_NV12:
+\tcase DRM_FORMAT_NV16:
+\tcase DRM_FORMAT_NV24:
+\tcase DRM_FORMAT_NV21:
+\tcase DRM_FORMAT_NV61:
+\tcase DRM_FORMAT_NV42:
+\t\treturn &YUV888_semiplanar_read_line;
+\tcase DRM_FORMAT_P010:
+\tcase DRM_FORMAT_P012:
+\tcase DRM_FORMAT_P016:
+\t\treturn &P0XX_read_line;
+\tcase DRM_FORMAT_YUV420:
+\tcase DRM_FORMAT_YUV422:
+\tcase DRM_FORMAT_YUV444:
+\tcase DRM_FORMAT_YVU420:
+\tcase DRM_FORMAT_YVU422:
+\tcase DRM_FORMAT_YVU444:
+\t\treturn &planar_yuv_read_line;
+\tcase DRM_FORMAT_R1:
+\t\treturn &R1_read_line;
+\tcase DRM_FORMAT_R2:
+\t\treturn &R2_read_line;
+\tcase DRM_FORMAT_R4:
+\t\treturn &R4_read_line;
+\tcase DRM_FORMAT_R8:
+\t\treturn &R8_read_line;
+\tdefault:
+\t\treturn NULL;
+\t}
+}
+"""
+    result = git_stage_batch(
+        "discard", "--to", "decompose-14-plane-descriptor-provider",
+        "--line", "280-350", "--as-stdin", "--no-auto-advance",
+        input_text=batch_body + live_body,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    expected_live = live_before.replace(batch_body, live_body)
+    assert path.read_text() == expected_live
+    assert "\t\treturn &P0XX_read_line;\n" in path.read_text()
+    batch_after = _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/decompose-14-plane-descriptor-provider",
+        "src/castkms_formats.c",
+    )
+    assert (
+        "\tfor (unsigned int i = 0; "
+        "i < ARRAY_SIZE(castkms_plane_formats); i++)\n"
+    ) in batch_after
+    assert "\treturn NULL;\n\t}\n}\n" not in batch_after
+    assert "\t\treturn &P0XX_read_line;\n" not in batch_after
+
+
+@pytest.mark.parametrize(
+    ("line_ids", "replacement_text", "scoped_predecessor_blob"),
+    [
+        (
+            "20",
+            "\t\tu64 frame = "
+            "drm_crtc_vblank_count_and_time(crtc, &frame_time);\n"
+            "\t\tu64 frame = drm_crtc_vblank_count(crtc);\n",
+            "8ba3d23ff689288e30090c2791ceedddb1d684c8",
+        ),
+        (
+            "19-20",
+            "\t\tktime_t frame_time;\n"
+            "\t\tu64 frame = "
+            "drm_crtc_vblank_count_and_time(crtc, &frame_time);\n"
+            "\t\tu64 frame = drm_crtc_vblank_count(crtc);\n",
+            "3181292108577b8e33e59532b9e6fe1462882107",
+        ),
+    ],
+    ids=("single-addition", "contiguous-addition-span"),
+)
+def test_active_castkms_frame_transform_preserves_inner_addition_scope(
+    functional_repo,
+    line_ids,
+    replacement_text,
+    scoped_predecessor_blob,
+):
+    """A resumed concern-09 transform must not absorb unrelated additions."""
+    for fixture_pack in sorted(FIXTURE_ROOT.glob("concern09_exact_*.pack")):
+        subprocess.run(
+            ["git", "index-pack", "--stdin"],
+            cwd=functional_repo,
+            input=fixture_pack.read_bytes(),
+            check=True,
+            capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "94b9e9d09cb77ab1cb39e954e3a826feb37cf4ac",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+
+    refs_path = FIXTURE_ROOT / "concern09_exact_refs.txt"
+    for line in refs_path.read_text().splitlines():
+        ref, object_id = line.split()
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+
+    git_dir = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir"],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    state_dir = git_dir / "git-stage-batch"
+    state_dir.mkdir()
+    with tarfile.open(FIXTURE_ROOT / "concern09_exact_session.tar.gz") as archive:
+        archive.extractall(state_dir, filter="data")
+
+    active_path = state_dir / "active-session.json"
+    active = json.loads(active_path.read_text())
+    active["worktree_git_dir"] = str(git_dir)
+    active["marker_path"] = str(state_dir / "session/abort/head.txt")
+    active_path.write_text(json.dumps(active, indent=2) + "\n")
+
+    file_path = "src/castkms_crtc.c"
+    path = functional_repo / file_path
+    snapshot = state_dir / "session/selected/working-tree.snapshot"
+    path.write_bytes(snapshot.read_bytes())
+
+    def worktree_blob() -> str:
+        return subprocess.run(
+            ["git", "hash-object", file_path],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    final_blob = "fb851ea25295748ebf420f2538495d4dd8f384e2"
+    assert worktree_blob() == final_blob
+    view = git_stage_batch("show", "--file", file_path, "--page", "all").stdout
+    assert (
+        "[#20] + \t\tu64 frame = "
+        "drm_crtc_vblank_count_and_time(crtc, &frame_time);"
+    ) in view
+
+    target_refs = (
+        "refs/git-stage-batch/batches/decompose-09-implicit-frame-delivery",
+        "refs/git-stage-batch/state/decompose-09-implicit-frame-delivery",
+    )
+    refs_before = subprocess.run(
+        ["git", "rev-parse", *target_refs],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    sparse = git_stage_batch(
+        "discard",
+        "--to",
+        "decompose-09-implicit-frame-delivery",
+        "--line",
+        "2,19-20",
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=(
+            "\t\tktime_t frame_time;\n"
+            "\t\tu64 frame = "
+            "drm_crtc_vblank_count_and_time(crtc, &frame_time);\n"
+            "\t\tu64 frame = drm_crtc_vblank_count(crtc);\n"
+        ),
+        check=False,
+    )
+    assert sparse.returncode != 0
+    assert "must be one contiguous line range" in sparse.stderr
+    assert worktree_blob() == final_blob
+    assert subprocess.run(
+        ["git", "rev-parse", *target_refs],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == refs_before
+
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "decompose-09-implicit-frame-delivery",
+        "--line",
+        line_ids,
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=replacement_text,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert worktree_blob() == scoped_predecessor_blob
+    git_stage_batch("stop")
+    replay = git_stage_batch(
+        "apply",
+        "--from",
+        "decompose-09-implicit-frame-delivery",
+        check=False,
+    )
+    assert replay.returncode == 0, replay.stderr
+    assert worktree_blob() == final_blob
+
+
+def test_new_batch_records_exact_addition_prefix_ownership(functional_repo):
+    """A repeated suffix must not fragment a new batch's saved prefix."""
+    prefix = (
+        "#if FIRST\n"
+        "first body\n"
+        "shared line\n"
+        "#endif /* FIRST end */\n"
+    )
+    suffix = (
+        "#if SECOND\n"
+        "second body\n"
+        "shared line\n"
+        "#endif /* SECOND end */\n"
+    )
+    path = _commit_file(functional_repo, "head\ntail\n")
+    path.write_text("head\n" + prefix + "tail\n")
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    selected = _display_id_range(view, "#if FIRST", "FIRST end")
+    result = git_stage_batch(
+        "discard", "--to", "exact-prefix", "--line", selected,
+        "--as-stdin", "--no-auto-advance", input_text=prefix + suffix,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == "head\n" + suffix + "tail\n"
+    assert _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/exact-prefix",
+    ) == "head\n" + prefix + "tail\n"
+
+
+@pytest.mark.parametrize(
+    ("batch_commit", "state_commit"),
+    [
+        (
+            "01ef53c6d19c92d75904f93553b37a4854ea4fd5",
+            "eb2cdbd0257fadc29745cc765d4f3cbb59d8f73c",
+        ),
+        (
+            "574a682ae73673b4535271bd3e8cd1bc5b1dcd50",
+            "efefc4889f52f848a14ec1af03a4863517c21c54",
+        ),
+    ],
+    ids=("persisted-before-fix", "created-by-tentative-fix"),
+)
+def test_legacy_selector_batch_accepts_adjacent_validator_split(
+    functional_repo, batch_commit, state_commit
+):
+    """A resumed selector batch should accept its adjacent validator split."""
+    fixture_pack = FIXTURE_ROOT / "legacy_validator_append_exact.pack"
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git", "checkout", "--detach",
+            "2447067692411cddc11a2ada3bc36ac676c0c3fe",
+        ],
+        cwd=functional_repo, check=True, capture_output=True,
+    )
+
+    persisted_refs = {
+        "refs/git-stage-batch/batches/decompose-16-p0xx-padding":
+            "40587f84c6b2c3619ff5c7969260f7561f34d8f1",
+        "refs/git-stage-batch/state/decompose-16-p0xx-padding":
+            "c02f15bc3200e36cbcfc88141a7cfb11e301c547",
+        "refs/git-stage-batch/batches/"
+        "decompose-10-writeback-advertisement-adopter":
+            "14791e1b468a8c5e3e8781090993f2f6575ae5b8",
+        "refs/git-stage-batch/state/"
+        "decompose-10-writeback-advertisement-adopter":
+            "8c6581150cad8d58894dd5b11c427648a32fe988",
+        "refs/git-stage-batch/batches/"
+        "decompose-11-writeback-descriptor-provider":
+            batch_commit,
+        "refs/git-stage-batch/state/"
+        "decompose-11-writeback-descriptor-provider":
+            state_commit,
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo, check=True, capture_output=True,
+        )
+
+    path = functional_repo / "src" / "castkms_formats.c"
+    live_before = subprocess.run(
+        ["git", "cat-file", "blob", "f20fbadc862ef1e22ee335aee2c561380e448b70"],
+        cwd=functional_repo, check=True, capture_output=True,
+    ).stdout.decode()
+    path.write_text(live_before)
+    batch_ref = (
+        "refs/git-stage-batch/batches/"
+        "decompose-11-writeback-descriptor-provider"
+    )
+    state_ref = (
+        "refs/git-stage-batch/state/"
+        "decompose-11-writeback-descriptor-provider"
+    )
+    batch_before = _show_file(
+        functional_repo, batch_ref, "src/castkms_formats.c"
+    )
+    payload = (
+        FIXTURE_ROOT / "legacy_validator_append_payload.c"
+    ).read_text()
+    full_body, plane_body = payload.split("#endif\n#if", 1)
+    full_validator = full_body + "#endif\n"
+    plane_validator = "#if" + plane_body
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "src/castkms_formats.c", "--page", "all"
+    ).stdout
+    assert "[#396] + #if IS_ENABLED(CONFIG_KUNIT)" in view
+    assert "[#432] + #endif" in view
+
+    result = git_stage_batch(
+        "discard", "--to", "decompose-11-writeback-descriptor-provider",
+        "--line", "396-432", "--as-stdin", "--no-auto-advance",
+        input_text=payload, check=False,
+    )
+    if result.returncode:
+        live_blob = subprocess.run(
+            ["git", "hash-object", "src/castkms_formats.c"],
+            cwd=functional_repo, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        current_refs = {
+            ref: subprocess.run(
+                ["git", "rev-parse", ref], cwd=functional_repo,
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+            for ref in (batch_ref, state_ref)
+        }
+        assert live_blob == "f20fbadc862ef1e22ee335aee2c561380e448b70"
+        assert current_refs == {
+            batch_ref: batch_commit,
+            state_ref: state_commit,
+        }
+    assert result.returncode == 0, result.stderr
+
+    expected_live = live_before.replace(full_validator, plane_validator)
+    expected_batch = batch_before + full_validator
+    actual_live = path.read_text()
+    actual_batch = _show_file(
+        functional_repo,
+        batch_ref,
+        "src/castkms_formats.c",
+    )
+    assert (actual_live, actual_batch) == (expected_live, expected_batch)
+
+
+def test_active_legacy_session_accepts_adjacent_validator_split(functional_repo):
+    """A resumed active session should accept an adjacent validator split."""
+    fixture_pack = FIXTURE_ROOT / "legacy_validator_append_exact.pack"
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git", "checkout", "--detach",
+            "2447067692411cddc11a2ada3bc36ac676c0c3fe",
+        ],
+        cwd=functional_repo, check=True, capture_output=True,
+    )
+
+    refs = FIXTURE_ROOT / "legacy_validator_append_session_refs.txt"
+    for line in refs.read_text().splitlines():
+        ref, object_id = line.split()
+        if subprocess.run(
+            ["git", "cat-file", "-e", object_id],
+            cwd=functional_repo, capture_output=True,
+        ).returncode:
+            continue
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo, check=True, capture_output=True,
+        )
+
+    git_dir = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir"],
+            cwd=functional_repo, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+    )
+    state_dir = git_dir / "git-stage-batch"
+    state_dir.mkdir()
+    session_archive = (
+        FIXTURE_ROOT / "legacy_validator_append_session.tar.gz"
+    )
+    with tarfile.open(session_archive) as archive:
+        archive.extractall(state_dir, filter="data")
+
+    active_path = state_dir / "active-session.json"
+    active = json.loads(active_path.read_text())
+    active["worktree_git_dir"] = str(git_dir)
+    active["marker_path"] = str(state_dir / "session/abort/head.txt")
+    active_path.write_text(json.dumps(active, indent=2) + "\n")
+
+    path = functional_repo / "src" / "castkms_formats.c"
+    snapshot = state_dir / "session/selected/working-tree.snapshot"
+    path.write_bytes(snapshot.read_bytes())
+    batch_ref = (
+        "refs/git-stage-batch/batches/"
+        "decompose-11-writeback-descriptor-provider"
+    )
+    state_ref = (
+        "refs/git-stage-batch/state/"
+        "decompose-11-writeback-descriptor-provider"
+    )
+    assert subprocess.run(
+        ["git", "rev-parse", batch_ref], cwd=functional_repo,
+        check=True, capture_output=True, text=True,
+    ).stdout.strip() == "574a682ae73673b4535271bd3e8cd1bc5b1dcd50"
+    assert subprocess.run(
+        ["git", "rev-parse", state_ref], cwd=functional_repo,
+        check=True, capture_output=True, text=True,
+    ).stdout.strip() == "efefc4889f52f848a14ec1af03a4863517c21c54"
+
+    live_before = path.read_text()
+    batch_before = _show_file(
+        functional_repo, batch_ref, "src/castkms_formats.c"
+    )
+    payload = (
+        FIXTURE_ROOT / "legacy_validator_append_payload.c"
+    ).read_text()
+    full_body, plane_body = payload.split("#endif\n#if", 1)
+    full_validator = full_body + "#endif\n"
+    plane_validator = "#if" + plane_body
+
+    view = git_stage_batch(
+        "show", "--file", "src/castkms_formats.c", "--page", "all"
+    ).stdout
+    assert "[#396] + #if IS_ENABLED(CONFIG_KUNIT)" in view
+    assert "[#432] + #endif" in view
+    result = git_stage_batch(
+        "discard", "--to", "decompose-11-writeback-descriptor-provider",
+        "--line", "396-432", "--as-stdin", "--no-auto-advance",
+        input_text=payload, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == live_before.replace(
+        full_validator, plane_validator
+    )
+    assert _show_file(
+        functional_repo, batch_ref, "src/castkms_formats.c"
+    ) == batch_before + full_validator
+
+
+def test_transformed_append_splits_line_inside_later_added_function(
+    functional_repo,
+):
+    """A transformed append may evolve a line in a later-added function."""
+    baseline = """prefix
+static int block_step(void)
+{
+	return BLOCK_WIDTH;
+}
+suffix
+"""
+    final = """prefix
+static bool strides_are_valid(unsigned long stride)
+{
+	if (stride > SSIZE_MAX)
+		return false;
+
+	return true;
+}
+
+static ptrdiff_t block_step(void)
+{
+	return BLOCK_HEIGHT;
+}
+suffix
+"""
+    after_step_discard = final.replace("BLOCK_HEIGHT", "BLOCK_WIDTH")
+    path = _commit_file(functional_repo, baseline)
+    path.write_text(final)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    step_ids = ",".join(
+        (
+            _display_id_for_text(view, "\treturn BLOCK_WIDTH;"),
+            _display_id_for_text(view, "\treturn BLOCK_HEIGHT;"),
+        )
+    )
+    git_stage_batch(
+        "discard", "--to", "pointer-width", "--line", step_ids,
+        "--no-auto-advance",
+    )
+
+    assert path.read_text() == after_step_discard
+    assert _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/pointer-width",
+    ) == baseline.replace("BLOCK_WIDTH", "BLOCK_HEIGHT")
+
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    limit_id = _display_id_for_text(view, "\tif (stride > SSIZE_MAX)")
+    batch_ref = "refs/git-stage-batch/batches/pointer-width"
+    state_ref = "refs/git-stage-batch/state/pointer-width"
+    live_before = path.read_text()
+    batch_before = _show_file(functional_repo, batch_ref)
+    refs_before = subprocess.run(
+        ["git", "rev-parse", batch_ref, state_ref],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    result = git_stage_batch(
+        "discard", "--to", "pointer-width", "--line", limit_id,
+        "--as-stdin", "--no-auto-advance",
+        input_text=(
+            "\tif (stride > SSIZE_MAX)\n"
+            "\tif (stride > INT_MAX)\n"
+        ),
+        check=False,
+    )
+
+    if result.returncode:
+        assert path.read_text() == live_before
+        assert _show_file(functional_repo, batch_ref) == batch_before
+        assert subprocess.run(
+            ["git", "rev-parse", batch_ref, state_ref],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout == refs_before
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == after_step_discard.replace(
+        "\tif (stride > SSIZE_MAX)\n",
+        "\tif (stride > INT_MAX)\n",
+    )
+    assert _show_file(functional_repo, batch_ref) == baseline.replace(
+        "\treturn BLOCK_WIDTH;\n",
+        "\tif (stride > SSIZE_MAX)\n\treturn BLOCK_HEIGHT;\n",
+    )
+    state = json.loads(_show_file(functional_repo, state_ref, "batch.json"))
+    file_metadata = state["files"]["file.txt"]
+    source_lines = _show_file(
+        functional_repo,
+        file_metadata["batch_source_commit"],
+    ).splitlines()
+    limit_source_line = source_lines.index("\tif (stride > SSIZE_MAX)") + 1
+    assert any(
+        str(limit_source_line) in claim.get("baseline_references", {})
+        for claim in file_metadata["presence_claims"]
+    )
+    assert sum(
+        deletion.get("source_alternative") is True
+        for deletion in file_metadata["deletions"]
+    ) == 1
+
+    git_stage_batch("stop")
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Commit the live stride guard"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    result = git_stage_batch("apply", "--from", "pointer-width", check=False)
+    if result.returncode:
+        assert "has 1 apply candidate" in result.stderr
+        git_stage_batch(
+            "show",
+            "--from",
+            "pointer-width:apply:1",
+            "--file",
+            "file.txt",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            "pointer-width:apply:1",
+            "--file",
+            "file.txt",
+            check=False,
+        )
+
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == final

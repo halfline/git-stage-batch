@@ -12,6 +12,7 @@ from .ownership.model import BatchOwnership
 from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from .state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from .state.query import read_batch_metadata
+from .state.references import get_batch_state_ref_name
 from ..core.line_selection import LineRanges
 from ..core.models import (
     RenderedBatchDisplay,
@@ -68,6 +69,7 @@ def render_batch_file_display(
     batch_source_commit = file_meta["batch_source_commit"]
     with acquire_ownership_for_metadata_dict(file_meta) as ownership:
         return _render_batch_file_display_from_ownership(
+            batch_name=batch_name,
             batch_source_commit=batch_source_commit,
             file_path=file_path,
             file_meta=file_meta,
@@ -78,6 +80,7 @@ def render_batch_file_display(
 
 def _render_batch_file_display_from_ownership(
     *,
+    batch_name: str,
     batch_source_commit: str,
     file_path: str,
     file_meta: BatchFileMetadataDict,
@@ -86,9 +89,18 @@ def _render_batch_file_display_from_ownership(
 ) -> Optional['RenderedBatchDisplay']:
     """Render batch file display from already-acquired ownership metadata."""
 
-    batch_source_buffer = read_git_object_buffer_or_none(
-        f"{batch_source_commit}:{file_path}"
+    source_path = file_meta.get("source_path")
+    batch_source_buffer = (
+        read_git_object_buffer_or_none(
+            f"{get_batch_state_ref_name(batch_name)}:{source_path}"
+        )
+        if source_path is not None
+        else None
     )
+    if batch_source_buffer is None:
+        batch_source_buffer = read_git_object_buffer_or_none(
+            f"{batch_source_commit}:{file_path}"
+        )
     if batch_source_buffer is None:
         return None
 
@@ -118,6 +130,7 @@ def build_batch_file_display_from_inputs(
     )
 
     mergeable_id_ranges = LineRanges.empty()
+    mergeable_selection_groups: tuple[LineRanges, ...] = ()
     units = []
     if probe_mergeability and display_lines:
         mergeability = _file_mergeability.probe_batch_file_mergeability(
@@ -127,6 +140,9 @@ def build_batch_file_display_from_inputs(
             batch_source_lines=batch_source_lines,
         )
         mergeable_id_ranges = mergeability.mergeable_id_ranges
+        mergeable_selection_groups = (
+            mergeability.mergeable_selection_groups
+        )
         units = mergeability.units
 
     return _file_display_model.build_rendered_batch_display_model(
@@ -134,5 +150,6 @@ def build_batch_file_display_from_inputs(
         file_meta=file_meta,
         display_lines=display_lines,
         mergeable_id_ranges=mergeable_id_ranges,
+        mergeable_selection_groups=mergeable_selection_groups,
         units=units,
     )

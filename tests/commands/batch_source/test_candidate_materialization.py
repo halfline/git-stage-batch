@@ -13,6 +13,7 @@ import git_stage_batch.commands.batch_source.candidate_materialization as materi
 class _Target:
     def __init__(self, name: str = "worktree") -> None:
         self.target = name
+        self.change_type = "modified"
 
 
 class _Preview:
@@ -65,6 +66,9 @@ def test_materialize_apply_candidate_returns_reviewed_preview(monkeypatch, tmp_p
             **kwargs,
             "source_bytes": kwargs["batch_source_lines"].to_bytes(),
         }
+        kwargs["capture_selected_ownership"](
+            {"claimed_lines": ["9"]},
+        )
         return previews
 
     def require_preview(loaded_previews, ordinal, **kwargs):
@@ -110,12 +114,14 @@ def test_materialize_apply_candidate_returns_reviewed_preview(monkeypatch, tmp_p
     assert result.target is previews[1].targets[0]
     assert result.file_path == "notes.txt"
     assert result.file_mode is None
+    assert result.selected_file_metadata["change_type"] == "modified"
     assert calls["build"]["batch_name"] == "cleanup"
     assert calls["build"]["file_path"] == "notes.txt"
     assert calls["build"]["source_bytes"] == b"batch\n"
     assert calls["build"]["selected_ids"] == {3}
     assert calls["build"]["selection_ids"] == {9}
     assert calls["build"]["worktree_target"].exists
+    assert result.selected_file_metadata["claimed_lines"] == ["9"]
     assert calls["require_preview"] == (
         previews,
         2,
@@ -150,7 +156,12 @@ def test_materialize_apply_candidate_closes_previews_on_state_failure(
     monkeypatch.setattr(
         materialization._candidate_planning,
         "plan_apply_candidate_previews",
-        lambda **kwargs: previews,
+        lambda **kwargs: (
+            kwargs["capture_selected_ownership"](
+                {"claimed_lines": ["9"]},
+            )
+            or previews
+        ),
     )
     monkeypatch.setattr(
         materialization._candidate_previews,

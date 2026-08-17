@@ -20,6 +20,7 @@ from ...core.diff_parser import (
     build_line_changes_from_patch_lines,
     patch_is_empty_file_change,
     patch_is_new_file,
+    patch_requires_unidiff_zero,
 )
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import (
@@ -258,7 +259,9 @@ def _discard_text_hunk_to_batch(
                 apply_result = git_apply_to_worktree(
                     patch_lines_item,
                     reverse=True,
-                    unidiff_zero=True,
+                    unidiff_zero=patch_requires_unidiff_zero(
+                        patch_lines_item
+                    ),
                     check=False,
                 )
 

@@ -204,11 +204,6 @@ msgstr[3] "السطر المُطالب به {line} خارج النطاق (مصد
 msgstr[4] "السطر المُطالب به {line} خارج النطاق (مصدر الدفعة فيه {count} سطرًا)"
 msgstr[5] "السطر المُطالب به {line} خارج النطاق (مصدر الدفعة فيه {count} سطر)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr "لا يمكن وضع السطر المُطالب به {line} بصورة موثوقة: فُقد السياق المحيط"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"
@@ -2268,13 +2263,6 @@ msgstr "ضمّ تغييرات"
 #, python-brace-format
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "تعذّر ضمّ تغييرات الدفعة '{name}': {error}"
-
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr "طرأ تغيير على {label} أثناء حساب الضمّ: {file}. أعد تنفيذ أمر الضمّ."
 
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
@@ -8011,3 +7999,133 @@ msgstr "تغيّرت مساحة عمل حل المصدر أثناء نسخها"
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "لا تطابق نسخة الحل المملوكة مصدرها المصادق عليه"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr "لا يمكن تجاهل استبدال مطبّق بدقة لأن موضعه الحالي ملتبس"
+
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"لا يمكن تجاهل كتلة استبدال من خط الأساس تمزج أسطرًا مطبّقة بملكية تفتقر إلى "
+"جانب قديم مستقل (أسطر المصدر {start}-{end})"
+
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"لا يمكن إعادة تشغيل بيانات الدفعة القديمة بأمان لـ {file}: لا تسجل الدفعة ما "
+"إذا كان محتوى المصدر التاريخي المجاور بديلاً ينبغي استبداله. أعد إنشاء هذه "
+"الدفعة بالإصدار الحالي من ⁦git-stage-batch⁩ قبل إعادة تشغيلها."
+
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr "يحتوي إدخال الملف لـ {path!r} على علامة بديل مصدر قديم غير صالحة"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr "يحتوي إدخال الملف غير النصي لـ {path!r} على علامة بديل مصدر قديم"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "يحتوي إدخال الملفات[{path!r}] على علامة بديل مصدر غير صالحة"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr "يحتوي إدخال الملفات[{path!r}] على بديل مصدر بلا حد في المحتوى الحالي"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr "يحتوي إدخال الملفات[{path!r}] على بديل مصدر بلا جانب استبدال مملوك"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"لا يمكن تجاهل مؤشر الوحدة الفرعية المضاف للملف {file}: يحتوي الفهرس على "
+"إدخالات غير مدمجة."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"لا يمكن تجاهل مؤشر الوحدة الفرعية المضاف للملف {file}: يحتوي الفهرس بالفعل "
+"على محتوى مجهّز."
+
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr "تغيّر الفهرس أثناء حساب التطبيق: {file}. أعد تنفيذ أمر التطبيق."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr "تغيّر الفهرس أثناء حساب الضمّ: {file}. أعد تنفيذ أمر الضمّ."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr "تغيّر ملف شجرة العمل أثناء حساب الضمّ: {file}. أعد تنفيذ أمر الضمّ."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr "تغيّر الفهرس أثناء حساب التجاهل: {file}. أعد تنفيذ أمر التجاهل."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"تغيّر ملف شجرة العمل بينما كان يجري حساب التجاهل: {file}. أعد تنفيذ أمر "
+"التجاهل."
+
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"لا يمكن إنشاء نقطة تحقق للاسترداد بينما يحتوي الفهرس على إدخالات غير مدمجة: "
+"{paths}"

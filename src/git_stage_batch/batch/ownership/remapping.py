@@ -74,6 +74,7 @@ def remap_batch_ownership_with_lineage(
                 anchor_line=None,
                 content_lines=deletion.content_lines,
                 baseline_reference=deletion.baseline_reference,
+                source_alternative=deletion.source_alternative,
             ))
             continue
 
@@ -87,6 +88,7 @@ def remap_batch_ownership_with_lineage(
             anchor_line=new_anchor,
             content_lines=deletion.content_lines,
             baseline_reference=deletion.baseline_reference,
+            source_alternative=deletion.source_alternative,
         ))
 
     new_replacement_units = _remap_replacement_units_with_lineage(

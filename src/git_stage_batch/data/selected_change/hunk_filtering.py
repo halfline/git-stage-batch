@@ -10,7 +10,10 @@ from ...batch.attribution import (
     FileAttribution,
     build_file_attribution,
 )
-from ...batch.attribution_projection import filter_owned_diff_fragments
+from ...batch.attribution_projection import (
+    filter_owned_diff_fragments,
+    filter_owned_diff_fragments_with_owners,
+)
 from ...batch.state.query import list_batch_names, read_batch_metadata_for_batches
 from ...batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ...core.models import LineLevelChange
@@ -18,9 +21,15 @@ from ...utils.file_io import write_text_file_contents
 from ...utils.journal import log_journal
 from ...utils.paths import get_line_changes_json_file_path
 from .. import change_freshness as _change_freshness
+from ..text_lifecycle_detection import detect_empty_text_lifecycle_change
 from .. import consumed_replacement_masks as _consumed_replacement_masks
 from .. import line_state as _line_state
 from ..consumed_selections import read_consumed_file_metadata
+from ..applied_batch_overlays import (
+    AppliedBatchOverlayView,
+    fresh_applied_batch_overlay_for_path,
+    is_applied_batch_overlay_owner,
+)
 
 
 def apply_line_level_batch_filter_to_cached_hunk(
@@ -66,25 +75,57 @@ def filter_line_level_change_for_batches(
     line_changes: LineLevelChange,
     *,
     batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
+    applied_overlay: AppliedBatchOverlayView | None = None,
+    masked_batch_names: set[str] | None = None,
 ) -> LineLevelChange | None:
     """Return the unowned portion of a live line change, or ``None``."""
+    filtered, masked_names = filter_line_level_change_for_batches_with_owners(
+        line_changes,
+        batch_metadata_by_name=batch_metadata_by_name,
+        applied_overlay=applied_overlay,
+    )
+    if masked_batch_names is not None:
+        masked_batch_names.update(masked_names)
+    return filtered
+
+
+def filter_line_level_change_for_batches_with_owners(
+    line_changes: LineLevelChange,
+    *,
+    batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
+    applied_overlay: AppliedBatchOverlayView | None = None,
+) -> tuple[LineLevelChange | None, frozenset[str]]:
+    """Return an unowned change plus named owners that hid any fragments."""
     file_path = line_changes.path
     if batch_metadata_by_name is None:
         batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
+    if applied_overlay is None:
+        applied_overlay = fresh_applied_batch_overlay_for_path(
+            file_path,
+            batch_metadata_by_name=batch_metadata_by_name,
+        )
     if _empty_lifecycle_change_is_batched(
         line_changes,
         batch_metadata_by_name=batch_metadata_by_name,
+        applied_overlay=applied_overlay,
     ):
-        return None
+        return None, _empty_lifecycle_owning_batch_names(
+            line_changes,
+            batch_metadata_by_name=batch_metadata_by_name,
+        )
     consumed_file_metadata = read_consumed_file_metadata(file_path)
 
     attribution_metrics = AttributionMetrics()
     attribution = build_file_attribution(
         file_path,
         batch_metadata_by_name=batch_metadata_by_name,
-        supplemental_batch_metadata=consumed_batch_metadata(
+        supplemental_batch_metadata=supplemental_batch_metadata(
             file_path,
             consumed_file_metadata,
+            applied_overlay,
+        ),
+        supplemental_source_object_by_name=(
+            applied_overlay.source_object_by_owner
         ),
         metrics=attribution_metrics,
     )
@@ -93,10 +134,11 @@ def filter_line_level_change_for_batches(
         file_path=file_path,
         **asdict(attribution_metrics),
     )
-    return _filter_line_level_change_with_prepared_resources(
+    return _filter_line_level_change_with_prepared_resources_and_owners(
         line_changes,
         attribution=attribution,
         consumed_file_metadata=consumed_file_metadata,
+        revealed_owner_names=applied_overlay.revealed_owner_names,
     )
 
 
@@ -107,6 +149,7 @@ def filter_line_level_change_with_attribution(
     batch_metadata_by_name: dict[str, BatchMetadataDict],
     consumed_file_metadata: BatchFileMetadataDict | None,
     captured_empty_lifecycle_is_batched: bool | None = None,
+    revealed_owner_names: frozenset[str] = frozenset(),
 ) -> LineLevelChange | None:
     """Filter one hunk from caller-supplied attribution and metadata.
 
@@ -131,6 +174,7 @@ def filter_line_level_change_with_attribution(
         line_changes,
         attribution=attribution,
         consumed_file_metadata=consumed_file_metadata,
+        revealed_owner_names=revealed_owner_names,
     )
 
 
@@ -138,8 +182,20 @@ def _empty_lifecycle_change_is_batched(
     line_changes: LineLevelChange,
     *,
     batch_metadata_by_name: dict[str, BatchMetadataDict],
+    applied_overlay: AppliedBatchOverlayView | None = None,
 ) -> bool:
-    return not line_changes.lines and (
+    if line_changes.lines:
+        return False
+    if (
+        applied_overlay is not None
+        and (
+            change_type := detect_empty_text_lifecycle_change(line_changes.path)
+        )
+        is not None
+        and change_type.value in applied_overlay.lifecycle_change_types
+    ):
+        return False
+    return (
         _change_freshness.empty_text_lifecycle_change_is_batched(
             line_changes.path,
             batch_metadata_by_name=batch_metadata_by_name,
@@ -152,12 +208,14 @@ def _filter_line_level_change_with_prepared_resources(
     *,
     attribution: FileAttribution,
     consumed_file_metadata: BatchFileMetadataDict | None,
+    revealed_owner_names: frozenset[str] = frozenset(),
 ) -> LineLevelChange | None:
     """Project attribution and replacement masks without repository I/O."""
 
     should_skip, filtered_line_changes = filter_owned_diff_fragments(
         line_changes,
         attribution,
+        revealed_owner_names=revealed_owner_names,
     )
     if should_skip:
         return None
@@ -167,6 +225,34 @@ def _filter_line_level_change_with_prepared_resources(
         filtered_line_changes,
         file_metadata=consumed_file_metadata,
     )
+
+
+def _filter_line_level_change_with_prepared_resources_and_owners(
+    line_changes: LineLevelChange,
+    *,
+    attribution: FileAttribution,
+    consumed_file_metadata: BatchFileMetadataDict | None,
+    revealed_owner_names: frozenset[str],
+) -> tuple[LineLevelChange | None, frozenset[str]]:
+    """Project ownership while retaining user-visible named owners."""
+    should_skip, filtered, masked_owners = filter_owned_diff_fragments_with_owners(
+        line_changes,
+        attribution,
+        revealed_owner_names=revealed_owner_names,
+    )
+    named_owners = frozenset(
+        owner
+        for owner in masked_owners
+        if owner != "__consumed__" and not is_applied_batch_overlay_owner(owner)
+    )
+    if should_skip:
+        return None, named_owners
+    assert filtered is not None
+    filtered = _consumed_replacement_masks.filter_consumed_replacement_masks_with_metadata(
+        filtered,
+        file_metadata=consumed_file_metadata,
+    )
+    return filtered, named_owners
 
 
 def consumed_batch_metadata(
@@ -181,3 +267,34 @@ def consumed_batch_metadata(
         },
     }
     return {"__consumed__": consumed_metadata}
+
+
+def supplemental_batch_metadata(
+    file_path: str,
+    consumed_file_metadata: BatchFileMetadataDict | None,
+    applied_overlay: AppliedBatchOverlayView,
+) -> dict[str, BatchMetadataDict] | None:
+    """Combine session masking and durable applied ownership for attribution."""
+    combined = dict(applied_overlay.metadata_by_owner)
+    consumed = consumed_batch_metadata(file_path, consumed_file_metadata)
+    if consumed:
+        combined.update(consumed)
+    return combined or None
+
+
+def _empty_lifecycle_owning_batch_names(
+    line_changes: LineLevelChange,
+    *,
+    batch_metadata_by_name: dict[str, BatchMetadataDict],
+) -> frozenset[str]:
+    change_type = detect_empty_text_lifecycle_change(
+        line_changes.path
+    )
+    if change_type is None:
+        return frozenset()
+    return frozenset(
+        batch_name
+        for batch_name, metadata in batch_metadata_by_name.items()
+        if metadata.get("files", {}).get(line_changes.path, {}).get("change_type")
+        == change_type.value
+    )

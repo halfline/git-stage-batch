@@ -77,6 +77,44 @@ def temp_git_repo(tmp_path, monkeypatch):
 class TestCommandDiscard:
     """Tests for discard command."""
 
+    def test_discard_reverts_context_free_hunk(self, temp_git_repo):
+        """A whole-file replacement should reverse without unchanged context."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("Changed\n")
+
+        command_start(quiet=True)
+        command_discard(quiet=True, auto_advance=False)
+
+        assert readme.read_text() == "# Test\n"
+
+    def test_discard_does_not_relax_a_contextual_hunk(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A normal selected hunk must retain Git's edge anchoring."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nChanged\n")
+        command_start(quiet=True)
+        original_apply = selected_change_discarding.git_apply_to_worktree
+        observed = None
+
+        def capture_apply(*args, **kwargs):
+            nonlocal observed
+            observed = kwargs.get("unidiff_zero")
+            return original_apply(*args, **kwargs)
+
+        monkeypatch.setattr(
+            selected_change_discarding,
+            "git_apply_to_worktree",
+            capture_apply,
+        )
+
+        command_discard(quiet=True, auto_advance=False)
+
+        assert observed is False
+        assert readme.read_text() == "# Test\n"
+
     def test_discard_to_invalid_batch_does_not_create_session_state(
         self,
         temp_git_repo,
@@ -1581,6 +1619,55 @@ class TestCommandDiscardToBatch:
             "context-batch",
             "intervening-context.txt",
         ) == "saved\n"
+
+    def test_discard_line_as_to_batch_defers_core_fallback_for_exact_prefix(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A proven inner prefix must not eagerly expand its mixed core."""
+        file_path = temp_git_repo / "inner-prefix.txt"
+        baseline = "old-a\nold-b\nold-c\n"
+        final = "new-a\nnew-b\nnew-c\nnew-d\n"
+        file_path.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "inner-prefix.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add inner prefix"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text(final)
+
+        command_start(quiet=True, auto_advance=False)
+        fetch_next_change()
+
+        from git_stage_batch.commands.selection import discard_line_replacement
+
+        def reject_eager_fallback(*_args, **_kwargs):
+            pytest.fail("default replacement-core expansion ran eagerly")
+
+        monkeypatch.setattr(
+            discard_line_replacement.replacement_selection,
+            "expand_replacement_selection_ids",
+            reject_eager_fallback,
+        )
+        command_discard_line_as_to_batch(
+            "inner-prefix-batch",
+            "5",
+            "new-b\nold-b\n",
+            quiet=True,
+            auto_advance=False,
+        )
+
+        assert file_path.read_text() == "new-a\nold-b\nnew-c\nnew-d\n"
+        command_apply_from_batch("inner-prefix-batch")
+        assert file_path.read_text() == final
 
     def test_discard_line_as_to_batch_replaces_intervening_repeated_context(
         self,

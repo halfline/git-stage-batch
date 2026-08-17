@@ -73,6 +73,7 @@ def _job(
             4,
             "digest",
         ),
+        expected_index_identity=IndexIdentity("100644", "c" * 40),
     )
 
 
@@ -364,7 +365,10 @@ def test_compute_streams_plan_output_to_the_workspace(tmp_path, monkeypatch):
                     LineBuffer.from_bytes(b"merged\n"),
                     "100644",
                     "modified",
-                )
+                ),
+                selected_ownership_metadata={
+                    "claimed_lines": ["1"],
+                },
             )
 
         monkeypatch.setattr(
@@ -378,9 +382,17 @@ def test_compute_streams_plan_output_to_the_workspace(tmp_path, monkeypatch):
         assert result.outcome == "plan"
         assert result.output_path == job.output_path
         assert result.details_artifact_path is None
+        assert result.selected_ownership_artifact_path is not None
+        assert workspace.read_pickle(result.selected_ownership_artifact_path) == {
+            "claimed_lines": ["1"],
+        }
         assert Path(job.output_path).read_bytes() == b"merged\n"
         assert captured["batch_source_object_id"] == "a" * 40
         assert captured["working_tree_artifact_path"].endswith("worktree")
+        assert captured["captured_index_identity"] == IndexIdentity(
+            "100644",
+            "c" * 40,
+        )
         assert captured["spool_dir"] == str(workspace.scratch_directory(0))
 
 
@@ -443,7 +455,10 @@ def test_compute_does_not_publish_empty_partial_deletion_output(
                     LineBuffer.from_bytes(b""),
                     None,
                     "deleted",
-                )
+                ),
+                selected_ownership_metadata={
+                    "claimed_lines": ["1"],
+                },
             )
 
         monkeypatch.setattr(
@@ -474,6 +489,24 @@ def test_result_validation_rejects_worker_selected_paths(tmp_path):
         )
 
         with pytest.raises(ValueError, match="invalid output path"):
+            validate_apply_text_plan_job_result(job, result)
+
+
+def test_result_validation_requires_selected_ownership_artifact(tmp_path):
+    """A successful worker plan must identify its compact ownership artifact."""
+    with FileJobWorkspace(parent_directory=tmp_path) as workspace:
+        job = _job(workspace)
+        result = ApplyTextPlanJobResult(
+            ordinal=job.ordinal,
+            file_path=job.file_path,
+            outcome="plan",
+            details_artifact_path=None,
+            output_path=job.output_path,
+            file_mode="100644",
+            change_type="modified",
+        )
+
+        with pytest.raises(ValueError, match="ownership path"):
             validate_apply_text_plan_job_result(job, result)
 
 
@@ -590,6 +623,33 @@ def test_parent_builds_whole_file_deletion_without_resolving_source(
             assert expected_identities == {"file.txt": identity}
         finally:
             plans[0].close()
+
+
+def test_parent_rejects_index_changed_after_apply_planning(monkeypatch):
+    """Apply must not publish a plan built against an older index blob."""
+    expected_index_identities = {
+        "file.txt": IndexIdentity("100644", "a" * 40),
+    }
+    monkeypatch.setattr(
+        apply_action,
+        "read_index_identities",
+        lambda _paths: {
+            "file.txt": IndexIdentity("100644", "b" * 40),
+        },
+    )
+    monkeypatch.setattr(
+        apply_action,
+        "capture_worktree_identities",
+        lambda _paths: (_ for _ in ()).throw(
+            AssertionError("worktree read should not precede stale index")
+        ),
+    )
+
+    with pytest.raises(CommandError, match="Index changed.*file.txt"):
+        apply_action._require_unchanged_apply_targets(
+            expected_index_identities,
+            {},
+        )
 
 
 def test_parent_reduces_earlier_text_refusal_before_reading_later_binary(
@@ -777,8 +837,12 @@ def test_result_transport_size_does_not_follow_merged_content(
     monkeypatch,
 ):
     sizes = []
-    with FileJobWorkspace(parent_directory=tmp_path) as workspace:
-        for byte_count in (8, 2 * 1024 * 1024):
+    for ordinal, byte_count in enumerate((8, 2 * 1024 * 1024)):
+        workspace_parent = tmp_path / str(ordinal)
+        workspace_parent.mkdir()
+        with FileJobWorkspace(
+            parent_directory=workspace_parent,
+        ) as workspace:
             job = _job(workspace)
 
             def build_plan(**_kwargs):
@@ -788,7 +852,10 @@ def test_result_transport_size_does_not_follow_merged_content(
                         LineBuffer.from_bytes(b"x" * byte_count),
                         "100644",
                         "modified",
-                    )
+                    ),
+                    selected_ownership_metadata={
+                        "claimed_lines": ["1"],
+                    },
                 )
 
             monkeypatch.setattr(

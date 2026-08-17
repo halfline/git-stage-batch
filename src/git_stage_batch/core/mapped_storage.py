@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
 import mmap
 import struct
 import tempfile
@@ -12,6 +13,7 @@ from types import TracebackType
 from typing import BinaryIO, Protocol, TypeVar, cast, overload
 
 from ..utils.scratch import default_scratch_parent
+from .resource_cleanup import close_resources_preserving_first
 
 
 _UINT32_MAX = (1 << 32) - 1
@@ -56,7 +58,7 @@ def byte_storage_from_path(path: str | Path) -> tuple[_ByteStorage, BinaryIO | N
             mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
             file_handle,
         )
-    except Exception:
+    except BaseException:
         file_handle.close()
         raise
 
@@ -127,7 +129,7 @@ def _byte_storage_from_chunk_prefix_and_remainder(
             mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
             file_handle,
         )
-    except Exception:
+    except BaseException:
         file_handle.close()
         raise
 
@@ -178,7 +180,7 @@ def _allocate_storage(
     try:
         file_handle.truncate(byte_count)
         return mmap.mmap(file_handle.fileno(), byte_count), file_handle
-    except Exception:
+    except BaseException:
         file_handle.close()
         raise
 
@@ -187,10 +189,20 @@ def _close_storage(
     data: _StorageBuffer | None,
     file_handle: BinaryIO | None,
 ) -> None:
+    first_error: BaseException | None = None
     if isinstance(data, mmap.mmap):
-        data.close()
+        try:
+            data.close()
+        except BaseException as error:
+            first_error = error
     if file_handle is not None:
-        file_handle.close()
+        try:
+            file_handle.close()
+        except BaseException as error:
+            if first_error is None:
+                first_error = error
+    if first_error is not None:
+        raise first_error
 
 
 class MappedIntVector(Sequence[int]):
@@ -277,7 +289,7 @@ class MappedIntVector(Sequence[int]):
         while remaining:
             count = min(remaining, len(chunk) // self._width)
             byte_count = count * self._width
-            data[offset:offset + byte_count] = chunk[:byte_count]
+            data[offset : offset + byte_count] = chunk[:byte_count]
             offset += byte_count
             remaining -= count
 
@@ -301,12 +313,15 @@ class MappedIntVector(Sequence[int]):
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def _normalize_index(self, index: int) -> int:
@@ -410,9 +425,16 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
             raise OverflowError("record vector capacity exceeded")
 
         index = self._length
-        self._write_record(index, record)
-        self._length += 1
-        return index
+        try:
+            self._write_record(index, record)
+            self._length = index + 1
+            return index
+        except BaseException:
+            # The packed bytes beyond the logical end are irrelevant. Keep the
+            # public length atomic even when cancellation lands after the
+            # write or after the length assignment.
+            self._length = index
+            raise
 
     def truncate(self, length: int) -> None:
         """Reduce the logical record count without reallocating storage."""
@@ -447,12 +469,15 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def _write_record(self, index: int, record: Sequence[int]) -> None:
@@ -580,28 +605,67 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
     def append(self, record: Sequence[int]) -> int:
         """Append a record and return its zero-based index."""
         self._require_open()
-        if not self._chunks or len(self._chunks[-1]) >= self._chunks[-1].capacity:
-            self._append_chunk()
-
         index = self._length
-        self._chunks[-1].append(record)
-        self._length += 1
-        return index
+        original_next_capacity = self._next_chunk_capacity
+        created_chunk = False
+        chunk: MappedRecordVector | None = None
+        chunk_length = 0
+        try:
+            if not self._chunks or len(self._chunks[-1]) >= self._chunks[-1].capacity:
+                self._append_chunk()
+                created_chunk = True
+
+            chunk = self._chunks[-1]
+            chunk_length = len(chunk)
+            chunk.append(record)
+            self._length = index + 1
+            return index
+        except BaseException:
+            self._length = index
+            if chunk is not None and len(chunk) > chunk_length:
+                chunk.truncate(chunk_length)
+            if created_chunk and chunk is not None:
+                if self._chunks and self._chunks[-1] is chunk:
+                    self._chunks.pop()
+                if self._chunk_starts:
+                    self._chunk_starts.pop()
+                self._next_chunk_capacity = original_next_capacity
+                try:
+                    chunk.close()
+                except BaseException:
+                    pass
+            raise
 
     def _append_chunk(self) -> None:
         capacity = self._next_chunk_capacity
-        self._chunk_starts.append(self._length)
-        self._chunks.append(
-            MappedRecordVector(
+        original_chunk_count = len(self._chunks)
+        original_start_count = len(self._chunk_starts)
+        chunk: MappedRecordVector | None = None
+        try:
+            chunk = MappedRecordVector(
                 capacity,
                 self._record_format,
                 spool_dir=self._spool_dir,
             )
-        )
-        self._next_chunk_capacity = min(
-            self._chunk_capacity,
-            max(capacity + 1, capacity * 2),
-        )
+            self._chunk_starts.append(self._length)
+            self._chunks.append(chunk)
+            self._next_chunk_capacity = min(
+                self._chunk_capacity,
+                max(capacity + 1, capacity * 2),
+            )
+            return
+        except BaseException:
+            if len(self._chunks) > original_chunk_count:
+                self._chunks.pop()
+            if len(self._chunk_starts) > original_start_count:
+                self._chunk_starts.pop()
+            self._next_chunk_capacity = capacity
+            if chunk is not None:
+                try:
+                    chunk.close()
+                except BaseException:
+                    pass
+            raise
 
     def _chunk_for_index(self, index: int) -> tuple[MappedRecordVector, int]:
         chunk_index = bisect_right(self._chunk_starts, index) - 1
@@ -617,8 +681,7 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         if self._closed:
             return
 
-        for chunk in self._chunks:
-            chunk.close()
+        close_resources_preserving_first(self._chunks)
         self._chunks.clear()
         self._chunk_starts.clear()
         self._closed = True
@@ -633,12 +696,15 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
+        except BaseException:
             pass
 
     def _normalize_index(self, index: int) -> int:
@@ -665,8 +731,15 @@ class ManagedMappedResources:
     def track(self, resource: _MappedResourceT) -> _MappedResourceT:
         """Track a storage resource for deterministic cleanup."""
         self._require_open()
-        self._resources.append(resource)
-        byte_count = _resource_byte_count(resource)
+        try:
+            byte_count = _resource_byte_count(resource)
+            self._resources.append(resource)
+        except BaseException:
+            try:
+                _close_resource(resource)
+            except BaseException:
+                pass
+            raise
         self._current_bytes += byte_count
         self._high_water_bytes = max(self._high_water_bytes, self._current_bytes)
         return resource
@@ -677,18 +750,34 @@ class ManagedMappedResources:
             _close_resource(resource)
             return
 
-        self._resources.remove(resource)
         byte_count = _resource_byte_count(resource)
         _close_resource(resource)
+        self._resources.remove(resource)
         self._current_bytes = max(0, self._current_bytes - byte_count)
+
+    @contextmanager
+    def release_resource_on_exit(
+        self,
+        resource: _MappedResourceT,
+    ) -> Iterator[_MappedResourceT]:
+        """Release one tracked temporary after a locally scoped operation."""
+        try:
+            yield resource
+        except BaseException:
+            try:
+                self.close_resource(resource)
+            except BaseException:
+                pass
+            raise
+        else:
+            self.close_resource(resource)
 
     def close(self) -> None:
         """Close all tracked resources."""
         if self._closed:
             return
 
-        for resource in reversed(self._resources):
-            _close_resource(resource)
+        close_resources_preserving_first(reversed(self._resources))
         self._resources.clear()
         self._current_bytes = 0
         self._closed = True
@@ -703,7 +792,10 @@ class ManagedMappedResources:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        close_resources_preserving_first(
+            (self,),
+            suppress_errors=exc_type is not None,
+        )
 
     def _require_open(self) -> None:
         if self._closed:

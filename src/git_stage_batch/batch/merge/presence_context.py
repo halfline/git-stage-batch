@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +11,8 @@ from ..line_matching.match_workspace import MatcherWorkspace
 from ..line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from .presence_missing_claims import mapped_missing_source_lines
 from ...core.line_selection import LineRanges, LineSelection
+from ...core.mapped_storage import MappedIntVector
+from ...core.resource_cleanup import close_resources_preserving_first
 from ...exceptions import MergeError
 from ...i18n import _
 
@@ -30,6 +32,7 @@ class PresenceRunPlacement:
     after_source_line: int | None
     before_target_line: int | None
     after_target_line: int | None
+    exact_context_gap: bool = False
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,10 @@ class ContextualPresenceAmbiguity:
     end_gap: int
 
 
+class PresencePlacementAmbiguityError(MergeError):
+    """Raised when structural context supports multiple presence placements."""
+
+
 @dataclass(frozen=True)
 class _PresenceRunAnalysis:
     run_start: int
@@ -51,6 +58,28 @@ class _PresenceRunAnalysis:
     before: tuple[int, int] | None
     after: tuple[int, int] | None
     gap_index: int | None
+    exact_context_gap: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _MissingPresenceCluster:
+    """Missing selected runs between the same two mapped source lines."""
+
+    run_start_index: int
+    run_stop_index: int
+    before: tuple[int, int] | None
+    after: tuple[int, int] | None
+    unclaimed_source_line_count: int
+
+    def has_locally_collapsed_target_gap(self) -> bool:
+        """Return whether local source context proves one empty target gap."""
+        return (
+            self.run_stop_index > self.run_start_index + 1
+            and self.before is not None
+            and self.after is not None
+            and self.after[1] == self.before[1] + 1
+            and self.unclaimed_source_line_count < _CONTEXTUAL_LEADING_GAP
+        )
 
 
 class _DistinctiveContextResolver:
@@ -75,6 +104,8 @@ class _DistinctiveContextResolver:
         self._workspace: MatcherWorkspace | None = None
         self._source_occurrences: LinePayloadOccurrenceIndex | None = None
         self._target_occurrences: LinePayloadOccurrenceIndex | None = None
+        self._nearest_distinctive_before: MappedIntVector | None = None
+        self._nearest_distinctive_after: MappedIntVector | None = None
 
     def close(self) -> None:
         """Release lazily allocated occurrence indexes."""
@@ -83,57 +114,100 @@ class _DistinctiveContextResolver:
             self._workspace = None
             self._source_occurrences = None
             self._target_occurrences = None
+            self._nearest_distinctive_before = None
+            self._nearest_distinctive_after = None
 
     def nearest_before(self, run_start: int) -> tuple[int, int] | None:
         """Return the nearest distinctive mapped line before a source run."""
-        for source_line in range(run_start - 1, 0, -1):
-            target_line = self._mapping.get_target_line_from_source_line(
-                source_line
-            )
-            if target_line is not None and self._is_distinctive(source_line):
-                return source_line, target_line
-        return None
+        self._build_distinctive_neighbor_indexes()
+        assert self._nearest_distinctive_before is not None
+        source_line = self._nearest_distinctive_before[run_start]
+        if source_line == 0:
+            return None
+        target_line = self._mapping.get_target_line_from_source_line(source_line)
+        assert target_line is not None
+        return source_line, target_line
 
     def nearest_after(self, run_end: int) -> tuple[int, int] | None:
         """Return the nearest distinctive mapped line after a source run."""
-        for source_line in range(
-            run_end + 1,
-            len(self._source_lines) + 1,
-        ):
-            target_line = self._mapping.get_target_line_from_source_line(
-                source_line
-            )
-            if target_line is not None and self._is_distinctive(source_line):
-                return source_line, target_line
-        return None
+        self._build_distinctive_neighbor_indexes()
+        assert self._nearest_distinctive_after is not None
+        source_line = self._nearest_distinctive_after[run_end]
+        if source_line == 0:
+            return None
+        target_line = self._mapping.get_target_line_from_source_line(source_line)
+        assert target_line is not None
+        return source_line, target_line
 
     def nearest_around(
         self,
         run_start: int,
         run_end: int,
+        before: tuple[int, int] | None,
+        after: tuple[int, int] | None,
+        *,
+        trust_before: bool = False,
+        trust_after: bool = False,
     ) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
         """Return nearest distinctive mappings around a source run."""
-        before = _nearest_mapped_before(self._mapping, run_start)
-        after = _nearest_mapped_after(
-            self._mapping,
-            run_end,
-            len(self._source_lines),
-        )
-        candidates = tuple(
-            pair[0]
-            for pair in (before, after)
-            if pair is not None
-        )
+        candidates = tuple(pair[0] for pair in (before, after) if pair is not None)
         distinctive = self._distinctive_results(candidates)
 
-        if before is not None and not distinctive[0]:
+        if before is not None and not trust_before and not distinctive[0]:
             before = self.nearest_before(run_start)
-        if after is not None and not distinctive[-1]:
+        if after is not None and not trust_after and not distinctive[-1]:
             after = self.nearest_after(run_end)
         return before, after
 
-    def _is_distinctive(self, source_line: int) -> bool:
-        return self._distinctive_results((source_line,))[0]
+    def _build_distinctive_neighbor_indexes(self) -> None:
+        """Cache nearest distinctive mappings for constant-time run queries."""
+        if self._nearest_distinctive_before is not None:
+            return
+        if self._source_occurrences is None:
+            self._build_occurrence_indexes()
+        assert self._workspace is not None
+        source_line_count = len(self._source_lines)
+        before = self._workspace.int_vector(
+            source_line_count + 1,
+            width=8,
+            fill=0,
+        )
+        after = self._workspace.int_vector(
+            source_line_count + 1,
+            width=8,
+            fill=0,
+        )
+
+        nearest = 0
+        for source_line in range(1, source_line_count + 1):
+            before[source_line] = nearest
+            if self._mapping.get_target_line_from_source_line(
+                source_line
+            ) is not None and self._is_distinctive_from_indexes(source_line):
+                nearest = source_line
+
+        nearest = 0
+        for source_line in range(source_line_count, 0, -1):
+            after[source_line] = nearest
+            if self._mapping.get_target_line_from_source_line(
+                source_line
+            ) is not None and self._is_distinctive_from_indexes(source_line):
+                nearest = source_line
+
+        self._nearest_distinctive_before = before
+        self._nearest_distinctive_after = after
+
+    def _is_distinctive_from_indexes(self, source_line: int) -> bool:
+        """Return exact distinctiveness using the shared full-file indexes."""
+        if source_line in self._trusted_source_lines:
+            return True
+        assert self._source_occurrences is not None
+        assert self._target_occurrences is not None
+        content = self._source_lines[source_line - 1]
+        return (
+            self._source_occurrences.occurrence_count(content) == 1
+            and self._target_occurrences.occurrence_count(content) == 1
+        )
 
     def _distinctive_results(
         self,
@@ -159,8 +233,7 @@ class _DistinctiveContextResolver:
             <= _DIRECT_DISTINCTIVE_CONTEXT_CHECK_LIMIT
         ):
             contents = [
-                self._source_lines[source_line - 1]
-                for source_line in unchecked_lines
+                self._source_lines[source_line - 1] for source_line in unchecked_lines
             ]
             source_counts = _line_occurrence_counts(
                 self._source_lines,
@@ -264,6 +337,49 @@ def _nearest_mapped_after(
     return None
 
 
+def _iter_missing_presence_clusters(
+    missing: LineRanges,
+    mapping: LineMapping,
+) -> Iterator[_MissingPresenceCluster]:
+    """Yield missing runs grouped by their nearest mapped source boundaries.
+
+    The compact range input and monotonic cluster scan keep this proportional
+    to the number of selected ranges.  No per-line Python collection is built.
+    """
+    missing_ranges = missing.ranges()
+    source_line_count = len(mapping.source_to_target)
+    run_index = 0
+    while run_index < len(missing_ranges):
+        run_start, run_end = missing_ranges[run_index]
+        before = _nearest_mapped_before(mapping, run_start)
+        after = _nearest_mapped_after(
+            mapping,
+            run_end,
+            source_line_count,
+        )
+        after_source_line = source_line_count + 1 if after is None else after[0]
+        selected_line_count = run_end - run_start + 1
+        run_stop_index = run_index + 1
+        while (
+            run_stop_index < len(missing_ranges)
+            and missing_ranges[run_stop_index][0] < after_source_line
+        ):
+            sibling_start, sibling_end = missing_ranges[run_stop_index]
+            selected_line_count += sibling_end - sibling_start + 1
+            run_stop_index += 1
+
+        before_source_line = 0 if before is None else before[0]
+        source_gap_line_count = after_source_line - before_source_line - 1
+        yield _MissingPresenceCluster(
+            run_start_index=run_index,
+            run_stop_index=run_stop_index,
+            before=before,
+            after=after,
+            unclaimed_source_line_count=(source_gap_line_count - selected_line_count),
+        )
+        run_index = run_stop_index
+
+
 def _choose_insertion_gap(
     *,
     run_start: int,
@@ -313,6 +429,49 @@ def _choose_insertion_gap(
     return None
 
 
+def _extend_exact_cluster_context(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    source_selection: LineSelection,
+    before: tuple[int, int] | None,
+    after: tuple[int, int] | None,
+) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+    """Extend mapped cluster edges through exact unselected local context.
+
+    The primary matcher deliberately leaves repeated lines unmapped.  Within
+    an already ordered pair of mapped boundaries, however, an exact prefix or
+    suffix still proves where an adjacent selected run belongs.  Stop at the
+    first selected line or mismatch so this cannot infer an ordering across
+    unrelated source-only and target-only content.
+    """
+    source_before = before[0] if before is not None else 0
+    target_before = before[1] if before is not None else 0
+    source_after = after[0] if after is not None else len(source_lines) + 1
+    target_after = after[1] if after is not None else len(target_lines) + 1
+
+    while (
+        source_before + 1 < source_after
+        and target_before + 1 < target_after
+        and source_before + 1 not in source_selection
+        and source_lines[source_before] == target_lines[target_before]
+    ):
+        source_before += 1
+        target_before += 1
+        before = (source_before, target_before)
+
+    while (
+        source_after - 1 > source_before
+        and target_after - 1 > target_before
+        and source_after - 1 not in source_selection
+        and source_lines[source_after - 2] == target_lines[target_after - 2]
+    ):
+        source_after -= 1
+        target_after -= 1
+        after = (source_after, target_after)
+
+    return before, after
+
+
 def _contextual_ambiguity(
     *,
     run_start: int,
@@ -342,6 +501,8 @@ def _analyze_presence_runs(
     *,
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    recorded_context_lines: LineSelection | None = None,
+    collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[_PresenceRunAnalysis, ...]]:
     missing = mapped_missing_source_lines(
@@ -351,70 +512,193 @@ def _analyze_presence_runs(
     )
     distinctive_context: _DistinctiveContextResolver | None = None
     analyses: list[_PresenceRunAnalysis] = []
+    analysis_completed = False
 
     try:
-        for run_start, run_end in missing.ranges():
-            gap_index: int | None
-            mapped_before = _nearest_mapped_before(mapping, run_start)
-            mapped_after = _nearest_mapped_after(
-                mapping,
-                run_end,
-                len(source_lines),
+        missing_ranges = missing.ranges()
+        for cluster in _iter_missing_presence_clusters(missing, mapping):
+            locally_collapsed = cluster.has_locally_collapsed_target_gap()
+            exact_before, exact_after = _extend_exact_cluster_context(
+                source_lines,
+                target_lines,
+                source_selection,
+                cluster.before,
+                cluster.after,
             )
-            leading_gap = (
-                run_start - mapped_before[0] - 1
-                if mapped_before is not None
-                else 0
-            )
-            run_requires_distinctive_context = (
-                require_distinctive_context
-                or (
-                    distinctive_context_lines is not None
-                    and distinctive_context_lines.count(run_start, run_end) > 0
-                )
-            )
-
-            if (
-                not run_requires_distinctive_context
-                and leading_gap < _CONTEXTUAL_LEADING_GAP
+            exact_target_gap_collapsed = (
+                exact_before[1] if exact_before is not None else 0
+            ) == (exact_after[1] - 1 if exact_after is not None else len(target_lines))
+            for run_index in range(
+                cluster.run_start_index,
+                cluster.run_stop_index,
             ):
-                before = mapped_before
-                after = mapped_after
-                gap_index = before[1] if before is not None else 0
-            else:
-                if distinctive_context is None:
-                    distinctive_context = _DistinctiveContextResolver(
-                        source_lines,
-                        target_lines,
-                        mapping,
-                        trusted_source_lines,
-                        spool_dir=spool_dir,
+                run_start, run_end = missing_ranges[run_index]
+                gap_index: int | None
+                mapped_before = cluster.before
+                mapped_after = cluster.after
+                leading_gap = (
+                    run_start - mapped_before[0] - 1 if mapped_before is not None else 0
+                )
+                run_requires_distinctive_context = require_distinctive_context or (
+                    distinctive_context_lines is not None
+                    and distinctive_context_lines.count(
+                        run_start,
+                        run_end,
                     )
-                before, after = distinctive_context.nearest_around(
-                    run_start,
-                    run_end,
+                    > 0
                 )
-                gap_index = _choose_insertion_gap(
-                    run_start=run_start,
-                    run_end=run_end,
-                    source_line_count=len(source_lines),
-                    target_line_count=len(target_lines),
-                    before=before,
-                    after=after,
+                run_has_recorded_context = (
+                    recorded_context_lines is not None
+                    and recorded_context_lines.count(run_start, run_end)
+                    == run_end - run_start + 1
                 )
+                exact_context_gap = False
 
-            analyses.append(_PresenceRunAnalysis(
-                run_start=run_start,
-                run_end=run_end,
-                before=before,
-                after=after,
-                gap_index=gap_index,
-            ))
+                if locally_collapsed:
+                    before = mapped_before
+                    after = mapped_after
+                    assert before is not None
+                    gap_index = before[1]
+                elif (
+                    run_has_recorded_context
+                    and exact_target_gap_collapsed
+                    and (
+                        (exact_before is not None and exact_before[0] == run_start - 1)
+                        or (exact_after is not None and exact_after[0] == run_end + 1)
+                    )
+                ):
+                    before = exact_before
+                    after = exact_after
+                    gap_index = _choose_insertion_gap(
+                        run_start=run_start,
+                        run_end=run_end,
+                        source_line_count=len(source_lines),
+                        target_line_count=len(target_lines),
+                        before=before,
+                        after=after,
+                    )
+                    exact_context_gap = gap_index is not None
+                elif (
+                    not run_requires_distinctive_context
+                    and leading_gap < _CONTEXTUAL_LEADING_GAP
+                ):
+                    before = mapped_before
+                    after = mapped_after
+                    gap_index = before[1] if before is not None else 0
+                else:
+                    if distinctive_context is None:
+                        distinctive_context = _DistinctiveContextResolver(
+                            source_lines,
+                            target_lines,
+                            mapping,
+                            trusted_source_lines,
+                            spool_dir=spool_dir,
+                        )
+                    before, after = distinctive_context.nearest_around(
+                        run_start,
+                        run_end,
+                        mapped_before,
+                        mapped_after,
+                        trust_before=(
+                            mapped_before is not None
+                            and mapped_before[0] == run_start - 1
+                            and recorded_context_lines is not None
+                            and mapped_before[0] in recorded_context_lines
+                        ),
+                        trust_after=(
+                            mapped_after is not None
+                            and mapped_after[0] == run_end + 1
+                            and recorded_context_lines is not None
+                            and mapped_after[0] in recorded_context_lines
+                        ),
+                    )
+                    gap_index = _choose_insertion_gap(
+                        run_start=run_start,
+                        run_end=run_end,
+                        source_line_count=len(source_lines),
+                        target_line_count=len(target_lines),
+                        before=before,
+                        after=after,
+                    )
+
+                analyses.append(
+                    _PresenceRunAnalysis(
+                        run_start=run_start,
+                        run_end=run_end,
+                        before=before,
+                        after=after,
+                        gap_index=gap_index,
+                        exact_context_gap=exact_context_gap,
+                    )
+                )
+        analysis_completed = True
     finally:
-        if distinctive_context is not None:
-            distinctive_context.close()
+        close_resources_preserving_first(
+            (distinctive_context,),
+            suppress_errors=not analysis_completed,
+        )
 
+    _resolve_collapsing_target_spans(
+        analyses,
+        collapsing_target_spans,
+        len(target_lines),
+    )
     return missing, tuple(analyses)
+
+
+def _resolve_collapsing_target_spans(
+    analyses: list[_PresenceRunAnalysis],
+    target_spans: Sequence[tuple[int, ...]],
+    target_line_count: int,
+) -> None:
+    """Place ambiguous runs at a verified removal span's start boundary."""
+    span_iterator = _iter_collapsing_target_spans(target_spans)
+    current_span = next(span_iterator, None)
+    for index, analysis in enumerate(analyses):
+        if analysis.gap_index is not None:
+            continue
+        before_gap = analysis.before[1] if analysis.before is not None else 0
+        after_gap = (
+            analysis.after[1] - 1 if analysis.after is not None else target_line_count
+        )
+        while current_span is not None and current_span[1] <= before_gap:
+            current_span = next(span_iterator, None)
+        if current_span is None:
+            return
+        span_start, span_end = current_span
+        if span_start <= before_gap and after_gap <= span_end:
+            analyses[index] = _PresenceRunAnalysis(
+                run_start=analysis.run_start,
+                run_end=analysis.run_end,
+                before=analysis.before,
+                after=analysis.after,
+                gap_index=span_start,
+                exact_context_gap=analysis.exact_context_gap,
+            )
+
+
+def _iter_collapsing_target_spans(
+    target_spans: Sequence[tuple[int, ...]],
+) -> Iterator[tuple[int, int]]:
+    """Yield ordered removal spans with overlapping spans coalesced."""
+    current_start: int | None = None
+    current_end: int | None = None
+    for span_start, span_end in target_spans:
+        if span_start < 0 or span_end <= span_start:
+            raise ValueError("collapsing target spans must be nonempty")
+        if current_start is None or current_end is None:
+            current_start, current_end = span_start, span_end
+            continue
+        if span_start < current_start:
+            raise ValueError("collapsing target spans must be ordered")
+        if span_start < current_end:
+            current_end = max(current_end, span_end)
+            continue
+        yield current_start, current_end
+        current_start, current_end = span_start, span_end
+
+    if current_start is not None and current_end is not None:
+        yield current_start, current_end
 
 
 def contextual_presence_ambiguities(
@@ -426,6 +710,7 @@ def contextual_presence_ambiguities(
     trusted_source_lines: Collection[int] = (),
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    recorded_context_lines: LineSelection | None = None,
     spool_dir: str | Path | None = None,
 ) -> tuple[ContextualPresenceAmbiguity, ...]:
     """Return bounded placement ambiguities for suspicious missing runs."""
@@ -437,6 +722,7 @@ def contextual_presence_ambiguities(
         trusted_source_lines,
         require_distinctive_context=require_distinctive_context,
         distinctive_context_lines=distinctive_context_lines,
+        recorded_context_lines=recorded_context_lines,
         spool_dir=spool_dir,
     )
     ambiguities: list[ContextualPresenceAmbiguity] = []
@@ -444,13 +730,15 @@ def contextual_presence_ambiguities(
     for analysis in analyses:
         if analysis.gap_index is not None:
             continue
-        ambiguities.append(_contextual_ambiguity(
-            run_start=analysis.run_start,
-            run_end=analysis.run_end,
-            target_line_count=len(target_lines),
-            before=analysis.before,
-            after=analysis.after,
-        ))
+        ambiguities.append(
+            _contextual_ambiguity(
+                run_start=analysis.run_start,
+                run_end=analysis.run_end,
+                target_line_count=len(target_lines),
+                before=analysis.before,
+                after=analysis.after,
+            )
+        )
 
     return tuple(ambiguities)
 
@@ -464,6 +752,8 @@ def contextual_presence_placements(
     trusted_source_lines: Collection[int] = (),
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    recorded_context_lines: LineSelection | None = None,
+    collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
     """Return missing claims and their context-supported insertion gaps.
@@ -483,6 +773,8 @@ def contextual_presence_placements(
         trusted_source_lines,
         require_distinctive_context=require_distinctive_context,
         distinctive_context_lines=distinctive_context_lines,
+        recorded_context_lines=recorded_context_lines,
+        collapsing_target_spans=collapsing_target_spans,
         spool_dir=spool_dir,
     )
     if not missing:
@@ -492,26 +784,29 @@ def contextual_presence_placements(
 
     for analysis in analyses:
         if analysis.gap_index is None:
-            raise MergeError(
+            raise PresencePlacementAmbiguityError(
                 _("Batch was created from a different version of the file")
             )
-        placements.append(PresenceRunPlacement(
-            run_start=analysis.run_start,
-            run_end=analysis.run_end,
-            gap_index=analysis.gap_index,
-            before_source_line=(
-                analysis.before[0] if analysis.before is not None else None
-            ),
-            after_source_line=(
-                analysis.after[0] if analysis.after is not None else None
-            ),
-            before_target_line=(
-                analysis.before[1] if analysis.before is not None else None
-            ),
-            after_target_line=(
-                analysis.after[1] if analysis.after is not None else None
-            ),
-        ))
+        placements.append(
+            PresenceRunPlacement(
+                run_start=analysis.run_start,
+                run_end=analysis.run_end,
+                gap_index=analysis.gap_index,
+                before_source_line=(
+                    analysis.before[0] if analysis.before is not None else None
+                ),
+                after_source_line=(
+                    analysis.after[0] if analysis.after is not None else None
+                ),
+                before_target_line=(
+                    analysis.before[1] if analysis.before is not None else None
+                ),
+                after_target_line=(
+                    analysis.after[1] if analysis.after is not None else None
+                ),
+                exact_context_gap=analysis.exact_context_gap,
+            )
+        )
 
     placements.sort(key=lambda placement: (placement.gap_index, placement.run_start))
     return missing, tuple(placements)

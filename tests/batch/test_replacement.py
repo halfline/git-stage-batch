@@ -6,6 +6,8 @@ import tracemalloc
 from git_stage_batch.batch import replacement as replacement_module
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.replacement import (
     ReplacementBatchView,
     build_replacement_batch_view_from_lines,
@@ -72,6 +74,40 @@ def test_build_replacement_batch_view_returns_named_result(line_sequence):
     with view:
         assert view.source_buffer.to_bytes() == b"line1\nnew\nline2\n"
         assert view.ownership.presence_line_set() == {2}
+
+
+def test_replacement_view_preserves_source_alternative_boundary(line_sequence):
+    """A transformed preview must retain the recorded live old-side boundary."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"live\n"],
+                baseline_reference=reference,
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    with build_replacement_batch_view_from_lines(
+        line_sequence([b"head\n", b"owned\n", b"live\n", b"tail\n"]),
+        ownership,
+        "replacement",
+    ) as view:
+        deletion = view.ownership.deletions[0]
+        assert deletion.source_alternative is True
+        assert deletion.baseline_reference == reference
 
 
 def test_replacement_text_can_carry_exact_stdin_bytes():

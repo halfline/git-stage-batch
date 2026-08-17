@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import shlex
 
 from ...core.line_selection import parse_line_selection_ranges
@@ -54,6 +55,7 @@ def resolve_batch_source_action_scope(
     line_ids: str | None,
     file: str | None,
     patterns: list[str] | None,
+    resolved_file_paths: Sequence[str] | None = None,
     extra_action_parts: tuple[str, ...] = (),
 ) -> _records.ActionScopeResolution:
     """Resolve pathless and implicit-file batch actions against the last batch review."""
@@ -63,7 +65,7 @@ def resolve_batch_source_action_scope(
     )
 
     review_action = _records.coerce_review_action(action)
-    if patterns is not None:
+    if patterns is not None or resolved_file_paths is not None:
         return _records.ActionScopeResolution(file=file)
 
     if file is None:

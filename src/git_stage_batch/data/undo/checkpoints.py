@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+from collections.abc import Callable
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Iterator, Literal, TypeAlias
+from uuid import uuid4
 
 from . import restore as _undo_restore
 from . import snapshots as _undo_snapshots
@@ -20,6 +22,7 @@ from .refs import (
     SESSION_UNDO_STACK_REF,
     checkpoint_parent,
     current_redo_commit,
+    current_stack_commit,
     current_undo_commit,
 )
 from ..recovery_anchors import (
@@ -27,6 +30,7 @@ from ..recovery_anchors import (
     state_recovery_objects,
     validate_recovery_state,
 )
+from ..session_marker import session_is_active
 from ...utils.session_start_point import current_head_commit
 from ...exceptions import CommandError
 from ...git_paths import display_path
@@ -54,6 +58,100 @@ _PENDING_CHECKPOINT: str | None = None
 _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 _PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
+_PENDING_CHECKPOINT_TRANSACTION_BOUNDARY: _TransactionBoundary | None = None
+_TRANSIENT_TRANSACTION_REF_PREFIX = "refs/git-stage-batch/transactions/"
+_ACTIVE_TRANSIENT_TRANSACTION: _TransientTransaction | None = None
+
+
+RollbackStatus: TypeAlias = Literal[
+    "unavailable",
+    "not-requested",
+    "pending",
+    "delegated",
+    "completed",
+    "failed",
+    "not-needed",
+    "not-attempted",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class _DeferredTransactionCompletion:
+    """Paired effects for one command completed inside a transaction."""
+
+    on_commit: Callable[[], None]
+    on_rollback: Callable[[RollbackStatus], None] | None = None
+
+
+@dataclass(slots=True)
+class _TransactionBoundary:
+    """Shared publication lifecycle for nested transactional contexts."""
+
+    armed: bool = True
+    completions: list[_DeferredTransactionCompletion] = field(default_factory=list)
+    outcome: Literal["pending", "committed", "rolled-back"] = "pending"
+    rollback: RollbackStatus | None = None
+
+    def defer_success(self, callback: Callable[[], None]) -> None:
+        """Run after the outermost commit, or immediately once committed."""
+        self.defer_completion(callback)
+
+    def defer_completion(
+        self,
+        on_commit: Callable[[], None],
+        on_rollback: Callable[[RollbackStatus], None] | None = None,
+    ) -> None:
+        """Run paired completion effects at the outermost outcome."""
+        if self.outcome == "committed":
+            on_commit()
+        elif self.outcome == "rolled-back":
+            if on_rollback is not None and self.rollback is not None:
+                on_rollback(self.rollback)
+        elif self.outcome == "pending":
+            self.completions.append(
+                _DeferredTransactionCompletion(on_commit, on_rollback)
+            )
+
+    def commit(self) -> None:
+        """Publish every deferred success effect after durable completion."""
+        self.outcome = "committed"
+        completions = tuple(self.completions)
+        self.completions.clear()
+        first_error: BaseException | None = None
+        for completion in completions:
+            try:
+                completion.on_commit()
+            except BaseException as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
+
+    def finish_rollback(self, rollback: RollbackStatus) -> None:
+        """Publish best-effort rollback effects after restoration settles."""
+        self.outcome = "rolled-back"
+        self.rollback = rollback
+        completions = tuple(self.completions)
+        self.completions.clear()
+        for completion in completions:
+            if completion.on_rollback is None:
+                continue
+            try:
+                completion.on_rollback(rollback)
+            except BaseException:
+                # A diagnostic completion must not mask the publication or
+                # rollback failure that brought the transaction here.
+                pass
+
+
+@dataclass(slots=True)
+class _TransientTransaction:
+    """Process-local owner for one nested transient transaction."""
+
+    manifest: CheckpointState
+    boundary: _TransactionBoundary
+    repository: Path
+    rollback_cause: BaseException | None = None
 
 
 @dataclass(slots=True)
@@ -64,26 +162,84 @@ class UndoCheckpointStatus:
     the nested context cannot report that enclosing rollback's final outcome.
     """
 
-    rollback: Literal[
-        "unavailable",
-        "not-requested",
-        "pending",
-        "delegated",
-        "completed",
-        "failed",
-        "not-needed",
-        "not-attempted",
-    ] = "not-requested"
+    rollback: RollbackStatus = "not-requested"
+    _transaction_boundary: _TransactionBoundary = field(
+        default_factory=_TransactionBoundary
+    )
+    _context_rollback_armed: bool = True
+
+    @property
+    def _rollback_armed(self) -> bool:
+        """Return whether this context's shared publication has started."""
+        return self._transaction_boundary.armed
+
+    def arm_rollback(self) -> None:
+        """Mark the beginning of caller-owned publication mutations."""
+        self._context_rollback_armed = True
+        self._transaction_boundary.armed = True
+
+    def defer_success(self, callback: Callable[[], None]) -> None:
+        """Run a success effect after the outermost transaction commits."""
+        self._transaction_boundary.defer_success(callback)
+
+    def defer_completion(
+        self,
+        on_commit: Callable[[], None],
+        on_rollback: Callable[[RollbackStatus], None],
+    ) -> None:
+        """Run paired effects after the outermost transaction settles."""
+        self._transaction_boundary.defer_completion(on_commit, on_rollback)
+
+
+def _active_transaction_boundary() -> _TransactionBoundary | None:
+    """Return the process-local transaction boundary, when one is active."""
+    if _ACTIVE_TRANSIENT_TRANSACTION is not None:
+        return _ACTIVE_TRANSIENT_TRANSACTION.boundary
+    if (
+        _PENDING_CHECKPOINT is not None
+        and _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
+        and _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None
+    ):
+        return _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
+    return None
+
+
+def defer_transaction_completion(
+    on_commit: Callable[[], None],
+    on_rollback: Callable[[RollbackStatus], None],
+) -> None:
+    """Run paired effects after the outermost transaction settles."""
+    boundary = _active_transaction_boundary()
+    if boundary is not None:
+        boundary.defer_completion(on_commit, on_rollback)
+        return
+    on_commit()
+
+
+def defer_transaction_success(callback: Callable[[], None]) -> None:
+    """Run a success effect after the outermost transaction commits.
+
+    Commands may finish inside a transaction delegated to an enclosing caller.
+    In that case output and post-success metadata must wait until the shared
+    before-image can no longer roll the command back.
+    """
+    boundary = _active_transaction_boundary()
+    if boundary is not None:
+        boundary.defer_success(callback)
+        return
+    callback()
 
 
 def _clear_pending_checkpoint() -> None:
     """Forget process-local state for the pending checkpoint."""
     global _PENDING_CHECKPOINT, _PENDING_CHECKPOINT_REPOSITORY
     global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR, _PENDING_CHECKPOINT_ROLLBACK_CAUSE
+    global _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
     _PENDING_CHECKPOINT = None
     _PENDING_CHECKPOINT_REPOSITORY = None
     _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = None
     _PENDING_CHECKPOINT_ROLLBACK_CAUSE = None
+    _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY = None
 
 
 def _validate_nested_checkpoint(
@@ -96,7 +252,30 @@ def _validate_nested_checkpoint(
 ) -> None:
     """Require a nested operation to fit inside the active transaction."""
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
-    requested_index_paths = worktree_paths if index_paths is None else index_paths
+    _validate_transaction_scope(
+        manifest,
+        worktree_paths=worktree_paths,
+        index_paths=(worktree_paths if index_paths is None else index_paths),
+        repository_paths=repository_paths,
+    )
+
+    if rollback_on_error and not _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR:
+        raise CommandError(
+            _(
+                "Cannot start nested transactional operation because the outer "
+                "checkpoint does not roll back on error."
+            )
+        )
+
+
+def _validate_transaction_scope(
+    manifest: CheckpointState,
+    *,
+    worktree_paths: list[str],
+    index_paths: list[str],
+    repository_paths: list[str] | None,
+) -> None:
+    """Require a nested transaction to fit in one captured before-image."""
     scope_pairs = (
         (
             _("worktree"),
@@ -105,7 +284,7 @@ def _validate_nested_checkpoint(
         ),
         (
             _("index"),
-            set(requested_index_paths),
+            set(index_paths),
             set(
                 manifest.get(
                     "tracked_index_paths",
@@ -134,14 +313,6 @@ def _validate_nested_checkpoint(
                     paths=", ".join(display_path(path) for path in missing_paths),
                 )
             )
-
-    if rollback_on_error and not _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR:
-        raise CommandError(
-            _(
-                "Cannot start nested transactional operation because the outer "
-                "checkpoint does not roll back on error."
-            )
-        )
 
 
 def _checkpoint_worktree_scope(
@@ -177,6 +348,14 @@ def _create_undo_checkpoint(
         tracked_worktree_paths,
         index_paths=tracked_index_paths,
     )
+    session_files = _undo_snapshots.filesystem_directory_state(session_dir)
+    batches_files = _undo_snapshots.filesystem_directory_state(
+        get_batches_directory_path()
+    )
+    repository_files = _undo_snapshots.filesystem_directory_state(
+        get_git_directory_path(),
+        relative_paths=tracked_repository_paths,
+    )
     recovery_anchors = anchor_recovery_state(before)
 
     manifest: CheckpointState = {
@@ -186,12 +365,14 @@ def _create_undo_checkpoint(
         "intent_to_add_paths": before["intent_to_add_paths"],
         "refs": before["refs"],
         "worktree_paths": [
-            worktree_metadata_without_blob(entry)
-            for entry in before["worktree_paths"]
+            worktree_metadata_without_blob(entry) for entry in before["worktree_paths"]
         ],
         "tracked_worktree_paths": tracked_worktree_paths,
         "tracked_index_paths": tracked_index_paths,
         "tracked_repository_paths": tracked_repository_paths,
+        "session_files": session_files,
+        "batches_files": batches_files,
+        "repository_files": repository_files,
         "worktree_path_scope": worktree_path_scope,
         "recovery_anchors": recovery_anchors,
     }
@@ -206,11 +387,13 @@ def _create_undo_checkpoint(
             env,
             source_dir=session_dir,
             tree_prefix="session",
+            filesystem_state=session_files,
         )
         _undo_snapshots.add_directory_to_index(
             env,
             source_dir=get_batches_directory_path(),
             tree_prefix="batches",
+            filesystem_state=batches_files,
         )
         if tracked_repository_paths:
             _undo_snapshots.add_directory_to_index(
@@ -218,6 +401,7 @@ def _create_undo_checkpoint(
                 source_dir=get_git_directory_path(),
                 tree_prefix="repository",
                 relative_paths=tracked_repository_paths,
+                filesystem_state=repository_files,
             )
 
         git_update_index_entries(
@@ -250,6 +434,232 @@ def _create_undo_checkpoint(
     return checkpoint_commit
 
 
+def _create_transient_transaction_checkpoint(
+    operation: str,
+    *,
+    worktree_paths: list[str],
+    index_paths: list[str],
+    repository_paths: list[str] | None,
+) -> tuple[str, str, CheckpointState]:
+    """Create a Git-backed before-image without publishing session undo state."""
+    tracked_worktree_paths = sorted(set(worktree_paths))
+    tracked_index_paths = sorted(set(index_paths))
+    tracked_repository_paths = sorted(set(repository_paths or []))
+    before = _undo_snapshots.snapshot_current_state(
+        tracked_worktree_paths,
+        index_paths=tracked_index_paths,
+        ref_names=[],
+    )
+    repository_files = _undo_snapshots.filesystem_directory_state(
+        get_git_directory_path(),
+        relative_paths=tracked_repository_paths,
+    )
+    worktree_entries = before["worktree_paths"]
+    manifest: CheckpointState = {
+        "operation": display_path(operation),
+        "index_entries": before["index_entries"],
+        "intent_to_add_paths": before["intent_to_add_paths"],
+        "refs": {},
+        "worktree_paths": [
+            worktree_metadata_without_blob(entry) for entry in worktree_entries
+        ],
+        "tracked_worktree_paths": tracked_worktree_paths,
+        "tracked_index_paths": tracked_index_paths,
+        "tracked_refs": [],
+        "tracked_session_paths": [],
+        "tracked_batches_paths": [],
+        "tracked_repository_paths": tracked_repository_paths,
+        "session_files": {},
+        "batches_files": {},
+        "repository_files": repository_files,
+        "worktree_path_scope": _undo_state.EXPLICIT_WORKTREE_SCOPE,
+    }
+    ref_name = _TRANSIENT_TRANSACTION_REF_PREFIX + uuid4().hex
+    try:
+        checkpoint = _undo_snapshots.write_snapshot_commit(
+            ref_name=ref_name,
+            message=f"Transient transaction checkpoint: {display_path(operation)}",
+            manifest=manifest,
+            session_dir=get_session_directory_path(),
+            batches_dir=get_batches_directory_path(),
+            repository_dir=get_git_directory_path(),
+            worktree_entries=worktree_entries,
+            parent=None,
+            session_paths=[],
+            batch_paths=[],
+            repository_paths=tracked_repository_paths,
+            index_entries=before["index_entries"],
+        )
+    except BaseException:
+        try:
+            update_git_refs(deletes=[ref_name])
+        except BaseException:
+            # Preserve the snapshot error; a successfully published ref is a
+            # usable recovery root if best-effort cleanup itself fails.
+            pass
+        raise
+    return ref_name, checkpoint, manifest
+
+
+def _restore_transient_transaction_checkpoint(
+    ref_name: str,
+    checkpoint: str,
+    manifest: CheckpointState,
+) -> None:
+    """Restore one transient before-image after a failed publication."""
+    if current_stack_commit(ref_name) != checkpoint:
+        raise CommandError(
+            _("Cannot roll back a failed operation because its checkpoint moved.")
+        )
+    validate_recovery_state(manifest)
+    _undo_state.restore_checkpoint_state(checkpoint, manifest)
+
+
+def _delete_transient_transaction_ref(ref_name: str) -> None:
+    """Release a transient checkpoint after success or completed rollback."""
+    update_git_refs(deletes=[ref_name])
+
+
+def _cross_repository_transaction_error(repository: Path) -> CommandError:
+    """Return the established nested-scope refusal for another repository."""
+    return CommandError(
+        ngettext(
+            "Cannot start nested undoable operation because the outer "
+            "checkpoint does not cover this {scope} path: {paths}",
+            "Cannot start nested undoable operation because the outer "
+            "checkpoint does not cover these {scope} paths: {paths}",
+            1,
+        ).format(
+            scope=_("repository"),
+            paths=display_path(str(repository)),
+        )
+    )
+
+
+@contextmanager
+def transaction_checkpoint(
+    operation: str,
+    *,
+    worktree_paths: list[str],
+    index_paths: list[str] | None = None,
+    repository_paths: list[str] | None = None,
+) -> Iterator[UndoCheckpointStatus]:
+    """Provide rollback-on-error both inside and outside an active session.
+
+    Active sessions retain their ordinary undo node. Outside a session, a
+    uniquely referenced Git snapshot exists only for the duration of the
+    publication and is restored on every ``BaseException``.
+    """
+    global _ACTIVE_TRANSIENT_TRANSACTION
+    requested_index_paths = [] if index_paths is None else index_paths
+    if _ACTIVE_TRANSIENT_TRANSACTION is not None:
+        transaction = _ACTIVE_TRANSIENT_TRANSACTION
+        current_repository = get_git_directory_path()
+        if current_repository != transaction.repository:
+            raise _cross_repository_transaction_error(current_repository)
+        _validate_transaction_scope(
+            transaction.manifest,
+            worktree_paths=worktree_paths,
+            index_paths=requested_index_paths,
+            repository_paths=repository_paths,
+        )
+        status = UndoCheckpointStatus(
+            rollback="delegated",
+            _transaction_boundary=transaction.boundary,
+            _context_rollback_armed=False,
+        )
+        try:
+            yield status
+        except BaseException as nested_error:
+            if status._context_rollback_armed:
+                transaction.rollback_cause = nested_error
+            raise
+        return
+
+    if _PENDING_CHECKPOINT is not None:
+        current_repository = get_git_directory_path()
+        if (
+            _PENDING_CHECKPOINT_REPOSITORY is not None
+            and current_repository != _PENDING_CHECKPOINT_REPOSITORY
+        ):
+            if _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None:
+                raise _cross_repository_transaction_error(current_repository)
+            _clear_pending_checkpoint()
+
+    if session_is_active() or _PENDING_CHECKPOINT is not None:
+        with undo_checkpoint(
+            operation,
+            worktree_paths=worktree_paths,
+            index_paths=requested_index_paths,
+            repository_paths=repository_paths,
+            rollback_on_error=True,
+            defer_rollback_until_armed=True,
+        ) as status:
+            yield status
+        return
+
+    ref_name, checkpoint, manifest = _create_transient_transaction_checkpoint(
+        operation,
+        worktree_paths=worktree_paths,
+        index_paths=requested_index_paths,
+        repository_paths=repository_paths,
+    )
+    status = UndoCheckpointStatus(
+        rollback="pending",
+        _transaction_boundary=_TransactionBoundary(armed=False),
+        _context_rollback_armed=False,
+    )
+    transaction = _TransientTransaction(
+        manifest,
+        status._transaction_boundary,
+        get_git_directory_path(),
+    )
+    _ACTIVE_TRANSIENT_TRANSACTION = transaction
+    try:
+        yield status
+        if transaction.rollback_cause is not None:
+            raise CommandError(
+                _(
+                    "A nested transactional operation failed, so the "
+                    "enclosing operation was rolled back: {error}"
+                ).format(error=transaction.rollback_cause)
+            ) from transaction.rollback_cause
+        _delete_transient_transaction_ref(ref_name)
+    except BaseException:
+        _ACTIVE_TRANSIENT_TRANSACTION = None
+        if not status._rollback_armed:
+            status.rollback = "not-needed"
+            try:
+                _delete_transient_transaction_ref(ref_name)
+            except BaseException:
+                pass
+            transaction.boundary.finish_rollback(status.rollback)
+            raise
+        try:
+            _restore_transient_transaction_checkpoint(
+                ref_name,
+                checkpoint,
+                manifest,
+            )
+        except BaseException:
+            status.rollback = "failed"
+            transaction.boundary.finish_rollback(status.rollback)
+            raise
+        status.rollback = "completed"
+        try:
+            _delete_transient_transaction_ref(ref_name)
+        except BaseException:
+            # The restored before-image remains reachable for recovery. Do
+            # not hide the publication error with best-effort ref cleanup.
+            pass
+        transaction.boundary.finish_rollback(status.rollback)
+        raise
+    else:
+        _ACTIVE_TRANSIENT_TRANSACTION = None
+        status.rollback = "not-needed"
+        transaction.boundary.commit()
+
+
 @contextmanager
 def undo_checkpoint(
     operation: str,
@@ -258,6 +668,7 @@ def undo_checkpoint(
     index_paths: list[str] | None = None,
     repository_paths: list[str] | None = None,
     rollback_on_error: bool = False,
+    defer_rollback_until_armed: bool = False,
 ) -> Iterator[UndoCheckpointStatus]:
     """Bracket an undoable operation with before and after snapshots.
 
@@ -267,7 +678,13 @@ def undo_checkpoint(
     """
     global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
     global _PENDING_CHECKPOINT_ROLLBACK_CAUSE
-    status = UndoCheckpointStatus()
+    global _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
+    status = UndoCheckpointStatus(
+        _transaction_boundary=_TransactionBoundary(
+            armed=not defer_rollback_until_armed,
+        ),
+        _context_rollback_armed=not defer_rollback_until_armed,
+    )
 
     if _PENDING_CHECKPOINT is not None:
         current_repository = get_git_directory_path()
@@ -275,6 +692,8 @@ def undo_checkpoint(
             _PENDING_CHECKPOINT_REPOSITORY is not None
             and current_repository != _PENDING_CHECKPOINT_REPOSITORY
         ):
+            if _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None:
+                raise _cross_repository_transaction_error(current_repository)
             _clear_pending_checkpoint()
         elif current_undo_commit() == _PENDING_CHECKPOINT:
             _validate_nested_checkpoint(
@@ -284,6 +703,11 @@ def undo_checkpoint(
                 repository_paths=repository_paths,
                 rollback_on_error=rollback_on_error,
             )
+            nested_started_armed = status._context_rollback_armed
+            if _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY is not None:
+                status._transaction_boundary = _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY
+                if nested_started_armed:
+                    status.arm_rollback()
             if rollback_on_error:
                 # The enclosing transaction owns the shared before-image and
                 # will decide whether rollback succeeds.  Do not report this
@@ -292,7 +716,7 @@ def undo_checkpoint(
             try:
                 yield status
             except BaseException as nested_error:
-                if rollback_on_error:
+                if rollback_on_error and status._context_rollback_armed:
                     _PENDING_CHECKPOINT_ROLLBACK_CAUSE = nested_error
                 raise
             return
@@ -314,6 +738,7 @@ def undo_checkpoint(
     )
     if checkpoint is not None:
         _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = rollback_on_error
+        _PENDING_CHECKPOINT_TRANSACTION_BOUNDARY = status._transaction_boundary
         if rollback_on_error:
             status.rollback = "pending"
     elif rollback_on_error:
@@ -321,7 +746,19 @@ def undo_checkpoint(
     try:
         yield status
     except BaseException as operation_error:
-        if checkpoint is not None and rollback_on_error:
+        if checkpoint is not None and rollback_on_error and not status._rollback_armed:
+            try:
+                _discard_failed_checkpoint(
+                    checkpoint,
+                    previous_redo=previous_redo,
+                )
+            except BaseException:
+                status.rollback = "failed"
+                status._transaction_boundary.finish_rollback(status.rollback)
+                raise
+            status.rollback = "not-needed"
+            status._transaction_boundary.finish_rollback(status.rollback)
+        elif checkpoint is not None and rollback_on_error:
             try:
                 _rollback_failed_checkpoint(
                     checkpoint,
@@ -329,6 +766,7 @@ def undo_checkpoint(
                 )
             except BaseException as rollback_error:
                 status.rollback = "failed"
+                status._transaction_boundary.finish_rollback(status.rollback)
                 if not isinstance(rollback_error, Exception):
                     raise
                 raise CommandError(
@@ -343,6 +781,7 @@ def undo_checkpoint(
                     )
                 ) from operation_error
             status.rollback = "completed"
+            status._transaction_boundary.finish_rollback(status.rollback)
         elif checkpoint is not None:
             try:
                 finalize_pending_checkpoint()
@@ -363,6 +802,8 @@ def undo_checkpoint(
                         finalization_error=finalization_error,
                     )
                 ) from operation_error
+        elif rollback_on_error:
+            status._transaction_boundary.finish_rollback(status.rollback)
         raise
     else:
         if checkpoint is not None:
@@ -375,6 +816,7 @@ def undo_checkpoint(
                     )
                 except BaseException as rollback_error:
                     status.rollback = "failed"
+                    status._transaction_boundary.finish_rollback(status.rollback)
                     if not isinstance(rollback_error, Exception):
                         raise
                     raise CommandError(
@@ -389,6 +831,7 @@ def undo_checkpoint(
                         )
                     ) from pending_nested_error
                 status.rollback = "completed"
+                status._transaction_boundary.finish_rollback(status.rollback)
                 raise CommandError(
                     _(
                         "A nested transactional operation failed, so the "
@@ -397,11 +840,82 @@ def undo_checkpoint(
                 ) from pending_nested_error
             try:
                 finalize_pending_checkpoint()
-            except BaseException:
-                status.rollback = "not-attempted"
+            except BaseException as finalization_error:
+                if rollback_on_error and status._rollback_armed:
+                    _rollback_transaction_checkpoint(
+                        checkpoint,
+                        previous_redo=previous_redo,
+                        operation_error=finalization_error,
+                        status=status,
+                    )
+                else:
+                    status.rollback = "not-attempted"
+                    if rollback_on_error:
+                        status._transaction_boundary.finish_rollback(status.rollback)
                 raise
             if rollback_on_error:
                 status.rollback = "not-needed"
+                status._transaction_boundary.commit()
+
+
+def _rollback_transaction_checkpoint(
+    checkpoint: str,
+    *,
+    previous_redo: str | None,
+    operation_error: BaseException,
+    status: UndoCheckpointStatus,
+) -> None:
+    """Restore a transactional before-image or report both failures."""
+    try:
+        _rollback_failed_checkpoint(
+            checkpoint,
+            previous_redo=previous_redo,
+        )
+    except BaseException as rollback_error:
+        status.rollback = "failed"
+        status._transaction_boundary.finish_rollback(status.rollback)
+        if not isinstance(rollback_error, Exception):
+            raise
+        raise CommandError(
+            _(
+                "Operation failed and its automatic rollback also failed. "
+                "The before-image remains available through `undo --force`.\n"
+                "Operation error: {operation_error}\n"
+                "Rollback error: {rollback_error}"
+            ).format(
+                operation_error=operation_error,
+                rollback_error=rollback_error,
+            )
+        ) from operation_error
+    status.rollback = "completed"
+    status._transaction_boundary.finish_rollback(status.rollback)
+
+
+def _discard_failed_checkpoint(
+    checkpoint: str,
+    *,
+    previous_redo: str | None,
+) -> None:
+    """Drop an unarmed checkpoint without restoring its target snapshots."""
+    _clear_pending_checkpoint()
+
+    if current_undo_commit() != checkpoint:
+        raise CommandError(
+            _("Cannot roll back a failed operation because its checkpoint moved.")
+        )
+
+    parent = checkpoint_parent(checkpoint)
+    updates: list[tuple[str, str]] = []
+    deletes: list[str] = []
+    if parent is None:
+        deletes.append(SESSION_UNDO_STACK_REF)
+    else:
+        updates.append((SESSION_UNDO_STACK_REF, parent))
+    if previous_redo is None:
+        deletes.append(SESSION_REDO_STACK_REF)
+    else:
+        updates.append((SESSION_REDO_STACK_REF, previous_redo))
+    update_git_refs(updates=updates, deletes=deletes)
 
 
 def _rollback_failed_checkpoint(
@@ -420,19 +934,10 @@ def _rollback_failed_checkpoint(
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
     validate_recovery_state(manifest)
     _undo_state.restore_checkpoint_state(checkpoint, manifest)
-
-    parent = checkpoint_parent(checkpoint)
-    updates: list[tuple[str, str]] = []
-    deletes: list[str] = []
-    if parent is None:
-        deletes.append(SESSION_UNDO_STACK_REF)
-    else:
-        updates.append((SESSION_UNDO_STACK_REF, parent))
-    if previous_redo is None:
-        deletes.append(SESSION_REDO_STACK_REF)
-    else:
-        updates.append((SESSION_REDO_STACK_REF, previous_redo))
-    update_git_refs(updates=updates, deletes=deletes)
+    _discard_failed_checkpoint(
+        checkpoint,
+        previous_redo=previous_redo,
+    )
 
 
 def finalize_pending_checkpoint() -> None:
@@ -502,12 +1007,17 @@ def finalize_pending_checkpoint() -> None:
         if ref_name in after_refs
     }
     metadata_scopes = (
-        ("session", get_session_directory_path()),
-        ("batches", get_batches_directory_path()),
+        ("session", "session_files", get_session_directory_path()),
+        ("batches", "batches_files", get_batches_directory_path()),
     )
     tree_removals: list[GitIndexEntryUpdate] = []
-    for prefix, source_dir in metadata_scopes:
-        before_files = _undo_restore.tree_prefix_state(checkpoint, prefix)
+    for prefix, state_field, source_dir in metadata_scopes:
+        saved_files = manifest.get(state_field)
+        before_files = (
+            saved_files
+            if isinstance(saved_files, dict)
+            else _undo_restore.tree_prefix_state(checkpoint, prefix)
+        )
         after_files = _undo_snapshots.filesystem_directory_state(source_dir)
         metadata_tracked_paths = sorted(
             relative_path
@@ -519,11 +1029,18 @@ def finalize_pending_checkpoint() -> None:
             for relative_path in metadata_tracked_paths
             if relative_path in after_files
         }
+        before_metadata_files = {
+            relative_path: before_files[relative_path]
+            for relative_path in metadata_tracked_paths
+            if relative_path in before_files
+        }
         if prefix == "session":
+            manifest["session_files"] = before_metadata_files
             manifest["tracked_session_paths"] = metadata_tracked_paths
             after["tracked_session_paths"] = metadata_tracked_paths
             after["session_files"] = metadata_files
         else:
+            manifest["batches_files"] = before_metadata_files
             manifest["tracked_batches_paths"] = metadata_tracked_paths
             after["tracked_batches_paths"] = metadata_tracked_paths
             after["batches_files"] = metadata_files
@@ -603,6 +1120,24 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     )
     redo_target["tracked_index_paths"] = redo_index_paths
     redo_target["tracked_refs"] = redo_refs
+    session_paths = list(manifest.get("tracked_session_paths", []))
+    batch_paths = list(manifest.get("tracked_batches_paths", []))
+    repository_paths = list(manifest.get("tracked_repository_paths", []))
+    redo_target["tracked_session_paths"] = session_paths
+    redo_target["tracked_batches_paths"] = batch_paths
+    redo_target["tracked_repository_paths"] = repository_paths
+    redo_target["session_files"] = _undo_snapshots.filesystem_directory_state(
+        get_session_directory_path(),
+        relative_paths=session_paths,
+    )
+    redo_target["batches_files"] = _undo_snapshots.filesystem_directory_state(
+        get_batches_directory_path(),
+        relative_paths=batch_paths,
+    )
+    redo_target["repository_files"] = _undo_snapshots.filesystem_directory_state(
+        get_git_directory_path(),
+        relative_paths=repository_paths,
+    )
     redo_worktree_entries = _undo_worktree.snapshot_worktree_paths(redo_paths)
 
     redo_session_dir = tempfile.mkdtemp(prefix="gsb-redo-session-")
@@ -615,7 +1150,6 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
             shutil.copytree(live_session_dir, redo_session_dir, dirs_exist_ok=True)
         if live_batches_dir.exists():
             shutil.copytree(live_batches_dir, redo_batches_dir, dirs_exist_ok=True)
-        repository_paths = list(manifest.get("tracked_repository_paths", []))
         _undo_snapshots.copy_tracked_repository_files(
             get_git_directory_path(),
             Path(redo_repository_dir),
@@ -631,8 +1165,6 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         )
         after_undo["tracked_index_paths"] = redo_index_paths
         after_undo["tracked_refs"] = redo_refs
-        session_paths = list(manifest.get("tracked_session_paths", []))
-        batch_paths = list(manifest.get("tracked_batches_paths", []))
         after_undo["tracked_session_paths"] = session_paths
         after_undo["tracked_batches_paths"] = batch_paths
         after_undo["tracked_repository_paths"] = repository_paths

@@ -149,6 +149,12 @@ def _build_replacement_batch_view(
             new_deletions.append(AbsenceClaim(
                 anchor_line=new_anchor,
                 content_lines=deletion.content_lines,
+                baseline_reference=(
+                    deletion.baseline_reference
+                    if deletion.source_alternative
+                    else None
+                ),
+                source_alternative=deletion.source_alternative,
             ))
 
         return ReplacementBatchView(
@@ -201,6 +207,12 @@ def _build_replacement_batch_view(
         new_deletions.append(AbsenceClaim(
             anchor_line=new_anchor,
             content_lines=deletion.content_lines,
+            baseline_reference=(
+                deletion.baseline_reference
+                if deletion.source_alternative
+                else None
+            ),
+            source_alternative=deletion.source_alternative,
         ))
 
     return ReplacementBatchView(

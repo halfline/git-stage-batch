@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ...exceptions import MergeError
 from ...i18n import _
 from .unit_types import (
@@ -10,7 +12,7 @@ from .unit_types import (
 )
 
 
-def validate_ownership_units(units: list[_UnitRecord]) -> None:
+def validate_ownership_units(units: Sequence[_UnitRecord]) -> None:
     """Validate structural invariants of ownership units."""
     deletion_claim_usage = {}
 

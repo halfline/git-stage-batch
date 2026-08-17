@@ -50,12 +50,40 @@ def _v1_metadata() -> dict:
     }
 
 
-def test_v1_round_trip_is_deterministic_and_immutable():
+def _current_source_alternative_metadata() -> dict:
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    file_metadata = data["files"]["src/example.py"]
+    file_metadata["deletions"] = [
+        {
+            "after_source_line": 1,
+            "blob": _oid("d"),
+            "baseline_reference": {
+                "after_line": 1,
+                "after_blob": _oid("e"),
+                "before_line": 2,
+                "before_blob": _oid("f"),
+            },
+            "source_alternative": True,
+        }
+    ]
+    file_metadata["replacement_units"] = [
+        {"presence_lines": ["1"], "deletion_indices": [0]},
+    ]
+    return data
+
+
+def test_v1_migrates_to_current_schema_deterministically_and_immutably():
     model = decode_batch_metadata(_v1_metadata(), expected_batch="feature")
 
     encoded = encode_batch_metadata(model)
     reparsed = decode_batch_metadata(encoded, expected_batch="feature")
 
+    assert json.loads(encoded)["schema_version"] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    assert (
+        model.files[0].values["legacy_unmarked_source_alternatives"]
+        is True
+    )
     assert reparsed == model
     assert encoded == encode_batch_metadata(reparsed)
     with pytest.raises(FrozenInstanceError):
@@ -151,7 +179,9 @@ def test_file_backed_v0_migration_keeps_recovery_copy(tmp_path, monkeypatch):
     )
 
     assert metadata_path.with_name("metadata.v0.json").read_text() == original
-    assert json.loads(metadata_path.read_text())["schema_version"] == 1
+    assert json.loads(metadata_path.read_text())[
+        "schema_version"
+    ] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
 
 
 def test_file_backed_writer_refuses_to_replace_future_schema(tmp_path, monkeypatch):
@@ -229,6 +259,17 @@ def test_v1_rejects_duplicate_presence_claims():
         decode_batch_metadata(data, expected_batch="feature")
 
 
+def test_v1_rejects_equivalent_presence_claim_spellings():
+    """Duplicate detection canonicalizes ranges without copying every spec."""
+    data = _v1_metadata()
+    data["files"]["src/example.py"]["presence_claims"].append(
+        {"source_lines": ["1", "2-3"]}
+    )
+
+    with pytest.raises(BatchMetadataError, match="duplicate presence claims"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
 def test_v1_rejects_replacement_with_out_of_range_deletion_index():
     data = _v1_metadata()
     file_metadata = data["files"]["src/example.py"]
@@ -240,6 +281,84 @@ def test_v1_rejects_replacement_with_out_of_range_deletion_index():
     ]
 
     with pytest.raises(BatchMetadataError, match="replacement deletion indices"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_accepts_boolean_source_alternative_deletion_flag():
+    data = _current_source_alternative_metadata()
+
+    model = decode_batch_metadata(data, expected_batch="feature")
+
+    assert model.files[0].values["deletions"][0]["source_alternative"] is True
+
+
+def test_current_schema_rejects_non_boolean_source_alternative_deletion_flag():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["deletions"][0][
+        "source_alternative"
+    ] = 1
+
+    with pytest.raises(BatchMetadataError, match="source-alternative flag"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_source_alternative_without_live_boundary():
+    data = _current_source_alternative_metadata()
+    del data["files"]["src/example.py"]["deletions"][0][
+        "baseline_reference"
+    ]
+
+    with pytest.raises(BatchMetadataError, match="without a live boundary"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_source_alternative_with_empty_live_boundary():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["deletions"][0][
+        "baseline_reference"
+    ] = {}
+
+    with pytest.raises(BatchMetadataError, match="without a live boundary"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_uncoupled_source_alternative():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["replacement_units"] = []
+
+    with pytest.raises(BatchMetadataError, match="without an owned replacement"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_source_alternative_with_unowned_replacement_side():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["replacement_units"][0][
+        "presence_lines"
+    ] = ["4"]
+
+    with pytest.raises(BatchMetadataError, match="without an owned replacement"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_non_boolean_legacy_alternative_marker():
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    data["files"]["src/example.py"][
+        "legacy_unmarked_source_alternatives"
+    ] = 1
+
+    with pytest.raises(BatchMetadataError, match="legacy source-alternative"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_null_legacy_alternative_marker():
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    data["files"]["src/example.py"][
+        "legacy_unmarked_source_alternatives"
+    ] = None
+
+    with pytest.raises(BatchMetadataError, match="legacy source-alternative"):
         decode_batch_metadata(data, expected_batch="feature")
 
 
@@ -259,4 +378,14 @@ def test_v1_rejects_invalid_line_ranges(line_range):
     ]
 
     with pytest.raises(BatchMetadataError, match="range|non-positive"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_reports_invalid_legacy_claimed_lines_as_metadata_error():
+    """Malformed compatibility ranges should use the metadata error contract."""
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    data["files"]["src/example.py"]["claimed_lines"] = ["not-a-range"]
+
+    with pytest.raises(BatchMetadataError, match="range"):
         decode_batch_metadata(data, expected_batch="feature")

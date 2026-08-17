@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from itertools import chain
 from typing import Iterable, Iterator, Protocol
@@ -13,14 +14,11 @@ from ..i18n import _
 class LineSelection(Protocol):
     """Positive 1-based line selection with cheap range operations."""
 
-    def __contains__(self, line_number: object) -> bool:
-        ...
+    def __contains__(self, line_number: object) -> bool: ...
 
-    def __bool__(self) -> bool:
-        ...
+    def __bool__(self) -> bool: ...
 
-    def __iter__(self) -> Iterator[int]:
-        ...
+    def __iter__(self) -> Iterator[int]: ...
 
     def ranges(self) -> tuple[tuple[int, int], ...]:
         """Return normalized inclusive ranges."""
@@ -49,15 +47,11 @@ def _normalize_line_ranges(
     for start, end in sorted_ranges:
         if start <= 0 or end <= 0:
             raise ValueError(
-                _("Line IDs must be positive: {value}").format(
-                    value=f"{start}-{end}"
-                )
+                _("Line IDs must be positive: {value}").format(value=f"{start}-{end}")
             )
         if start > end:
             raise ValueError(
-                _("Range start must be <= end: {value}").format(
-                    value=f"{start}-{end}"
-                )
+                _("Range start must be <= end: {value}").format(value=f"{start}-{end}")
             )
 
         if current_start is None or current_end is None:
@@ -81,6 +75,23 @@ def _normalize_line_ranges(
 
 def _line_ranges_count(ranges: Iterable[tuple[int, int]]) -> int:
     return sum(end - start + 1 for start, end in ranges)
+
+
+def sorted_line_ranges_contain(
+    ranges: Sequence[tuple[int, ...]],
+    line_number: int,
+) -> bool:
+    """Return whether sorted, disjoint inclusive range records contain a line."""
+    lower = 0
+    upper = len(ranges)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if ranges[middle][0] <= line_number:
+            lower = middle + 1
+        else:
+            upper = middle
+    range_index = lower - 1
+    return range_index >= 0 and line_number <= ranges[range_index][1]
 
 
 def _selection_ranges(
@@ -121,9 +132,7 @@ def scan_line_range_specs(
                         ) from error
                     if start <= 0:
                         raise ValueError(
-                            _("Line ID must be positive: {value}").format(
-                                value=item
-                            )
+                            _("Line ID must be positive: {value}").format(value=item)
                         )
                 else:
                     try:
@@ -135,15 +144,11 @@ def scan_line_range_specs(
                         ) from error
                     if start <= 0 or end <= 0:
                         raise ValueError(
-                            _("Line IDs must be positive: {value}").format(
-                                value=item
-                            )
+                            _("Line IDs must be positive: {value}").format(value=item)
                         )
                 if start > end:
                     raise ValueError(
-                        _("Range start must be <= end: {value}").format(
-                            value=item
-                        )
+                        _("Range start must be <= end: {value}").format(value=item)
                     )
                 yield start, end
 
@@ -172,7 +177,10 @@ class LineRanges:
 
     @classmethod
     def from_lines(cls, lines: Iterable[int]) -> LineRanges:
-        return cls(tuple((line, line) for line in lines))
+        builder = LineRangeBuilder()
+        for line in lines:
+            builder.add_line(line)
+        return builder.finish()
 
     @classmethod
     def from_ranges(cls, ranges: Iterable[tuple[int, int]]) -> LineRanges:
@@ -219,7 +227,7 @@ class LineRanges:
         if isinstance(other, LineRanges):
             return self._ranges == other._ranges
         if isinstance(other, set):
-            return set(self) == other
+            return len(self) == len(other) and all(line in self for line in other)
         return NotImplemented
 
     def ranges(self) -> tuple[tuple[int, int], ...]:
@@ -241,6 +249,48 @@ class LineRanges:
                 break
             total += max(0, min(range_end, end) - max(range_start, start) + 1)
         return total
+
+    def contains_range(self, start: int, end: int) -> bool:
+        """Return whether one normalized range covers both inclusive bounds."""
+        if start > end:
+            return False
+        index = bisect_right(self._starts, start) - 1
+        if index < 0:
+            return False
+        range_start, range_end = self._ranges[index]
+        return range_start <= start and end <= range_end
+
+    def intersects_range(self, start: int, end: int) -> bool:
+        """Return whether any selected line intersects the inclusive range."""
+        if start > end:
+            return False
+        index = bisect_right(self._starts, end) - 1
+        if index < 0:
+            return False
+        _range_start, range_end = self._ranges[index]
+        return start <= range_end
+
+    def intersection_with_range(self, start: int, end: int) -> LineRanges:
+        """Return selected lines inside one inclusive range."""
+        if start > end:
+            return LineRanges.empty()
+
+        def intersections() -> Iterator[tuple[int, int]]:
+            range_index = max(
+                bisect_right(self._starts, start) - 1,
+                0,
+            )
+            while range_index < len(self._ranges):
+                range_start, range_end = self._ranges[range_index]
+                if range_start > end:
+                    break
+                intersection_start = max(start, range_start)
+                intersection_end = min(end, range_end)
+                if intersection_start <= intersection_end:
+                    yield intersection_start, intersection_end
+                range_index += 1
+
+        return LineRanges.from_ranges(intersections())
 
     def intersection(
         self,
@@ -279,7 +329,10 @@ class LineRanges:
         for start, end in self._ranges:
             current_start = start
 
-            while other_index < len(other_ranges) and other_ranges[other_index][1] < current_start:
+            while (
+                other_index < len(other_ranges)
+                and other_ranges[other_index][1] < current_start
+            ):
                 other_index += 1
 
             scan_index = other_index
@@ -310,6 +363,19 @@ class LineRanges:
             return None
         return self._ranges[0][0]
 
+    def nearest_unselected_at_or_before(self, line_number: int) -> int | None:
+        """Return the nearest positive line not selected at or before one line."""
+        if line_number < 1:
+            return None
+        range_index = bisect_right(self._starts, line_number) - 1
+        if range_index < 0:
+            return line_number
+        range_start, range_end = self._ranges[range_index]
+        if line_number > range_end:
+            return line_number
+        predecessor = range_start - 1
+        return predecessor if predecessor > 0 else None
+
     def to_line_spec(self) -> str:
         return ",".join(
             str(start) if start == end else f"{start}-{end}"
@@ -319,6 +385,41 @@ class LineRanges:
     def to_range_strings(self) -> list[str]:
         spec = self.to_line_spec()
         return [spec] if spec else []
+
+
+@dataclass
+class LineRangeBuilder:
+    """Build a normalized line selection from mostly ordered additions."""
+
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+    pending_start: int | None = None
+    pending_end: int | None = None
+
+    def add_line(self, line_number: int) -> None:
+        self.add_range(line_number, line_number)
+
+    def add_range(self, start: int, end: int) -> None:
+        """Add one inclusive range without expanding it into individual lines."""
+        if self.pending_start is None or self.pending_end is None:
+            self.pending_start = start
+            self.pending_end = end
+            return
+
+        if self.pending_start <= start <= self.pending_end + 1:
+            self.pending_end = max(self.pending_end, end)
+            return
+
+        self.ranges.append((self.pending_start, self.pending_end))
+        self.pending_start = start
+        self.pending_end = end
+
+    def finish(self) -> LineRanges:
+        pending = (
+            ((self.pending_start, self.pending_end),)
+            if self.pending_start is not None and self.pending_end is not None
+            else ()
+        )
+        return LineRanges.from_ranges(chain(self.ranges, pending))
 
 
 def parse_positive_selection(
@@ -376,15 +477,13 @@ def parse_positive_selection(
             # Handle range (e.g., "5-7" or "-5-7")
             # Split only at the found separator position
             start_str = part[:range_separator_pos]
-            end_str = part[range_separator_pos + 1:]
+            end_str = part[range_separator_pos + 1 :]
 
             try:
                 start = int(start_str.strip())
                 end = int(end_str.strip())
             except ValueError as e:
-                raise ValueError(
-                    _("Invalid range: {value}").format(value=part)
-                ) from e
+                raise ValueError(_("Invalid range: {value}").format(value=part)) from e
 
             if start <= 0 or end <= 0:
                 raise ValueError(

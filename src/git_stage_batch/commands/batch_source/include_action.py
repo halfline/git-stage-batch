@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 import sys
 
@@ -21,6 +22,7 @@ from . import worktree_refusals as _worktree_refusals
 from ...batch.binary_file_content import read_binary_file_from_batch
 from ...batch.operation_candidate_types import CandidatePreviewCount
 from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.state.references import get_batch_state_ref_name
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     stage_submodule_pointer_from_batch,
@@ -32,11 +34,11 @@ from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
     capture_worktree_identity,
-    index_identity_from_entry,
+    read_index_identities,
 )
-from ...data.index_entries import read_index_entries
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo.checkpoints import undo_checkpoint
+from ...data.session_marker import session_is_active
+from ...data.undo.checkpoints import transaction_checkpoint
 from ...exceptions import AtomicUnitError, CommandError, exit_with_error
 from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
@@ -85,7 +87,8 @@ def execute_include_action(
     """Include selected batch-source changes into the index and worktree."""
     files = selection.files
     repository_root = get_git_repository_root_path()
-    with FileJobWorkspace() as workspace:
+    workspace = FileJobWorkspace()
+    with _action_plans.resource_cleanup((workspace,)) as close_workspace:
         (
             include_plans,
             mode_actions,
@@ -101,19 +104,25 @@ def execute_include_action(
             repository_root=repository_root,
             workspace=workspace,
         )
-        try:
+        with _action_plans.resource_cleanup(include_plans) as close_include_plans:
             _require_unchanged_include_targets(
                 expected_index_identities,
                 expected_worktree_identities,
             )
             try:
-                with undo_checkpoint(
+                with transaction_checkpoint(
                     terminal_safe_shell_join(selection.operation_parts),
                     worktree_paths=list(files),
-                    rollback_on_error=True,
-                ):
+                    index_paths=list(files),
+                ) as checkpoint_status:
+                    _require_unchanged_include_targets(
+                        expected_index_identities,
+                        expected_worktree_identities,
+                    )
+                    checkpoint_status.arm_rollback()
                     for plan in include_plans:
-                        snapshot_file_if_untracked(plan.file_path)
+                        if session_is_active():
+                            snapshot_file_if_untracked(plan.file_path)
                         if isinstance(
                             plan,
                             _action_plans.IncludeTextFileActionPlan,
@@ -160,6 +169,8 @@ def execute_include_action(
                             file_path,
                             file_meta,
                         )
+                    close_include_plans()
+                    close_workspace()
             except CommandError:
                 raise
             except Exception as error:
@@ -168,10 +179,13 @@ def execute_include_action(
                     file_paths=files,
                     error=error,
                 )
-        finally:
-            _action_plans.close_action_plans(include_plans)
-
-    _action_completion.finish_batch_source_action_review(context, files)
+    checkpoint_status.defer_success(
+        partial(
+            _action_completion.finish_batch_source_action_review,
+            context,
+            tuple(files),
+        )
+    )
 
 
 def _build_include_action_plans(
@@ -234,11 +248,7 @@ def _capture_include_plan_inputs(
     workspace: FileJobWorkspace,
 ) -> _IncludePlanCapture:
     """Capture include targets and classify atomic and text inputs."""
-    index_entries = read_index_entries(files)
-    index_identities = {
-        file_path: index_identity_from_entry(index_entries.get(file_path))
-        for file_path in files
-    }
+    index_identities = read_index_identities(files)
     worktree_identities: dict[str, WorktreeIdentity] = {}
     plans_by_ordinal: dict[int, _action_plans.BatchSourceActionPlan] = {}
     command_errors_by_ordinal: dict[int, CommandError] = {}
@@ -330,7 +340,7 @@ def _build_include_text_jobs(
     text_inputs = capture.text_inputs
     jobs: list[OrderedFileJob[_text_plan_jobs.IncludeTextPlanJob]] = []
 
-    source_blob_by_target = _resolve_include_text_source_blobs(text_inputs)
+    source_blob_by_target = _resolve_include_text_source_blobs(batch_name, text_inputs)
     object_ids = [
         *source_blob_by_target.values(),
         *(
@@ -652,11 +662,31 @@ def _reduce_include_action_plans(
 
 
 def _resolve_include_text_source_blobs(
+    batch_name: str,
     text_inputs: tuple[_IncludeTextInput, ...],
 ) -> dict[tuple[int, str], str]:
+    embedded_paths = list(
+        dict.fromkeys(
+            source_path
+            for text_input in text_inputs
+            if text_input.source_commit is not None
+            and (source_path := text_input.file_meta.get("source_path")) is not None
+        )
+    )
+    embedded_entries = (
+        list_git_tree_blobs(
+            get_batch_state_ref_name(batch_name),
+            embedded_paths,
+        )
+        if embedded_paths
+        else {}
+    )
     paths_by_commit: dict[str, list[str]] = {}
     for text_input in text_inputs:
         if text_input.source_commit is None:
+            continue
+        source_path = text_input.file_meta.get("source_path")
+        if source_path is not None and source_path in embedded_entries:
             continue
         paths_by_commit.setdefault(
             text_input.source_commit,
@@ -670,6 +700,14 @@ def _resolve_include_text_source_blobs(
     for text_input in text_inputs:
         if text_input.source_commit is None:
             continue
+        source_path = text_input.file_meta.get("source_path")
+        if source_path is not None:
+            embedded_entry = embedded_entries.get(source_path)
+            if embedded_entry is not None:
+                source_blob_by_target[(text_input.ordinal, text_input.file_path)] = (
+                    embedded_entry.blob_sha
+                )
+                continue
         entry = entries_by_commit[text_input.source_commit].get(text_input.file_path)
         if entry is not None:
             source_blob_by_target[(text_input.ordinal, text_input.file_path)] = (
@@ -683,13 +721,17 @@ def _include_target_changed_error(
     *,
     target: str,
 ) -> CommandError:
-    label = "Index" if target == "index" else "Working tree file"
-    return CommandError(
-        _(
-            "{label} changed while include was being calculated: "
+    if target == "index":
+        message = _(
+            "Index changed while include was being calculated: "
             "{file}. Retry the include command."
-        ).format(label=label, file=display_path(file_path))
-    )
+        )
+    else:
+        message = _(
+            "Working tree file changed while include was being calculated: "
+            "{file}. Retry the include command."
+        )
+    return CommandError(message.format(file=display_path(file_path)))
 
 
 def _require_unchanged_include_targets(
@@ -697,12 +739,13 @@ def _require_unchanged_include_targets(
     expected_worktree_identities: dict[str, WorktreeIdentity],
 ) -> None:
     file_paths = tuple(expected_index_identities)
-    current_index_entries = read_index_entries(file_paths)
+    current_index_identities = read_index_identities(file_paths)
     for file_path in file_paths:
-        current_index_identity = index_identity_from_entry(
-            current_index_entries.get(file_path)
-        )
-        if current_index_identity != expected_index_identities[file_path]:
+        current_index_identity = current_index_identities[file_path]
+        if (
+            expected_index_identities[file_path].unmerged_entries
+            or current_index_identity != expected_index_identities[file_path]
+        ):
             raise _include_target_changed_error(
                 file_path,
                 target="index",
@@ -722,8 +765,11 @@ def _require_unchanged_include_target(
     expected_index_identity: IndexIdentity,
     expected_worktree_identity: WorktreeIdentity,
 ) -> None:
-    current_index_entry = read_index_entries((file_path,)).get(file_path)
-    if index_identity_from_entry(current_index_entry) != expected_index_identity:
+    current_index_identity = read_index_identities((file_path,))[file_path]
+    if (
+        expected_index_identity.unmerged_entries
+        or current_index_identity != expected_index_identity
+    ):
         raise _include_target_changed_error(file_path, target="index")
     if capture_worktree_identity(file_path) != expected_worktree_identity:
         raise _include_target_changed_error(file_path, target="worktree")

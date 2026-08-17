@@ -83,49 +83,66 @@ def normalize_line_endings(content: bytes) -> bytes:
         >>> normalize_line_endings(b"mac\\rclassic\\n")
         b'mac\\nclassic\\n'
     """
-    return content.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    return content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
 def normalize_line_ending(line: bytes) -> bytes:
     """Normalize one line entry's terminator to LF."""
-    if line.endswith(b'\r\n'):
-        return line[:-2] + b'\n'
-    if line.endswith(b'\r'):
-        return line[:-1] + b'\n'
+    if line.endswith(b"\r\n"):
+        return line[:-2] + b"\n"
+    if line.endswith(b"\r"):
+        return line[:-1] + b"\n"
     return line
 
 
 class _LineEndingNormalizedSequence(Sequence[bytes]):
     """Normalize line endings for an existing line sequence on access."""
 
-    def __init__(self, lines: Sequence[bytes]) -> None:
+    def __init__(
+        self,
+        lines: Sequence[bytes],
+        indices: range | None = None,
+    ) -> None:
         self._lines = lines
+        self._indices = range(len(lines)) if indices is None else indices
 
     def __len__(self) -> int:
-        return len(self._lines)
+        return len(self._indices)
 
     def acquire_lines(self) -> ContextManager[Sequence[bytes]]:
         """Return a scoped normalized line sequence."""
         if isinstance(self._lines, AcquirableLineSequence):
-            return _AcquiredNormalizedLineSequence(self._lines.acquire_lines())
+            return _AcquiredNormalizedLineSequence(
+                self._lines.acquire_lines(),
+                self._indices,
+            )
         return nullcontext(self)
 
     @overload
     def __getitem__(self, index: int) -> bytes: ...
 
     @overload
-    def __getitem__(self, index: slice) -> list[bytes]: ...
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
 
-    def __getitem__(self, index: int | slice) -> bytes | list[bytes]:
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):
-            return [self[line_index] for line_index in range(*index.indices(len(self)))]
+            return _LineEndingNormalizedSequence(
+                self._lines,
+                self._indices[index],
+            )
 
-        if index < 0:
-            index += len(self)
-        if index < 0 or index >= len(self):
-            raise IndexError(index)
+        try:
+            line_index = self._indices[index]
+        except IndexError as error:
+            raise IndexError(index) from error
+        return normalize_line_ending(self._lines[line_index])
 
-        return normalize_line_ending(self._lines[index])
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Sequence):
+            return NotImplemented
+        return len(self) == len(other) and all(
+            self[index] == other[index] for index in range(len(self))
+        )
 
 
 class _AcquiredNormalizedLineSequence(Sequence[bytes]):
@@ -134,12 +151,17 @@ class _AcquiredNormalizedLineSequence(Sequence[bytes]):
     def __init__(
         self,
         line_context: ContextManager[Sequence[bytes]],
+        indices: range,
     ) -> None:
         self._line_context = line_context
+        self._indices = indices
         self._lines: _LineEndingNormalizedSequence | None = None
 
     def __enter__(self) -> _AcquiredNormalizedLineSequence:
-        self._lines = _LineEndingNormalizedSequence(self._line_context.__enter__())
+        self._lines = _LineEndingNormalizedSequence(
+            self._line_context.__enter__(),
+            self._indices,
+        )
         return self
 
     def __exit__(
@@ -158,9 +180,9 @@ class _AcquiredNormalizedLineSequence(Sequence[bytes]):
     def __getitem__(self, index: int) -> bytes: ...
 
     @overload
-    def __getitem__(self, index: slice) -> list[bytes]: ...
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
 
-    def __getitem__(self, index: int | slice) -> bytes | list[bytes]:
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         return self._require_lines()[index]
 
     def _require_lines(self) -> _LineEndingNormalizedSequence:
@@ -208,19 +230,17 @@ def bytes_to_lines(chunks: Iterable[bytes]) -> Iterator[bytes]:
 
     for chunk in chunks:
         if not isinstance(chunk, (bytes, bytearray, memoryview)):
-            raise TypeError(
-                f"expected bytes-like object, got {type(chunk).__name__}"
-            )
+            raise TypeError(f"expected bytes-like object, got {type(chunk).__name__}")
 
         buffer.extend(chunk)
 
         # Find and yield complete lines (O(n) using find with offset)
         while True:
-            idx = buffer.find(b'\n')
+            idx = buffer.find(b"\n")
             if idx == -1:
                 break
-            yield bytes(buffer[:idx + 1])  # Include the \n
-            del buffer[:idx + 1]
+            yield bytes(buffer[: idx + 1])  # Include the \n
+            del buffer[: idx + 1]
 
     # Yield any remaining bytes (last line without \n)
     if buffer:

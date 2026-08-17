@@ -15,6 +15,10 @@ from ..data.batch_refs import (
     load_batch_refs_snapshot,
     restore_batch_refs,
 )
+from ..data.applied_batch_overlays import (
+    load_applied_batch_overlay_abort_snapshot,
+    restore_applied_batch_overlay_abort_snapshot,
+)
 from ..data.session import clear_session_state
 from ..data.session_ownership import (
     release_session_ownership,
@@ -339,6 +343,7 @@ def command_abort(*, quiet: bool = False) -> None:
         else None
     )
     batch_snapshot = load_batch_refs_snapshot()
+    applied_overlay_snapshot = load_applied_batch_overlay_abort_snapshot()
     recovery_objects: list[str | None] = [
         start_point.head_commit,
         start_point.index_tree,
@@ -488,6 +493,7 @@ def command_abort(*, quiet: bool = False) -> None:
     # Restore batch refs to their original state
     # This recreates both git refs and metadata files from the snapshot
     restore_batch_refs(batch_snapshot)
+    restore_applied_batch_overlay_abort_snapshot(applied_overlay_snapshot)
 
     # Clear all session state (preserves batches and batch-sources)
     # Do this AFTER restore_batch_refs so snapshot file is available

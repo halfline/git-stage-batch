@@ -26,9 +26,10 @@ def acquire_detached_batch_ownership(
                     anchor_line=deletion.anchor_line,
                     content_lines=content_lines,
                     baseline_reference=deletion.baseline_reference,
+                    source_alternative=deletion.source_alternative,
                 )
             )
-    except Exception:
+    except BaseException:
         for buffer in buffers:
             buffer.close()
         raise

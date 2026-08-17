@@ -27,6 +27,7 @@ class BatchFileMetadataDict(BatchOwnershipMetadata, total=False):
     new_oid: str | None
     source_path: str
     replacement_masks: list[ReplacementMaskMetadata]
+    legacy_unmarked_source_alternatives: bool
 
 
 class BatchMetadataDict(TypedDict, total=False):

@@ -2793,6 +2793,76 @@ def test_batch_review_preserves_mergeable_change_next_to_reset_only_change():
     ] == [(1,), (2,)]
 
 
+def test_batch_review_preserves_actions_for_joined_mergeable_units():
+    """Visually joined batch additions remain independently actionable."""
+    line_changes = LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=0, old_len=0, new_start=1, new_len=2),
+        lines=[
+            LineEntry(
+                id=1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=1,
+                text_bytes=b"first",
+                text="first",
+                source_line=1,
+            ),
+            LineEntry(
+                id=2,
+                kind="+",
+                old_line_number=None,
+                new_line_number=2,
+                text_bytes=b"second",
+                text="second",
+                source_line=2,
+            ),
+        ],
+    )
+    merge_actions = (
+        FileReviewAction.INCLUDE_FROM_BATCH.value,
+        FileReviewAction.DISCARD_FROM_BATCH.value,
+        FileReviewAction.APPLY_FROM_BATCH.value,
+        FileReviewAction.RESET_FROM_BATCH.value,
+    )
+    review_action_groups = (
+        ReviewActionGroup(
+            display_ids=(1,),
+            selection_ids=(1,),
+            actions=merge_actions,
+        ),
+        ReviewActionGroup(
+            display_ids=(2,),
+            selection_ids=(2,),
+            actions=merge_actions,
+        ),
+    )
+    model = build_file_review_model(
+        line_changes,
+        gutter_to_selection_id={1: 1, 2: 2},
+        review_action_groups=review_action_groups,
+    )
+    review_state = make_file_review_state(
+        model,
+        source=ReviewSource.BATCH,
+        batch_name="cleanup",
+        shown_pages=(1,),
+        selected_change_kind=SelectedChangeKind.BATCH_FILE,
+        gutter_to_selection_id={1: 1, 2: 2},
+        review_action_groups=review_action_groups,
+    )
+
+    mergeable_groups = {
+        selection.display_ids
+        for selection in shown_review_selections_for_action(
+            review_state,
+            FileReviewAction.APPLY_FROM_BATCH,
+        )
+    }
+    assert (1,) in mergeable_groups
+    assert (2,) in mergeable_groups
+
+
 def test_show_from_batch_line_after_review_uses_review_id_space(
     tmp_path,
     monkeypatch,

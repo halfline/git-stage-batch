@@ -535,6 +535,78 @@ def test_translate_hunk_selection_uses_partial_one_to_many_selection_as_replacem
     ]
 
 
+def test_translate_hunk_selection_pairs_repeated_context_suffix():
+    """A repeated context stride may split an old/new replacement pair."""
+    baseline_lines = [
+        b"prefix\n",
+        b"static int block_step(void)\n",
+        b"{\n",
+        b"\treturn BLOCK_WIDTH;\n",
+        b"}\n",
+        b"suffix\n",
+    ]
+    lines = [
+        LineEntry(None, " ", 1, 1, text_bytes=b"prefix", source_line=1),
+        LineEntry(1, "-", 2, None, text_bytes=b"static int block_step(void)"),
+        LineEntry(
+            2,
+            "+",
+            None,
+            2,
+            text_bytes=b"static bool strides_are_valid(unsigned long stride)",
+            source_line=2,
+        ),
+        LineEntry(None, " ", 3, 3, text_bytes=b"{", source_line=3),
+        LineEntry(3, "-", 4, None, text_bytes=b"\treturn BLOCK_WIDTH;"),
+        LineEntry(4, "+", None, 4, text_bytes=b"\tif (stride > SSIZE_MAX)"),
+        LineEntry(5, "+", None, 5, text_bytes=b"\t\treturn false;"),
+        LineEntry(6, "+", None, 6, text_bytes=b""),
+        LineEntry(7, "+", None, 7, text_bytes=b"\treturn true;"),
+        LineEntry(8, "+", None, 8, text_bytes=b"}"),
+        LineEntry(9, "+", None, 9, text_bytes=b""),
+        LineEntry(
+            10,
+            "+",
+            None,
+            10,
+            text_bytes=b"static ptrdiff_t block_step(void)",
+        ),
+        LineEntry(11, "+", None, 11, text_bytes=b"{"),
+        LineEntry(
+            12,
+            "+",
+            None,
+            12,
+            text_bytes=b"\treturn BLOCK_HEIGHT;",
+            source_line=12,
+        ),
+        LineEntry(None, " ", 5, 13, text_bytes=b"}", source_line=13),
+        LineEntry(None, " ", 6, 14, text_bytes=b"suffix", source_line=14),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {3, 12},
+        replacement_line_runs=[ReplacementLineRun(2, 4, 2, 12)],
+        replacement_origin_source_lines=baseline_lines,
+        replacement_runs_are_origin_runs=True,
+        baseline_lines=baseline_lines,
+    )
+
+    assert ownership.presence_line_set() == {12}
+    assert len(ownership.deletions) == 1
+    assert list(ownership.deletions[0].content_lines) == [
+        b"\treturn BLOCK_WIDTH;\n"
+    ]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["12"], deletion_indices=[0])
+    ]
+    origin = ownership.replacement_units[0].origin
+    assert origin is not None
+    assert (origin.old_start, origin.old_end) == (2, 4)
+    assert (origin.new_start, origin.new_end) == (2, 12)
+
+
 def test_translate_hunk_selection_treats_replacement_tail_as_presence_only():
     """Selected tail insertions should not claim the replacement deletion."""
     lines = [

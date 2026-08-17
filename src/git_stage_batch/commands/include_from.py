@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from typing import Optional
 
 from .batch_source import action_context as _action_context
@@ -14,6 +15,7 @@ from ..core.replacement import (
     coerce_replacement_payload,
 )
 from ..data.file_review.records import FileReviewAction
+from ..data.undo.checkpoints import defer_transaction_success
 from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_index import git_refresh_index
@@ -26,6 +28,8 @@ def command_include_from_batch(
     file: Optional[str] = None,
     patterns: Optional[list[str]] = None,
     replacement_text: Optional[str | ReplacementPayload] = None,
+    *,
+    file_paths: Sequence[str] | None = None,
 ) -> None:
     """Stage batch changes to index and working tree using structural merge.
 
@@ -36,7 +40,12 @@ def command_include_from_batch(
               If None, includes all files in batch.
         patterns: Optional gitignore-style file patterns to filter batch files.
         replacement_text: Optional replacement text for selected batch lines.
+        file_paths: Optional pre-resolved literal file paths to include as one
+            transaction. This is mutually exclusive with ``file`` and ``patterns``.
     """
+    resolved_file_paths = (
+        None if file_paths is None else tuple(dict.fromkeys(file_paths))
+    )
     require_git_repository()
     raw_selector = batch_name
     context = _action_context.resolve_batch_source_action_context(
@@ -47,6 +56,7 @@ def command_include_from_batch(
         line_ids=line_ids,
         file=file,
         patterns=patterns,
+        resolved_file_paths=resolved_file_paths,
     )
     selector = context.selector
     batch_name = context.batch_name
@@ -88,20 +98,40 @@ def command_include_from_batch(
         replacement_payload=replacement_payload,
     )
 
-    if replacement_payload is not None and line_ids:
-        print(
-            _("✓ Staged selected lines as replacement from batch '{name}'").format(name=batch_name),
-            file=sys.stderr,
+    file_paths = tuple(files)
+    defer_transaction_success(
+        lambda: _print_include_success(
+            batch_name=batch_name,
+            file_paths=file_paths,
+            replacement=bool(replacement_payload is not None and line_ids),
+            selected_lines=bool(line_ids),
+            selected_file=file is not None,
         )
-    elif line_ids:
-        print(_("✓ Staged selected lines from batch '{name}'").format(name=batch_name), file=sys.stderr)
-    elif file is not None:
-        print(
-            _("✓ Staged changes for {file} from batch '{name}'").format(
-                file=display_path(next(iter(files))),
-                name=batch_name,
-            ),
-            file=sys.stderr,
+    )
+
+
+def _print_include_success(
+    *,
+    batch_name: str,
+    file_paths: tuple[str, ...],
+    replacement: bool,
+    selected_lines: bool,
+    selected_file: bool,
+) -> None:
+    """Print include success only after the outermost transaction commits."""
+    if replacement:
+        message = _(
+            "✓ Staged selected lines as replacement from batch '{name}'"
+        ).format(name=batch_name)
+    elif selected_lines:
+        message = _("✓ Staged selected lines from batch '{name}'").format(
+            name=batch_name
+        )
+    elif selected_file:
+        message = _("✓ Staged changes for {file} from batch '{name}'").format(
+            file=display_path(file_paths[0]),
+            name=batch_name,
         )
     else:
-        print(_("✓ Staged changes from batch '{name}'").format(name=batch_name), file=sys.stderr)
+        message = _("✓ Staged changes from batch '{name}'").format(name=batch_name)
+    print(message, file=sys.stderr)

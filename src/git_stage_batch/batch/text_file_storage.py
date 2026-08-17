@@ -210,6 +210,16 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                     "batch_source_commit": batch_source_commit,
                     "mode": update.file_mode,
                 }
+                existing_file_metadata = metadata["files"].get(file_path)
+                if (
+                    existing_file_metadata is not None
+                    and existing_file_metadata.get(
+                        "legacy_unmarked_source_alternatives"
+                    ) is True
+                ):
+                    file_metadata[
+                        "legacy_unmarked_source_alternatives"
+                    ] = True
                 add_ownership_metadata(
                     file_metadata,
                     update.ownership.to_metadata_dict(),

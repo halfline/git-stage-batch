@@ -12,8 +12,13 @@ from . import text_plan_builders as _text_plan_builders
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
 from ...core.buffer import LineBuffer
+from ...core.line_selection import LineRanges
 from ...core.text_lifecycle import normalized_text_change_type
-from ...data.file_target_identity import IndexIdentity, WorktreeIdentity
+from ...data.file_target_identity import (
+    IndexIdentity,
+    WorktreeIdentity,
+)
+from ...data.applied_batch_overlays import AppliedBatchOverlayView
 from ...exceptions import AtomicUnitError, CommandError, MergeError
 from ...git_paths import display_path
 from ...utils.buffer_io import write_buffer_to_path
@@ -66,6 +71,7 @@ class _ApplyInputMetadata(TypedDict):
     selection_ids: list[int] | None
     working_tree_artifact_path: str
     scratch_directory: str
+    applied_overlay: AppliedBatchOverlayView
 
 
 class _IncludeInputMetadata(_ApplyInputMetadata):
@@ -86,6 +92,7 @@ class ApplyTextPlanJob:
     output_path: str
     details_artifact_path: str
     expected_worktree_identity: WorktreeIdentity
+    expected_index_identity: IndexIdentity | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +106,10 @@ class ApplyTextPlanJobResult:
     output_path: str | None
     file_mode: str | None
     change_type: str | None
+    selected_ownership_artifact_path: str | None = None
+    introduced_selected_presence: bool = False
+    index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
+    expected_index_identity: IndexIdentity | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +162,11 @@ def compute_apply_text_plan_job(
         selected_ids,
     )
     working_tree_exists = job.expected_worktree_identity.exists
+    captured_index_identity = (
+        job.expected_index_identity if batch_source_required else None
+    )
+    if batch_source_required and captured_index_identity is None:
+        raise ValueError("apply text-plan job omitted its index identity")
     if batch_source_required and batch_source_object_id is None:
         return _result(job, "missing_source")
 
@@ -163,6 +179,11 @@ def compute_apply_text_plan_job(
             batch_source_object_id=batch_source_object_id,
             working_tree_artifact_path=working_tree_artifact_path,
             captured_working_tree_exists=working_tree_exists,
+            captured_index_identity=captured_index_identity,
+            applied_overlay=input_metadata.get(
+                "applied_overlay",
+                AppliedBatchOverlayView.empty(),
+            ),
             spool_dir=scratch_directory,
         )
         if build_result.missing_source:
@@ -173,6 +194,17 @@ def compute_apply_text_plan_job(
         plan = build_result.plan
         try:
             change_type = normalized_text_change_type(plan.change_type).value
+            selected_ownership_path = None
+            if build_result.selected_ownership_metadata is not None:
+                selected_ownership_path = str(
+                    Path(job.details_artifact_path).with_name(
+                        "selected-ownership.pickle"
+                    )
+                )
+                _write_pickle(
+                    selected_ownership_path,
+                    build_result.selected_ownership_metadata,
+                )
             output_path = None
             if plan.buffer is not None and change_type != "deleted":
                 write_buffer_to_path(job.output_path, plan.buffer)
@@ -183,6 +215,14 @@ def compute_apply_text_plan_job(
                 output_path=output_path,
                 file_mode=plan.file_mode,
                 change_type=change_type,
+                selected_ownership_artifact_path=selected_ownership_path,
+                introduced_selected_presence=(
+                    build_result.introduced_selected_presence
+                ),
+                index_preimage_source_ranges=(
+                    build_result.index_preimage_source_ranges
+                ),
+                expected_index_identity=captured_index_identity,
             )
         finally:
             plan.close()
@@ -424,6 +464,43 @@ def validate_apply_text_plan_job_result(
         str,
     ):
         raise TypeError("apply text-plan result change type must be text")
+    if (
+        result.selected_ownership_artifact_path is not None
+        and not isinstance(result.selected_ownership_artifact_path, str)
+    ):
+        raise TypeError("apply text-plan ownership artifact path must be text")
+    if type(result.introduced_selected_presence) is not bool:
+        raise TypeError(
+            "apply text-plan introduced-presence flag must be boolean"
+        )
+    if (
+        result.expected_index_identity is not None
+        and not isinstance(result.expected_index_identity, IndexIdentity)
+    ):
+        raise TypeError(
+            "apply text-plan expected index identity must be an index identity"
+        )
+    if (
+        type(result.index_preimage_source_ranges) is not tuple
+        or any(
+            type(item) is not tuple
+            or len(item) != 2
+            or type(item[0]) is not int
+            or type(item[1]) is not int
+            or item[0] < 1
+            or item[1] < item[0]
+            for item in result.index_preimage_source_ranges
+        )
+    ):
+        raise TypeError(
+            "apply text-plan index-preimage ranges must be positive ranges"
+        )
+    if LineRanges.from_ranges(
+        result.index_preimage_source_ranges
+    ).ranges() != result.index_preimage_source_ranges:
+        raise ValueError(
+            "apply text-plan index-preimage ranges must be normalized"
+        )
 
     if result.outcome == "plan":
         if result.details_artifact_path is not None:
@@ -443,6 +520,24 @@ def validate_apply_text_plan_job_result(
             raise ValueError(
                 f"apply text-plan worker returned an invalid output path for "
                 f"{display_path(job.file_path)}"
+            )
+        expected_ownership_path = str(
+            Path(job.details_artifact_path).with_name(
+                "selected-ownership.pickle"
+            )
+        )
+        if result.selected_ownership_artifact_path != expected_ownership_path:
+            raise ValueError(
+                f"apply text-plan worker omitted or returned an invalid "
+                f"ownership path for "
+                f"{display_path(job.file_path)}"
+            )
+        if (
+            result.change_type != "deleted"
+            and result.expected_index_identity is None
+        ):
+            raise ValueError(
+                "successful apply text plan omitted its index identity"
             )
         return
 
@@ -468,6 +563,10 @@ def validate_apply_text_plan_job_result(
         result.output_path is not None
         or result.file_mode is not None
         or result.change_type is not None
+        or result.selected_ownership_artifact_path is not None
+        or result.introduced_selected_presence
+        or result.index_preimage_source_ranges
+        or result.expected_index_identity is not None
     ):
         raise ValueError(
             f"apply text-plan worker returned plan fields for "
@@ -571,6 +670,10 @@ def _result(
     output_path: str | None = None,
     file_mode: str | None = None,
     change_type: str | None = None,
+    selected_ownership_artifact_path: str | None = None,
+    introduced_selected_presence: bool = False,
+    index_preimage_source_ranges: tuple[tuple[int, int], ...] = (),
+    expected_index_identity: IndexIdentity | None = None,
 ) -> ApplyTextPlanJobResult:
     return ApplyTextPlanJobResult(
         ordinal=job.ordinal,
@@ -582,6 +685,10 @@ def _result(
         output_path=output_path,
         file_mode=file_mode,
         change_type=change_type,
+        selected_ownership_artifact_path=selected_ownership_artifact_path,
+        introduced_selected_presence=introduced_selected_presence,
+        index_preimage_source_ranges=index_preimage_source_ranges,
+        expected_index_identity=expected_index_identity,
     )
 
 

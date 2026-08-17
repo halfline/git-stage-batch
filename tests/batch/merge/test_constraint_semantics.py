@@ -4,14 +4,21 @@ These tests validate that the implementation matches the architecture
 described in BATCHES.md.
 """
 
+import pytest
 
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
+from git_stage_batch.batch.merge.presence_mapping import (
+    presence_lines_requiring_context_protection,
+)
 from git_stage_batch.batch.realized_file_content import (
     build_realized_buffer_from_lines,
 )
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.exceptions import MergeError
 
 
 def merge_batch(
@@ -49,6 +56,162 @@ def _build_realized_content_from_bytes(
         return realized.to_bytes()
 
 
+def test_realization_omits_live_source_alternative_constraint():
+    """A live alternative should not become required baseline content."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"live alternative\n"],
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert (
+        _build_realized_content_from_bytes(
+            b"head\ntail\n",
+            b"head\nowned alternative\nlive alternative\ntail\n",
+            ownership,
+        )
+        == b"head\nowned alternative\ntail\n"
+    )
+
+
+def test_merge_replaces_recorded_live_source_alternative():
+    """An explicit source alternative should replay as one replacement."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"live alternative\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    after_content=b"head\n",
+                    before_line=3,
+                    before_content=b"tail\n",
+                    has_before_line=True,
+                ),
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert (
+        merge_batch(
+            b"head\nowned alternative\nlive alternative\ntail\n",
+            ownership,
+            b"head\nlive alternative\ntail\n",
+        )
+        == b"head\nowned alternative\ntail\n"
+    )
+
+
+@pytest.mark.parametrize("version_count", [2, 8])
+def test_merge_collapses_chained_source_alternatives(version_count):
+    """Each superseded intermediate old side is removed exactly once."""
+    versions = [
+        f"version {version_index}\n".encode() for version_index in range(version_count)
+    ]
+    source_lines = [b"head\n", *versions, b"tail\n"]
+    claims = []
+    replacement_units = []
+    for version_index in range(version_count - 1):
+        source_line = version_index + 2
+        claims.append(
+            AbsenceClaim(
+                anchor_line=1 if version_index == 0 else source_line,
+                content_lines=[versions[version_index + 1]],
+                source_alternative=True,
+            )
+        )
+        replacement_units.append(
+            ReplacementUnit(
+                presence_lines=[str(source_line)],
+                deletion_indices=[version_index],
+            )
+        )
+    ownership = BatchOwnership.from_presence_lines(
+        [f"2-{version_count}"],
+        claims,
+        replacement_units=replacement_units,
+    )
+
+    assert (
+        merge_batch(
+            b"".join(source_lines),
+            ownership,
+            b"head\n" + versions[-1] + b"tail\n",
+        )
+        == b"head\n" + versions[0] + b"tail\n"
+    )
+
+
+def test_merge_rejects_nonadjacent_source_alternative():
+    """An explicit old side must match the span immediately after its unit."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"recorded old\n"],
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(
+            b"head\nnew\nunrelated\nrecorded old\ntail\n",
+            ownership,
+            b"head\nrecorded old\ntail\n",
+        )
+
+
+def test_merge_refuses_unresolved_claimed_unowned_duplicate() -> None:
+    """Replay cannot guess which source owner produced one repeated target line."""
+    ownership = BatchOwnership.from_presence_lines(["2", "4"], [])
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(
+            b"head\nshared\nshared\ntail\n",
+            ownership,
+            b"head\nshared\ntail\n",
+        )
+
+
+def test_ordinary_replacement_uses_replacement_proof_not_insertion_masking() -> None:
+    """Only independent presence enters duplicate-protecting source masking."""
+    deletion = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "4"],
+        [deletion],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+    presence_lines = ownership.presence_line_set()
+
+    controlled_lines = presence_lines_requiring_context_protection(
+        ownership,
+        presence_lines,
+        [deletion],
+    )
+
+    assert controlled_lines.ranges() == ((4, 4),)
+
+
 class TestAbsenceClaimIdentity:
     """Test that absence claims are structurally anchored and independent."""
 
@@ -66,9 +229,13 @@ class TestAbsenceClaimIdentity:
         # Batch B: removes "old_impl()"
         # These are DIFFERENT constraints even though anchor is the same
 
-        ownership_a = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=1, content_lines=[b"debug_log()\n"])])
+        ownership_a = BatchOwnership.from_presence_lines(
+            ["1"], [AbsenceClaim(anchor_line=1, content_lines=[b"debug_log()\n"])]
+        )
 
-        ownership_b = BatchOwnership.from_presence_lines(["1"], [AbsenceClaim(anchor_line=1, content_lines=[b"old_impl()\n"])])
+        ownership_b = BatchOwnership.from_presence_lines(
+            ["1"], [AbsenceClaim(anchor_line=1, content_lines=[b"old_impl()\n"])]
+        )
 
         # Applying batch A should preserve "old_impl()" even though anchor matches.
         result_a = merge_batch(batch_source, ownership_a, working)
@@ -88,7 +255,9 @@ class TestAbsenceClaimIdentity:
         working = b"line1\nmarker\nline3\nmarker\nline5\n"
 
         # Claim that suppresses only the first marker after line 1.
-        ownership = BatchOwnership.from_presence_lines(["1", "3", "5"], [AbsenceClaim(anchor_line=1, content_lines=[b"marker\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            ["1", "3", "5"], [AbsenceClaim(anchor_line=1, content_lines=[b"marker\n"])]
+        )
 
         result = merge_batch(batch_source, ownership, working)
         lines = result.splitlines(keepends=True)
@@ -114,7 +283,7 @@ class TestAbsenceClaimIdentity:
             [
                 AbsenceClaim(anchor_line=1, content_lines=[b"old1\n", b"old2\n"]),
                 # Kept separate from the first claim even though it shares an anchor.
-            ]
+            ],
         )
 
         # Implementation should preserve both claims separately
@@ -135,8 +304,7 @@ class TestRepeatedLinesNotGloballyRemoved:
 
         # Suppress "common" after "header" (first occurrence only)
         ownership = BatchOwnership.from_presence_lines(
-            ["1", "3"],
-            [AbsenceClaim(anchor_line=1, content_lines=[b"common\n"])]
+            ["1", "3"], [AbsenceClaim(anchor_line=1, content_lines=[b"common\n"])]
         )
 
         result = merge_batch(batch_source, ownership, working)
@@ -159,7 +327,9 @@ class TestIdempotence:
         batch_source = b"line1\nline2-modified\nline3\n"
         working = b"line1\nline2\nline3\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])]
+        )
 
         # First application
         result1 = merge_batch(batch_source, ownership, working)
@@ -174,7 +344,9 @@ class TestIdempotence:
         batch_source = b"line1\nline2-modified\nline3\n"
         working = b"line1\nline2\nextra\nline3\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])]
+        )
 
         result1 = merge_batch(batch_source, ownership, working)
         result2 = merge_batch(batch_source, ownership, result1)
@@ -197,7 +369,9 @@ class TestPureRemovalBatches:
         working = b"line1\nline2\ndebug_log()\nline3\n"
 
         # Pure removal: just suppress debug_log, don't claim anything else
-        ownership = BatchOwnership.from_presence_lines([], [AbsenceClaim(anchor_line=2, content_lines=[b"debug_log()\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            [], [AbsenceClaim(anchor_line=2, content_lines=[b"debug_log()\n"])]
+        )
 
         result = merge_batch(batch_source, ownership, working)
 
@@ -217,13 +391,11 @@ class TestBytesBasedSemantics:
         working = b"line1\n\xe9cole\nextra\nline3\n"
 
         # Claim école (line 2) and suppress "extra" (working tree insertion after école)
-        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=2, content_lines=[b"extra\n"])])
-
-        result = merge_batch(
-            batch_source,
-            ownership,
-            working
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"], [AbsenceClaim(anchor_line=2, content_lines=[b"extra\n"])]
         )
+
+        result = merge_batch(batch_source, ownership, working)
 
         # Result must contain exact Latin-1 bytes, not UTF-8 replacement
         assert b"\xe9cole" in result
@@ -235,7 +407,9 @@ class TestBytesBasedSemantics:
         batch_source = b"line1\r\nline2-modified\r\nline3\r\n"
         working = b"line1\r\nline2\r\nline3\r\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\r\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\r\n"])]
+        )
 
         result = merge_batch(batch_source, ownership, working)
 
@@ -251,12 +425,12 @@ class TestRealizedContentConstruction:
         baseline_content = b"line1\nline2\nline3\n"
         batch_source_content = b"line1\nline2-modified\nline3\n"
 
-        ownership = BatchOwnership.from_presence_lines(["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])])
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"], [AbsenceClaim(anchor_line=1, content_lines=[b"line2\n"])]
+        )
 
         realized = _build_realized_content_from_bytes(
-            baseline_content,
-            batch_source_content,
-            ownership
+            baseline_content, batch_source_content, ownership
         )
 
         # Should have line2-modified (claimed)
@@ -274,13 +448,13 @@ class TestRealizedContentConstruction:
         baseline_content = b"header\nold value\nfooter\n"
         batch_source_content = b"header\nnew value\nfooter\n"
 
-        ownership = BatchOwnership.from_presence_lines([], [AbsenceClaim(anchor_line=2, content_lines=[b"old value\n"])],
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [AbsenceClaim(anchor_line=2, content_lines=[b"old value\n"])],
         )
 
         realized = _build_realized_content_from_bytes(
-            baseline_content,
-            batch_source_content,
-            ownership
+            baseline_content, batch_source_content, ownership
         )
 
         assert realized == b"header\nfooter\n"
@@ -299,9 +473,7 @@ class TestRealizedContentConstruction:
         )
 
         realized = _build_realized_content_from_bytes(
-            baseline_content,
-            batch_source_content,
-            ownership
+            baseline_content, batch_source_content, ownership
         )
 
         assert realized == b"line1\n"

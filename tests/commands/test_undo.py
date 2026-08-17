@@ -1,21 +1,29 @@
 """Tests for undo command."""
 
 import os
+import stat
 import subprocess
 
 import pytest
 
+import git_stage_batch.data.undo.checkpoints as undo_checkpoints
 from git_stage_batch.commands.include import command_include_file, command_include_line
 from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.undo.checkpoints import (
+    defer_transaction_completion,
+    defer_transaction_success,
     redo_last_checkpoint,
+    transaction_checkpoint,
     undo_checkpoint,
     undo_last_checkpoint,
 )
 from git_stage_batch.data.undo.refs import current_undo_commit
 from git_stage_batch.data.session import path_is_intent_to_add
+from git_stage_batch.data.applied_batch_overlays import (
+    applied_batch_overlays_repository_path,
+)
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
     get_batches_directory_path,
@@ -31,12 +39,29 @@ def temp_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
 
     subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     return repo
 
@@ -55,7 +80,9 @@ def _commit_symlink(repo, *, target):
     link_path = repo / "link"
     os.symlink(target, link_path)
     subprocess.run(["git", "add", "link"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Add link"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add link"], check=True, cwd=repo, capture_output=True
+    )
     return link_path
 
 
@@ -70,6 +97,10 @@ def _commit_text_file(repo, path: str, content: str):
         capture_output=True,
     )
     return file_path
+
+
+def _permission_bits(path):
+    return stat.S_IMODE(path.lstat().st_mode)
 
 
 def test_undo_include_line_restores_symlink_worktree_snapshot(temp_git_repo):
@@ -342,6 +373,41 @@ def test_atomic_failed_operation_rolls_back_before_propagating(temp_git_repo):
     assert status.rollback == "completed"
 
 
+def test_active_transaction_rollback_restores_private_metadata_permissions(
+    temp_git_repo,
+):
+    """An unfinalized active checkpoint retains exact metadata modes."""
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    session_file = get_session_directory_path() / "private-state"
+    batch_file = get_batches_directory_path() / "saved" / "private-state"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    batch_file.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+    session_file.write_text("session before\n")
+    batch_file.write_text("batch before\n")
+    session_file.chmod(0o600)
+    batch_file.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with transaction_checkpoint(
+            "change private metadata",
+            worktree_paths=[],
+            index_paths=[],
+        ) as status:
+            status.arm_rollback()
+            session_file.write_text("session published\n")
+            batch_file.write_text("batch published\n")
+            session_file.chmod(0o644)
+            batch_file.chmod(0o644)
+            raise RuntimeError("publication failed")
+
+    assert session_file.read_text() == "session before\n"
+    assert batch_file.read_text() == "batch before\n"
+    assert _permission_bits(session_file) == 0o600
+    assert _permission_bits(batch_file) == 0o600
+    assert status.rollback == "completed"
+
+
 def test_transaction_status_preserves_unavailable_without_active_session(
     temp_git_repo,
 ):
@@ -359,6 +425,561 @@ def test_transaction_status_preserves_unavailable_without_active_session(
         pass
 
     assert ordinary_status.rollback == "not-requested"
+
+
+def test_transient_transaction_rolls_back_without_active_session(
+    temp_git_repo,
+):
+    """A required transaction should use a temporary non-session before-image."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    repository_path = (
+        temp_git_repo / ".git" / "git-stage-batch" / "transaction-state.txt"
+    )
+    repository_path.parent.mkdir(parents=True, exist_ok=True)
+    repository_path.write_text("repository before\n")
+    previous_checkpoint = current_undo_commit()
+
+    status = None
+    with pytest.raises(KeyboardInterrupt, match="operation cancelled"):
+        with transaction_checkpoint(
+            "change targets",
+            worktree_paths=["target.txt"],
+            repository_paths=[
+                "git-stage-batch/transaction-state.txt",
+            ],
+        ) as status:
+            status.arm_rollback()
+            target.write_text("worktree partial\n")
+            repository_path.write_text("repository partial\n")
+            raise KeyboardInterrupt("operation cancelled")
+
+    assert target.read_text() == "before\n"
+    assert repository_path.read_text() == "repository before\n"
+    assert current_undo_commit() == previous_checkpoint
+    assert status is not None
+    assert status.rollback == "completed"
+    transient_refs = subprocess.run(
+        [
+            "git",
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/git-stage-batch/transactions/",
+        ],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert transient_refs == ""
+
+
+def test_transient_transaction_cleans_ref_after_snapshot_publication_error(
+    temp_git_repo,
+    monkeypatch,
+):
+    """A snapshot constructor error must not leak a published temporary ref."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    published_refs = []
+
+    def publish_then_fail(**kwargs):
+        ref_name = kwargs["ref_name"]
+        published_refs.append(ref_name)
+        subprocess.run(
+            ["git", "update-ref", ref_name, "HEAD"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        raise RuntimeError("snapshot publication failed")
+
+    monkeypatch.setattr(
+        undo_checkpoints._undo_snapshots,
+        "write_snapshot_commit",
+        publish_then_fail,
+    )
+
+    with pytest.raises(RuntimeError, match="snapshot publication failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ):
+            target.write_text("must not run\n")
+
+    assert target.read_text() == "before\n"
+    assert len(published_refs) == 1
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", published_refs[0]],
+        check=False,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+
+
+def test_transient_snapshot_cleanup_cancellation_preserves_snapshot_error(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Best-effort ref cleanup must not replace a snapshot failure."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+
+    def fail_snapshot(**_kwargs):
+        raise RuntimeError("snapshot publication failed")
+
+    def cancel_cleanup(**_kwargs):
+        raise KeyboardInterrupt("cleanup cancelled")
+
+    monkeypatch.setattr(
+        undo_checkpoints._undo_snapshots,
+        "write_snapshot_commit",
+        fail_snapshot,
+    )
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "update_git_refs",
+        cancel_cleanup,
+    )
+
+    with pytest.raises(RuntimeError, match="snapshot publication failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ):
+            target.write_text("must not run\n")
+
+    assert target.read_text() == "before\n"
+
+
+@pytest.mark.parametrize(
+    ("arm_rollback", "expected_content", "expected_rollback"),
+    [
+        (False, "partial\n", "not-needed"),
+        (True, "before\n", "completed"),
+    ],
+)
+def test_transient_ref_cleanup_cancellation_preserves_operation_error(
+    temp_git_repo,
+    monkeypatch,
+    arm_rollback,
+    expected_content,
+    expected_rollback,
+):
+    """Cleanup cancellation must not mask an armed or unarmed failure."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+
+    def cancel_cleanup(_ref_name):
+        raise KeyboardInterrupt("cleanup cancelled")
+
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "_delete_transient_transaction_ref",
+        cancel_cleanup,
+    )
+
+    status = None
+    with pytest.raises(RuntimeError, match="operation failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ) as status:
+            if arm_rollback:
+                status.arm_rollback()
+            target.write_text("partial\n")
+            raise RuntimeError("operation failed")
+
+    assert target.read_text() == expected_content
+    assert status is not None
+    assert status.rollback == expected_rollback
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_unarmed_transaction_refusal_preserves_concurrent_worktree_edit(
+    temp_git_repo,
+    active_session,
+):
+    """A refusal before publication must not restore over an external edit."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+    previous_checkpoint = current_undo_commit()
+
+    status = None
+    with pytest.raises(CommandError, match="stale apply target"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ) as status:
+            target.write_text("concurrent edit\n")
+            raise CommandError("stale apply target")
+
+    assert target.read_text() == "concurrent edit\n"
+    assert current_undo_commit() == previous_checkpoint
+    assert status is not None
+    assert status.rollback == "not-needed"
+
+
+def test_transaction_checkpoint_delegates_to_active_outer_checkpoint(
+    temp_git_repo,
+):
+    """Nested required transactions should share one active-session snapshot."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        outer_status.arm_rollback()
+        target.write_text("outer\n")
+        with transaction_checkpoint(
+            "inner change",
+            worktree_paths=["target.txt"],
+        ) as inner_status:
+            inner_status.arm_rollback()
+            target.write_text("inner\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "inner\n"
+    undo_last_checkpoint()
+    assert target.read_text() == "before\n"
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_nested_transaction_arm_rolls_back_error_through_outer(
+    temp_git_repo,
+    active_session,
+):
+    """An inner publication must arm its enclosing transaction."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+
+    with pytest.raises(RuntimeError, match="inner failed"):
+        with transaction_checkpoint(
+            "outer change",
+            worktree_paths=["target.txt"],
+        ) as outer_status:
+            with transaction_checkpoint(
+                "inner change",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                inner_status.arm_rollback()
+                target.write_text("inner partial\n")
+                raise RuntimeError("inner failed")
+
+    assert outer_status.rollback == "completed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "before\n"
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_successful_nested_transaction_arm_rolls_back_later_outer_error(
+    temp_git_repo,
+    active_session,
+):
+    """A successful inner publication must remain armed for outer failure."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+
+    with pytest.raises(RuntimeError, match="outer failed"):
+        with transaction_checkpoint(
+            "outer change",
+            worktree_paths=["target.txt"],
+        ) as outer_status:
+            with transaction_checkpoint(
+                "inner change",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                inner_status.arm_rollback()
+                target.write_text("inner complete\n")
+            raise RuntimeError("outer failed")
+
+    assert outer_status.rollback == "completed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "before\n"
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_caught_unarmed_nested_refusal_does_not_abort_armed_outer_transaction(
+    temp_git_repo,
+    active_session,
+):
+    """A nested pre-publication refusal must not poison an armed outer command."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        outer_status.arm_rollback()
+        target.write_text("outer complete\n")
+        with pytest.raises(CommandError, match="stale inner target"):
+            with transaction_checkpoint(
+                "inner refusal",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                raise CommandError("stale inner target")
+
+    assert outer_status.rollback == "not-needed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "outer complete\n"
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_nested_transaction_defers_success_until_outer_commit(
+    temp_git_repo,
+    active_session,
+):
+    """Nested success effects must wait for the shared before-image to commit."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+    published = []
+    rollbacks = []
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with transaction_checkpoint(
+            "inner change",
+            worktree_paths=["target.txt"],
+        ) as inner_status:
+            inner_status.arm_rollback()
+            target.write_text("inner complete\n")
+        defer_transaction_success(lambda: published.append("success"))
+        defer_transaction_completion(
+            lambda: published.append("paired success"),
+            rollbacks.append,
+        )
+        assert published == []
+
+    assert outer_status.rollback == "not-needed"
+    assert inner_status.rollback == "delegated"
+    assert published == ["success", "paired success"]
+    assert rollbacks == []
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_nested_transaction_discards_success_after_outer_rollback(
+    temp_git_repo,
+    active_session,
+):
+    """A rolled-back nested publication must not announce success."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+    published = []
+    rollbacks = []
+
+    with pytest.raises(RuntimeError, match="outer failed"):
+        with transaction_checkpoint(
+            "outer change",
+            worktree_paths=["target.txt"],
+        ):
+            with transaction_checkpoint(
+                "inner change",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                inner_status.arm_rollback()
+                target.write_text("inner complete\n")
+            defer_transaction_success(lambda: published.append("success"))
+            defer_transaction_completion(
+                lambda: published.append("paired success"),
+                rollbacks.append,
+            )
+            raise RuntimeError("outer failed")
+
+    assert published == []
+    assert rollbacks == ["completed"]
+    assert target.read_text() == "before\n"
+
+
+def test_transient_transaction_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """A transient before-image must never delegate work in another repo."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with transaction_checkpoint(
+                    "wrong repository",
+                    worktree_paths=[],
+                ):
+                    raise AssertionError("cross-repository transaction started")
+        outer_status.arm_rollback()
+        target.write_text("published\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert target.read_text() == "published\n"
+
+
+def test_active_transaction_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """An active-session transaction must remain scoped to its repository."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with transaction_checkpoint(
+                    "wrong repository",
+                    worktree_paths=[],
+                ):
+                    raise AssertionError("cross-repository transaction started")
+        outer_status.arm_rollback()
+        target.write_text("published\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert target.read_text() == "published\n"
+
+
+def test_active_undo_checkpoint_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """A regular pending checkpoint must retain ownership of its repository."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with undo_checkpoint("outer change", worktree_paths=["target.txt"]):
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with undo_checkpoint("wrong repository", worktree_paths=[]):
+                    raise AssertionError("cross-repository checkpoint started")
+        target.write_text("published\n")
+
+    assert target.read_text() == "published\n"
+    undo_last_checkpoint()
+    assert target.read_text() == "before\n"
+
+
+def test_transient_transaction_rolls_back_scoped_index_change(temp_git_repo):
+    """A non-session transaction must restore every declared index target."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    neighbor = _commit_text_file(temp_git_repo, "neighbor.txt", "neighbor\n")
+    target.write_text("staged\n")
+    subprocess.run(
+        ["git", "add", "target.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    expected_index = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "target.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    with pytest.raises(RuntimeError, match="index publication failed"):
+        with transaction_checkpoint(
+            "change index",
+            worktree_paths=[],
+            index_paths=["target.txt"],
+        ) as status:
+            status.arm_rollback()
+            subprocess.run(
+                ["git", "update-index", "--force-remove", "--", "target.txt"],
+                check=True,
+                cwd=temp_git_repo,
+                capture_output=True,
+            )
+            neighbor.write_text("concurrent neighbor\n")
+            subprocess.run(
+                ["git", "add", "neighbor.txt"],
+                check=True,
+                cwd=temp_git_repo,
+                capture_output=True,
+            )
+            raise RuntimeError("index publication failed")
+
+    assert (
+        subprocess.run(
+            ["git", "ls-files", "--stage", "--", "target.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == expected_index
+    )
+    assert (
+        subprocess.run(
+            ["git", "show", ":neighbor.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == "concurrent neighbor\n"
+    )
 
 
 def test_nontransactional_checkpoint_status_remains_not_requested(
@@ -490,13 +1111,15 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
     target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
     get_session_directory_path().mkdir(parents=True, exist_ok=True)
     original_directory_state = undo_snapshots.filesystem_directory_state
-    calls = 0
+    session_calls = 0
 
     def fail_during_finalization(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls > 2:
-            raise RuntimeError("manifest persistence failed")
+        nonlocal session_calls
+        source_dir = args[0] if args else kwargs["source_dir"]
+        if source_dir == get_session_directory_path():
+            session_calls += 1
+            if session_calls > 1:
+                raise RuntimeError("manifest persistence failed")
         return original_directory_state(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -520,6 +1143,50 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
     undo_last_checkpoint(force=True)
 
     assert target.read_text() == "before\n"
+
+
+def test_transactional_finalization_failure_rolls_back_publication(
+    temp_git_repo,
+    monkeypatch,
+):
+    """A transaction stays atomic when its undo-node finalization fails."""
+    from git_stage_batch.data.undo import snapshots as undo_snapshots
+
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+    previous_checkpoint = current_undo_commit()
+    original_snapshot = undo_snapshots.snapshot_current_state
+    calls = 0
+    published_success = []
+
+    def fail_during_finalization(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("transaction finalization failed")
+        return original_snapshot(*args, **kwargs)
+
+    monkeypatch.setattr(
+        undo_snapshots,
+        "snapshot_current_state",
+        fail_during_finalization,
+    )
+
+    with pytest.raises(RuntimeError, match="transaction finalization failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ) as status:
+            status.arm_rollback()
+            target.write_text("published\n")
+            defer_transaction_success(lambda: published_success.append("success"))
+
+    assert status.rollback == "completed"
+    assert target.read_text() == "before\n"
+    assert current_undo_commit() == previous_checkpoint
+    assert published_success == []
 
 
 def test_unreadable_checkpoint_manifest_fails_finalization(temp_git_repo, monkeypatch):
@@ -610,20 +1277,26 @@ def test_scoped_undo_preserves_unrelated_batch_ref_changes(temp_git_repo):
 
     undo_last_checkpoint()
 
-    assert subprocess.run(
-        ["git", "rev-parse", target_ref],
-        check=True,
-        cwd=temp_git_repo,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() == head
-    assert subprocess.run(
-        ["git", "rev-parse", unrelated_ref],
-        check=True,
-        cwd=temp_git_repo,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() == unrelated_after
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", target_ref],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == head
+    )
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", unrelated_ref],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == unrelated_after
+    )
 
 
 def test_scoped_undo_preserves_unrelated_application_metadata(temp_git_repo):
@@ -677,6 +1350,89 @@ def test_scoped_undo_preserves_unrelated_application_metadata(temp_git_repo):
     assert target_batch.read_text() == "after\n"
     assert unrelated_session.read_text() == "unrelated later\n"
     assert unrelated_batch.read_text() == "unrelated later\n"
+
+
+def test_undo_and_redo_restore_exact_worktree_and_metadata_permissions(
+    temp_git_repo,
+):
+    """Checkpoint manifests retain modes more precise than Git tree modes."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    session_file = get_session_directory_path() / "private-state"
+    batch_file = get_batches_directory_path() / "saved" / "private-state"
+    repository_relative_path = applied_batch_overlays_repository_path()
+    repository_file = temp_git_repo / ".git" / repository_relative_path
+    session_file.parent.mkdir(parents=True, exist_ok=True)
+    batch_file.parent.mkdir(parents=True, exist_ok=True)
+    repository_file.parent.mkdir(parents=True, exist_ok=True)
+    for path in (target, session_file, batch_file, repository_file):
+        path.write_text("before\n")
+        path.chmod(0o600)
+
+    with undo_checkpoint(
+        "change private files",
+        worktree_paths=["target.txt"],
+        repository_paths=[repository_relative_path],
+    ):
+        for path in (target, session_file, batch_file, repository_file):
+            path.write_text("after\n")
+            path.chmod(0o640)
+
+    undo_last_checkpoint()
+
+    for path in (target, session_file, batch_file, repository_file):
+        assert path.read_text() == "before\n"
+        assert _permission_bits(path) == 0o600
+
+    redo_last_checkpoint()
+
+    for path in (target, session_file, batch_file, repository_file):
+        assert path.read_text() == "after\n"
+        assert _permission_bits(path) == 0o640
+
+
+def test_transient_rollback_restores_private_overlay_permissions(
+    temp_git_repo,
+):
+    """A failed no-session apply cannot broaden private overlay access."""
+    repository_relative_path = applied_batch_overlays_repository_path()
+    overlay_path = temp_git_repo / ".git" / repository_relative_path
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    overlay_path.write_text("private before\n")
+    overlay_path.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with transaction_checkpoint(
+            "change overlay",
+            worktree_paths=[],
+            index_paths=[],
+            repository_paths=[repository_relative_path],
+        ) as status:
+            status.arm_rollback()
+            overlay_path.write_text("published\n")
+            overlay_path.chmod(0o644)
+            raise RuntimeError("publication failed")
+
+    assert overlay_path.read_text() == "private before\n"
+    assert _permission_bits(overlay_path) == 0o600
+
+
+def test_transient_rollback_restores_exact_worktree_permissions(temp_git_repo):
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    target.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+            index_paths=[],
+        ) as status:
+            status.arm_rollback()
+            target.write_text("published\n")
+            target.chmod(0o644)
+            raise RuntimeError("publication failed")
+
+    assert target.read_text() == "before\n"
+    assert _permission_bits(target) == 0o600
 
 
 def test_incomplete_checkpoint_requires_force(temp_git_repo, monkeypatch):

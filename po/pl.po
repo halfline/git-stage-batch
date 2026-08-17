@@ -214,13 +214,6 @@ msgstr[2] ""
 "Zadeklarowany wiersz {line} jest poza zakresem (źródło partii ma {count} "
 "wierszy)"
 
-#: src/git_stage_batch/batch/merge/validation.py:148
-#, python-brace-format
-msgid "Cannot reliably place claimed line {line}: surrounding context lost"
-msgstr ""
-"Nie można wiarygodnie umieścić zadeklarowanego wiersza {line}: utracono "
-"otaczający kontekst"
-
 #: src/git_stage_batch/batch/merge/validation.py:163
 #, python-brace-format
 msgid "Deletion after line {line} is out of range"
@@ -2252,15 +2245,6 @@ msgstr "uwzględnienie"
 #, python-brace-format
 msgid "Failed to include from batch '{name}': {error}"
 msgstr "Nie udało się uwzględnić zmian z partii „{name}”: {error}"
-
-#: src/git_stage_batch/commands/batch_source/include_action.py:687
-#, python-brace-format
-msgid ""
-"{label} changed while include was being calculated: {file}. Retry the "
-"include command."
-msgstr ""
-"{label} zmienił się podczas obliczania operacji dołączenia: {file}. Ponów "
-"polecenie include."
 
 #: src/git_stage_batch/commands/batch_source/merge_refusals.py:27
 #, python-brace-format
@@ -7883,3 +7867,148 @@ msgstr "źródłowa przestrzeń robocza rozwiązania zmieniła się podczas kopi
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "kopia rozwiązania należąca do operacji nie odpowiada swojemu uwierzytelnionemu źródłu"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Wszystkie zmiany drzewa roboczego są obecnie zapisane w {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "Stan zastosowanych partii jest uszkodzony: {path}. Usuń ten plik, aby zapomnieć pochodzenie przeglądu przywróconych zmian."
+
+# Applied replacement rollback translations.
+#: src/git_stage_batch/batch/discard.py:869
+#: src/git_stage_batch/batch/discard.py:884
+#: src/git_stage_batch/batch/discard.py:910
+#: src/git_stage_batch/batch/discard.py:989
+msgid ""
+"Cannot discard an exact applied replacement because its live occurrence is "
+"ambiguous"
+msgstr ""
+"Nie można odrzucić dokładnie zastosowanego zastąpienia, ponieważ jego "
+"bieżące wystąpienie jest niejednoznaczne"
+
+#: src/git_stage_batch/batch/discard_reversal.py:121
+#, python-brace-format
+msgid ""
+"Cannot discard a baseline replacement hunk that mixes applied lines with "
+"ownership lacking an independent old side (source lines {start}-{end})"
+msgstr ""
+"Nie można odrzucić fragmentu zastąpienia wersji bazowej, który łączy "
+"zastosowane wiersze z własnością bez niezależnej starej strony (wiersze "
+"źródłowe {start}-{end})"
+
+#: src/git_stage_batch/batch/merge/legacy_intent.py:147
+#, python-brace-format
+msgid ""
+"Cannot safely replay legacy batch metadata for {file}: the batch does not "
+"record whether adjacent historical source content was an alternative that "
+"should be replaced. Recreate this batch with the current version of git-"
+"stage-batch before replaying it."
+msgstr ""
+"Nie można bezpiecznie odtworzyć starszych metadanych partii dla {file}: "
+"partia nie zapisuje, czy sąsiadująca historyczna zawartość źródła była "
+"alternatywą, którą należało zastąpić. Przed odtworzeniem utwórz tę partię "
+"ponownie przy użyciu bieżącej wersji git-stage-batch."
+
+# Legacy source-alternative metadata translations.
+#: src/git_stage_batch/batch/state/metadata_schema.py:486
+msgid "file entry for {path!r} has an invalid legacy source-alternative flag"
+msgstr ""
+"Wpis pliku dla {path!r} ma nieprawidłową starszą flagę alternatywy źródła"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:497
+msgid "non-text file entry for {path!r} has a legacy source-alternative marker"
+msgstr ""
+"Wpis pliku nietekstowego dla {path!r} ma starszy znacznik alternatywy źródła"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:648
+msgid "files[{path!r}] has an invalid source-alternative flag"
+msgstr "files[{path!r}] ma nieprawidłową flagę alternatywy źródła"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:664
+msgid "files[{path!r}] has a source alternative without a live boundary"
+msgstr ""
+"files[{path!r}] ma alternatywę źródła bez granicy w bieżącej zawartości"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py:737
+msgid ""
+"files[{path!r}] has a source alternative without an owned replacement side"
+msgstr "files[{path!r}] ma alternatywę źródła bez własnej strony zastąpienia"
+
+#: src/git_stage_batch/batch/submodule_pointer.py:280
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index has unmerged "
+"entries."
+msgstr ""
+"Nie można odrzucić dodanego wskaźnika podmodułu dla {file}: indeks zawiera "
+"niescalone wpisy."
+
+#: src/git_stage_batch/batch/submodule_pointer.py:287
+#, python-brace-format
+msgid ""
+"Cannot discard added submodule pointer for {file}: the index already "
+"contains staged content."
+msgstr ""
+"Nie można odrzucić dodanego wskaźnika podmodułu dla {file}: indeks zawiera "
+"już przygotowaną zawartość."
+
+# Apply/discard target integrity translations.
+#: src/git_stage_batch/commands/batch_source/apply_action.py:811
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:229
+#, python-brace-format
+msgid ""
+"Index changed while apply was being calculated: {file}. Retry the apply "
+"command."
+msgstr ""
+"Indeks zmienił się podczas obliczania operacji zastosowania: {file}. Ponów "
+"polecenie apply."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:352
+#: src/git_stage_batch/commands/batch_source/include_action.py:697
+#, python-brace-format
+msgid ""
+"Index changed while include was being calculated: {file}. Retry the include "
+"command."
+msgstr ""
+"Indeks zmienił się podczas obliczania include: {file}. Ponów polecenie "
+"include."
+
+#: src/git_stage_batch/commands/batch_source/candidate_execution.py:359
+#: src/git_stage_batch/commands/batch_source/include_action.py:702
+#, python-brace-format
+msgid ""
+"Working tree file changed while include was being calculated: {file}. Retry "
+"the include command."
+msgstr ""
+"Plik w drzewie roboczym zmienił się podczas obliczania include: {file}. "
+"Ponów polecenie include."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:547
+#, python-brace-format
+msgid ""
+"Index changed while discard was being calculated: {file}. Retry the discard "
+"command."
+msgstr ""
+"Indeks zmienił się podczas obliczania odrzucenia: {file}. Ponownie uruchom "
+"polecenie discard."
+
+#: src/git_stage_batch/commands/batch_source/discard_action.py:553
+#, python-brace-format
+msgid ""
+"Working tree file changed while discard was being calculated: {file}. Retry "
+"the discard command."
+msgstr ""
+"Plik w drzewie roboczym zmienił się podczas obliczania operacji odrzucenia: "
+"{file}. Ponów polecenie discard."
+
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Nie można utworzyć punktu kontrolnego odzyskiwania, gdy indeks zawiera "
+"niescalone wpisy: {paths}"

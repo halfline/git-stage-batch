@@ -8,6 +8,10 @@ import pytest
 
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.state.query import read_batch_metadata
+from git_stage_batch.batch.state.compatibility_metadata import (
+    write_file_backed_batch_metadata,
+)
+from git_stage_batch.batch.state.references import sync_batch_state_refs
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from tests.batch_file_helpers import read_file_from_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
@@ -17,6 +21,7 @@ from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
 )
 from git_stage_batch.batch.ownership.detachment import acquire_detached_batch_ownership
+import git_stage_batch.batch.ownership.detachment as detachment_module
 from git_stage_batch.batch.ownership.merging import (
     _absence_signature,
     merge_batch_ownership,
@@ -26,6 +31,7 @@ from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
+from git_stage_batch.batch.realization.entry_storage import RealizedEntries
 import git_stage_batch.batch.ownership.absence_content as absence_content_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
@@ -99,6 +105,24 @@ def test_add_file_to_batch_existing_batch(temp_git_repo):
     assert "line1" in content
 
 
+def test_add_file_to_batch_preserves_legacy_intent_marker(temp_git_repo):
+    """Editing migrated ownership must not silently erase its uncertainty."""
+    create_batch("test-batch", "Test")
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
+    add_file_to_batch("test-batch", "file.txt", ownership)
+    metadata = read_batch_metadata("test-batch")
+    metadata["files"]["file.txt"][
+        "legacy_unmarked_source_alternatives"
+    ] = True
+    model = write_file_backed_batch_metadata("test-batch", metadata)
+    sync_batch_state_refs("test-batch", model)
+
+    add_file_to_batch("test-batch", "file.txt", ownership)
+
+    file_meta = read_batch_metadata("test-batch")["files"]["file.txt"]
+    assert file_meta["legacy_unmarked_source_alternatives"] is True
+
+
 def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
     """Text metadata should round-trip explicit replacement-unit references."""
     create_batch("test-batch", "Test")
@@ -166,6 +190,32 @@ def test_absence_claim_metadata_keeps_deletions_key(temp_git_repo):
     assert "deletions" in metadata
     assert "absence_claims" not in metadata
     assert metadata["deletions"][0]["after_source_line"] is None
+
+
+def test_source_alternative_absence_claim_round_trips(temp_git_repo):
+    """A retained live alternative should remain distinct from baseline loss."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=[b"live alternative\n"],
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+
+    metadata = ownership.to_metadata_dict()
+
+    assert metadata["deletions"][0]["source_alternative"] is True
+    assert "source_alternative" not in (
+        ownership.to_attribution_metadata_dict()["deletions"][0]
+    )
+    with acquire_ownership_for_metadata(metadata) as round_tripped:
+        assert round_tripped.deletions[0].source_alternative is True
 
 
 def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_repo):
@@ -252,6 +302,86 @@ def test_acquire_detached_batch_ownership_streams_buffer_content(monkeypatch):
 
     with pytest.raises(ValueError, match="buffer is closed"):
         detached_content.to_bytes()
+
+
+def test_acquire_detached_batch_ownership_closes_on_base_exception(monkeypatch):
+    """A cancelled detach should close copies completed before cancellation."""
+    copied_buffer = LineBuffer.from_bytes(b"old one\n")
+    calls = 0
+
+    def interrupt_second_copy(_content_lines):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return copied_buffer
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        detachment_module,
+        "_copy_absence_content",
+        interrupt_second_copy,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        [],
+        [
+            AbsenceClaim(anchor_line=None, content_lines=[b"old one\n"]),
+            AbsenceClaim(anchor_line=None, content_lines=[b"old two\n"]),
+        ],
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        acquire_detached_batch_ownership(ownership)
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        copied_buffer.to_bytes()
+
+
+def test_realized_entries_propagates_owned_resource_close_failure():
+    """A backing resource failure must not look like deferred lease closure."""
+
+    class FailingLineBuffer(LineBuffer):
+        def close(self):
+            super().close()
+            raise ValueError("backing resource close failed")
+
+    entries = RealizedEntries()
+    resource = FailingLineBuffer.from_bytes(b"line\n")
+    entries.retain_line_buffer(resource)
+
+    with pytest.raises(ValueError, match="backing resource close failed"):
+        entries.close()
+
+    with pytest.raises(ValueError, match="realized entries are closed"):
+        len(entries)
+    with pytest.raises(ValueError, match="buffer is closed"):
+        resource.to_bytes()
+
+
+def test_realized_entries_retries_owned_resource_close_failure():
+    """Closed entry wrappers must keep retrying a retained resource failure."""
+
+    class RetryableLineBuffer(LineBuffer):
+        close_count = 0
+
+        def close(self):
+            self.close_count += 1
+            if self.close_count == 1:
+                raise KeyboardInterrupt("backing resource close cancelled")
+            super().close()
+
+    entries = RealizedEntries()
+    resource = RetryableLineBuffer.from_bytes(b"line\n")
+    entries.retain_line_buffer(resource)
+
+    with pytest.raises(KeyboardInterrupt, match="close cancelled"):
+        entries.close()
+    with pytest.raises(ValueError, match="realized entries are closed"):
+        len(entries)
+
+    entries.close()
+    assert resource.close_count == 2
+    with pytest.raises(ValueError, match="buffer is closed"):
+        resource.to_bytes()
 
 
 def test_absence_signature_streams_line_buffer_chunks(monkeypatch):

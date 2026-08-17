@@ -101,6 +101,7 @@ def _apply_whole_source_output(
     output_index: int,
     *,
     env: dict[str, str] | None = None,
+    whole_source_cache: dict[tuple[str, str, str], str] | None = None,
 ) -> str:
     parent_tree = current_tree
     source_had_effect = False
@@ -109,6 +110,15 @@ def _apply_whole_source_output(
         if source.parent_tree == source.tree:
             continue
         source_had_effect = True
+        if source.parent_tree == current_tree:
+            current_tree = source.tree
+            continue
+        ws_key = (current_tree, source.parent_tree, source.tree)
+        if whole_source_cache is not None:
+            cached_tree = whole_source_cache.get(ws_key)
+            if cached_tree is not None:
+                current_tree = cached_tree
+                continue
         with load_tree_diff_as_buffer(
             source.parent_tree,
             source.tree,
@@ -127,6 +137,8 @@ def _apply_whole_source_output(
                     "{commit} at its requested position."
                 ).format(output=output_index + 1, commit=source_commit)
             )
+        if whole_source_cache is not None:
+            whole_source_cache[ws_key] = replayed_tree
         current_tree = replayed_tree
 
     if (
@@ -212,6 +224,7 @@ def materialize_history_output_trees(
     current_tree = document.snapshot.base_tree
     output_trees: list[str] = []
     replay_cache: dict[tuple[str, str], PatchApplicationResult] = {}
+    whole_source_cache: dict[tuple[str, str, str], str] = {}
     with ExitStack() as stack:
         units: dict[str, HistoryReplayUnit] = {}
         if unit_output_indexes:
@@ -259,6 +272,7 @@ def materialize_history_output_trees(
                     current_tree,
                     output_index,
                     env=env,
+                    whole_source_cache=whole_source_cache,
                 )
             output_trees.append(current_tree)
 

@@ -147,7 +147,14 @@ def _remote_ref_tips() -> tuple[tuple[str, str], ...]:
     return tuple(sorted(refs))
 
 
-def _commit_is_ancestor(commit: str, descendant: str) -> bool:
+def _commit_is_ancestor(
+    commit: str,
+    descendant: str,
+    cache: dict[tuple[str, str], bool],
+) -> bool:
+    cache_key = (commit, descendant)
+    if cache_key in cache:
+        return cache[cache_key]
     result = run_git_command(
         ["merge-base", "--is-ancestor", commit, descendant],
         check=False,
@@ -156,12 +163,15 @@ def _commit_is_ancestor(commit: str, descendant: str) -> bool:
     )
     if result.returncode not in {0, 1}:
         result.check_returncode()
-    return result.returncode == 0
+    is_ancestor = result.returncode == 0
+    cache[cache_key] = is_ancestor
+    return is_ancestor
 
 
 def _remote_containment(
     source_commits: tuple[str, ...],
 ) -> tuple[HistoryRemoteContainment, ...]:
+    ancestry_cache: dict[tuple[str, str], bool] = {}
     refs_by_commit: list[list[str]] = [[] for _commit in source_commits]
     for refname, ref_tip in _remote_ref_tips():
         low = 0
@@ -169,7 +179,9 @@ def _remote_containment(
         newest_contained = -1
         while low <= high:
             middle = (low + high) // 2
-            if _commit_is_ancestor(source_commits[middle], ref_tip):
+            if _commit_is_ancestor(
+                source_commits[middle], ref_tip, ancestry_cache
+            ):
                 newest_contained = middle
                 low = middle + 1
             else:

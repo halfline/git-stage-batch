@@ -250,6 +250,31 @@ def test_recorded_split_presence_omits_unselected_source_between_exact_edges() -
     )
 
 
+def test_recorded_presence_does_not_duplicate_partially_present_run() -> None:
+    """Recorded coordinates defer when structural matching retained siblings."""
+    source = b"head\nA\nB\nC\nD\ntail\n"
+    working = b"head\nA\nB\nD\ntail\n"
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-5"],
+        [],
+        baseline_references={line: reference for line in range(2, 6)},
+    )
+
+    assert merge_batch(
+        source,
+        ownership,
+        working,
+        trusted_target_content=b"head\ntail\n",
+    ) == source
+
+
 def test_contextual_presence_split_runs_do_not_cross_live_target_content() -> None:
     """Split source siblings cannot silently choose a side of live content."""
     source = b"""header

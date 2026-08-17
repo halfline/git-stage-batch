@@ -78,6 +78,7 @@ def apply_history_replay_unit(
     unit: HistoryReplayUnit,
     *,
     env: dict[str, str] | None,
+    replay_cache: dict[tuple[str, str], PatchApplicationResult] | None = None,
 ) -> PatchApplicationResult:
     """Apply one independently replayable unit to an isolated tree."""
     if not unit.individually_replayable or unit.patch.patch_buffer is None:
@@ -86,10 +87,18 @@ def apply_history_replay_unit(
             tree=None,
             detail=unit.patch.unsupported_reason or "unit-has-no-exact-patch",
         )
-    return apply_patch_to_tree_result(
+    cache_key = (tree, unit.snapshot.patch_id)
+    if replay_cache is not None:
+        cached = replay_cache.get(cache_key)
+        if cached is not None:
+            return cached
+    result = apply_patch_to_tree_result(
         tree,
         unit.patch.patch_buffer.byte_chunks(),
         three_way=False,
         unidiff_zero=True,
         env=env,
     )
+    if replay_cache is not None:
+        replay_cache[cache_key] = result
+    return result

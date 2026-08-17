@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from ..fixup.commutation import (
+    PatchApplicationResult,
     apply_patch_to_tree_result,
     load_tree_diff_as_buffer,
 )
@@ -27,6 +28,7 @@ def _dependency_for_replayable_unit(
     position: int,
     *,
     env: dict[str, str],
+    replay_cache: dict[tuple[str, str], PatchApplicationResult] | None = None,
 ) -> HistoryUnitDependency:
     order = list(units[: position + 1])
     trees = list(prefix_trees[: position + 2])
@@ -43,6 +45,7 @@ def _dependency_for_replayable_unit(
             moving,
             current_position,
             env=env,
+            replay_cache=replay_cache,
         )
         if disjoint_position is not None:
             current_position = disjoint_position
@@ -53,6 +56,7 @@ def _dependency_for_replayable_unit(
             trees[current_position - 1],
             moving,
             env=env,
+            replay_cache=replay_cache,
         )
         if moving_first.status != "APPLIED" or moving_first.tree is None:
             barrier_unit_id = crossed.snapshot.unit_id
@@ -63,6 +67,7 @@ def _dependency_for_replayable_unit(
             moving_first.tree,
             crossed,
             env=env,
+            replay_cache=replay_cache,
         )
         if crossed_second.status != "APPLIED" or crossed_second.tree is None:
             barrier_unit_id = crossed.snapshot.unit_id
@@ -99,6 +104,7 @@ def _commute_across_disjoint_run(
     current_position: int,
     *,
     env: dict[str, str],
+    replay_cache: dict[tuple[str, str], PatchApplicationResult] | None = None,
 ) -> int | None:
     """Prove one maximal different-path run with a single block replay."""
     earliest_position = current_position
@@ -117,6 +123,7 @@ def _commute_across_disjoint_run(
         trees[earliest_position],
         moving,
         env=env,
+        replay_cache=replay_cache,
     )
     if moving_first.status != "APPLIED" or moving_first.tree is None:
         return None
@@ -148,6 +155,7 @@ def _record_replayable_segment(
     boundary_detail: str | None,
     *,
     env: dict[str, str],
+    replay_cache: dict[tuple[str, str], PatchApplicationResult] | None = None,
 ) -> None:
     for local_position in range(len(segment_units)):
         dependency = _dependency_for_replayable_unit(
@@ -155,6 +163,7 @@ def _record_replayable_segment(
             segment_trees,
             local_position,
             env=env,
+            replay_cache=replay_cache,
         )
         original_position = segment_start + dependency.original_position
         earliest_position = segment_start + dependency.earliest_position
@@ -202,6 +211,7 @@ def analyze_history_dependencies(
         quarantine.pinned_environment() as env,
     ):
         with acquire_history_replay_units(snapshot, env=env) as units:
+            replay_cache: dict[tuple[str, str], PatchApplicationResult] = {}
             dependencies: list[HistoryUnitDependency | None] = [None] * len(units)
             segment_start = 0
             segment_units: list[HistoryReplayUnit] = []
@@ -220,6 +230,7 @@ def analyze_history_dependencies(
                         trial_tree,
                         units[position],
                         env=env,
+                        replay_cache=replay_cache,
                     )
                     if result.status != "APPLIED" or result.tree is None:
                         failure_detail = result.detail or result.status.lower()
@@ -241,6 +252,7 @@ def analyze_history_dependencies(
                         tuple(segment_trees),
                         segment_boundary_detail,
                         env=env,
+                        replay_cache=replay_cache,
                     )
                     for position in range(commit_start, commit_end):
                         dependencies[position] = _unknown_dependency(
@@ -262,6 +274,7 @@ def analyze_history_dependencies(
                 tuple(segment_trees),
                 segment_boundary_detail,
                 env=env,
+                replay_cache=replay_cache,
             )
             if any(dependency is None for dependency in dependencies):
                 raise RuntimeError("history dependency analysis left a unit unrecorded")

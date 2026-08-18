@@ -53,7 +53,7 @@ def rebuild_ownership_from_units(
                 ReplacementUnit(
                     presence_lines=format_ownership_line_set(unit.claimed_source_lines),
                     deletion_indices=deletion_indices,
-                    origin=unit.replacement_origin,
+                    origin_evidence=unit.replacement_origin_evidence,
                 )
             )
 

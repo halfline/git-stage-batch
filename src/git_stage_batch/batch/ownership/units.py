@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Sequence
 from typing import Literal, TypedDict, overload
 
@@ -39,14 +40,14 @@ class _DeletionDisplayRun(TypedDict):
 
 
 def _presence_references_for_lines(
-    ownership: BatchOwnership,
+    references: dict[int, BaselineReference],
     source_lines: LineSelection,
 ) -> dict[int, BaselineReference]:
     """Return baseline references owned by one semantic unit."""
     return {
-        line: reference
-        for line, reference in ownership.presence_baseline_references().items()
-        if line in source_lines
+        line: references[line]
+        for line in source_lines
+        if line in references
     }
 
 
@@ -61,10 +62,12 @@ def build_ownership_units_from_display_lines(
     build_ownership_units_from_batch_source_lines() without rebuilding the
     display model.
     """
+    presence_references = ownership.presence_baseline_references()
     units, consumed_claimed_lines, consumed_deletion_indices = (
         _build_explicit_replacement_units_from_display_lines(
             ownership,
             display_lines,
+            presence_references,
         )
     )
     i = 0
@@ -117,6 +120,7 @@ def build_ownership_units_from_display_lines(
                         ownership=ownership,
                         deletion_run=deletion_run,
                         claimed_run=claimed_run,
+                        presence_references=presence_references,
                     )
                 )
             else:
@@ -164,6 +168,7 @@ def build_ownership_units_from_display_lines(
                         ownership=ownership,
                         deletion_run=deletion_run,
                         claimed_run=claimed_run,
+                        presence_references=presence_references,
                     )
                 )
             else:
@@ -178,7 +183,7 @@ def build_ownership_units_from_display_lines(
                         deletion_claims=[],
                         display_line_ids=LineRanges.from_lines([claimed_display_id]),
                         baseline_references=_presence_references_for_lines(
-                            ownership,
+                            presence_references,
                             LineRanges.from_lines([claimed_source_line]),
                         ),
                         is_atomic=False,
@@ -207,10 +212,11 @@ def _required_display_id(display_line: OwnershipDisplayLine) -> int:
 def _build_explicit_replacement_units_from_display_lines(
     ownership: BatchOwnership,
     display_lines: list[OwnershipDisplayLine],
+    presence_references: dict[int, BaselineReference],
 ) -> tuple[list[_UnitRecord], LineRanges, set[int]]:
     """Build units from persisted replacement metadata."""
     units: list[_UnitRecord] = []
-    consumed_claimed_lines = LineRanges.empty()
+    consumed_claimed_ranges: list[tuple[int, int]] = []
     consumed_deletion_indices: set[int] = set()
 
     replacement_units = normalize_replacement_units(
@@ -218,31 +224,67 @@ def _build_explicit_replacement_units_from_display_lines(
         deletion_count=len(ownership.deletions),
     )
     if not replacement_units:
-        return units, consumed_claimed_lines, consumed_deletion_indices
+        return units, LineRanges.empty(), consumed_deletion_indices
 
-    for replacement_unit in replacement_units:
-        claimed_source_lines = parse_ownership_line_ranges(
-            replacement_unit.presence_lines
-        )
-        deletion_indices = set(replacement_unit.deletion_indices)
-        claimed_display_id_builder = LineRangeBuilder()
-        deletion_display_id_builder = LineRangeBuilder()
+    claimed_lines_by_unit = [
+        parse_ownership_line_ranges(replacement_unit.presence_lines)
+        for replacement_unit in replacement_units
+    ]
+    claimed_interval_owners = sorted(
+        (start, end, unit_index)
+        for unit_index, claimed_source_lines in enumerate(claimed_lines_by_unit)
+        for start, end in claimed_source_lines.ranges()
+    )
+    previous_interval_end = 0
+    for start, end, _unit_index in claimed_interval_owners:
+        if start <= previous_interval_end:
+            raise ValueError("normalized replacement presence ranges overlap")
+        previous_interval_end = end
 
-        for display_line in display_lines:
-            display_id = display_line.get("id")
-            if display_id is None:
+    deletion_owner: dict[int, int] = {}
+    for unit_index, replacement_unit in enumerate(replacement_units):
+        for deletion_index in replacement_unit.deletion_indices:
+            if deletion_index in deletion_owner:
+                raise ValueError("normalized replacement deletions overlap")
+            deletion_owner[deletion_index] = unit_index
+    claimed_display_builders = [
+        LineRangeBuilder() for _replacement_unit in replacement_units
+    ]
+    deletion_display_builders = [
+        LineRangeBuilder() for _replacement_unit in replacement_units
+    ]
+
+    def interval_start(interval: tuple[int, int, int]) -> int:
+        return interval[0]
+
+    for display_line in display_lines:
+        display_id = display_line.get("id")
+        if display_id is None:
+            continue
+        if display_line["type"] == "claimed":
+            source_line = display_line.get("source_line")
+            if source_line is None:
                 continue
+            interval_index = bisect_right(
+                claimed_interval_owners,
+                source_line,
+                key=interval_start,
+            ) - 1
+            if interval_index < 0:
+                continue
+            _start, end, unit_index = claimed_interval_owners[interval_index]
+            if source_line <= end:
+                claimed_display_builders[unit_index].add_line(display_id)
+        elif display_line["type"] == "deletion":
+            owner_index = deletion_owner.get(display_line["deletion_index"])
+            if owner_index is not None:
+                deletion_display_builders[owner_index].add_line(display_id)
 
-            if (
-                display_line["type"] == "claimed"
-                and display_line["source_line"] in claimed_source_lines
-            ):
-                claimed_display_id_builder.add_line(display_id)
-            elif (
-                display_line["type"] == "deletion"
-                and display_line["deletion_index"] in deletion_indices
-            ):
-                deletion_display_id_builder.add_line(display_id)
+    for unit_index, replacement_unit in enumerate(replacement_units):
+        claimed_source_lines = claimed_lines_by_unit[unit_index]
+        deletion_indices = replacement_unit.deletion_indices
+        claimed_display_id_builder = claimed_display_builders[unit_index]
+        deletion_display_id_builder = deletion_display_builders[unit_index]
 
         claimed_display_ids = claimed_display_id_builder.finish()
         deletion_display_ids = deletion_display_id_builder.finish()
@@ -259,18 +301,22 @@ def _build_explicit_replacement_units_from_display_lines(
                 deletion_claims=deletion_claims,
                 display_line_ids=claimed_display_ids.union(deletion_display_ids),
                 baseline_references=_presence_references_for_lines(
-                    ownership,
+                    presence_references,
                     claimed_source_lines,
                 ),
                 is_atomic=True,
                 preserves_replacement_unit=True,
-                replacement_origin=replacement_unit.origin,
+                replacement_origin_evidence=replacement_unit.origin_evidence,
             )
         )
-        consumed_claimed_lines = consumed_claimed_lines.union(claimed_source_lines)
+        consumed_claimed_ranges.extend(claimed_source_lines.ranges())
         consumed_deletion_indices.update(deletion_indices)
 
-    return units, consumed_claimed_lines, consumed_deletion_indices
+    return (
+        units,
+        LineRanges.from_ranges(consumed_claimed_ranges),
+        consumed_deletion_indices,
+    )
 
 
 def _display_line_is_consumed(
@@ -373,6 +419,7 @@ def _build_replacement_unit(
     ownership: BatchOwnership,
     deletion_run: _DeletionDisplayRun,
     claimed_run: _ClaimedDisplayRun,
+    presence_references: dict[int, BaselineReference],
 ) -> _UnitRecord:
     """Build a REPLACEMENT unit from adjacent deletion and claimed runs.
 
@@ -397,7 +444,7 @@ def _build_replacement_unit(
             [*deletion_run["display_ids"], *claimed_run["display_ids"]]
         ),
         baseline_references=_presence_references_for_lines(
-            ownership,
+            presence_references,
             claimed_source_lines,
         ),
         is_atomic=True,

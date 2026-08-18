@@ -8,7 +8,10 @@ from enum import Enum
 from ...core.line_selection import LineRanges
 from .absence_claims import AbsenceClaim
 from .references import BaselineReference
-from .replacement_units import ReplacementUnitOrigin
+from .replacement_units import (
+    NoReplacementUnitOrigin,
+    ReplacementUnitOriginEvidence,
+)
 
 
 class OwnershipUnitKind(Enum):
@@ -38,7 +41,7 @@ class OwnershipUnit:
         display_line_ids: Display line IDs that map to this unit (from reconstructed display)
         is_atomic: If True, partial removal is not allowed
         preserves_replacement_unit: True when this unit came from persisted replacement metadata
-        replacement_origin: Original parent replacement context, when known
+        replacement_origin_evidence: Parent context and its authority tier
     """
     kind: OwnershipUnitKind
     claimed_source_lines: LineRanges
@@ -47,4 +50,6 @@ class OwnershipUnit:
     baseline_references: dict[int, BaselineReference] = field(default_factory=dict)
     is_atomic: bool = False
     preserves_replacement_unit: bool = False
-    replacement_origin: ReplacementUnitOrigin | None = None
+    replacement_origin_evidence: ReplacementUnitOriginEvidence = field(
+        default_factory=NoReplacementUnitOrigin
+    )

@@ -78,6 +78,41 @@ The phrase **batch-source line number** below always means a one-based line
 number in the stable batch-source file. It never means a displayed line
 identifier or a current working-tree line number.
 
+## Coordinate authority in the Python model
+
+Domain code represents a coordinate as more than an integer. A
+`FileSnapshot` binds a repository path, an exact snapshot identity, and a line
+count. `LineBoundary`, `LineSpan`, and `SnapshotSpans` use zero-based,
+half-open geometry and carry marker types for baseline, batch-source,
+worktree, and rewritten-worktree spaces. Git's one-based inclusive values are
+converted only at parser and metadata adapters.
+
+A rendered gutter number is an opaque `DisplayLineId`. Selection resolution
+checks the complete rendered-view digest and both endpoint snapshots before it
+creates a `ResolvedSelection`. Transformed replacement editing records a
+snapshot-bound `ReplacementEditPlan` and checks both its ownership and rollback
+projections against that exact edit. Older row-oriented staging entry points
+remain compatibility adapters while their callers migrate.
+
+Content matching is deliberately non-authoritative. `StructuralAlignment`
+returns unique, ambiguous, absent, or stale placement evidence. Only recorded
+lineage and explicit edits implement `ExactTransform`, and exact transforms
+validate endpoint snapshot identities when they compose.
+
+Canonical persistence, realization, and source-advancement entry points bind
+ownership as `SourceBoundOwnership` inside a `BatchFileState` containing its
+exact baseline and source snapshots. Merge and discard expose the same
+source-bound entry point, while existing command planners still use an
+explicitly named line-sequence compatibility API during migration.
+An architecture seam prevents rendered-row dependencies from spreading.
+A session source cache entry is a `SessionSourceHint`; it must be resolved
+against durable state before it can influence persistence.
+
+Replacement and deletion positions are boundaries rather than overloaded line
+numbers. Current replacement provenance is distinct from compatibility
+metadata: malformed legacy evidence may be repaired by the decoder, while
+disagreeing current provenance fails closed.
+
 ## One saved text change
 
 Suppose the current commit contains:

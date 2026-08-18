@@ -336,7 +336,7 @@ def _source_matches(
 ) -> bool:
     if isinstance(sources, str):
         return _in_module_tree(module, sources)
-    return module in sources
+    return any(_in_module_tree(module, source) for source in sources)
 
 
 def _in_module_tree(module: str, prefix: str) -> bool:

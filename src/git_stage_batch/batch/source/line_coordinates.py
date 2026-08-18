@@ -5,6 +5,28 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator
 
 from ...core.models import LineEntry
+from ...core.coordinates import BatchSourceSpace, WorktreeSpace
+from ..line_matching.transforms import BatchSourceExactTransform
+
+
+@dataclass(frozen=True, slots=True)
+class ExactTransformSourceCoordinates:
+    """Line annotation backed by snapshot-validated exact transforms."""
+
+    source_transform: BatchSourceExactTransform[
+        BatchSourceSpace,
+        BatchSourceSpace,
+    ]
+    working_transform: BatchSourceExactTransform[
+        WorktreeSpace,
+        BatchSourceSpace,
+    ]
+
+    def translate_working_line(self, line_number: int) -> int | None:
+        return self.working_transform.translate_line_number(line_number)
+
+    def translate_existing_source_line(self, line_number: int) -> int | None:
+        return self.source_transform.translate_line_number(line_number)
 
 
 def translate_display_source_coordinates(

@@ -291,3 +291,305 @@ class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
 
     def __exit__(self, *_args: object) -> None:
         self.close()
+@dataclass(frozen=True, slots=True)
+class _SourceLineageVariant:
+    """Evidence that the transform projects old batch-source coordinates."""
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkingLineageVariant:
+    """Evidence that the transform projects observed worktree coordinates."""
+
+
+_LineageVariant = Union[_SourceLineageVariant, _WorkingLineageVariant]
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class BatchSourceExactTransform(Generic[SourceSpace, TargetSpace]):
+    """Snapshot-bound view of one explicit side of recorded source lineage.
+
+    The compatibility constructor denotes the source-lineage variant. New code
+    should use the named factories so the chosen lineage side is visible at the
+    call site. A free-form role discriminator is deliberately not accepted.
+    """
+
+    source_snapshot: FileSnapshot[SourceSpace]
+    target_snapshot: FileSnapshot[TargetSpace]
+    lineage: BatchSourceLineage
+    _variant: _LineageVariant
+
+    def __init__(
+        self,
+        source_snapshot: FileSnapshot[BatchSourceSpace],
+        target_snapshot: FileSnapshot[BatchSourceSpace],
+        lineage: BatchSourceLineage,
+    ) -> None:
+        self._initialize(
+            source_snapshot,
+            target_snapshot,
+            lineage,
+            _SourceLineageVariant(),
+        )
+
+    @classmethod
+    def from_source_lineage(
+        cls,
+        source_snapshot: FileSnapshot[BatchSourceSpace],
+        target_snapshot: FileSnapshot[BatchSourceSpace],
+        lineage: BatchSourceLineage,
+    ) -> BatchSourceExactTransform[BatchSourceSpace, BatchSourceSpace]:
+        """Bind recorded old-source lineage to its exact endpoint snapshots."""
+        return cast(
+            "BatchSourceExactTransform[BatchSourceSpace, BatchSourceSpace]",
+            cls(source_snapshot, target_snapshot, lineage),
+        )
+
+    @classmethod
+    def from_working_lineage(
+        cls,
+        source_snapshot: FileSnapshot[WorktreeSpace],
+        target_snapshot: FileSnapshot[BatchSourceSpace],
+        lineage: BatchSourceLineage,
+    ) -> BatchSourceExactTransform[WorktreeSpace, BatchSourceSpace]:
+        """Bind recorded worktree lineage to its exact endpoint snapshots."""
+        transform = object.__new__(cls)
+        transform._initialize(
+            source_snapshot,
+            target_snapshot,
+            lineage,
+            _WorkingLineageVariant(),
+        )
+        return cast(
+            "BatchSourceExactTransform[WorktreeSpace, BatchSourceSpace]",
+            transform,
+        )
+
+    def _initialize(
+        self,
+        source_snapshot: FileSnapshot[Any],
+        target_snapshot: FileSnapshot[Any],
+        lineage: BatchSourceLineage,
+        variant: _LineageVariant,
+    ) -> None:
+        object.__setattr__(self, "source_snapshot", source_snapshot)
+        object.__setattr__(self, "target_snapshot", target_snapshot)
+        object.__setattr__(self, "lineage", lineage)
+        object.__setattr__(self, "_variant", variant)
+        self._validate()
+
+    def _validate(self) -> None:
+        if self.source_snapshot.path != self.target_snapshot.path:
+            raise ValueError("exact transform endpoints must have the same path")
+        require_snapshot_role(self.target_snapshot, BatchSourceSpace)
+        if isinstance(self._variant, _SourceLineageVariant):
+            require_snapshot_role(self.source_snapshot, BatchSourceSpace)
+            _validate_lineage_runs(
+                self.lineage.source_runs(),
+                source_count=self.source_snapshot.line_count,
+                target_count=self.target_snapshot.line_count,
+                label="source",
+            )
+            _validate_source_expansions(
+                self.lineage.source_expansions(),
+                self.lineage.source_runs(),
+                source_count=self.source_snapshot.line_count,
+                target_count=self.target_snapshot.line_count,
+            )
+        else:
+            require_snapshot_role(self.source_snapshot, WorktreeSpace)
+            _validate_lineage_runs(
+                self.lineage.working_runs(),
+                source_count=self.source_snapshot.line_count,
+                target_count=self.target_snapshot.line_count,
+                label="working",
+            )
+
+    def translate_boundary(
+        self,
+        boundary: SnapshotBoundary[SourceSpace],
+    ) -> SnapshotBoundary[TargetSpace] | None:
+        require_same_snapshot(boundary.snapshot, self.source_snapshot)
+        offset = boundary.boundary.offset
+        source_count = self.source_snapshot.line_count
+        target_count = self.target_snapshot.line_count
+        if source_count == 0:
+            if target_count != 0:
+                return None
+            return SnapshotBoundary(self.target_snapshot, LineBoundary(0))
+        if offset == 0:
+            translated = self._translate_line(1)
+            if translated != 1:
+                return None
+            return SnapshotBoundary(self.target_snapshot, LineBoundary(0))
+        if offset == source_count:
+            translated = self._translate_line(source_count)
+            if translated != target_count:
+                return None
+            return SnapshotBoundary(
+                self.target_snapshot,
+                LineBoundary(target_count),
+            )
+
+        translated = self._translate_line(offset)
+        next_translated = self._translate_line(offset + 1)
+        if translated is None or next_translated != translated + 1:
+            return None
+        return SnapshotBoundary(
+            self.target_snapshot,
+            LineBoundary(translated),
+        )
+
+    def _translate_line(self, line_number: int) -> int | None:
+        return (
+            self.lineage.translate_source_line(line_number)
+            if isinstance(self._variant, _SourceLineageVariant)
+            else self.lineage.translate_working_line(line_number)
+        )
+
+    def translate_line_number(self, line_number: int) -> int | None:
+        """Translate one line in the transform's validated source space."""
+        if line_number <= 0 or line_number > self.source_snapshot.line_count:
+            return None
+        return self._translate_line(line_number)
+
+    def translate_source_line(self, line_number: int) -> int | None:
+        """Translate one line through a source-lineage transform."""
+        if not isinstance(self._variant, _SourceLineageVariant):
+            raise ValueError("transform does not represent source lineage")
+        return self.translate_line_number(line_number)
+
+    def translate_source_selection(
+        self,
+        selection: LineSelection,
+    ) -> LineRanges:
+        """Translate source selection after validating the lineage variant."""
+        if not isinstance(self._variant, _SourceLineageVariant):
+            raise ValueError("transform does not represent source lineage")
+        return self.lineage.translate_source_selection(selection)
+
+    def first_unmapped_source_line(
+        self,
+        selection: LineSelection,
+    ) -> int | None:
+        """Return missing source lineage after validating the variant."""
+        if not isinstance(self._variant, _SourceLineageVariant):
+            raise ValueError("transform does not represent source lineage")
+        return self.lineage.first_unmapped_source_line(selection)
+
+    def translate_span(
+        self,
+        span: SnapshotSpan[SourceSpace],
+    ) -> SnapshotSpan[TargetSpace] | None:
+        require_same_snapshot(span.snapshot, self.source_snapshot)
+        if len(span.span) == 0:
+            boundary = self.translate_boundary(
+                SnapshotBoundary(self.source_snapshot, span.span.start)
+            )
+            if boundary is None:
+                return None
+            return SnapshotSpan(
+                self.target_snapshot,
+                LineSpan(boundary.boundary, boundary.boundary),
+            )
+
+        # Half-open boundaries [start, end) contain one-based source lines
+        # start + 1 through end. Translate the complete interior rather than
+        # granting authority from two plausible endpoint boundaries alone.
+        source_start = span.span.start.offset + 1
+        source_end = span.span.end.offset
+        translated = (
+            self.lineage.translate_source_span(source_start, source_end)
+            if isinstance(self._variant, _SourceLineageVariant)
+            else self.lineage.translate_working_range(source_start, source_end)
+        )
+        if translated is None:
+            return None
+        target_start, target_end = translated
+        return SnapshotSpan(
+            self.target_snapshot,
+            LineSpan(
+                LineBoundary(target_start - 1),
+                LineBoundary(target_end),
+            ),
+        )
+
+
+def _validate_lineage_runs(
+    runs: Iterator[LineageRun],
+    *,
+    source_count: int,
+    target_count: int,
+    label: str,
+) -> None:
+    previous_old_end = 0
+    previous_new_end = 0
+    for run in runs:
+        if run.old_start <= previous_old_end:
+            raise ValueError(f"{label} lineage source ranges overlap")
+        if run.old_end > source_count:
+            raise ValueError(f"{label} lineage is outside its source snapshot")
+        if run.new_start <= previous_new_end:
+            raise ValueError(f"{label} lineage does not preserve target order")
+        if run.new_end > target_count:
+            raise ValueError(f"{label} lineage is outside its target snapshot")
+        previous_old_end = run.old_end
+        previous_new_end = run.new_end
+
+
+def _validate_source_expansions(
+    expansions: Iterator[SourceSelectionExpansion],
+    source_runs: Iterator[LineageRun],
+    *,
+    source_count: int,
+    target_count: int,
+) -> None:
+    current_run = next(source_runs, None)
+    previous_source_end = 0
+    previous_target_end = 0
+    for expansion in expansions:
+        if expansion.source_end > source_count:
+            raise ValueError("source expansion is outside its source snapshot")
+        if expansion.new_end > target_count:
+            raise ValueError("source expansion is outside its target snapshot")
+        if expansion.source_start <= previous_source_end:
+            raise ValueError("source expansions overlap in source order")
+        if expansion.new_start <= previous_target_end:
+            raise ValueError("source expansions do not preserve target order")
+
+        while current_run is not None and (
+            current_run.old_end < expansion.source_start
+        ):
+            current_run = next(source_runs, None)
+        expected_source = expansion.source_start
+        expected_target = expansion.new_start
+        while expected_source <= expansion.source_end:
+            if (
+                current_run is None
+                or current_run.old_start > expected_source
+                or current_run.translate(expected_source) != expected_target
+            ):
+                raise ValueError(
+                    "source expansion lacks contiguous direct lineage"
+                )
+            covered_end = min(current_run.old_end, expansion.source_end)
+            covered_count = covered_end - expected_source + 1
+            expected_source = covered_end + 1
+            expected_target += covered_count
+            if expected_source <= expansion.source_end:
+                current_run = next(source_runs, None)
+
+        # The extra destination tail belongs to this complete source range.
+        # A direct run continuing past the range, or the next run entering the
+        # tail, would assign the same target lines to unrelated source lines.
+        assert current_run is not None
+        if current_run.old_end > expansion.source_end:
+            raise ValueError("source expansion overlaps direct source lineage")
+        current_run = next(source_runs, None)
+        if (
+            current_run is not None
+            and current_run.new_start <= expansion.new_end
+        ):
+            raise ValueError("source expansion overlaps later source lineage")
+
+        previous_source_end = expansion.source_end
+        previous_target_end = expansion.new_end

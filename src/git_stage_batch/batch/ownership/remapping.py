@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from ...core.line_selection import LineSelection
+from typing import Protocol
+
+from ...core.line_selection import LineRanges, LineSelection
+from ...core.coordinates import BatchSourceSpace
 from ..line_matching.lineage import BatchSourceLineage
+from ..line_matching.transforms import BatchSourceExactTransform
 from .model import BatchOwnership
 from .absence_claims import AbsenceClaim
 from .claims import (
@@ -11,12 +15,30 @@ from .claims import (
     parse_ownership_line_ranges,
     presence_claims_from_source_lines,
 )
-from .replacement_units import ReplacementUnit, normalize_replacement_units
+from .replacement_units import (
+    NoReplacementUnitOrigin,
+    ReplacementUnit,
+    normalize_replacement_units,
+)
+
+
+class _SourceLineTranslator(Protocol):
+    def first_unmapped_source_line(
+        self,
+        selection: LineSelection,
+    ) -> int | None: ...
+
+    def translate_source_selection(
+        self,
+        selection: LineSelection,
+    ) -> LineRanges: ...
+
+    def translate_source_line(self, line_number: int) -> int | None: ...
 
 
 def _first_unmapped_line(
     line_selection: LineSelection,
-    lineage: BatchSourceLineage,
+    lineage: _SourceLineTranslator,
 ) -> int | None:
     return lineage.first_unmapped_source_line(line_selection)
 
@@ -24,7 +46,7 @@ def _first_unmapped_line(
 def _remap_replacement_units_with_lineage(
     replacement_units: list[ReplacementUnit],
     *,
-    lineage: BatchSourceLineage,
+    lineage: _SourceLineTranslator,
     deletion_count: int,
 ) -> list[ReplacementUnit]:
     """Remap replacement-unit presence lines with refreshed source lineage."""
@@ -39,12 +61,37 @@ def _remap_replacement_units_with_lineage(
                 f"from old source to new source: no unique mapping found."
             )
 
+        origin_evidence = unit.origin_evidence
+        origin = unit.origin
+        if origin is not None:
+            old_origin_lines = LineRanges.from_ranges(
+                ((origin.new_start, origin.new_end),)
+            )
+            first_unmapped_origin = _first_unmapped_line(
+                old_origin_lines,
+                lineage,
+            )
+            if first_unmapped_origin is None:
+                translated_origin_lines = lineage.translate_source_selection(
+                    old_origin_lines
+                )
+                translated_ranges = translated_origin_lines.ranges()
+                if len(translated_ranges) == 1:
+                    translated_start, translated_end = translated_ranges[0]
+                    origin_evidence = unit.with_origin(
+                        origin.with_new_lines(translated_start, translated_end)
+                    ).origin_evidence
+                else:
+                    origin_evidence = NoReplacementUnitOrigin()
+            else:
+                origin_evidence = NoReplacementUnitOrigin()
+
         remapped_units.append(ReplacementUnit(
             presence_lines=format_ownership_line_set(
                 lineage.translate_source_selection(old_presence_lines)
             ),
             deletion_indices=unit.deletion_indices,
-            origin=unit.origin,
+            origin_evidence=origin_evidence,
         ))
 
     return normalize_replacement_units(
@@ -58,6 +105,24 @@ def remap_batch_ownership_with_lineage(
     lineage: BatchSourceLineage,
 ) -> BatchOwnership:
     """Remap ownership using provenance from source refresh construction."""
+    return _remap_batch_ownership(ownership, lineage)
+
+
+def remap_batch_ownership_with_transform(
+    ownership: BatchOwnership,
+    transform: BatchSourceExactTransform[
+        BatchSourceSpace,
+        BatchSourceSpace,
+    ],
+) -> BatchOwnership:
+    """Remap ownership through snapshot-bound exact source lineage."""
+    return _remap_batch_ownership(ownership, transform)
+
+
+def _remap_batch_ownership(
+    ownership: BatchOwnership,
+    lineage: _SourceLineTranslator,
+) -> BatchOwnership:
     old_presence = ownership.presence_line_set()
     first_unmapped = _first_unmapped_line(old_presence, lineage)
     if first_unmapped is not None:

@@ -1144,7 +1144,7 @@ class TestCommandIncludeLine:
 
         monkeypatch.setattr(
             include_line_selection,
-            "add_file_to_batch",
+            "add_source_bound_file_to_batch",
             raise_merge_error,
         )
         monkeypatch.setattr(

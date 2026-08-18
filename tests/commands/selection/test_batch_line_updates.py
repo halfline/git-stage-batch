@@ -23,7 +23,7 @@ def test_invalid_comparison_snapshot_becomes_command_error(monkeypatch):
     monkeypatch.setattr(
         batch_line_updates,
         "read_batch_metadata",
-        lambda _name: {"files": {}},
+        lambda _name: {"revision": "metadata-1", "files": {}},
     )
     monkeypatch.setattr(
         batch_line_updates,
@@ -49,7 +49,7 @@ def test_invalid_comparison_snapshot_becomes_command_error(monkeypatch):
     )
     monkeypatch.setattr(
         batch_line_updates,
-        "add_file_to_batch",
+        "add_source_bound_file_to_batch",
         lambda *args, **kwargs: persisted.append((args, kwargs)),
     )
 

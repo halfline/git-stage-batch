@@ -7,6 +7,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.state.lifecycle import create_batch
+from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.state.compatibility_metadata import (
     write_file_backed_batch_metadata,
@@ -14,7 +15,17 @@ from git_stage_batch.batch.state.compatibility_metadata import (
 from git_stage_batch.batch.state.references import sync_batch_state_refs
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from tests.batch_file_helpers import read_file_from_batch
-from git_stage_batch.batch.text_file_storage import add_file_to_batch
+from git_stage_batch.batch.text_file_storage import (
+    BatchFileUpdate,
+    add_file_to_batch,
+    add_files_to_batch,
+    add_source_bound_file_to_batch,
+)
+from git_stage_batch.batch.file_state import (
+    BatchMetadataRevision,
+    SourceBoundOwnership,
+)
+from git_stage_batch.batch.source.snapshots import create_batch_source_commit
 from git_stage_batch.batch.ownership.absence_content import AbsenceContentBuilder
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import (
@@ -35,6 +46,7 @@ from git_stage_batch.batch.realization.entry_storage import RealizedEntries
 import git_stage_batch.batch.ownership.absence_content as absence_content_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.coordinates import BatchSourceSpace, content_snapshot
 from git_stage_batch.utils.git_object_io import create_git_blob
 from tests.batch.ownership.metadata_helpers import acquire_ownership_for_metadata
 
@@ -121,6 +133,114 @@ def test_add_file_to_batch_preserves_legacy_intent_marker(temp_git_repo):
 
     file_meta = read_batch_metadata("test-batch")["files"]["file.txt"]
     assert file_meta["legacy_unmarked_source_alternatives"] is True
+
+
+def test_source_bound_storage_rejects_ownership_for_different_content(
+    temp_git_repo,
+):
+    """Canonical persistence must not bless coordinates against its commit."""
+    source_commit = create_batch_source_commit("file.txt")
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
+    wrong_source = LineBuffer.from_bytes(b"other content\n")
+
+    with wrong_source, pytest.raises(
+        ValueError,
+        match="coordinate snapshots do not match",
+    ):
+        add_source_bound_file_to_batch(
+            "test-batch",
+            "file.txt",
+            SourceBoundOwnership(
+                content_snapshot(
+                    "file.txt",
+                    wrong_source,
+                    space=BatchSourceSpace,
+                ),
+                ownership,
+            ),
+            batch_source_commit=source_commit,
+            expected_metadata_revision=BatchMetadataRevision("stale"),
+        )
+
+    assert not batch_exists("test-batch")
+
+
+def test_source_bound_storage_rejects_stale_metadata_revision(
+    temp_git_repo,
+):
+    """A prepared update must not publish under a newer metadata revision."""
+    create_batch("test-batch", "Test")
+    prepared_metadata = read_batch_metadata("test-batch")
+    source_commit = create_batch_source_commit("file.txt")
+    source = LineBuffer.from_bytes(b"line1\nline2\nline3\n")
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
+
+    # Simulate an intervening canonical publication after preparation.
+    add_file_to_batch(
+        "test-batch",
+        "file.txt",
+        BatchOwnership.from_presence_lines(["2"], []),
+        batch_source_commit=source_commit,
+    )
+
+    with source, pytest.raises(
+        ValueError,
+        match="metadata changed after ownership was prepared",
+    ):
+        add_source_bound_file_to_batch(
+            "test-batch",
+            "file.txt",
+            SourceBoundOwnership(
+                content_snapshot(
+                    "file.txt",
+                    source,
+                    space=BatchSourceSpace,
+                ),
+                ownership,
+            ),
+            batch_source_commit=source_commit,
+            expected_metadata_revision=BatchMetadataRevision.from_metadata(
+                prepared_metadata
+            ),
+        )
+
+    file_metadata = read_batch_metadata("test-batch")["files"]["file.txt"]
+    assert file_metadata["presence_claims"] == [{"source_lines": ["2"]}]
+
+
+def test_bulk_source_bound_storage_rejects_duplicate_paths_before_mutation(
+    temp_git_repo,
+):
+    """A bulk update may not silently replace an earlier same-path update."""
+    create_batch("test-batch", "Test")
+    revision = BatchMetadataRevision.from_metadata(
+        read_batch_metadata("test-batch")
+    )
+    source_commit = create_batch_source_commit("file.txt")
+    source = LineBuffer.from_bytes(b"line1\nline2\nline3\n")
+
+    with source:
+        snapshot = content_snapshot(
+            "file.txt",
+            source,
+            space=BatchSourceSpace,
+        )
+        updates = [
+            BatchFileUpdate(
+                file_path="file.txt",
+                batch_source_commit=source_commit,
+                bound_ownership=SourceBoundOwnership(
+                    snapshot,
+                    BatchOwnership.from_presence_lines([line], []),
+                ),
+                expected_metadata_revision=revision,
+            )
+            for line in ("1", "2")
+        ]
+        with pytest.raises(ValueError, match="duplicate paths"):
+            add_files_to_batch("test-batch", updates)
+
+    assert read_batch_metadata("test-batch")["files"] == {}
 
 
 def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
@@ -497,6 +617,12 @@ def test_legacy_replacement_units_metadata_loads_presence_lines(temp_git_repo):
 
 def test_add_file_to_batch_persists_baseline_references(temp_git_repo):
     """Presence and absence claims should share baseline reference metadata."""
+    subprocess.run(["git", "add", "file.txt"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add baseline file"],
+        check=True,
+        capture_output=True,
+    )
     create_batch("test-batch", "Test")
 
     presence_reference = BaselineReference(

@@ -27,6 +27,7 @@ from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
 from git_stage_batch.batch.discard import (
     _build_realized_entries_for_discard,
     _discard_batch_line_chunks,
+    discard_batch_file_state_as_buffer,
     discard_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.line_matching.match import match_lines
@@ -49,6 +50,12 @@ from git_stage_batch.batch.merge.merge import (
     can_merge_batch_from_line_sequences,
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
+    merge_batch_file_state_as_buffer,
+)
+from git_stage_batch.batch.file_state import (
+    BatchFileState,
+    BatchMetadataRevision,
+    SourceBoundOwnership,
 )
 from git_stage_batch.batch.merge.presence_constraints import satisfy_constraints
 from git_stage_batch.batch.merge.presence_context import (
@@ -75,6 +82,12 @@ from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnitOrigin,
 )
 from git_stage_batch.core.text_lines import normalize_line_sequence_endings
+from git_stage_batch.core.coordinates import (
+    BaselineSpace,
+    BatchSourceSpace,
+    WorktreeSpace,
+    content_snapshot,
+)
 
 
 _LINE_SCALE_HEAP_LIMIT = 256 * 1024
@@ -485,6 +498,158 @@ def test_realization_fallback_tracks_target_coordinates_after_removal() -> None:
     finally:
         result.close()
         entries.close()
+
+
+def test_merge_uses_source_bound_batch_file_state():
+    """The canonical merge API cannot detach ownership from its source."""
+    source = (b"base\n", b"saved\n")
+    target = (b"base\n",)
+    source_snapshot = content_snapshot(
+        "file.txt", source, space=BatchSourceSpace
+    )
+    state = BatchFileState(
+        path="file.txt",
+        baseline_snapshot=content_snapshot(
+            "file.txt", target, space=BaselineSpace
+        ),
+        source_snapshot=source_snapshot,
+        baseline_lines=target,
+        source_lines=source,
+        bound_ownership=SourceBoundOwnership(
+            source_snapshot,
+            BatchOwnership.from_presence_lines(["2"]),
+        ),
+        metadata_revision=BatchMetadataRevision("test"),
+    )
+
+    with merge_batch_file_state_as_buffer(
+        state,
+        content_snapshot("file.txt", target, space=WorktreeSpace),
+        target,
+    ) as merged:
+        assert list(merged) == [b"base\n", b"saved\n"]
+
+
+def test_merge_rejects_target_bytes_from_another_snapshot():
+    """Equal line counts do not satisfy the canonical target binding."""
+    source = (b"base\n", b"saved\n")
+    target = (b"base\n",)
+    source_snapshot = content_snapshot(
+        "file.txt", source, space=BatchSourceSpace
+    )
+    state = BatchFileState(
+        path="file.txt",
+        baseline_snapshot=content_snapshot(
+            "file.txt", target, space=BaselineSpace
+        ),
+        source_snapshot=source_snapshot,
+        baseline_lines=target,
+        source_lines=source,
+        bound_ownership=SourceBoundOwnership(
+            source_snapshot,
+            BatchOwnership.from_presence_lines(["2"]),
+        ),
+        metadata_revision=BatchMetadataRevision("test"),
+    )
+
+    with pytest.raises(ValueError, match="snapshots"):
+        merge_batch_file_state_as_buffer(
+            state,
+            content_snapshot("file.txt", target, space=WorktreeSpace),
+            (b"other\n",),
+        )
+
+
+def test_discard_uses_source_bound_batch_file_state():
+    """The canonical discard API cannot detach ownership from its source."""
+    source = (b"base\n", b"saved\n")
+    target = (b"base\n", b"saved\n", b"extra\n")
+    baseline = (b"base\n",)
+    source_snapshot = content_snapshot(
+        "file.txt", source, space=BatchSourceSpace
+    )
+    state = BatchFileState(
+        path="file.txt",
+        baseline_snapshot=content_snapshot(
+            "file.txt", baseline, space=BaselineSpace
+        ),
+        source_snapshot=source_snapshot,
+        baseline_lines=baseline,
+        source_lines=source,
+        bound_ownership=SourceBoundOwnership(
+            source_snapshot,
+            BatchOwnership.from_presence_lines(["2"]),
+        ),
+        metadata_revision=BatchMetadataRevision("test"),
+    )
+
+    with discard_batch_file_state_as_buffer(
+        state,
+        content_snapshot("file.txt", target, space=WorktreeSpace),
+        target,
+    ) as discarded:
+        assert list(discarded) == [b"base\n", b"extra\n"]
+
+
+def test_discard_rejects_target_bytes_from_another_snapshot():
+    """Equal line counts do not satisfy the canonical target binding."""
+    source = (b"base\n", b"saved\n")
+    target = (b"base\n", b"saved\n", b"extra\n")
+    baseline = (b"base\n",)
+    source_snapshot = content_snapshot(
+        "file.txt", source, space=BatchSourceSpace
+    )
+    state = BatchFileState(
+        path="file.txt",
+        baseline_snapshot=content_snapshot(
+            "file.txt", baseline, space=BaselineSpace
+        ),
+        source_snapshot=source_snapshot,
+        baseline_lines=baseline,
+        source_lines=source,
+        bound_ownership=SourceBoundOwnership(
+            source_snapshot,
+            BatchOwnership.from_presence_lines(["2"]),
+        ),
+        metadata_revision=BatchMetadataRevision("test"),
+    )
+
+    with pytest.raises(ValueError, match="snapshots"):
+        discard_batch_file_state_as_buffer(
+            state,
+            content_snapshot("file.txt", target, space=WorktreeSpace),
+            (b"other\n", b"saved\n", b"extra\n"),
+        )
+
+
+def test_discard_rejects_target_path_mismatch():
+    """The discard target must name the same path as the batch file."""
+    source = (b"line\n",)
+    baseline = (b"line\n",)
+    source_snapshot = content_snapshot(
+        "file.txt", source, space=BatchSourceSpace
+    )
+    state = BatchFileState(
+        path="file.txt",
+        baseline_snapshot=content_snapshot(
+            "file.txt", baseline, space=BaselineSpace
+        ),
+        source_snapshot=source_snapshot,
+        baseline_lines=baseline,
+        source_lines=source,
+        bound_ownership=SourceBoundOwnership(
+            source_snapshot,
+            BatchOwnership.from_presence_lines(["1"]),
+        ),
+        metadata_revision=BatchMetadataRevision("test"),
+    )
+
+    with pytest.raises(ValueError, match="path"):
+        discard_batch_file_state_as_buffer(
+            state,
+            content_snapshot("other.txt", source, space=WorktreeSpace),
+            source,
+        )
 
 
 class _IndexGuardedLineBuffer(LineBuffer):

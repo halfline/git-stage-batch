@@ -6,14 +6,24 @@ import os
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from types import TracebackType
+from typing import cast
 
 from ...core.buffer import LineBuffer
 from ...core.line_selection import LineRanges, coerce_line_ranges
+from ...core.coordinates import (
+    BaselineSpace,
+    BatchSourceSpace,
+    FileSnapshot,
+    WorktreeSpace,
+    content_snapshot,
+    require_same_snapshot,
+)
 from ...git_paths import display_path
 from ...i18n import _
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from .snapshots import create_batch_source_commit
 from ...utils.repository_buffers import (
+    read_git_object_buffer_or_empty,
     read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
@@ -28,11 +38,19 @@ from ..line_matching.lineage import (
     LineageRun,
     SourceSelectionExpansion,
 )
+from ..line_matching.transforms import BatchSourceExactTransform
 from ..line_matching.match_workspace import MatcherWorkspace
 from ..line_matching.sequence_equality import line_slice_equals
 from ..merge.baseline_replacement_ranges import collect_replacement_source_ranges
 from ..ownership.model import BatchOwnership
-from ..ownership.remapping import remap_batch_ownership_with_lineage
+from ..file_state import (
+    BatchFileState,
+    BatchMetadataRevision,
+    SourceBoundOwnership,
+)
+from ..ownership.remapping import remap_batch_ownership_with_transform
+from ..state.validation import get_validated_baseline_commit
+from ..state.query import read_batch_metadata
 
 
 _SOURCE_RANGE_RECORD_FORMAT = "QQ"
@@ -76,6 +94,14 @@ class BatchSourceAdvanceResult:
     ownership: BatchOwnership
     source_buffer: LineBuffer
     lineage: BatchSourceLineage
+    source_transform: BatchSourceExactTransform[
+        BatchSourceSpace,
+        BatchSourceSpace,
+    ]
+    working_transform: BatchSourceExactTransform[
+        WorktreeSpace,
+        BatchSourceSpace,
+    ]
 
     def close(self) -> None:
         """Release the refreshed source buffer and line lineage."""
@@ -94,6 +120,107 @@ class BatchSourceAdvanceResult:
         traceback: TracebackType | None,
     ) -> None:
         self.close()
+
+
+@dataclass
+class AdvancedBatchFileState:
+    """Owned result of atomically advancing one source-bound batch file."""
+
+    file_state: BatchFileState
+    lineage: BatchSourceLineage
+    source_commit: str
+    source_transform: BatchSourceExactTransform[
+        BatchSourceSpace,
+        BatchSourceSpace,
+    ]
+    working_transform: BatchSourceExactTransform[
+        WorktreeSpace,
+        BatchSourceSpace,
+    ]
+
+    def close(self) -> None:
+        """Release the advanced source buffer and exact lineage."""
+        try:
+            close = getattr(self.file_state.source_lines, "close", None)
+            if close is not None:
+                close()
+        finally:
+            self.lineage.close()
+
+    def __enter__(self) -> AdvancedBatchFileState:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+
+def advance_batch_file_state(
+    batch_file: BatchFileState,
+    *,
+    working_snapshot: FileSnapshot[WorktreeSpace],
+    working_lines: Sequence[bytes],
+) -> AdvancedBatchFileState:
+    """Advance source, ownership, and identity as one validated aggregate."""
+    if batch_file.path != working_snapshot.path:
+        raise ValueError("working snapshot path does not match batch file")
+    batch_file.validate()
+    require_same_snapshot(
+        working_snapshot,
+        content_snapshot(batch_file.path, working_lines, space=WorktreeSpace),
+    )
+    source_with_provenance = advance_source_lines_preserving_existing_presence(
+        old_lines=batch_file.source_lines,
+        working_lines=working_lines,
+        ownership=batch_file.ownership,
+    )
+    try:
+        new_source_commit = create_batch_source_commit(
+            batch_file.path,
+            file_buffer_override=source_with_provenance.source_buffer,
+        )
+        new_source_snapshot = content_snapshot(
+            batch_file.path,
+            source_with_provenance.source_buffer,
+            space=BatchSourceSpace,
+        )
+        source_transform = BatchSourceExactTransform.from_source_lineage(
+            batch_file.source_snapshot,
+            new_source_snapshot,
+            source_with_provenance.lineage,
+        )
+        working_transform = BatchSourceExactTransform.from_working_lineage(
+            working_snapshot,
+            new_source_snapshot,
+            source_with_provenance.lineage,
+        )
+        remapped_ownership = remap_batch_ownership_with_transform(
+            ownership=batch_file.ownership,
+            transform=source_transform,
+        )
+        advanced = batch_file.with_advanced_source(
+            source_snapshot=new_source_snapshot,
+            source_lines=source_with_provenance.source_buffer,
+            bound_ownership=SourceBoundOwnership(
+                new_source_snapshot,
+                remapped_ownership,
+            ),
+            metadata_revision=batch_file.metadata_revision,
+        )
+        return AdvancedBatchFileState(
+            advanced,
+            source_with_provenance.lineage,
+            new_source_commit,
+            source_transform,
+            working_transform,
+        )
+    except BaseException:
+        source_with_provenance.close()
+        raise
 
 
 def advance_source_lines_preserving_existing_presence(
@@ -570,6 +697,12 @@ def advance_batch_source_for_file_with_provenance(
             ).format(file=display_path(file_path))
         )
 
+    baseline_commit = get_validated_baseline_commit(batch_name)
+    metadata = read_batch_metadata(batch_name)
+    metadata_revision = metadata.get("revision")
+    if not isinstance(metadata_revision, str) or not metadata_revision:
+        raise ValueError("batch metadata has no durable revision")
+
     old_source_buffer = read_git_object_buffer_or_none(
         f"{old_batch_source_commit}:{file_path}"
     )
@@ -581,35 +714,50 @@ def advance_batch_source_for_file_with_provenance(
             )
         )
 
-    source_with_provenance: SourceContentWithLineProvenance | None = None
-    try:
-        with (
-            old_source_buffer as old_source_lines,
-            load_working_tree_file_as_buffer(file_path) as working_lines,
-        ):
-            source_with_provenance = advance_source_lines_preserving_existing_presence(
-                old_lines=old_source_lines,
-                working_lines=working_lines,
-                ownership=existing_ownership,
-            )
-
-        new_batch_source_commit = create_batch_source_commit(
+    with (
+        old_source_buffer as old_source_lines,
+        read_git_object_buffer_or_empty(
+            f"{baseline_commit}:{file_path}"
+        ) as baseline_lines,
+        load_working_tree_file_as_buffer(file_path) as working_lines,
+    ):
+        baseline_snapshot = content_snapshot(
             file_path,
-            file_buffer_override=source_with_provenance.source_buffer,
+            baseline_lines,
+            space=BaselineSpace,
+        )
+        source_snapshot = content_snapshot(
+            file_path,
+            old_source_lines,
+            space=BatchSourceSpace,
+        )
+        batch_file = BatchFileState(
+            path=file_path,
+            baseline_snapshot=baseline_snapshot,
+            source_snapshot=source_snapshot,
+            baseline_lines=baseline_lines,
+            source_lines=old_source_lines,
+            bound_ownership=SourceBoundOwnership(
+                source_snapshot,
+                existing_ownership,
+            ),
+            metadata_revision=BatchMetadataRevision(metadata_revision),
+        )
+        advanced = advance_batch_file_state(
+            batch_file,
+            working_snapshot=content_snapshot(
+                file_path,
+                working_lines,
+                space=WorktreeSpace,
+            ),
+            working_lines=working_lines,
         )
 
-        remapped_ownership = remap_batch_ownership_with_lineage(
-            ownership=existing_ownership,
-            lineage=source_with_provenance.lineage,
-        )
-
-        return BatchSourceAdvanceResult(
-            batch_source_commit=new_batch_source_commit,
-            ownership=remapped_ownership,
-            source_buffer=source_with_provenance.source_buffer,
-            lineage=source_with_provenance.lineage,
-        )
-    except BaseException:
-        if source_with_provenance is not None:
-            source_with_provenance.close()
-        raise
+    return BatchSourceAdvanceResult(
+        batch_source_commit=advanced.source_commit,
+        ownership=advanced.file_state.ownership,
+        source_buffer=cast(LineBuffer, advanced.file_state.source_lines),
+        lineage=advanced.lineage,
+        source_transform=advanced.source_transform,
+        working_transform=advanced.working_transform,
+    )

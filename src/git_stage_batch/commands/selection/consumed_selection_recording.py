@@ -107,7 +107,10 @@ def record_consumed_selection(
                             selected_lines,
                             source_lines=advance_result.source_buffer,
                             working_lines=(),
-                            lineage=advance_result.lineage,
+                            exact_transforms=(
+                                advance_result.source_transform,
+                                advance_result.working_transform,
+                            ),
                             coordinate_lines=coordinate_lines,
                         )
                 except BatchSourceAdvanceError as error:

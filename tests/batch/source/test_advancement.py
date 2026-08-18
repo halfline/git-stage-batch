@@ -649,6 +649,21 @@ def test_advance_batch_source_reads_dangling_symlink(
         "read_git_object_buffer_or_none",
         lambda _revision: LineBuffer.from_bytes(b"missing-old-target"),
     )
+    monkeypatch.setattr(
+        advancement_module,
+        "get_validated_baseline_commit",
+        lambda _batch_name: "baseline",
+    )
+    monkeypatch.setattr(
+        advancement_module,
+        "read_batch_metadata",
+        lambda _batch_name: {"revision": "metadata-revision"},
+    )
+    monkeypatch.setattr(
+        advancement_module,
+        "read_git_object_buffer_or_empty",
+        lambda _revision: LineBuffer.from_bytes(b"missing-old-target"),
+    )
 
     def load_working_tree_file(path: str) -> LineBuffer:
         loaded_paths.append(path)

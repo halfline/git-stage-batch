@@ -7,6 +7,8 @@ import tracemalloc
 
 import pytest
 
+from git_stage_batch.core.buffer import LineBuffer
+import git_stage_batch.core.buffer as buffer_module
 from git_stage_batch.core.coordinates import (
     BaselineSpace,
     BatchSourceSpace,
@@ -98,3 +100,35 @@ def test_snapshot_primitives_reject_runtime_type_forgery() -> None:
         LineBoundary(False)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="boundaries"):
         HalfOpenRanges(((False, 1),))
+
+
+def test_content_snapshot_reuses_shared_immutable_buffer_digest(monkeypatch):
+    calls = 0
+    original_digest = buffer_module.framed_content_sha256
+
+    def counted_digest(lines):
+        nonlocal calls
+        calls += 1
+        return original_digest(lines)
+
+    monkeypatch.setattr(buffer_module, "framed_content_sha256", counted_digest)
+    with LineBuffer.from_bytes(b"one\ntwo\n") as buffer:
+        with buffer.clone() as clone:
+            first = content_snapshot("file.txt", buffer, space=BaselineSpace)
+            second = content_snapshot("file.txt", clone, space=BaselineSpace)
+
+    assert first == second
+    assert calls == 1
+
+
+def test_content_snapshot_reuses_shared_immutable_buffer_line_count(monkeypatch):
+    with LineBuffer.from_bytes(b"one\ntwo\n") as buffer:
+        first = content_snapshot("file.txt", buffer, space=BaselineSpace)
+        with buffer.clone() as clone:
+            def unexpected_scan() -> None:
+                raise AssertionError("clone rescanned immutable line boundaries")
+
+            monkeypatch.setattr(clone, "_scan_next_line", unexpected_scan)
+            second = content_snapshot("file.txt", clone, space=BaselineSpace)
+
+    assert first == second

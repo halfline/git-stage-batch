@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 from ...core.models import LineEntry
@@ -27,7 +27,7 @@ class HunkLineRangeScan:
 
 
 def scan_hunk_line_range(
-    hunk_lines: list[LineEntry],
+    hunk_lines: Sequence[LineEntry],
     cursor: int,
     *,
     kind: str,
@@ -72,7 +72,7 @@ def scan_hunk_line_range(
 
 
 def hunk_line_indexes_in_range(
-    hunk_lines: list[LineEntry],
+    hunk_lines: Sequence[LineEntry],
     scan: HunkLineRangeScan,
     *,
     kind: str,
@@ -90,7 +90,7 @@ def hunk_line_indexes_in_range(
 
 
 def hunk_line_index_ranges_in_range(
-    hunk_lines: list[LineEntry],
+    hunk_lines: Sequence[LineEntry],
     scan: HunkLineRangeScan,
     *,
     kind: str,

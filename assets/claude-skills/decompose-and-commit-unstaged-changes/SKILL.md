@@ -822,10 +822,25 @@ if bad:
 PY
 ```
 
-If the validator fails, re-run Phase 1 with the exact failures. Do not edit
-the JSON in place to silence the failure. A Gate 1 failure means the concern
-boundaries, schema, order, or falsification evidence are wrong. It is not a
-copy-editing task.
+If the validator fails, spawn a **new** `Agent(decompose-analyzer)` with a
+prompt that includes:
+- the exact validator failures and manual check failures;
+- the paths to the existing candidate, narrative, and refinement files;
+- instructions to rewrite those files to fix every reported issue;
+- the `decompose-checkpoint.py mark` command to run after rewriting.
+
+Do not use `SendMessage` to resume a prior analyzer — a new agent is
+resilient to prior connection drops and makes each retry independently
+resumable through the `gate1` checkpoint.
+
+When the new analyzer returns, re-run the Gate 1 validator script and all
+manual checks below against the revised candidate. Repeat this
+spawn-revalidate loop until Gate 1 passes. Do not end your turn or proceed
+to Phase 2 while Gate 1 is failing.
+
+Do not edit the JSON in place to silence the failure. A Gate 1 failure means
+the concern boundaries, schema, order, or falsification evidence are wrong.
+It is not a copy-editing task.
 
 In particular, never replace `and` with a comma to make a purpose look
 single-clause. Commas in purposes are also forbidden because they usually hide
@@ -888,8 +903,11 @@ Then check:
     `shared_file_regions` or `internal_slices` is not enough; the plan must
     make the file grow through concern boundaries.
 
-If any check fails, report the failure and re-run Phase 1 with the specific
-feedback. Do not proceed to Phase 2 with a failing plan.
+If any check fails, spawn a new `Agent(decompose-analyzer)` with the specific
+failures and instructions to rewrite the candidate (same pattern as above).
+When it returns, re-run the Gate 1 validator and all checks. Continue this
+spawn-revalidate loop until every check passes. Do not end your turn or
+proceed to Phase 2 with a failing plan.
 
 After Gate 1 passes, promote the candidate to the final plan path:
 

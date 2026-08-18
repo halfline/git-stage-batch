@@ -426,7 +426,7 @@ def test_compute_does_not_read_session_metadata(
         )
         monkeypatch.setattr(
             annotation_module,
-            "get_batch_source_for_file",
+                "get_session_source_hint",
             unexpected_read,
         )
         monkeypatch.setattr(

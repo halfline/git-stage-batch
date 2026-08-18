@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from git_stage_batch.batch.source import annotation as source_annotation_module
+from git_stage_batch.batch.source.cache import SessionSourceHint
 from git_stage_batch.batch.source.annotation import (
     acquire_batch_source_mapping,
     annotate_with_batch_source_mapping,
@@ -232,8 +233,8 @@ def test_annotate_with_batch_source_working_lines_accepts_sequences(
 
     monkeypatch.setattr(
         source_annotation_module,
-        "get_batch_source_for_file",
-        lambda path: "source-commit",
+        "get_session_source_hint",
+        lambda path: SessionSourceHint(path, "source-commit"),
     )
     monkeypatch.setattr(
         source_annotation_module,
@@ -300,8 +301,8 @@ def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path)
 
     monkeypatch.setattr(
         source_annotation_module,
-        "get_batch_source_for_file",
-        lambda path: "source-commit",
+        "get_session_source_hint",
+        lambda path: SessionSourceHint(path, "source-commit"),
     )
 
     def fake_read_git_object_buffer_or_none(revision_path, **_kwargs):
@@ -378,8 +379,8 @@ def test_annotate_with_batch_source_maps_dangling_symlink(
     )
     monkeypatch.setattr(
         source_annotation_module,
-        "get_batch_source_for_file",
-        lambda _path: "source-commit",
+        "get_session_source_hint",
+        lambda path: SessionSourceHint(path, "source-commit"),
     )
     monkeypatch.setattr(
         source_annotation_module,

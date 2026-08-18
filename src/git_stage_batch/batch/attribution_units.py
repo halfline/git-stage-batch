@@ -9,8 +9,13 @@ from pathlib import Path
 from types import TracebackType
 
 from . import attribution_fingerprints as _attribution_fingerprints
-from .line_matching.line_mapping import LineMapping
 from .line_matching.match import match_lines
+from .line_matching.transforms import StructuralAlignment
+from ..core.coordinates import (
+    BaselineSpace,
+    WorktreeSpace,
+    content_snapshot,
+)
 
 
 class AttributionUnitKind(Enum):
@@ -49,7 +54,7 @@ class FileComparison:
     file_path: str
     baseline_lines: Sequence[bytes]
     working_tree_lines: Sequence[bytes]
-    alignment: LineMapping
+    alignment: StructuralAlignment[BaselineSpace, WorktreeSpace]
 
     def close(self) -> None:
         """Close the owned alignment mapping."""
@@ -135,7 +140,17 @@ def build_file_comparison_from_lines(
     working_tree_lines: Sequence[bytes],
     spool_dir: str | Path | None = None,
 ) -> FileComparison:
-    alignment = match_lines(
+    baseline_snapshot = content_snapshot(
+        file_path,
+        baseline_lines,
+        space=BaselineSpace,
+    )
+    working_snapshot = content_snapshot(
+        file_path,
+        working_tree_lines,
+        space=WorktreeSpace,
+    )
+    mapping = match_lines(
         source_lines=baseline_lines,
         target_lines=working_tree_lines,
         spool_dir=spool_dir,
@@ -144,7 +159,11 @@ def build_file_comparison_from_lines(
         file_path=file_path,
         baseline_lines=baseline_lines,
         working_tree_lines=working_tree_lines,
-        alignment=alignment,
+        alignment=StructuralAlignment(
+            baseline_snapshot,
+            working_snapshot,
+            mapping,
+        ),
     )
 
 

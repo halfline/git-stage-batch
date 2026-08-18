@@ -23,7 +23,10 @@ from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...batch.source.snapshots import create_batch_source_commit
-from ...batch.source.line_coordinates import translate_display_source_coordinates
+from ...batch.source.line_coordinates import (
+    IdentitySourceCoordinates,
+    translate_display_source_coordinates,
+)
 from ...batch.realized_file_content import build_realized_buffer_from_lines
 from ...core.models import LineEntry, LineLevelChange
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
@@ -250,7 +253,7 @@ def annotate_line_changes_with_working_tree_source(
     new_lines: list[LineEntry] = []
     for line, source_line in translate_display_source_coordinates(
         line_changes.lines,
-        lambda line_number: line_number,
+        IdentitySourceCoordinates(),
     ):
         new_lines.append(replace(line, source_line=source_line))
 

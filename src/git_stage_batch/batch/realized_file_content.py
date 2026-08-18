@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..core.buffer import LineBuffer
 from ..editor.line_endings import (
@@ -20,6 +21,9 @@ from .ownership.absence_claims import AbsenceClaim
 from .ownership.model import BatchOwnership
 from .ownership.replacement_units import ReplacementUnit
 from .realization.entry_storage import realized_entry_content_chunks
+
+if TYPE_CHECKING:
+    from .file_state import BatchFileState
 
 
 def _ownership_for_realization(ownership: BatchOwnership) -> BatchOwnership:
@@ -48,7 +52,7 @@ def _ownership_for_realization(ownership: BatchOwnership) -> BatchOwnership:
             ReplacementUnit(
                 presence_lines=unit.presence_lines,
                 deletion_indices=remapped_indices,
-                origin=unit.origin,
+                origin_evidence=unit.origin_evidence,
             )
         )
     return BatchOwnership(
@@ -65,6 +69,23 @@ def _has_unequal_replacement_parent(ownership: "BatchOwnership") -> bool:
         and unit.origin.old_line_count
         != unit.origin.new_end - unit.origin.new_start + 1
         for unit in ownership.replacement_units
+    )
+
+
+def build_realized_buffer(
+    batch_file: "BatchFileState",
+    *,
+    preferred_line_ending_lines: Sequence[bytes] | None = None,
+    spool_dir: str | Path | None = None,
+) -> LineBuffer:
+    """Build content from a source-bound ownership aggregate."""
+    batch_file.validate()
+    return build_realized_buffer_from_lines(
+        batch_file.baseline_lines,
+        batch_file.source_lines,
+        batch_file.ownership,
+        preferred_line_ending_lines=preferred_line_ending_lines,
+        spool_dir=spool_dir,
     )
 
 

@@ -34,11 +34,13 @@ def test_snapshot_references_preserve_start_of_file_insertion() -> None:
         source_line=2,
     )
 
+    changes = _line_changes([addition, tail])
     record_baseline_references_for_additions(
-        _line_changes([addition, tail]),
+        changes,
         baseline_lines=[b"tail\n"],
         source_lines=[b"added\n", b"tail\n"],
     )
+    addition = changes.lines[0]
 
     assert addition.has_baseline_reference_after
     assert addition.baseline_reference_after_line is None
@@ -67,7 +69,9 @@ def test_diff_references_record_explicit_eof_boundary() -> None:
         source_line=2,
     )
 
-    record_baseline_references_for_additions(_line_changes([base, addition]))
+    changes = _line_changes([base, addition])
+    record_baseline_references_for_additions(changes)
+    addition = changes.lines[1]
 
     assert addition.has_baseline_reference_after
     assert addition.baseline_reference_after_line == 1
@@ -102,11 +106,14 @@ def test_snapshot_references_reanchor_stale_eof_additions() -> None:
         source_line=3,
     )
 
+    changes = _line_changes([base, first, blank])
     record_baseline_references_for_additions(
-        _line_changes([base, first, blank]),
+        changes,
         baseline_lines=[b"base\n", b"first\n"],
         source_lines=[b"base\n", b"first\n", b"\n"],
     )
+    first = changes.lines[1]
+    blank = changes.lines[2]
 
     assert first.baseline_reference_after_line == 1
     assert first.baseline_reference_before_line == 2
@@ -146,11 +153,13 @@ def test_snapshot_references_clear_ambiguous_stale_reference() -> None:
         source_line=3,
     )
 
+    changes = _line_changes([base, addition, tail])
     record_baseline_references_for_additions(
-        _line_changes([base, addition, tail]),
+        changes,
         baseline_lines=[b"base\n", b"staged only\n", b"tail\n"],
         source_lines=[b"base\n", b"selected\n", b"tail\n"],
     )
+    addition = changes.lines[1]
 
     assert not addition.has_baseline_reference_after
     assert addition.baseline_reference_after_line is None
@@ -190,10 +199,12 @@ def test_snapshot_reference_order_avoids_python_line_collections(
         source_line=2,
     )
 
+    changes = _line_changes([addition, tail])
     record_baseline_references_for_additions(
-        _line_changes([addition, tail]),
+        changes,
         baseline_lines=[b"tail\n"],
         source_lines=[b"added\n", b"tail\n"],
     )
+    addition = changes.lines[0]
 
     assert addition.baseline_reference_before_line == 1

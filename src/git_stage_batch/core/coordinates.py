@@ -26,6 +26,26 @@ class WorktreeSpace:
     """Marker for coordinates in an observed working-tree snapshot."""
 
 
+class RewrittenWorktreeSpace:
+    """Marker for coordinates after an explicit working-tree rewrite."""
+
+
+class DiffOldSpace:
+    """Marker for the old endpoint of a rendered diff."""
+
+
+class DiffNewSpace:
+    """Marker for the new endpoint of a rendered diff."""
+
+
+class ReplacementOldSpace:
+    """Marker for an original replacement's baseline-side span."""
+
+
+class ReplacementNewSpace:
+    """Marker for an original replacement's produced-side span."""
+
+
 Space = TypeVar("Space")
 
 
@@ -97,6 +117,126 @@ class LineSpan(Generic[Space]):
         return self.end.offset - self.start.offset
 
 
+@dataclass(frozen=True, slots=True)
+class SnapshotBoundary(Generic[Space]):
+    """One boundary bound to an exact file snapshot."""
+
+    snapshot: FileSnapshot[Space]
+    boundary: LineBoundary[Space]
+
+    def __post_init__(self) -> None:
+        if self.boundary.offset > self.snapshot.line_count:
+            raise ValueError("line boundary is outside its snapshot")
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotSpan(Generic[Space]):
+    """One half-open line span bound to an exact file snapshot."""
+
+    snapshot: FileSnapshot[Space]
+    span: LineSpan[Space]
+
+    def __post_init__(self) -> None:
+        if self.span.end.offset > self.snapshot.line_count:
+            raise ValueError("line span is outside its snapshot")
+
+
+@dataclass(frozen=True, slots=True)
+class HalfOpenRanges:
+    """Compact normalized zero-based half-open ranges.
+
+    Storage is proportional to the number of ranges, never the number of
+    represented lines.  The type intentionally has no one-based compatibility
+    behavior; adapters must opt into that conversion explicitly.
+    """
+
+    _ranges: tuple[tuple[int, int], ...] = ()
+    _starts: tuple[int, ...] = field(init=False, repr=False, compare=False)
+    _count: int = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        normalized = _normalize_half_open_ranges(self._ranges)
+        object.__setattr__(self, "_ranges", normalized)
+        object.__setattr__(self, "_starts", tuple(start for start, _ in normalized))
+        object.__setattr__(
+            self,
+            "_count",
+            sum(end - start for start, end in normalized),
+        )
+
+    @classmethod
+    def empty(cls) -> HalfOpenRanges:
+        return cls()
+
+    @classmethod
+    def from_ranges(cls, ranges: Iterable[tuple[int, int]]) -> HalfOpenRanges:
+        return cls(tuple(ranges))
+
+    def ranges(self) -> tuple[tuple[int, int], ...]:
+        return self._ranges
+
+    def __bool__(self) -> bool:
+        return bool(self._ranges)
+
+    def __len__(self) -> int:
+        return self._count
+
+    def __contains__(self, offset: object) -> bool:
+        if type(offset) is not int:
+            return False
+        index = bisect_right(self._starts, offset) - 1
+        if index < 0:
+            return False
+        start, end = self._ranges[index]
+        return start <= offset < end
+
+    def __iter__(self) -> Iterator[int]:
+        for start, end in self._ranges:
+            yield from range(start, end)
+
+    def union(self, other: HalfOpenRanges) -> HalfOpenRanges:
+        return HalfOpenRanges(self._ranges + other._ranges)
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotSpans(Generic[Space]):
+    """Compact spans whose coordinate space is one exact file snapshot."""
+
+    snapshot: FileSnapshot[Space]
+    ranges: HalfOpenRanges
+
+    def __post_init__(self) -> None:
+        for start, end in self.ranges.ranges():
+            if end > self.snapshot.line_count:
+                raise ValueError("span is outside its snapshot")
+
+
+@dataclass(frozen=True, slots=True)
+class DisplayLineId:
+    """Opaque selection handle assigned by one rendered diff view."""
+
+    value: int
+
+    def __post_init__(self) -> None:
+        if type(self.value) is not int or self.value <= 0:
+            raise ValueError("display line ID must be positive")
+
+
+class SnapshotDescriptor(Protocol):
+    """Read-only snapshot identity accepted across coordinate roles."""
+
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def identity(self) -> SnapshotIdentity: ...
+
+    @property
+    def line_count(self) -> int: ...
+
+    @property
+    def role(self) -> type[object]: ...
+
 
 def require_same_snapshot(
     left: SnapshotDescriptor,
@@ -119,6 +259,26 @@ def require_snapshot_role(
     """Reject a snapshot whose runtime coordinate role is different."""
     if snapshot.role is not role:
         raise ValueError("snapshot has the wrong coordinate role")
+
+
+def one_based_inclusive_to_half_open(start: int, end: int) -> tuple[int, int]:
+    """Convert one-based inclusive Git coordinates to a domain range."""
+    if type(start) is not int or type(end) is not int or start <= 0 or end < start:
+        raise ValueError("invalid one-based inclusive range")
+    return start - 1, end
+
+
+def snapshot_as_role(
+    snapshot: SnapshotDescriptor,
+    role: type[Space],
+) -> FileSnapshot[Space]:
+    """Rebind identical content to an explicit coordinate endpoint role."""
+    return FileSnapshot(
+        snapshot.path,
+        snapshot.identity,
+        snapshot.line_count,
+        role,
+    )
 
 
 def content_snapshot(
@@ -155,3 +315,25 @@ def framed_content_sha256(lines: Iterable[bytes]) -> str:
         digest.update(len(line).to_bytes(8, "big"))
         digest.update(line)
     return digest.hexdigest()
+
+
+def _normalize_half_open_ranges(
+    ranges: Iterable[tuple[int, int]],
+) -> tuple[tuple[int, int], ...]:
+    checked_ranges: list[tuple[int, int]] = []
+    for start, end in ranges:
+        if type(start) is not int or type(end) is not int:
+            raise ValueError("half-open range boundaries must be integers")
+        checked_ranges.append((start, end))
+    normalized: list[tuple[int, int]] = []
+    for start, end in sorted(checked_ranges):
+        if start < 0 or end < start:
+            raise ValueError("half-open ranges must be non-negative and ordered")
+        if start == end:
+            continue
+        if normalized and start <= normalized[-1][1]:
+            previous_start, previous_end = normalized[-1]
+            normalized[-1] = (previous_start, max(previous_end, end))
+        else:
+            normalized.append((start, end))
+    return tuple(normalized)

@@ -452,6 +452,86 @@ def test_source_lineage_remaps_guarded_presence_ranges():
     assert remapped.presence_claims[0].source_lines == ["10-1009,5000-5001"]
 
 
+def test_source_lineage_remaps_replacement_origin_new_span():
+    """Replacement origins remain aligned with refreshed source claims."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2-3"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(1, 1, 2, 3),
+            )
+        ],
+    )
+    with BatchSourceLineage(
+        source_runs=[
+            LineageRun(old_start=1, old_end=1, new_start=1),
+            LineageRun(old_start=2, old_end=3, new_start=4),
+        ],
+    ) as lineage:
+        remapped = remap_batch_ownership_with_lineage(ownership, lineage)
+
+    unit = remapped.replacement_units[0]
+    assert unit.presence_lines == ["4-5"]
+    assert unit.origin is not None
+    assert (unit.origin.new_start, unit.origin.new_end) == (4, 5)
+
+
+def test_source_lineage_demotes_origin_when_new_span_is_unmapped():
+    """Origin evidence is dropped when the produced-side span has no mapping."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2-3"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(1, 1, 2, 4),
+            )
+        ],
+    )
+    with BatchSourceLineage(
+        source_runs=[
+            LineageRun(old_start=1, old_end=3, new_start=1),
+        ],
+    ) as lineage:
+        remapped = remap_batch_ownership_with_lineage(ownership, lineage)
+
+    unit = remapped.replacement_units[0]
+    assert unit.presence_lines == ["2-3"]
+    assert isinstance(unit.origin_evidence, NoReplacementUnitOrigin)
+    assert unit.origin is None
+
+
+def test_source_lineage_demotes_origin_when_new_span_splits():
+    """Origin evidence is dropped when the produced-side span becomes non-contiguous."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [AbsenceClaim(anchor_line=None, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1-2"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(1, 1, 1, 3),
+            )
+        ],
+    )
+    with BatchSourceLineage(
+        source_runs=[
+            LineageRun(old_start=1, old_end=1, new_start=1),
+            LineageRun(old_start=2, old_end=2, new_start=4),
+            LineageRun(old_start=3, old_end=3, new_start=6),
+        ],
+    ) as lineage:
+        remapped = remap_batch_ownership_with_lineage(ownership, lineage)
+
+    unit = remapped.replacement_units[0]
+    assert isinstance(unit.origin_evidence, NoReplacementUnitOrigin)
+    assert unit.origin is None
+
+
 def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
     """Deduplicated absence claims should keep replacement metadata disjoint."""
     deletion = AbsenceClaim(anchor_line=None, content_lines=[b"old value\n"])

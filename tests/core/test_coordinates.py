@@ -10,9 +10,14 @@ import pytest
 from git_stage_batch.core.coordinates import (
     BaselineSpace,
     BatchSourceSpace,
+    DisplayLineId,
     FileSnapshot,
+    HalfOpenRanges,
     LineBoundary,
+    LineSpan,
+    SnapshotBoundary,
     SnapshotIdentity,
+    SnapshotSpans,
     content_snapshot,
     require_same_snapshot,
 )
@@ -80,3 +85,16 @@ def test_snapshot_mismatch_rejects_another_declared_extent():
 
     with pytest.raises(ValueError, match="do not match"):
         require_same_snapshot(first, second)
+
+
+
+def test_snapshot_primitives_reject_runtime_type_forgery() -> None:
+    """Python's bool/int overlap cannot forge domain coordinates or extents."""
+    identity = SnapshotIdentity("test", "content")
+
+    with pytest.raises(ValueError, match="line count"):
+        FileSnapshot("file.txt", identity, True, BaselineSpace)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="boundary"):
+        LineBoundary(False)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="boundaries"):
+        HalfOpenRanges(((False, 1),))

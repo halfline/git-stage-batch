@@ -280,6 +280,83 @@ def test_batch_source_lineage_finds_unmapped_source_ranges():
         ) == 25
 
 
+def test_late_source_selection_binary_searches_fragmented_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated unit remaps do not scan every preceding lineage run."""
+    run_count = 4096
+    with BatchSourceLineage(
+        source_runs=(
+            LineageRun(2 * index + 1, 2 * index + 1, 2 * index + 1)
+            for index in range(run_count)
+        ),
+    ) as lineage:
+        run_table = lineage._source_runs
+        run_lookups = 0
+        original_run_at_index = run_table._run_at_index
+
+        def counted_run_at_index(index: int) -> LineageRun:
+            nonlocal run_lookups
+            run_lookups += 1
+            return original_run_at_index(index)
+
+        monkeypatch.setattr(run_table, "_run_at_index", counted_run_at_index)
+        selected_line = 2 * run_count - 1
+
+        assert lineage.first_unmapped_source_line(
+            LineRanges.from_ranges(((selected_line, selected_line),))
+        ) is None
+        assert lineage.translate_source_selection(
+            LineRanges.from_ranges(((selected_line, selected_line),))
+        ).ranges() == ((selected_line, selected_line),)
+
+    assert run_lookups < 64
+
+
+def test_late_source_selection_binary_searches_source_expansions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late unit remap does not scan all preceding source expansions."""
+    expansion_count = 4096
+    with BatchSourceLineage(
+        source_runs=(
+            LineageRun(2 * index + 1, 2 * index + 1, 3 * index + 1)
+            for index in range(expansion_count)
+        ),
+        source_expansions=(
+            SourceSelectionExpansion(
+                2 * index + 1,
+                2 * index + 1,
+                3 * index + 1,
+                3 * index + 2,
+            )
+            for index in range(expansion_count)
+        ),
+    ) as lineage:
+        expansion_table = lineage._source_expansions
+        expansion_lookups = 0
+        original_expansion_at = expansion_table._expansion_at
+
+        def counted_expansion_at(index: int) -> SourceSelectionExpansion:
+            nonlocal expansion_lookups
+            expansion_lookups += 1
+            return original_expansion_at(index)
+
+        monkeypatch.setattr(
+            expansion_table,
+            "_expansion_at",
+            counted_expansion_at,
+        )
+        selected_line = 2 * expansion_count - 1
+        expected_start = 3 * (expansion_count - 1) + 1
+
+        assert lineage.translate_source_selection(
+            LineRanges.from_ranges(((selected_line, selected_line),))
+        ).ranges() == ((expected_start, expected_start + 1),)
+
+    assert expansion_lookups < 64
+
+
 def test_batch_source_lineage_rejects_overlapping_appends():
     """Lineage appends should require monotonic old-coordinate runs."""
     with BatchSourceLineage() as lineage:

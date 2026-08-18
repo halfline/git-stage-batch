@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ..exceptions import CommandError
 from ..i18n import _
 from .models import HunkHeader, LineEntry
@@ -29,7 +31,10 @@ class LineChangeBodyBuilder:
         """Append one parsed hunk body line."""
         if line.startswith(NO_NEWLINE_MARKER):
             if self.line_entries:
-                self.line_entries[-1].has_trailing_newline = False
+                self.line_entries[-1] = replace(
+                    self.line_entries[-1],
+                    has_trailing_newline=False,
+                )
             return
 
         if not line:

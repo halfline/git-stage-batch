@@ -6,12 +6,13 @@ from contextlib import ExitStack
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.file_state import BatchMetadataRevision
 from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
 from ...batch.state.validation import get_validated_baseline_commit
-from ...batch.text_file_storage import add_file_to_batch
+from ...batch.text_file_storage import add_source_bound_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.models import (
@@ -150,6 +151,7 @@ def include_file_to_batch(
         return
 
     metadata = read_batch_metadata(batch_name)
+    metadata_revision = BatchMetadataRevision.from_metadata(metadata)
     file_metadata = metadata.get("files", {}).get(file_path)
     baseline_commit = get_validated_baseline_commit(batch_name)
 
@@ -165,6 +167,7 @@ def include_file_to_batch(
                     batch_name=batch_name,
                     file_path=file_path,
                     file_metadata=file_metadata,
+                    metadata_revision=metadata_revision,
                     selected_lines=all_lines_to_batch,
                     reference_source_lines=reference_source_lines,
                     batch_baseline_commit=baseline_commit,
@@ -181,12 +184,13 @@ def include_file_to_batch(
             )
 
         snapshot_file_if_untracked(file_path)
-        add_file_to_batch(
+        add_source_bound_file_to_batch(
             batch_name,
             file_path,
-            update.ownership_after,
+            update.bound_ownership,
             file_mode,
             batch_source_commit=update.batch_source_commit,
+            expected_metadata_revision=update.expected_metadata_revision,
         )
 
     if not quiet:

@@ -11,6 +11,7 @@ from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.detachment import acquire_detached_batch_ownership
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership.merging import merge_batch_ownership
+from ...batch.file_state import BatchMetadataRevision, SourceBoundOwnership
 from ...batch.ownership.units import (
     build_ownership_units_from_batch_source_lines,
 )
@@ -26,7 +27,7 @@ from ...batch.state.metadata_types import (
 from ...batch.selection import require_display_ids_available
 from ...batch.state.references import sync_batch_state_refs
 from ...batch.text_file_storage import (
-    add_file_to_batch,
+    add_source_bound_file_to_batch,
 )
 from ...batch.file_entry_storage import (
     copy_file_from_batch_to_batch,
@@ -38,6 +39,7 @@ from ...batch.submodule_pointer import (
 )
 from ...batch.state.batch_names import batch_exists
 from ...core.line_selection import LineRanges
+from ...core.coordinates import BatchSourceSpace, content_snapshot
 from ...data.batch_file_scope import resolve_batch_file_scope
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...exceptions import MergeError, exit_with_error
@@ -162,6 +164,7 @@ def reset_line_claims_for_file(
 ) -> None:
     """Remove specific display line IDs from one batch file."""
     metadata = read_batch_metadata(batch_name)
+    metadata_revision = BatchMetadataRevision.from_metadata(metadata)
     file_meta = metadata["files"][file_path]
 
     if file_meta.get("file_type") == "binary":
@@ -205,12 +208,20 @@ def reset_line_claims_for_file(
             return
 
         file_mode = file_meta.get("mode", "100644")
-        add_file_to_batch(
+        add_source_bound_file_to_batch(
             batch_name,
             file_path,
-            new_ownership,
+            SourceBoundOwnership(
+                content_snapshot(
+                    file_path,
+                    batch_source_lines,
+                    space=BatchSourceSpace,
+                ),
+                new_ownership,
+            ),
             file_mode,
             batch_source_commit=batch_source_commit,
+            expected_metadata_revision=metadata_revision,
             change_type=file_meta.get("change_type"),
         )
 
@@ -299,44 +310,69 @@ def _add_ownership_to_destination(
 ) -> None:
     """Add selected text ownership to destination, merging with compatible claims."""
     dest_metadata = read_batch_metadata(dest_batch)
+    dest_metadata_revision = BatchMetadataRevision.from_metadata(dest_metadata)
     dest_file_meta = dest_metadata.get("files", {}).get(file_path)
     batch_source_commit = source_file_meta["batch_source_commit"]
+    source_buffer = read_git_object_buffer_or_none(
+        f"{batch_source_commit}:{file_path}"
+    )
+    if source_buffer is None:
+        exit_with_error(
+            _("Failed to read batch source content for {file}").format(
+                file=display_path(file_path),
+            )
+        )
 
-    def add_to_destination(destination_ownership: BatchOwnership) -> None:
+    def add_to_destination(
+        destination_ownership: BatchOwnership,
+        source_lines: Sequence[bytes],
+    ) -> None:
         file_mode = source_file_meta.get("mode", "100644")
-        add_file_to_batch(
+        add_source_bound_file_to_batch(
             dest_batch,
             file_path,
-            destination_ownership,
+            SourceBoundOwnership(
+                content_snapshot(
+                    file_path,
+                    source_lines,
+                    space=BatchSourceSpace,
+                ),
+                destination_ownership,
+            ),
             file_mode,
             batch_source_commit=batch_source_commit,
+            expected_metadata_revision=dest_metadata_revision,
             change_type=source_file_meta.get("change_type"),
         )
 
-    if dest_file_meta is not None:
-        if dest_file_meta.get("file_type") in {"binary", "mode"}:
-            exit_with_error(
-                _(
-                    "Destination batch already has a binary version of '{file}', "
-                    "so text changes for the same file cannot be moved there."
-                ).format(
-                    file=display_path(file_path),
+    with source_buffer as source_lines:
+        if dest_file_meta is not None:
+            if dest_file_meta.get("file_type") in {"binary", "mode"}:
+                exit_with_error(
+                    _(
+                        "Destination batch already has a binary version of '{file}', "
+                        "so text changes for the same file cannot be moved there."
+                    ).format(
+                        file=display_path(file_path),
+                    )
                 )
-            )
-        if dest_file_meta.get("batch_source_commit") != batch_source_commit:
-            exit_with_error(
-                _(
-                    "Destination batch already has file '{file}' with a "
-                    "different batch source"
-                ).format(
-                    file=display_path(file_path),
+            if dest_file_meta.get("batch_source_commit") != batch_source_commit:
+                exit_with_error(
+                    _(
+                        "Destination batch already has file '{file}' with a "
+                        "different batch source"
+                    ).format(
+                        file=display_path(file_path),
+                    )
                 )
-            )
-        with acquire_ownership_for_metadata_dict(dest_file_meta) as existing:
-            add_to_destination(merge_batch_ownership(existing, ownership))
-        return
+            with acquire_ownership_for_metadata_dict(dest_file_meta) as existing:
+                add_to_destination(
+                    merge_batch_ownership(existing, ownership),
+                    source_lines,
+                )
+            return
 
-    add_to_destination(ownership)
+        add_to_destination(ownership, source_lines)
 
 
 def _acquire_line_ownership_for_file(

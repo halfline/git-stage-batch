@@ -8,11 +8,12 @@ import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.file_state import BatchMetadataRevision
 from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
-from ...batch.text_file_storage import add_file_to_batch
+from ...batch.text_file_storage import add_source_bound_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import (
@@ -191,6 +192,7 @@ def _discard_text_hunk_to_batch(
             patches_to_discard = [(selected_patch_lines, selected_patch_hash)]
 
         metadata = read_batch_metadata(batch_name)
+        metadata_revision = BatchMetadataRevision.from_metadata(metadata)
         file_metadata = metadata.get("files", {}).get(file_path)
 
         with ExitStack() as ownership_stack:
@@ -203,6 +205,7 @@ def _discard_text_hunk_to_batch(
                         batch_name=batch_name,
                         file_path=file_path,
                         file_metadata=file_metadata,
+                        metadata_revision=metadata_revision,
                         selected_lines=all_lines_to_batch,
                         reference_source_lines=reference_source_lines,
                         batch_baseline_commit=metadata.get("baseline"),
@@ -229,12 +232,13 @@ def _discard_text_hunk_to_batch(
                 num_patches=len(patches_to_discard),
             )
 
-            add_file_to_batch(
+            add_source_bound_file_to_batch(
                 batch_name,
                 file_path,
-                update.ownership_after,
+                update.bound_ownership,
                 file_mode,
                 batch_source_commit=update.batch_source_commit,
+                expected_metadata_revision=update.expected_metadata_revision,
             )
 
         log_journal("discard_hunk_to_batch_after_add", batch_name=batch_name, file_path=file_path)

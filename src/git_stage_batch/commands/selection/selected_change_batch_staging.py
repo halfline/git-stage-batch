@@ -5,11 +5,12 @@ from __future__ import annotations
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.file_state import BatchMetadataRevision
 from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
-from ...batch.text_file_storage import add_file_to_batch
+from ...batch.text_file_storage import add_source_bound_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.diff_parser import (
     acquire_unified_diff,
@@ -131,6 +132,7 @@ def include_selected_change_to_batch(
     all_lines_to_batch = selected_line_changes.lines
     file_mode = detect_file_mode(file_path)
     metadata = read_batch_metadata(batch_name)
+    metadata_revision = BatchMetadataRevision.from_metadata(metadata)
     file_metadata = metadata.get("files", {}).get(file_path)
 
     try:
@@ -142,17 +144,19 @@ def include_selected_change_to_batch(
                 batch_name=batch_name,
                 file_path=file_path,
                 file_metadata=file_metadata,
+                metadata_revision=metadata_revision,
                 selected_lines=all_lines_to_batch,
                 reference_source_lines=reference_source_lines,
                 batch_baseline_commit=metadata.get("baseline"),
             ) as update,
         ):
-            add_file_to_batch(
+            add_source_bound_file_to_batch(
                 batch_name,
                 file_path,
-                update.ownership_after,
+                update.bound_ownership,
                 file_mode,
                 batch_source_commit=update.batch_source_commit,
+                expected_metadata_revision=update.expected_metadata_revision,
             )
     except ValueError as error:
         exit_with_error(

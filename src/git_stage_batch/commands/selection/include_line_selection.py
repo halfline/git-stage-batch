@@ -10,6 +10,7 @@ import sys
 import uuid
 
 from ...batch.ownership.model import BatchOwnership
+from ...batch.file_state import BatchMetadataRevision, SourceBoundOwnership
 from ...batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
@@ -19,9 +20,10 @@ from ...batch.state.lifecycle import create_batch, delete_batch
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.state.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
-from ...batch.text_file_storage import add_file_to_batch
+from ...batch.text_file_storage import add_source_bound_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
+from ...core.coordinates import BatchSourceSpace, content_snapshot
 from ...batch.source.snapshots import create_batch_source_commit
 from ...batch.source.line_coordinates import (
     IdentitySourceCoordinates,
@@ -373,6 +375,9 @@ def try_build_index_content_via_transient_batch(
             baseline_commit=git_write_tree(),
         )
         created_batch = True
+        metadata_revision = BatchMetadataRevision.from_metadata(
+            read_batch_metadata(batch_name)
+        )
 
         _insertion_references.record_baseline_references_for_additions(
             line_changes,
@@ -399,12 +404,20 @@ def try_build_index_content_via_transient_batch(
                 file_buffer_override=working_lines,
             )
             try:
-                add_file_to_batch(
+                add_source_bound_file_to_batch(
                     batch_name,
                     line_changes.path,
-                    ownership,
+                    SourceBoundOwnership(
+                        content_snapshot(
+                            line_changes.path,
+                            working_lines,
+                            space=BatchSourceSpace,
+                        ),
+                        ownership,
+                    ),
                     detect_file_mode(line_changes.path),
                     batch_source_commit=batch_source_commit,
+                    expected_metadata_revision=metadata_revision,
                 )
             except MergeError as error:
                 return TransientIncludeResult.failure(

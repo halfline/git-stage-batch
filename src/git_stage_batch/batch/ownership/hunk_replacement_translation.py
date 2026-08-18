@@ -32,6 +32,7 @@ from .replacement_origins import (
     ReplacementOrigin,
     SameStreamReplacementOrigin,
 )
+from ..source.projection import SourceCoordinateProjection
 
 
 @dataclass
@@ -59,6 +60,7 @@ def translate_hunk_replacement_line_runs(
     old_line_content: Mapping[int, bytes],
     hunk_content_view: Sequence[bytes],
     replacement_origin: ReplacementOrigin = NoReplacementOrigin(),
+    source_projection: SourceCoordinateProjection | None = None,
 ) -> HunkReplacementTranslation:
     """Translate selected portions of file-derived replacement runs."""
     replacement_run_iterator = iter(replacement_line_runs)
@@ -77,6 +79,7 @@ def translate_hunk_replacement_line_runs(
                 hunk_content_view=hunk_content_view,
                 origin_run_iterator=origin_run_iterator,
                 replacement_origin=replacement_origin,
+                source_projection=source_projection,
             )
         finally:
             _close_replacement_run_iterator(origin_run_iterator)
@@ -93,6 +96,7 @@ def _translate_hunk_replacement_line_runs(
     hunk_content_view: Sequence[bytes],
     origin_run_iterator: Iterator[ReplacementLineRun],
     replacement_origin: ReplacementOrigin,
+    source_projection: SourceCoordinateProjection | None,
 ) -> HunkReplacementTranslation:
     """Translate replacement runs whose iterator lifetimes are caller-owned."""
     replacement_origin_source_lines = (
@@ -111,7 +115,9 @@ def _translate_hunk_replacement_line_runs(
     consumed_new_display_ids = LineRangeBuilder()
 
     def source_line_for(line: LineEntry) -> int | None:
-        return line.source_line
+        if source_projection is None:
+            return line.source_line
+        return source_projection.source_line_for(line)
 
     def add_replacement_unit(
         selected_old_ranges: Iterable[tuple[int, int]],

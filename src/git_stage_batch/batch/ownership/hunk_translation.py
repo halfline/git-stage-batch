@@ -28,6 +28,7 @@ from .replacement_origins import (
     NoReplacementOrigin,
     ReplacementOrigin,
 )
+from ..source.projection import SourceCoordinateProjection
 
 
 class _HunkOldLineContent(Mapping[int, bytes]):
@@ -117,6 +118,7 @@ def translate_hunk_selection_to_batch_ownership(
     replacement_line_runs: Iterable[_ReplacementLineRun] | None = None,
     replacement_origin: ReplacementOrigin = NoReplacementOrigin(),
     baseline_lines: Sequence[bytes] | None = None,
+    source_projection: SourceCoordinateProjection | None = None,
 ) -> BatchOwnership:
     """Translate selected live-hunk IDs while retaining full-hunk boundaries.
 
@@ -137,6 +139,7 @@ def translate_hunk_selection_to_batch_ownership(
             old_line_content=old_line_content,
             replacement_line_runs=replacement_line_runs,
             replacement_origin=replacement_origin,
+            source_projection=source_projection,
         )
 
 
@@ -147,6 +150,7 @@ def _translate_hunk_selection_with_old_content(
     old_line_content: Mapping[int, bytes],
     replacement_line_runs: Iterable[_ReplacementLineRun] | None,
     replacement_origin: ReplacementOrigin,
+    source_projection: SourceCoordinateProjection | None,
 ) -> BatchOwnership:
     """Translate one hunk while its storage-backed old-line index is open."""
     hunk_content_view = _LineEntryContentSequence(hunk_lines)
@@ -158,6 +162,7 @@ def _translate_hunk_selection_with_old_content(
             old_line_content=old_line_content,
             hunk_content_view=hunk_content_view,
             replacement_origin=replacement_origin,
+            source_projection=source_projection,
         )
     )
     claimed_source_lines = LineRangeBuilder()
@@ -176,7 +181,9 @@ def _translate_hunk_selection_with_old_content(
     active_replacement_unit: _ReplacementUnitBuilder | None = None
 
     def source_line_for(line: LineEntry) -> int | None:
-        return line.source_line
+        if source_projection is None:
+            return line.source_line
+        return source_projection.source_line_for(line)
 
     def finish_replacement_unit(
         builder: _ReplacementUnitBuilder | None,

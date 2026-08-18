@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from itertools import chain
 import os
 from pathlib import Path
+from typing import cast
 
 from ...batch.source.annotation import annotate_with_batch_source_working_lines
 from ...batch.state.lifecycle import create_batch
@@ -35,6 +37,7 @@ from ...batch.ownership.line_entries import (
 from ...batch.ownership.references import BaselineReference
 from ...batch.ownership.replacement_units import ReplacementUnit
 from ...batch.ownership.replacement_units import normalize_replacement_units
+from ...batch.ownership.replacement_origins import SameStreamReplacementOrigin
 from ...batch.ownership.claims import (
     presence_claims_from_source_lines,
 )
@@ -50,13 +53,46 @@ from ...batch.selection import (
 from ...batch.source.advancement import (
     advance_source_lines_preserving_existing_presence,
 )
-from ...batch.source.line_coordinates import translate_display_source_coordinates
-from ...batch.text_file_storage import add_file_to_batch
+from ...batch.source.line_coordinates import (
+    ExactLineageSourceCoordinates,
+    IdentitySourceCoordinates,
+    SourceCoordinateTransform,
+    translate_display_source_coordinates,
+)
+from ...batch.source.projection import SourceCoordinateProjection
+from ...batch.file_state import BatchMetadataRevision, SourceBoundOwnership
+from ...batch.transformed_selection import (
+    NoRollback,
+    RollbackSelection,
+    TransformedSelectionProjection,
+)
+from ...batch.text_file_storage import add_source_bound_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
+from ...core.text_lines import normalize_line_sequence_endings
 from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.mapped_storage import MappedRecordVector
-from ...core.models import LineLevelChange
+from ...core.coordinates import (
+    BaselineSpace,
+    DiffNewSpace,
+    DiffOldSpace,
+    BatchSourceSpace,
+    DisplayLineId,
+    FileSnapshot,
+    LineBoundary,
+    LineSpan,
+    RewrittenWorktreeSpace,
+    WorktreeSpace,
+    content_snapshot,
+    snapshot_as_role,
+)
+from ...core.edit_plan import ReplacementEditPlan
+from ...core.selection_geometry import (
+    DisplayIdRanges,
+    diff_view_identity,
+    resolve_selection,
+)
+from ...core.models import LineEntry, LineLevelChange
 from ...core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
@@ -95,6 +131,7 @@ class DiscardLineReplacementSelection:
     """Prepared replacement selection for discard-to-batch."""
 
     line_changes: LineLevelChange
+    transformed_projection: TransformedSelectionProjection
     file_path: str
     working_file_path: Path
     rewritten_line_changes: LineLevelChange
@@ -108,6 +145,29 @@ class DiscardLineReplacementSelection:
     explicit_rewritten_alternative_end: int | None = None
     explicit_rewritten_discard_prefix_end: int | None = None
     discard_exact_rewritten_prefix: bool = False
+
+    def __post_init__(self) -> None:
+        ownership_ids = (
+            self.transformed_projection.ownership_selection.display_ids.to_line_ranges()
+        )
+        if ownership_ids != self.rewritten_selected_ids:
+            raise ValueError("ownership IDs differ from transformed projection")
+        rollback_ids = LineRanges.empty()
+        if isinstance(self.transformed_projection.rollback, RollbackSelection):
+            rollback_ids = (
+                self.transformed_projection.rollback.selection.display_ids.to_line_ranges()
+            )
+        if rollback_ids != self.rewritten_worktree_discard_ids:
+            raise ValueError("rollback IDs differ from transformed projection")
+
+    @property
+    def explicit_rewritten_prefix(self) -> LineSpan[RewrittenWorktreeSpace] | None:
+        if self.explicit_rewritten_prefix_start is None:
+            return None
+        return LineSpan(
+            LineBoundary(self.explicit_rewritten_prefix_start - 1),
+            LineBoundary(self.explicit_rewritten_prefix_end or self.explicit_rewritten_prefix_start),
+        )
 
 
 @dataclass(frozen=True)
@@ -166,7 +226,12 @@ def prepare_discard_line_replacement_selection(
     replacement_owned_prefix_count: int | None = None
     replacement_discard_prefix_context_count = 0
     try:
-        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+        with (
+            load_working_tree_file_as_buffer(line_changes.path) as working_lines,
+            read_git_object_buffer_or_empty(
+                f"HEAD:{line_changes.path}"
+            ) as baseline_lines,
+        ):
             original_working_line_count = len(working_lines)
             while True:
                 replacement_owned_prefix_count = None
@@ -251,6 +316,61 @@ def prepare_discard_line_replacement_selection(
                     uses_explicit_addition_span = False
                     continue
                 break
+            baseline_snapshot_for_plan = cast(
+                FileSnapshot[BaselineSpace],
+                content_snapshot(
+                    line_changes.path,
+                    baseline_lines,
+                    space=BaselineSpace,
+                ),
+            )
+            worktree_snapshot_for_plan = cast(
+                FileSnapshot[WorktreeSpace],
+                content_snapshot(
+                    line_changes.path,
+                    working_lines,
+                    space=WorktreeSpace,
+                ),
+            )
+            edit_plan = ReplacementEditPlan(
+                path=line_changes.path,
+                baseline_snapshot=baseline_snapshot_for_plan,
+                worktree_snapshot=worktree_snapshot_for_plan,
+                baseline_span=LineSpan(
+                    LineBoundary(baseline_start),
+                    LineBoundary(baseline_end),
+                ),
+                worktree_span=LineSpan(
+                    LineBoundary(replacement_start),
+                    LineBoundary(replacement_end),
+                ),
+            )
+            baseline_snapshot = cast(
+                FileSnapshot[DiffOldSpace],
+                content_snapshot(
+                    line_changes.path,
+                    baseline_lines,
+                    space=DiffOldSpace,
+                ),
+            )
+            working_snapshot = cast(
+                FileSnapshot[DiffNewSpace],
+                content_snapshot(
+                    line_changes.path,
+                    working_lines,
+                    space=DiffNewSpace,
+                ),
+            )
+            original_view = diff_view_identity(
+                line_changes,
+                old_snapshot=baseline_snapshot,
+                new_snapshot=working_snapshot,
+            )
+            original_selection = resolve_selection(
+                line_changes,
+                (DisplayLineId(line_id) for line_id in effective_ids),
+                view=original_view,
+            )
             rewritten_working_buffer = (
                 build_target_working_tree_buffer_with_replaced_lines(
                     line_changes,
@@ -274,13 +394,23 @@ def prepare_discard_line_replacement_selection(
         exit_with_error(str(error))
 
     with rewritten_working_buffer as rewritten_working_lines:
-        replacement_new_start, replacement_new_end = _rewritten_replacement_new_range(
-            line_changes,
-            effective_ids,
-            rewritten_working_lines,
-            original_working_line_count=original_working_line_count,
-            replacement_start=replacement_start,
-            replacement_end=replacement_end,
+        rewritten_snapshot = cast(
+            FileSnapshot[RewrittenWorktreeSpace],
+            content_snapshot(
+                line_changes.path,
+                rewritten_working_lines,
+                space=RewrittenWorktreeSpace,
+            ),
+        )
+        replacement_new_start, replacement_new_end = (
+            _rewritten_replacement_new_range(
+                line_changes,
+                effective_ids,
+                rewritten_working_lines,
+                original_working_line_count=original_working_line_count,
+                replacement_start=replacement_start,
+                replacement_end=replacement_end,
+            )
         )
         owned_replacement_new_end = replacement_new_end
         if replacement_owned_prefix_count is not None:
@@ -337,6 +467,36 @@ def prepare_discard_line_replacement_selection(
             rewritten_span_ids,
             rewritten_line_changes,
         )
+        rewritten_view = diff_view_identity(
+            rewritten_line_changes,
+            old_snapshot=baseline_snapshot,
+            new_snapshot=snapshot_as_role(
+                rewritten_snapshot,
+                DiffNewSpace,
+            ),
+        )
+        ownership_selection = resolve_selection(
+            rewritten_line_changes,
+            (
+                DisplayLineId(line_id)
+                for line_id in rewritten_selected_ids
+            ),
+            view=rewritten_view,
+        )
+        rollback = (
+            RollbackSelection(
+                resolve_selection(
+                    rewritten_line_changes,
+                    (
+                        DisplayLineId(line_id)
+                        for line_id in rewritten_worktree_discard_ids
+                    ),
+                    view=rewritten_view,
+                )
+            )
+            if rewritten_worktree_discard_ids
+            else NoRollback()
+        )
         explicit_replacement_parent = None
         if replacement_owned_prefix_count is not None and baseline_start < baseline_end:
             explicit_replacement_parent = ReplacementLineRun(
@@ -347,6 +507,18 @@ def prepare_discard_line_replacement_selection(
             )
         yield DiscardLineReplacementSelection(
             line_changes=line_changes,
+            transformed_projection=TransformedSelectionProjection(
+                original_selection=original_selection,
+                explicit_edit=edit_plan.bind_result(
+                    rewritten_snapshot,
+                    replacement_line_count=(
+                        replacement_new_end - replacement_new_start + 1
+                    ),
+                ),
+                rewritten_snapshot=rewritten_snapshot,
+                ownership_selection=ownership_selection,
+                rollback=rollback,
+            ),
             file_path=line_changes.path,
             working_file_path=working_file_path,
             rewritten_line_changes=rewritten_line_changes,
@@ -432,6 +604,7 @@ def add_discard_line_replacement_to_batch(
         create_batch(batch_name, "Auto-created")
 
     metadata = read_batch_metadata(batch_name)
+    metadata_revision = BatchMetadataRevision.from_metadata(metadata)
     file_metadata = metadata.get("files", {}).get(selection.file_path)
 
     with ExitStack() as ownership_stack:
@@ -442,7 +615,8 @@ def add_discard_line_replacement_to_batch(
             if _selection_may_need_parent_expansion(selection)
             else None
         )
-        batch_source_commit: str | None
+        batch_source_commit: str
+        bound_ownership: SourceBoundOwnership
         try:
             if file_metadata is None:
                 batch_source_commit = create_batch_source_commit(
@@ -468,16 +642,23 @@ def add_discard_line_replacement_to_batch(
                         f"{batch_baseline_commit}:{selection.file_path}"
                     )
                 )
-                with _temporarily_refresh_rewritten_source_lines(
+                with _acquire_rewritten_source_projection(
                     selection,
-                    map_working_line=lambda line_number: line_number,
-                ):
+                    source_lines=selection.rewritten_working_lines,
+                    transform=IdentitySourceCoordinates(),
+                ) as source_projection:
                     ownership = _translate_rewritten_selection_ownership(
                         selection,
                         baseline_lines=reference_source_lines,
                         original_working_lines=original_working_lines,
                         rewritten_lines=selection.rewritten_working_lines,
                         exact_presence_range=(_explicit_owned_prefix_range(selection)),
+                        source_projection=source_projection,
+                    )
+                    _refine_presence_references_from_source_content(
+                        ownership,
+                        selection.rewritten_working_lines,
+                        reference_source_lines,
                     )
                 translate_ownership_baseline_references(
                     ownership,
@@ -501,8 +682,16 @@ def add_discard_line_replacement_to_batch(
                         presence_range=explicit_presence_range,
                         alternative_range=explicit_alternative_range,
                     )
+                bound_ownership = SourceBoundOwnership(
+                    content_snapshot(
+                        selection.file_path,
+                        selection.rewritten_working_lines,
+                        space=BatchSourceSpace,
+                    ),
+                    ownership,
+                )
             else:
-                ownership, batch_source_commit = _merge_replacement_with_batch(
+                bound_ownership, batch_source_commit = _merge_replacement_with_batch(
                     selection,
                     file_metadata=file_metadata,
                     batch_baseline_commit=metadata.get("baseline"),
@@ -524,12 +713,13 @@ def add_discard_line_replacement_to_batch(
             )
 
         snapshot_file_if_untracked(selection.file_path)
-        add_file_to_batch(
+        add_source_bound_file_to_batch(
             batch_name,
             selection.file_path,
-            ownership,
+            bound_ownership,
             detect_file_mode(selection.file_path),
             batch_source_commit=batch_source_commit,
+            expected_metadata_revision=metadata_revision,
         )
 
 
@@ -540,7 +730,7 @@ def _merge_replacement_with_batch(
     batch_baseline_commit: str | None,
     original_working_lines: LineBuffer | None,
     ownership_stack: ExitStack,
-) -> tuple[BatchOwnership, str]:
+) -> tuple[SourceBoundOwnership, str]:
     if not isinstance(batch_baseline_commit, str) or not batch_baseline_commit:
         raise ValueError("replacement update requires a batch baseline commit")
 
@@ -578,13 +768,13 @@ def _merge_replacement_with_batch(
             ownership=existing_ownership,
             lineage=source_with_provenance.lineage,
         )
-        with _temporarily_refresh_rewritten_source_lines(
+        with _acquire_rewritten_source_projection(
             selection,
-            map_working_line=source_with_provenance.lineage.translate_working_line,
-            map_existing_source_line=(
-                source_with_provenance.lineage.translate_source_line
+            source_lines=source_with_provenance.source_buffer,
+            transform=ExactLineageSourceCoordinates(
+                source_with_provenance.lineage
             ),
-        ):
+        ) as source_projection:
             exact_prefix_range = _exact_owned_prefix_source_range(
                 selection,
                 source_with_provenance.source_buffer,
@@ -616,6 +806,12 @@ def _merge_replacement_with_batch(
                 original_working_lines=original_working_lines,
                 rewritten_lines=selection.rewritten_working_lines,
                 exact_presence_range=exact_prefix_range,
+                source_projection=source_projection,
+            )
+            _refine_presence_references_from_source_content(
+                new_ownership,
+                source_with_provenance.source_buffer,
+                reference_source_lines,
             )
         translate_ownership_baseline_references(
             new_ownership,
@@ -640,7 +836,17 @@ def _merge_replacement_with_batch(
         )
         _record_session_batch_source(selection.file_path, batch_source_commit)
         return (
-            merge_batch_ownership(remapped_existing_ownership, new_ownership),
+            SourceBoundOwnership(
+                content_snapshot(
+                    selection.file_path,
+                    source_with_provenance.source_buffer,
+                    space=BatchSourceSpace,
+                ),
+                merge_batch_ownership(
+                    remapped_existing_ownership,
+                    new_ownership,
+                ),
+            ),
             batch_source_commit,
         )
 
@@ -651,50 +857,105 @@ def _record_session_batch_source(file_path: str, batch_source_commit: str) -> No
     save_session_batch_sources(batch_sources)
 
 
+def _refine_presence_references_from_source_content(
+    ownership: BatchOwnership,
+    source_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> None:
+    normalized_baseline = normalize_line_sequence_endings(baseline_lines)
+
+    baseline_positions: dict[bytes, list[int]] = {}
+    for bl_idx, bl_content in enumerate(normalized_baseline):
+        baseline_positions.setdefault(bl_content, []).append(bl_idx)
+
+    for claim in ownership.presence_claims:
+        for source_line in list(claim.baseline_references):
+            if source_line <= 1:
+                continue
+            ref = claim.baseline_references[source_line]
+            current_after = ref.after_line or 0
+
+            preceding_content = normalize_line_sequence_endings(
+                [bytes(source_lines[source_line - 2])]
+            )[0]
+
+            positions = baseline_positions.get(preceding_content)
+            if positions is None:
+                continue
+
+            insert_point = bisect_left(positions, current_after)
+            if insert_point >= len(positions):
+                continue
+            best_match = positions[insert_point] + 1
+
+            if best_match <= current_after:
+                continue
+
+            position = best_match
+            new_after = position or None
+            new_before = (
+                position + 1 if position < len(baseline_lines) else None
+            )
+            claim.baseline_references[source_line] = BaselineReference(
+                after_line=new_after,
+                after_content=(
+                    bytes(baseline_lines[new_after - 1])
+                    if new_after is not None
+                    else None
+                ),
+                has_after_line=True,
+                before_line=new_before,
+                before_content=(
+                    bytes(baseline_lines[new_before - 1])
+                    if new_before is not None
+                    else None
+                ),
+                has_before_line=True,
+            )
+
+
 @contextmanager
-def _temporarily_refresh_rewritten_source_lines(
+def _acquire_rewritten_source_projection(
     selection: DiscardLineReplacementSelection,
     *,
-    map_working_line: Callable[[int], int | None],
-    map_existing_source_line: Callable[[int], int | None] | None = None,
-) -> Iterator[None]:
-    """Refresh selected source coordinates with storage-backed restoration."""
+    source_lines: LineBuffer,
+    transform: SourceCoordinateTransform,
+) -> Iterator[SourceCoordinateProjection]:
+    """Build an immutable selected-row projection into one exact source."""
     coordinate_lines = selection.rewritten_line_changes.lines
-    selected_ranges = selection.rewritten_selected_ids.ranges()
-    selected_range_index = 0
-    with MappedRecordVector(len(coordinate_lines), "QQ") as original_coordinates:
-        try:
-            for index, (line, source_line) in enumerate(
-                translate_display_source_coordinates(
-                    coordinate_lines,
-                    map_working_line,
-                    map_existing_source_line=map_existing_source_line,
-                )
-            ):
-                if line.id is None:
-                    continue
-                selected_range_index, line_is_selected = (
-                    _advance_ordered_range_membership(
-                        selected_ranges,
-                        selected_range_index,
-                        line.id,
-                    )
-                )
-                if not line_is_selected:
-                    continue
-                original_coordinates.append(
-                    (
-                        index,
-                        0 if line.source_line is None else line.source_line + 1,
-                    )
-                )
-                line.source_line = source_line
-            yield
-        finally:
-            for index, encoded_source_line in original_coordinates:
-                coordinate_lines[index].source_line = (
-                    encoded_source_line - 1 if encoded_source_line > 0 else None
-                )
+    source_snapshot = cast(
+        FileSnapshot[BatchSourceSpace],
+        content_snapshot(
+            selection.file_path,
+            source_lines,
+            space=BatchSourceSpace,
+        ),
+    )
+
+    def projected_pairs() -> Iterator[tuple[DisplayLineId, int | None]]:
+        for line, source_line in translate_display_source_coordinates(
+            coordinate_lines,
+            transform,
+        ):
+            if line.id is None:
+                continue
+            yield DisplayLineId(line.id), source_line
+
+    def resolve_anonymous_row(new_line_number: int | None) -> int | None:
+        if new_line_number is None:
+            return None
+        return transform.translate_working_line(new_line_number)
+
+    with SourceCoordinateProjection.from_pairs(
+        view_identity=(
+            selection.transformed_projection.ownership_selection.view.renderer_identity
+        ),
+        source_snapshot=source_snapshot,
+        pairs=projected_pairs(),
+        capacity=len(coordinate_lines),
+        anonymous_row_resolver=resolve_anonymous_row,
+    ) as projection:
+        yield projection
 
 
 def _translate_rewritten_selection_ownership(
@@ -704,8 +965,12 @@ def _translate_rewritten_selection_ownership(
     original_working_lines: LineBuffer | None,
     rewritten_lines: LineBuffer,
     exact_presence_range: tuple[int, int] | None = None,
+    source_projection: SourceCoordinateProjection,
 ) -> BatchOwnership:
     """Translate the selected rewritten rows with full-hunk provenance."""
+    source_projection.require_view(
+        selection.transformed_projection.ownership_selection.view.renderer_identity
+    )
     expanded_parents = _expanded_selected_replacement_parents(
         selection,
         baseline_lines=baseline_lines,
@@ -725,15 +990,16 @@ def _translate_rewritten_selection_ownership(
         selection.rewritten_line_changes.lines,
         selected_ids,
         replacement_line_runs=replacement_runs,
-        replacement_origin_source_lines=baseline_lines,
-        replacement_runs_are_origin_runs=True,
+        replacement_origin=SameStreamReplacementOrigin(baseline_lines),
         baseline_lines=baseline_lines,
+        source_projection=source_projection,
     )
     ownership = _add_expanded_replacement_parents(
         ownership,
         selection=selection,
         expanded_parents=expanded_parents,
         baseline_lines=baseline_lines,
+        source_projection=source_projection,
     )
     if selection.discard_exact_rewritten_prefix and (
         exact_presence_range is None
@@ -1565,9 +1831,8 @@ def _merged_explicit_replacement_parent(
     explicit_parent = selection.explicit_replacement_parent
     if explicit_parent is None:
         return None
-    prefix_start = selection.explicit_rewritten_prefix_start
-    prefix_end = selection.explicit_rewritten_prefix_end
-    if prefix_start is None or prefix_end is None:
+    prefix = selection.explicit_rewritten_prefix
+    if prefix is None:
         raise ValueError("explicit replacement prefix has no rewritten range")
 
     old_start = explicit_parent.old_start
@@ -1605,7 +1870,7 @@ def _merged_explicit_replacement_parent(
         elif (
             line.kind == "+"
             and line.new_line_number is not None
-            and prefix_start <= line.new_line_number <= prefix_end
+            and prefix.start.offset < line.new_line_number <= prefix.end.offset
         ):
             addition_builder.add_line(line_id)
 
@@ -1834,6 +2099,7 @@ def _add_expanded_replacement_parents(
     selection: DiscardLineReplacementSelection,
     expanded_parents: tuple[_ExpandedReplacementParent, ...],
     baseline_lines: LineBuffer,
+    source_projection: SourceCoordinateProjection,
 ) -> BatchOwnership:
     """Add full semantic-parent absence claims without dropping other units."""
     deletions = list(ownership.deletions)
@@ -1841,6 +2107,10 @@ def _add_expanded_replacement_parents(
     hunk_index = 0
     anchor_hunk_index = 0
     hunk_lines = selection.rewritten_line_changes.lines
+
+    def source_line_for(line: LineEntry) -> int | None:
+        return source_projection.source_line_for(line)
+
     for expanded_parent in expanded_parents:
         deletion_first = expanded_parent.rewritten_deletion_ids.first()
         addition_first = expanded_parent.rewritten_addition_ids.first()
@@ -1896,10 +2166,11 @@ def _add_expanded_replacement_parents(
             )
             if line_is_deletion:
                 if not found_deletion:
-                    deletion_anchor = line.source_line
+                    deletion_anchor = source_line_for(line)
                     found_deletion = True
-            if line_is_addition and line.source_line is not None:
-                presence_builder.add_line(line.source_line)
+            source_line = source_line_for(line)
+            if line_is_addition and source_line is not None:
+                presence_builder.add_line(source_line)
             hunk_index += 1
         parent = expanded_parent.parent
         if not found_deletion:
@@ -1911,8 +2182,9 @@ def _add_expanded_replacement_parents(
                     continue
                 if old_line_number > parent.old_end:
                     break
-                if line.source_line is not None:
-                    deletion_anchor = line.source_line
+                source_line = source_line_for(line)
+                if source_line is not None:
+                    deletion_anchor = source_line
                     found_deletion = True
                     break
                 anchor_hunk_index += 1

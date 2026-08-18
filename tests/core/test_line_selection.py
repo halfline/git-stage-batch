@@ -415,6 +415,18 @@ class TestLineRanges:
 
         assert selection.nearest_unselected_at_or_before(line_number) == expected
 
+    def test_subset_check_uses_normalized_range_coverage(self):
+        superset = LineRanges.from_ranges([(1, 10), (20, 30)])
+
+        assert LineRanges.from_ranges([(2, 4), (22, 29)]).is_subset_of(superset)
+        assert not LineRanges.from_ranges([(2, 4), (11, 11)]).is_subset_of(
+            superset
+        )
+        assert LineRanges.empty().is_subset_of(superset)
+        assert not LineRanges.from_ranges([(1, 1)]).is_subset_of(
+            LineRanges.empty()
+        )
+
     def test_formats_ranges_without_line_expansion(self):
         selection = LineRanges.from_ranges([(10, 12), (1, 3), (4, 5)])
 

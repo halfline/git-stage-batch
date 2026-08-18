@@ -300,6 +300,51 @@ ALLOWED_FINDINGS = (
         "readable",
         "Method implements the RawIOBase protocol queried by io.BufferedReader.",
     ),
+    # Canonical architecture APIs and compatibility adapters. These are public
+    # migration seams even when the repository's production callers currently
+    # use only one side of the adapter.
+    _allowed(
+        "src/git_stage_batch/core/selection_geometry.py",
+        "method",
+        "from_unordered_values",
+        "Public DisplayIdRanges constructor used by callers with unsorted IDs.",
+    ),
+    _allowed(
+        "src/git_stage_batch/batch/line_matching/transforms.py",
+        "function",
+        "compose_exact_transforms",
+        "Public constructor validates composition of exact transform endpoints.",
+    ),
+    _allowed(
+        "src/git_stage_batch/batch/line_matching/transforms.py",
+        "method",
+        "prove_unique_placement",
+        "Public structural-evidence API is consumed by external domain callers.",
+    ),
+    _allowed(
+        "src/git_stage_batch/batch/merge/merge.py",
+        "function",
+        "merge_batch_file_state_as_buffer",
+        "Canonical source-bound merge entry point is a public migration seam.",
+    ),
+    _allowed(
+        "src/git_stage_batch/batch/discard.py",
+        "function",
+        "discard_batch_file_state_as_buffer",
+        "Canonical source-bound discard entry point is a public migration seam.",
+    ),
+    _allowed(
+        "src/git_stage_batch/staging/content_buffers.py",
+        "function",
+        "build_target_index_buffer_with_replaced_lines",
+        "Compatibility staging adapter remains available during edit-plan migration.",
+    ),
+    _allowed(
+        "src/git_stage_batch/staging/content_buffers.py",
+        "function",
+        "build_target_working_tree_buffer_with_edit_plan",
+        "Snapshot-bound worktree adapter remains available during edit-plan migration.",
+    ),
 )
 
 

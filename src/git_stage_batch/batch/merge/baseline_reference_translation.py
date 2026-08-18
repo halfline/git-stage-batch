@@ -364,7 +364,7 @@ def _translate_deletion_references(
             target_lines,
             mapping,
         )
-        _apply_translated_deletion(
+        ownership.deletions[deletion_index] = _translated_deletion(
             deletion,
             content_lines,
             target_lines,
@@ -372,27 +372,38 @@ def _translate_deletion_references(
         )
 
 
-def _apply_translated_deletion(
+def _translated_deletion(
     deletion: AbsenceClaim,
     content_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
     translated: tuple[BaselineReference, int] | None,
-) -> None:
-    """Apply a projected reference and target-baseline removal content."""
+) -> AbsenceClaim:
+    """Return projected reference and target-baseline removal content."""
     if translated is None:
-        deletion.baseline_reference = None
-        return
+        return AbsenceClaim(
+            anchor=deletion.anchor,
+            content_lines=deletion.content_lines,
+            baseline_reference=None,
+            source_alternative=deletion.source_alternative,
+        )
 
-    deletion.baseline_reference, target_position = translated
+    baseline_reference, target_position = translated
+    translated_content = deletion.content_lines
     if any(
         target_lines[target_position + offset] != content
         for offset, content in enumerate(content_lines)
     ):
-        deletion.content_lines = build_absence_content_from_range(
+        translated_content = build_absence_content_from_range(
             target_lines,
             target_position,
             target_position + len(content_lines),
         )
+    return AbsenceClaim(
+        anchor=deletion.anchor,
+        content_lines=translated_content,
+        baseline_reference=baseline_reference,
+        source_alternative=deletion.source_alternative,
+    )
 
 
 def _translate_deletion_from_origin_offset(
@@ -478,7 +489,7 @@ def _translate_origin_backed_deletion_references(
                     origin,
                     target_lines,
                 )
-            _apply_translated_deletion(
+            ownership.deletions[deletion_index] = _translated_deletion(
                 deletion,
                 content_lines,
                 target_lines,

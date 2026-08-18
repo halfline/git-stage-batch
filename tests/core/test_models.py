@@ -32,6 +32,14 @@ class TestHunkHeader:
         assert header1 == header2
         assert header1 != header3
 
+    def test_hunk_header_rejects_noninteger_coordinates(self):
+        with pytest.raises(ValueError, match="must be integers"):
+            HunkHeader(True, 1, 1, 1)  # type: ignore[arg-type]
+
+    def test_hunk_header_rejects_negative_coordinates(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            HunkHeader(-1, 1, 1, 1)
+
     def test_remaining_body_counts(self):
         """Hunk headers report independent old- and new-side counts."""
         header = HunkHeader(10, 5, 15, 7)
@@ -78,6 +86,38 @@ class TestLineEntry:
 
         assert line.text_bytes == b"caf\xe9"
         assert line.display_text() == "caf\ufffd"
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("id", 0),
+            ("id", True),
+            ("old_line_number", -1),
+            ("new_line_number", -1),
+            ("source_line", False),
+        ],
+    )
+    def test_line_entry_rejects_invalid_numeric_coordinates(
+        self,
+        field: str,
+        value: object,
+    ) -> None:
+        arguments: dict[str, object] = {
+            "id": 1,
+            "kind": "+",
+            "old_line_number": None,
+            "new_line_number": 1,
+            "text_bytes": b"line",
+        }
+        arguments[field] = value
+
+        with pytest.raises(ValueError, match="positive|non-negative"):
+            LineEntry(**arguments)  # type: ignore[arg-type]
+
+    def test_line_entry_accepts_git_empty_side_coordinate(self) -> None:
+        """Rendered rows preserve Git's zero coordinate sentinel."""
+        line = LineEntry(None, " ", 0, 1, text_bytes=b"line")
+
+        assert line.old_line_number == 0
 
 
 class TestBinaryFileChange:

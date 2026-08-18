@@ -23,6 +23,7 @@ from git_stage_batch.batch.ownership.claims import PresenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import (
+    LegacyReplacementUnitOrigin,
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
@@ -470,14 +471,8 @@ def test_discard_does_not_anchor_partial_replacement_origin_trailing_line():
     "origin",
     [
         cast(ReplacementUnitOrigin, {}),
-        ReplacementUnitOrigin(
-            old_start=0,
-            old_end=0,
-            new_start=0,
-            new_end=0,
-        ),
     ],
-    ids=["wrong-type", "non-positive-coordinates"],
+    ids=["wrong-type"],
 )
 def test_discard_does_not_trust_malformed_replacement_origin(origin):
     """Malformed origin metadata cannot authorize a trailing-edge anchor."""
@@ -498,11 +493,26 @@ def test_discard_does_not_trust_malformed_replacement_origin(origin):
             )
         ],
         replacement_units=[
-            ReplacementUnit(["2"], [0], origin=origin),
+            ReplacementUnit(
+                ["2"],
+                [0],
+                origin_evidence=LegacyReplacementUnitOrigin(origin),
+            ),
         ],
     )
 
     assert _discard_anchor_pairs(source, baseline, ownership) == ((1, 1),)
+
+
+def test_current_replacement_origin_rejects_non_positive_coordinates():
+    """Malformed current provenance fails at the canonical boundary."""
+    with pytest.raises(ValueError, match="invalid old span"):
+        ReplacementUnitOrigin(
+            old_start=0,
+            old_end=0,
+            new_start=0,
+            new_end=0,
+        )
 
 
 def test_baseline_coordinates_anchor_exact_realization_target():

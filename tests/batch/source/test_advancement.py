@@ -19,7 +19,11 @@ from git_stage_batch.batch.ownership.translation import (
     translate_lines_to_batch_ownership,
 )
 from git_stage_batch.batch.ownership.references import BaselineReference
-from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.replacement_units import (
+    NoReplacementUnitOrigin,
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from git_stage_batch.batch.source.advancement import (
     BatchSourceAdvanceError,
     advance_batch_source_for_file_with_provenance,

@@ -8,7 +8,12 @@ import git_stage_batch.batch.file_mergeability as file_mergeability_module
 from git_stage_batch.batch.file_mergeability import probe_batch_file_mergeability
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
-from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.replacement_units import (
+    LegacyReplacementUnitOrigin,
+    NoReplacementUnitOrigin,
+    ReplacementUnit,
+    ReplacementUnitOriginEvidence,
+)
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.unit_types import OwnershipUnit, OwnershipUnitKind
 from git_stage_batch.core.line_selection import LineRanges
@@ -28,7 +33,11 @@ class _LineContext:
 @dataclass
 class _Unit:
     display_line_ids: LineRanges
-    replacement_origin: object | None = None
+    replacement_origin_evidence: ReplacementUnitOriginEvidence = None
+
+    def __post_init__(self):
+        if self.replacement_origin_evidence is None:
+            self.replacement_origin_evidence = NoReplacementUnitOrigin()
 
 
 class _OwnershipForUnit:
@@ -179,7 +188,7 @@ def test_probe_legacy_replacement_uses_trusted_target(monkeypatch):
     """Legacy replacements may require the index lineage to prove relocation."""
     ownership = BatchOwnership.from_presence_lines(
         ["1"],
-        [AbsenceClaim(anchor_line=0, content_lines=[b"old\n"])],
+        [AbsenceClaim(anchor_line=None, content_lines=[b"old\n"])],
         replacement_units=[ReplacementUnit(["1"], [0])],
     )
     unit = _Unit(LineRanges.from_ranges(((1, 1),)))
@@ -478,3 +487,75 @@ def test_composite_probe_skips_repeated_replacement_normalization(
     assert result.mergeable_selection_groups == (
         LineRanges.from_ranges(((1, unit_count),)),
     )
+
+
+def test_probe_treats_legacy_absent_origin_as_independent(monkeypatch):
+    """Loaded no-origin units must not form false composite groups."""
+    legacy_none = LegacyReplacementUnitOrigin(None)
+    units = [
+        _Unit(LineRanges.from_ranges([(1, 1)]), legacy_none),
+        _Unit(LineRanges.from_ranges([(2, 2)]), legacy_none),
+    ]
+    checked_groups = []
+
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "load_working_tree_file_as_buffer",
+        lambda _path: _LineContext([b"one\n", b"two\n"]),
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "read_git_object_buffer_or_none",
+        lambda _spec: None,
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "match_lines",
+        lambda _source, _target: _LineContext("mapping"),
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "build_ownership_units_from_display_lines",
+        lambda _ownership, _display: units,
+    )
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "validate_ownership_units",
+        lambda _units: None,
+    )
+
+    class _GroupOwnership:
+        def __init__(self, selected, *, normalize_replacement_metadata):
+            self.units = tuple(selected)
+
+        def is_empty(self):
+            return False
+
+    monkeypatch.setattr(
+        file_mergeability_module,
+        "rebuild_ownership_from_units",
+        _GroupOwnership,
+    )
+
+    def can_merge(_source, selected, _working, **_options):
+        checked_groups.append(selected.units)
+        return False
+
+    monkeypatch.setattr(
+        file_mergeability_module.batch_merge,
+        "can_merge_batch_from_line_sequences",
+        can_merge,
+    )
+
+    result = probe_batch_file_mergeability(
+        file_path="file.txt",
+        ownership=BatchOwnership.from_presence_lines(["1-2"], []),
+        display_lines=[
+            {"id": 1, "type": "claimed"},
+            {"id": 2, "type": "claimed"},
+        ],
+        batch_source_lines=[b"one\n", b"two\n"],
+    )
+
+    assert checked_groups == [(units[0],), (units[1],)]
+    assert result.mergeable_selection_groups == ()

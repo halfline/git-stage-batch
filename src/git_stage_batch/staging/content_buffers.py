@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Iterator, Sequence
-from typing import overload
+from typing import cast, overload
 
+from ..core.coordinates import (
+    BaselineSpace,
+    FileSnapshot,
+    LineBoundary,
+    LineSpan,
+    WorktreeSpace,
+    content_snapshot,
+    require_same_snapshot,
+)
+from ..core.edit_plan import ReplacementEditPlan
 from ..core.models import LineEntry, LineLevelChange
 from ..core.repeated_context_replacement import (
     find_repeated_context_suffix_replacement,
@@ -448,6 +458,21 @@ def replacement_working_tree_span_indices(
         replace_ids,
         allow_incomplete_addition_span=allow_incomplete_addition_span,
     )
+    return _replacement_working_tree_span_from_display_span(
+        line_changes,
+        span_start_index,
+        span_end_index,
+        working_line_count,
+    )
+
+
+def _replacement_working_tree_span_from_display_span(
+    line_changes: LineLevelChange,
+    span_start_index: int,
+    span_end_index: int,
+    working_line_count: int,
+) -> tuple[int, int]:
+    """Translate one validated display span into worktree geometry."""
 
     def next_new_line_number(start_index: int) -> int | None:
         for line_index in range(start_index, len(line_changes.lines)):
@@ -514,11 +539,11 @@ def replacement_baseline_span_indices(
         replace_ids,
         allow_incomplete_addition_span=allow_incomplete_addition_span,
     )
-    working_start, working_end = replacement_working_tree_span_indices(
+    working_start, working_end = _replacement_working_tree_span_from_display_span(
         line_changes,
-        replace_ids,
+        span_start_index,
+        span_end_index,
         working_line_count,
-        allow_incomplete_addition_span=allow_incomplete_addition_span,
     )
     baseline_start = _old_index_for_new_anchor(
         line_changes,
@@ -531,6 +556,63 @@ def replacement_baseline_span_indices(
         span_end_index + 1,
     )
     return baseline_start, max(baseline_start, baseline_end)
+
+
+def resolve_replacement_edit_plan(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    baseline_lines: Sequence[bytes],
+    worktree_lines: Sequence[bytes],
+) -> ReplacementEditPlan:
+    """Resolve display selection geometry once at the staging boundary."""
+    span_start_index, span_end_index = _replacement_selection_span_indices(
+        line_changes,
+        replace_ids,
+    )
+    working_start, working_end = _replacement_working_tree_span_from_display_span(
+        line_changes,
+        span_start_index,
+        span_end_index,
+        len(worktree_lines),
+    )
+    baseline_start = _old_index_for_new_anchor(
+        line_changes,
+        working_start,
+        span_start_index,
+    )
+    baseline_end = _old_index_for_new_anchor(
+        line_changes,
+        working_end,
+        span_end_index + 1,
+    )
+    baseline_end = max(baseline_start, baseline_end)
+    return ReplacementEditPlan(
+        path=line_changes.path,
+        baseline_snapshot=cast(
+            FileSnapshot[BaselineSpace],
+            content_snapshot(
+                line_changes.path,
+                baseline_lines,
+                space=BaselineSpace,
+            ),
+        ),
+        worktree_snapshot=cast(
+            FileSnapshot[WorktreeSpace],
+            content_snapshot(
+                line_changes.path,
+                worktree_lines,
+                space=WorktreeSpace,
+            ),
+        ),
+        baseline_span=LineSpan(
+            LineBoundary(baseline_start),
+            LineBoundary(baseline_end),
+        ),
+        worktree_span=LineSpan(
+            LineBoundary(working_start),
+            LineBoundary(working_end),
+        ),
+    )
 
 
 def _old_index_for_new_anchor(
@@ -702,6 +784,32 @@ def build_target_index_buffer_with_replaced_lines(
         )
 
 
+def build_target_index_buffer_with_edit_plan(
+    edit_plan: ReplacementEditPlan,
+    replacement_text: str | ReplacementPayload,
+    base_lines: Sequence[bytes],
+    *,
+    base_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool = True,
+) -> LineBuffer:
+    """Apply a pre-resolved, snapshot-bound baseline replacement plan."""
+    require_same_snapshot(
+        edit_plan.baseline_snapshot,
+        content_snapshot(edit_plan.path, base_lines, space=BaselineSpace),
+    )
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    with replacement_line_bodies(replacement_payload) as replacement_lines:
+        return _build_target_index_buffer_with_replacement_span(
+            edit_plan.baseline_span.start.offset,
+            edit_plan.baseline_span.end.offset,
+            replacement_payload,
+            replacement_lines,
+            base_lines,
+            base_has_trailing_newline=base_has_trailing_newline,
+            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        )
+
+
 def _build_target_index_buffer_with_replaced_lines(
     line_changes: LineLevelChange,
     replace_ids: set[int],
@@ -782,6 +890,30 @@ def _build_target_index_buffer_with_replaced_lines(
             break
     else:
         replace_end = replace_start
+
+    return _build_target_index_buffer_with_replacement_span(
+        replace_start,
+        replace_end,
+        replacement_payload,
+        replacement_lines,
+        base_lines,
+        base_has_trailing_newline=base_has_trailing_newline,
+        trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+    )
+
+
+def _build_target_index_buffer_with_replacement_span(
+    replace_start: int,
+    replace_end: int,
+    replacement_payload: ReplacementPayload,
+    replacement_lines: Sequence[bytes],
+    base_lines: Sequence[bytes],
+    *,
+    base_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool,
+) -> LineBuffer:
+    """Build indexed content from canonical half-open replacement geometry."""
+    base_line_count = len(base_lines)
 
     if trim_unchanged_edge_anchors:
         context_limit = len(replacement_lines)
@@ -1024,6 +1156,32 @@ def build_target_working_tree_buffer_with_replaced_lines(
         )
 
 
+def build_target_working_tree_buffer_with_edit_plan(
+    edit_plan: ReplacementEditPlan,
+    replacement_text: str | ReplacementPayload,
+    working_lines: Sequence[bytes],
+    *,
+    working_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool = True,
+) -> LineBuffer:
+    """Apply a pre-resolved, snapshot-bound worktree replacement plan."""
+    require_same_snapshot(
+        edit_plan.worktree_snapshot,
+        content_snapshot(edit_plan.path, working_lines, space=WorktreeSpace),
+    )
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    with replacement_line_bodies(replacement_payload) as replacement_lines:
+        return _build_target_working_tree_buffer_with_replacement_span(
+            edit_plan.worktree_span.start.offset,
+            edit_plan.worktree_span.end.offset,
+            replacement_payload,
+            replacement_lines,
+            working_lines,
+            working_has_trailing_newline=working_has_trailing_newline,
+            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        )
+
+
 def _build_target_working_tree_buffer_with_replaced_lines(
     line_changes: LineLevelChange,
     replace_ids: set[int],
@@ -1056,6 +1214,31 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         working_line_count,
         allow_incomplete_addition_span=(preserved_replacement_prefix_count > 0),
     )
+    return _build_target_working_tree_buffer_with_replacement_span(
+        replace_start,
+        replace_end,
+        replacement_payload,
+        replacement_lines,
+        working_lines,
+        working_has_trailing_newline=working_has_trailing_newline,
+        trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        preserved_replacement_prefix_count=preserved_replacement_prefix_count,
+    )
+
+
+def _build_target_working_tree_buffer_with_replacement_span(
+    replace_start: int,
+    replace_end: int,
+    replacement_payload: ReplacementPayload,
+    replacement_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    *,
+    working_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool,
+    preserved_replacement_prefix_count: int = 0,
+) -> LineBuffer:
+    """Build working content from canonical half-open replacement geometry."""
+    working_line_count = len(working_lines)
 
     if trim_unchanged_edge_anchors:
         context_limit = len(replacement_lines)

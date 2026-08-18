@@ -287,6 +287,80 @@ class DisplayIdRanges:
         return own_index == len(own_ranges)
 
 
+@dataclass(frozen=True, slots=True)
+class Insertion:
+    """A semantic insertion at an old-snapshot boundary."""
+
+    old_boundary: LineBoundary[DiffOldSpace]
+    new_span: LineSpan[DiffNewSpace]
+    content: ExactContentWitness
+
+    def __post_init__(self) -> None:
+        if len(self.new_span) != len(self.content):
+            raise ValueError("insertion content does not match its new span")
+        if self.old_boundary.offset < 0:
+            raise ValueError("insertion boundary must be non-negative")
+
+
+@dataclass(frozen=True, slots=True)
+class Deletion:
+    """A semantic deletion ending at a new-snapshot boundary."""
+
+    old_span: LineSpan[DiffOldSpace]
+    new_boundary: LineBoundary[DiffNewSpace]
+    content: ExactContentWitness
+
+    def __post_init__(self) -> None:
+        if len(self.old_span) != len(self.content):
+            raise ValueError("deletion content does not match its old span")
+        if self.new_boundary.offset < 0:
+            raise ValueError("deletion boundary must be non-negative")
+
+
+@dataclass(frozen=True, slots=True)
+class Replacement:
+    """A semantic replacement with exact old and new byte sequences."""
+
+    old_span: LineSpan[DiffOldSpace]
+    new_span: LineSpan[DiffNewSpace]
+    old_content: ExactContentWitness
+    new_content: ExactContentWitness
+
+    def __post_init__(self) -> None:
+        if len(self.old_span) != len(self.old_content):
+            raise ValueError("replacement old content does not match its span")
+        if len(self.new_span) != len(self.new_content):
+            raise ValueError("replacement new content does not match its span")
+
+
+ChangeUnit = Union[Insertion, Deletion, Replacement]
+
+
+@dataclass(frozen=True, slots=True)
+class FileDiff:
+    """Semantic change units between two exact file snapshots."""
+
+    view: DiffViewIdentity
+    change_units: tuple[ChangeUnit, ...]
+
+    def __post_init__(self) -> None:
+        for unit in self.change_units:
+            if isinstance(unit, Insertion):
+                if unit.old_boundary.offset > self.view.old_snapshot.line_count:
+                    raise ValueError("insertion boundary is outside its snapshot")
+                if unit.new_span.end.offset > self.view.new_snapshot.line_count:
+                    raise ValueError("insertion span is outside its snapshot")
+            elif isinstance(unit, Deletion):
+                if unit.old_span.end.offset > self.view.old_snapshot.line_count:
+                    raise ValueError("deletion span is outside its snapshot")
+                if unit.new_boundary.offset > self.view.new_snapshot.line_count:
+                    raise ValueError("deletion boundary is outside its snapshot")
+            elif (
+                unit.old_span.end.offset > self.view.old_snapshot.line_count
+                or unit.new_span.end.offset > self.view.new_snapshot.line_count
+            ):
+                raise ValueError("replacement span is outside its snapshot")
+
 
 def diff_view_identity(
     line_changes: LineLevelChange,
@@ -328,7 +402,276 @@ def diff_view_identity(
         new_snapshot,
         SnapshotIdentity("diff-view-sha256", digest.hexdigest()),
         line_changes,
-        getattr(line_changes, "rendered_rows_revision", None),
+        line_changes.rendered_rows_revision,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedSelection:
+    """A display selection resolved once into immutable semantic geometry.
+
+    Display IDs remain only as an audit witness.  Domain consumers use the
+    snapshot-bound spans and semantic change units instead.
+    """
+
+    file_diff: FileDiff
+    display_ids: DisplayIdRanges
+    old_spans: SnapshotSpans[DiffOldSpace]
+    new_spans: SnapshotSpans[DiffNewSpace]
+
+    @property
+    def view(self) -> DiffViewIdentity:
+        """Return the endpoint and renderer identity for compatibility."""
+        return self.file_diff.view
+
+    @property
+    def change_units(self) -> tuple[ChangeUnit, ...]:
+        """Return the semantic units retained by the file diff."""
+        return self.file_diff.change_units
+
+    def __post_init__(self) -> None:
+        if self.old_spans.snapshot != self.file_diff.view.old_snapshot:
+            raise ValueError("old selection spans do not belong to the diff view")
+        if self.new_spans.snapshot != self.file_diff.view.new_snapshot:
+            raise ValueError("new selection spans do not belong to the diff view")
+        if not self.display_ids:
+            raise ValueError("resolved selection must not be empty")
+        if not self.file_diff.change_units:
+            raise ValueError("resolved selection must contain semantic units")
+
+        if not _ranges_equal(
+            self.old_spans.ranges.ranges(),
+            _semantic_unit_ranges(self.file_diff.change_units, old_side=True),
+        ):
+            raise ValueError("semantic units differ from selected old spans")
+        if not _ranges_equal(
+            self.new_spans.ranges.ranges(),
+            _semantic_unit_ranges(self.file_diff.change_units, old_side=False),
+        ):
+            raise ValueError("semantic units differ from selected new spans")
+
+
+def _semantic_unit_ranges(
+    units: tuple[ChangeUnit, ...],
+    *,
+    old_side: bool,
+) -> Iterator[tuple[int, int]]:
+    """Coalesce ordered semantic spans without a second unit-scale list."""
+    current_start: int | None = None
+    current_end: int | None = None
+    for unit in units:
+        span: LineSpan[DiffOldSpace] | LineSpan[DiffNewSpace] | None
+        if old_side:
+            span = None if isinstance(unit, Insertion) else unit.old_span
+        else:
+            span = None if isinstance(unit, Deletion) else unit.new_span
+        if span is None or not len(span):
+            continue
+        start = span.start.offset
+        end = span.end.offset
+        if current_start is None:
+            current_start, current_end = start, end
+            continue
+        assert current_end is not None
+        if start < current_start:
+            raise ValueError("semantic units are not in rendered order")
+        if start <= current_end:
+            current_end = max(current_end, end)
+            continue
+        yield current_start, current_end
+        current_start, current_end = start, end
+    if current_start is not None:
+        assert current_end is not None
+        yield current_start, current_end
+
+
+def _ranges_equal(
+    expected: tuple[tuple[int, int], ...],
+    actual: Iterable[tuple[int, int]],
+) -> bool:
+    actual_iterator = iter(actual)
+    for expected_range in expected:
+        if next(actual_iterator, None) != expected_range:
+            return False
+    return next(actual_iterator, None) is None
+
+
+def resolve_selection(
+    line_changes: LineLevelChange,
+    display_ids: DisplayIdRanges | Iterable[DisplayLineId],
+    *,
+    view: DiffViewIdentity,
+) -> ResolvedSelection:
+    """Resolve display IDs into snapshot-bound spans and semantic units."""
+    if line_changes.path != view.old_snapshot.path:
+        raise ValueError("line view path does not match its endpoint snapshots")
+    # ``LineLevelChange`` takes ownership of the caller's existing row list to
+    # avoid allocating a second reference per rendered line.  Python cannot
+    # revoke the caller's alias to that list, so mutations through the alias do
+    # not pass through the tracked sequence and cannot advance its revision.
+    # Rehash at this authority boundary rather than letting object identity or
+    # a best-effort mutation counter authorize different rendered bytes.
+    if (
+        diff_view_identity(
+            line_changes,
+            old_snapshot=view.old_snapshot,
+            new_snapshot=view.new_snapshot,
+        )
+        != view
+    ):
+        raise ValueError("rendered diff rows do not match their view identity")
+
+    requested = (
+        display_ids
+        if isinstance(display_ids, DisplayIdRanges)
+        else DisplayIdRanges.from_ids(display_ids)
+    )
+    if not requested:
+        raise ValueError("resolved selection must not be empty")
+    old_ranges, new_ranges, found, units = _resolve_rows(
+        line_changes,
+        requested,
+    )
+    if found.ranges() != requested.ranges():
+        raise ValueError("display selection contains IDs outside its diff view")
+
+    return ResolvedSelection(
+        file_diff=FileDiff(view.detached(), units),
+        display_ids=requested,
+        old_spans=SnapshotSpans(view.old_snapshot, old_ranges),
+        new_spans=SnapshotSpans(view.new_snapshot, new_ranges),
+    )
+
+
+def _resolve_rows(
+    line_changes: LineLevelChange,
+    selected_ids: DisplayIdRanges,
+) -> tuple[
+    HalfOpenRanges,
+    HalfOpenRanges,
+    DisplayIdRanges,
+    tuple[ChangeUnit, ...],
+]:
+    old_ranges = _HalfOpenRangeAccumulator()
+    new_ranges = _HalfOpenRangeAccumulator()
+    found_ids = _DisplayIdRangeAccumulator()
+    selected_id_cursor = _DisplayIdMembershipCursor(selected_ids)
+    units: list[ChangeUnit] = []
+    old_content = _ContentWitnessAccumulator()
+    new_content = _ContentWitnessAccumulator()
+    old_start: int | None = None
+    old_end: int | None = None
+    new_start: int | None = None
+    new_end: int | None = None
+    old_cursor = line_changes.header.old_prefix_line_count()
+    new_cursor = line_changes.header.new_prefix_line_count()
+    run_old_boundary = old_cursor
+    run_new_boundary = new_cursor
+    block_old_boundary = old_cursor
+    block_new_boundary = new_cursor
+    in_change_block = False
+
+    def flush() -> None:
+        nonlocal old_start, old_end, new_start, new_end
+        nonlocal old_content, new_content
+        if old_start is None and new_start is None:
+            return
+        if old_start is not None:
+            assert old_end is not None
+            old_span_start = old_start - 1
+            old_span_end = old_end
+        else:
+            old_span_start = run_old_boundary
+            old_span_end = run_old_boundary
+        if new_start is not None:
+            assert new_end is not None
+            new_span_start = new_start - 1
+            new_span_end = new_end
+        else:
+            new_span_start = run_new_boundary
+            new_span_end = run_new_boundary
+
+        old_span: LineSpan[DiffOldSpace] = LineSpan(
+            LineBoundary(old_span_start),
+            LineBoundary(old_span_end),
+        )
+        new_span: LineSpan[DiffNewSpace] = LineSpan(
+            LineBoundary(new_span_start),
+            LineBoundary(new_span_end),
+        )
+        if old_start is not None and new_start is not None:
+            units.append(
+                Replacement(
+                    old_span,
+                    new_span,
+                    old_content.finish(),
+                    new_content.finish(),
+                )
+            )
+        elif old_start is not None:
+            units.append(
+                Deletion(
+                    old_span,
+                    new_span.start,
+                    old_content.finish(),
+                )
+            )
+        else:
+            units.append(
+                Insertion(
+                    old_span.start,
+                    new_span,
+                    new_content.finish(),
+                )
+            )
+        old_start = old_end = new_start = new_end = None
+        old_content = _ContentWitnessAccumulator()
+        new_content = _ContentWitnessAccumulator()
+
+    for line in line_changes.lines:
+        if line.kind != " " and not in_change_block:
+            block_old_boundary = old_cursor
+            block_new_boundary = new_cursor
+            in_change_block = True
+        selected = line.id is not None and selected_id_cursor.contains(line.id)
+        if not selected:
+            flush()
+        elif old_start is None and new_start is None:
+            run_old_boundary = block_old_boundary
+            run_new_boundary = block_new_boundary
+
+        if selected:
+            assert line.id is not None
+            found_ids.add(line.id)
+            if line.old_line_number is not None:
+                old_ranges.add(line.old_line_number - 1, line.old_line_number)
+            if line.new_line_number is not None:
+                new_ranges.add(line.new_line_number - 1, line.new_line_number)
+            if line.kind == "-":
+                assert line.old_line_number is not None
+                old_start = old_start or line.old_line_number
+                old_end = line.old_line_number
+                old_content.add_rendered_line(line)
+            elif line.kind == "+":
+                assert line.new_line_number is not None
+                new_start = new_start or line.new_line_number
+                new_end = line.new_line_number
+                new_content.add_rendered_line(line)
+            else:
+                raise ValueError("display selection contains a context row")
+
+        if line.old_line_number is not None:
+            old_cursor = line.old_line_number
+        if line.new_line_number is not None:
+            new_cursor = line.new_line_number
+        if line.kind == " ":
+            in_change_block = False
+    flush()
+    return (
+        old_ranges.finish(),
+        new_ranges.finish(),
+        found_ids.finish(),
+        tuple(units),
     )
 
 

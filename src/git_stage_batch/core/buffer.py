@@ -21,6 +21,7 @@ from .mapped_storage import (
     byte_storage_from_chunks,
     byte_storage_from_path,
 )
+from .coordinates import framed_content_sha256
 from .resource_cleanup import close_resources_preserving_first
 from .text_lines import AcquirableLineSequence
 
@@ -43,6 +44,8 @@ class _BufferBacking:
         self.file_handle = file_handle
         self._reference_count = 1
         self._closed = False
+        self.framed_content_digest: str | None = None
+        self.exact_line_count: int | None = 0 if len(data) == 0 else None
 
     def retain(self) -> _BufferBacking:
         if self._closed:
@@ -290,6 +293,25 @@ class LineBuffer(Sequence[bytes]):
         self._require_open()
         return len(self._data)
 
+    def framed_content_sha256(self) -> str:
+        """Return and cache the immutable backing's canonical line digest."""
+        self._require_open()
+        digest = self._backing.framed_content_digest
+        if digest is None:
+            digest = framed_content_sha256(self)
+            self._backing.framed_content_digest = digest
+        return digest
+
+    def exact_line_count(self) -> int:
+        """Return and share the immutable backing's exact line count."""
+        self._require_open()
+        line_count = self._backing.exact_line_count
+        if line_count is None:
+            self._scan_all_lines()
+            line_count = self._line_span_count()
+            self._backing.exact_line_count = line_count
+        return line_count
+
     def close(self) -> None:
         """Close any open mmap and file resources."""
         if self._line_spans_released and self._backing_released:
@@ -390,6 +412,7 @@ class LineBuffer(Sequence[bytes]):
         self._require_open()
         while not self._scan_complete:
             self._scan_next_line()
+        self._backing.exact_line_count = self._line_span_count()
 
     def _scan_through_line(self, index: int) -> None:
         self._require_open()

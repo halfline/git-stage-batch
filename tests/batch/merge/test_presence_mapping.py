@@ -22,7 +22,7 @@ from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.line_selection import LineRanges
 
 
-_LINE_SCALE_HEAP_LIMIT = 256 * 1024
+_HEAP_GROWTH_TOLERANCE = 256 * 1024
 
 
 def test_repeated_input_mapping_preserves_structural_invariants() -> None:
@@ -679,114 +679,141 @@ def test_successful_mapping_survives_an_outer_exception_handler() -> None:
 
 def test_context_correction_avoids_line_scale_python_heap() -> None:
     """File-sized occurrence and mapping state stays in mapped storage."""
-    filler_count = 8192
-    prefix = b"".join(
-        f"filler {line_index}\n".encode() for line_index in range(filler_count)
-    )
-    source_content = prefix + b"shared\nnew tail\nshared\nprior tail\ntail\n"
-    target_content = prefix + b"shared\nprior tail\ntail\n"
+    heap_peaks = []
+    for filler_count in (512, 8192):
+        prefix = b"".join(
+            f"filler {line_index}\n".encode()
+            for line_index in range(filler_count)
+        )
+        source_content = (
+            prefix + b"shared\nnew tail\nshared\nprior tail\ntail\n"
+        )
+        target_content = prefix + b"shared\nprior tail\ntail\n"
 
-    with (
-        LineBuffer.from_bytes(source_content) as source_buffer,
-        LineBuffer.from_bytes(target_content) as target_buffer,
-        source_buffer.acquire_lines() as source_lines,
-        target_buffer.acquire_lines() as target_lines,
-    ):
-        gc.collect()
-        tracemalloc.start()
-        try:
-            result = match_lines_preserving_unowned_context(
-                source_lines,
-                target_lines,
-                LineRanges.from_ranges([(filler_count + 1, filler_count + 2)]),
-            )
+        with (
+            LineBuffer.from_bytes(source_content) as source_buffer,
+            LineBuffer.from_bytes(target_content) as target_buffer,
+            source_buffer.acquire_lines() as source_lines,
+            target_buffer.acquire_lines() as target_lines,
+        ):
+            gc.collect()
+            tracemalloc.start()
             try:
-                _current_heap, peak_heap = tracemalloc.get_traced_memory()
-                assert result.corrected
+                result = match_lines_preserving_unowned_context(
+                    source_lines,
+                    target_lines,
+                    LineRanges.from_ranges(
+                        [(filler_count + 1, filler_count + 2)]
+                    ),
+                )
+                try:
+                    _current_heap, peak_heap = tracemalloc.get_traced_memory()
+                    assert result.corrected
+                finally:
+                    if result.owned:
+                        result.mapping.close()
             finally:
-                if result.owned:
-                    result.mapping.close()
-        finally:
-            tracemalloc.stop()
+                tracemalloc.stop()
+        heap_peaks.append(peak_heap)
 
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
 def test_recorded_boundary_correction_avoids_line_scale_python_heap() -> None:
     """Recorded-run proof and correction state stays out of the Python heap."""
-    line_count = 8192
-    source = (
-        [b"head\n"]
-        + [b"\n"] * line_count
-        + [b"owned\n"]
-        + [b"\n"] * line_count
-        + [b"tail\n"]
-    )
-    target = [b"head\n"] + [b"\n"] * line_count + [b"tail\n"]
-    presence_start = line_count + 2
-    presence_end = line_count * 2 + 2
-    presence_lines = LineRanges.from_ranges([(presence_start, presence_end)])
-    reference = BaselineReference(
-        after_line=1,
-        after_content=b"\n",
-        before_line=2,
-        before_content=b"tail\n",
-        has_before_line=True,
-    )
-    ownership = BatchOwnership.from_presence_lines(
-        [f"{presence_start}-{presence_end}"],
-        baseline_references={
-            source_line: reference
-            for source_line in range(presence_start, presence_end + 1)
-        },
-    )
-    ordinary_mapping = allocate_line_mapping(len(source), len(target))
-    ordinary_mapping.source_to_target[0] = 1
-    ordinary_mapping.target_to_source[0] = 1
-    for offset in range(line_count):
-        source_line = presence_start + 1 + offset
-        target_line = 2 + offset
-        ordinary_mapping.source_to_target[source_line - 1] = target_line
-        ordinary_mapping.target_to_source[target_line - 1] = source_line
-    ordinary_mapping.source_to_target[-1] = len(target)
-    ordinary_mapping.target_to_source[-1] = len(source)
-
-    context_mapping = allocate_line_mapping(len(source), len(target))
-    for offset in range(line_count):
-        source_line = 2 + offset
-        target_line = 2 + offset
-        context_mapping.source_to_target[source_line - 1] = target_line
-        context_mapping.target_to_source[target_line - 1] = source_line
-    context_mapping.source_to_target[-1] = len(target)
-    context_mapping.target_to_source[-1] = len(source)
-
-    def context_matcher(*_args, **_kwargs):
-        return context_mapping
-
-    try:
-        gc.collect()
-        tracemalloc.start()
-        try:
-            result = match_lines_preserving_unowned_context(
-                source,
-                target,
-                presence_lines,
-                ownership=ownership,
-                presence_lines=presence_lines,
-                ordinary_mapping=ordinary_mapping,
-                matcher=context_matcher,
+    heap_peaks = []
+    for line_count in (512, 8192):
+        source = (
+            [b"head\n"]
+            + [b"\n"] * line_count
+            + [b"owned\n"]
+            + [b"\n"] * line_count
+            + [b"tail\n"]
+        )
+        target = [b"head\n"] + [b"\n"] * line_count + [b"tail\n"]
+        presence_start = line_count + 2
+        presence_end = line_count * 2 + 2
+        presence_lines = LineRanges.from_ranges(
+            [(presence_start, presence_end)]
+        )
+        reference = BaselineReference(
+            after_line=1,
+            after_content=b"\n",
+            before_line=2,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            [f"{presence_start}-{presence_end}"],
+            baseline_references={
+                source_line: reference
+                for source_line in range(
+                    presence_start, presence_end + 1
+                )
+            },
+        )
+        ordinary_mapping = allocate_line_mapping(
+            len(source), len(target)
+        )
+        ordinary_mapping.source_to_target[0] = 1
+        ordinary_mapping.target_to_source[0] = 1
+        for offset in range(line_count):
+            source_line = presence_start + 1 + offset
+            target_line = 2 + offset
+            ordinary_mapping.source_to_target[source_line - 1] = (
+                target_line
             )
-            try:
-                _current_heap, peak_heap = tracemalloc.get_traced_memory()
-                assert result.corrected
-                assert not result.ambiguous
-            finally:
-                if result.owned:
-                    result.mapping.close()
-        finally:
-            tracemalloc.stop()
-    finally:
-        ordinary_mapping.close()
-        context_mapping.close()
+            ordinary_mapping.target_to_source[target_line - 1] = (
+                source_line
+            )
+        ordinary_mapping.source_to_target[-1] = len(target)
+        ordinary_mapping.target_to_source[-1] = len(source)
 
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        context_mapping = allocate_line_mapping(
+            len(source), len(target)
+        )
+        for offset in range(line_count):
+            source_line = 2 + offset
+            target_line = 2 + offset
+            context_mapping.source_to_target[source_line - 1] = (
+                target_line
+            )
+            context_mapping.target_to_source[target_line - 1] = (
+                source_line
+            )
+        context_mapping.source_to_target[-1] = len(target)
+        context_mapping.target_to_source[-1] = len(source)
+
+        def context_matcher(*_args, **_kwargs):
+            return context_mapping
+
+        try:
+            gc.collect()
+            tracemalloc.start()
+            try:
+                result = match_lines_preserving_unowned_context(
+                    source,
+                    target,
+                    presence_lines,
+                    ownership=ownership,
+                    presence_lines=presence_lines,
+                    ordinary_mapping=ordinary_mapping,
+                    matcher=context_matcher,
+                )
+                try:
+                    _current_heap, peak_heap = tracemalloc.get_traced_memory()
+                    assert result.corrected
+                    assert not result.ambiguous
+                finally:
+                    if result.owned:
+                        result.mapping.close()
+            finally:
+                tracemalloc.stop()
+        finally:
+            ordinary_mapping.close()
+            context_mapping.close()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE

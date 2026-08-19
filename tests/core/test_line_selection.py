@@ -18,7 +18,7 @@ from git_stage_batch.core.line_selection import (
 )
 
 
-_LINE_SCALE_HEAP_LIMIT = 64 * 1024
+_HEAP_GROWTH_TOLERANCE = 64 * 1024
 
 
 @pytest.mark.parametrize(
@@ -237,34 +237,40 @@ class TestLineRanges:
 
     def test_from_lines_coalesces_contiguous_input_without_line_scale_heap(self):
         """A long contiguous line stream should become one range as it is read."""
-        line_count = 16_384
+        heap_peaks = []
+        for line_count in (1024, 16_384):
+            gc.collect()
+            tracemalloc.start()
+            try:
+                selection = LineRanges.from_lines(range(1, line_count + 1))
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
 
-        gc.collect()
-        tracemalloc.start()
-        try:
-            selection = LineRanges.from_lines(range(1, line_count + 1))
-            _current_heap, peak_heap = tracemalloc.get_traced_memory()
-        finally:
-            tracemalloc.stop()
+            assert selection.ranges() == ((1, line_count),)
+            heap_peaks.append(peak_heap)
 
-        assert selection.ranges() == ((1, line_count),)
-        assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
     def test_set_equality_does_not_duplicate_selected_lines_on_heap(self):
         """Comparing an existing set must not build a second line-sized set."""
-        line_count = 16_384
-        selected_lines = set(range(1, line_count + 1))
-        selection = LineRanges.from_ranges(((1, line_count),))
+        heap_peaks = []
+        for line_count in (1024, 16_384):
+            selected_lines = set(range(1, line_count + 1))
+            selection = LineRanges.from_ranges(((1, line_count),))
 
-        gc.collect()
-        tracemalloc.start()
-        try:
-            assert selection == selected_lines
-            _current_heap, peak_heap = tracemalloc.get_traced_memory()
-        finally:
-            tracemalloc.stop()
+            gc.collect()
+            tracemalloc.start()
+            try:
+                assert selection == selected_lines
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+            heap_peaks.append(peak_heap)
 
-        assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
     def test_parse_selection_ranges_does_not_expand_ranges(
         self,

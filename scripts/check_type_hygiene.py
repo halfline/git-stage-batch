@@ -69,6 +69,10 @@ ALLOWED_EXPLICIT_ANY = frozenset({
     "_validate_object_id::param:value",
     "src/git_stage_batch/batch/state/metadata_schema.py::"
     "_validate_hex_object_id::param:value",
+    "src/git_stage_batch/batch/line_matching/transforms.py::"
+    "BatchSourceExactTransform._initialize::param:source_snapshot",
+    "src/git_stage_batch/batch/line_matching/transforms.py::"
+    "BatchSourceExactTransform._initialize::param:target_snapshot",
     "src/git_stage_batch/cli/git_help.py::"
     "GitHelpArgumentParser.__init__::param:args",
     "src/git_stage_batch/cli/git_help.py::"

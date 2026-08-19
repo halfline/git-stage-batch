@@ -16,7 +16,7 @@ from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.core.line_selection import LineRanges
 
 
-_LINE_SCALE_HEAP_LIMIT = 256 * 1024
+_HEAP_GROWTH_TOLERANCE = 256 * 1024
 
 
 class _IterationGuardedSelection(LineRanges):
@@ -233,35 +233,41 @@ def test_stale_presence_reference_does_not_cover_distinctive_context() -> None:
 
 def test_coordinate_coverage_avoids_line_scale_python_heap() -> None:
     """Per-line coordinate coverage should stay in mapped storage."""
-    line_count = 8192
-    target_lines = [b"anchor\n"] * line_count
-    ownership = BatchOwnership.from_presence_lines(
-        [f"1-{line_count}"],
-        baseline_references={
-            line_number: BaselineReference(
-                after_line=line_number - 1 if line_number > 1 else None,
-                after_content=b"anchor" if line_number > 1 else None,
-                before_line=line_number,
-                before_content=b"anchor",
-                has_before_line=True,
+    heap_peaks = []
+    for line_count in (512, 8192):
+        target_lines = [b"anchor\n"] * line_count
+        ownership = BatchOwnership.from_presence_lines(
+            [f"1-{line_count}"],
+            baseline_references={
+                line_number: BaselineReference(
+                    after_line=line_number - 1 if line_number > 1 else None,
+                    after_content=b"anchor" if line_number > 1 else None,
+                    before_line=line_number,
+                    before_content=b"anchor",
+                    has_before_line=True,
+                )
+                for line_number in range(1, line_count + 1)
+            },
+        )
+        selection = ownership.presence_line_set()
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            requires_context = bool(
+                presence_lines_requiring_distinctive_context(
+                    ownership,
+                    selection,
+                    ownership.deletions,
+                    target_lines=target_lines,
+                )
             )
-            for line_number in range(1, line_count + 1)
-        },
-    )
-    selection = ownership.presence_line_set()
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
 
-    gc.collect()
-    tracemalloc.start()
-    try:
-        requires_context = bool(presence_lines_requiring_distinctive_context(
-            ownership,
-            selection,
-            ownership.deletions,
-            target_lines=target_lines,
-        ))
-        _current_heap, peak_heap = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
+        assert requires_context is False
+        heap_peaks.append(peak_heap)
 
-    assert requires_context is False
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE

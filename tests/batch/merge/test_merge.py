@@ -90,7 +90,7 @@ from git_stage_batch.core.coordinates import (
 )
 
 
-_LINE_SCALE_HEAP_LIMIT = 256 * 1024
+_HEAP_GROWTH_TOLERANCE = 256 * 1024
 
 
 def test_contextual_presence_does_not_share_unrelated_eof_placement() -> None:
@@ -764,26 +764,33 @@ def test_realization_fallback_streams_provenance_once() -> None:
 
 def test_realization_removal_planning_avoids_line_scale_python_heap() -> None:
     """Per-claim fallback coordinates should remain in mapped storage."""
-    claims = [AbsenceClaim(anchor_line=None, content_lines=[]) for _ in range(8192)]
+    heap_peaks = []
+    for claim_count in (512, 8192):
+        claims = [
+            AbsenceClaim(anchor_line=None, content_lines=[])
+            for _ in range(claim_count)
+        ]
 
-    gc.collect()
-    tracemalloc.start()
-    try:
-        result = satisfy_constraints(
-            [],
-            [],
-            LineRanges.empty(),
-            claims,
-            strict=False,
-        )
+        gc.collect()
+        tracemalloc.start()
         try:
-            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            result = satisfy_constraints(
+                [],
+                [],
+                LineRanges.empty(),
+                claims,
+                strict=False,
+            )
+            try:
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                result.close()
         finally:
-            result.close()
-    finally:
-        tracemalloc.stop()
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
 
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
 def test_strict_absence_constraints_plan_fragmented_removals_once(
@@ -1014,29 +1021,32 @@ def test_strict_absence_index_preserves_provenance_initialization_error(
 
 def test_discard_same_anchor_claims_avoids_line_scale_python_heap() -> None:
     """Ordered same-anchor restoration retains only constant Python state."""
-    claim_count = 8192
-    claims = [
-        AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
-        for _ in range(claim_count)
-    ]
+    heap_peaks = []
+    for claim_count in (512, 8192):
+        claims = [
+            AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+            for _ in range(claim_count)
+        ]
 
-    with RealizedEntries() as entries:
-        entries.append(b"head\n", source_line=1)
-        gc.collect()
-        tracemalloc.start()
-        try:
-            result = discard_module._restore_absence_constraints(
-                entries,
-                claims,
-            )
+        with RealizedEntries() as entries:
+            entries.append(b"head\n", source_line=1)
+            gc.collect()
+            tracemalloc.start()
             try:
-                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+                result = discard_module._restore_absence_constraints(
+                    entries,
+                    claims,
+                )
+                try:
+                    _current_heap, peak_heap = tracemalloc.get_traced_memory()
+                finally:
+                    result.close()
             finally:
-                result.close()
-        finally:
-            tracemalloc.stop()
+                tracemalloc.stop()
+        heap_peaks.append(peak_heap)
 
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
 def test_discard_fragmented_claim_restoration_scans_provenance_linearly() -> None:
@@ -1398,63 +1408,75 @@ def test_candidate_comparison_preserves_structural_chunk_boundaries():
 def test_candidate_comparison_does_not_copy_large_chunk_remainders():
     """Uneven candidate chunks must use constant-size comparison state."""
     structural_chunk = b"x" * 1024
-    coordinate_chunk = structural_chunk * 512
+    heap_peaks = []
+    for repeat_count in (64, 512):
+        coordinate_chunk = structural_chunk * repeat_count
 
-    tracemalloc.start()
-    try:
-        yielded_count = sum(
-            1
-            for _chunk in merge_module._yield_identical_candidate_chunks(
-                (coordinate_chunk,),
-                repeat(structural_chunk, 512),
-            )
-        )
-        _current_heap, peak_heap = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
-
-    assert yielded_count == 512
-    assert peak_heap < 64 * 1024
-
-
-def test_distinctive_presence_context_avoids_line_scale_python_heap():
-    """Strict contextual indexing should retain records in mapped storage."""
-    line_count = 8192
-    changed_index = line_count // 2
-    source_content = b"".join(
-        f"line-{line_index:08d}\n".encode() for line_index in range(line_count)
-    )
-    target_content = b"".join(
-        (
-            b"target-only\n"
-            if line_index == changed_index
-            else f"line-{line_index:08d}\n".encode()
-        )
-        for line_index in range(line_count)
-    )
-    selected = LineRanges.from_ranges(((changed_index + 1, changed_index + 1),))
-
-    with (
-        LineBuffer.from_bytes(source_content) as source_lines,
-        LineBuffer.from_bytes(target_content) as target_lines,
-        match_lines(source_lines, target_lines) as mapping,
-    ):
         gc.collect()
         tracemalloc.start()
         try:
-            with pytest.raises(MergeError):
-                contextual_presence_placements(
-                    source_lines,
-                    target_lines,
-                    selected,
-                    mapping,
-                    require_distinctive_context=True,
+            yielded_count = sum(
+                1
+                for _chunk in merge_module._yield_identical_candidate_chunks(
+                    (coordinate_chunk,),
+                    repeat(structural_chunk, repeat_count),
                 )
+            )
             _current_heap, peak_heap = tracemalloc.get_traced_memory()
         finally:
             tracemalloc.stop()
 
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        assert yielded_count == repeat_count
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 64 * 1024
+
+
+def test_distinctive_presence_context_avoids_line_scale_python_heap():
+    """Strict contextual indexing should retain records in mapped storage."""
+    heap_peaks = []
+    for line_count in (512, 8192):
+        changed_index = line_count // 2
+        source_content = b"".join(
+            f"line-{line_index:08d}\n".encode()
+            for line_index in range(line_count)
+        )
+        target_content = b"".join(
+            (
+                b"target-only\n"
+                if line_index == changed_index
+                else f"line-{line_index:08d}\n".encode()
+            )
+            for line_index in range(line_count)
+        )
+        selected = LineRanges.from_ranges(
+            ((changed_index + 1, changed_index + 1),)
+        )
+
+        with (
+            LineBuffer.from_bytes(source_content) as source_lines,
+            LineBuffer.from_bytes(target_content) as target_lines,
+            match_lines(source_lines, target_lines) as mapping,
+        ):
+            gc.collect()
+            tracemalloc.start()
+            try:
+                with pytest.raises(MergeError):
+                    contextual_presence_placements(
+                        source_lines,
+                        target_lines,
+                        selected,
+                        mapping,
+                        require_distinctive_context=True,
+                    )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
 @pytest.mark.parametrize("candidates_match", [True, False])

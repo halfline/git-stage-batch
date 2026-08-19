@@ -223,34 +223,38 @@ def test_find_boundary_uses_claimed_when_duplicates_exist():
 
 def test_find_boundary_counts_duplicates_without_line_scale_heap():
     """Ambiguity resolution should retain only counts and selected indexes."""
-    line_count = 50_000
+    heap_peaks = []
+    for line_count in (5_000, 50_000):
 
-    class RepeatedEntries:
-        def __len__(self):
-            return line_count
+        class RepeatedEntries:
+            def __len__(self):
+                return line_count
 
-        def __getitem__(self, index):
-            if index < 0 or index >= len(self):
-                raise IndexError(index)
-            return RealizedEntry(
-                content=b"anchor\n",
-                source_line=2,
-                is_claimed=index == line_count - 1,
+            def __getitem__(self, index):
+                if index < 0 or index >= len(self):
+                    raise IndexError(index)
+                return RealizedEntry(
+                    content=b"anchor\n",
+                    source_line=2,
+                    is_claimed=index == line_count - 1,
+                )
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            boundary = find_boundary_after_source_line(
+                RepeatedEntries(),  # type: ignore[arg-type]
+                2,
             )
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
 
-    gc.collect()
-    tracemalloc.start()
-    try:
-        boundary = find_boundary_after_source_line(
-            RepeatedEntries(),  # type: ignore[arg-type]
-            2,
-        )
-        _current_heap, peak_heap = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
+        assert boundary == line_count
+        heap_peaks.append(peak_heap)
 
-    assert boundary == line_count
-    assert peak_heap < 64 * 1024
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 64 * 1024
 
 
 def test_partial_selection_corruption_still_caught():

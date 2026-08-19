@@ -2,7 +2,6 @@
 name: refine-history
 description: Rewrite or audit an existing local commit series as a clean incremental history while preserving its final tree
 user-invocable: true
-disable-model-invocation: true
 context: fork
 argument-hint: "[base-sha] | audit [base-sha] | resume"
 when_to_use: "Use when the user wants Claude Code to inspect, polish, split, squash adjacent commits, reword, reorder, or integrate fixup and repair commits in a local draft series after an optional base commit, infer the boundary from a tracked remote branch, safely rewrite a pull-request or merge-request branch, run an audit without mutation, or resume an interrupted refinement. Examples: \"refine this history\", \"squash these two adjacent commits\", \"audit these commits\", \"split the broad commits after BASE_SHA\", \"fold fixups into the right commits\", \"resume refine-history\". Do not use for unstaged work or commits published outside an explicitly verified force-push review branch."

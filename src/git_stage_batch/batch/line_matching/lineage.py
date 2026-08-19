@@ -210,8 +210,10 @@ class _LineageRunTable:
         destination: MappedRecordVector,
     ) -> None:
         """Append translated intersections without retaining Python records."""
-        run_index = 0
+        run_index: int | None = None
         for selected_start, selected_end in selection.ranges():
+            if run_index is None:
+                run_index = self._first_run_ending_at_or_after(selected_start)
             while (
                 run_index < len(self)
                 and self._run_at_index(run_index).old_end < selected_start
@@ -236,10 +238,12 @@ class _LineageRunTable:
         selection: LineSelection | Iterable[int],
     ) -> int | None:
         self._require_open()
-        run_index = 0
+        run_index: int | None = None
 
         for selected_start, selected_end in coerce_line_ranges(selection).ranges():
             current_line = selected_start
+            if run_index is None:
+                run_index = self._first_run_ending_at_or_after(current_line)
             while (
                 run_index < len(self)
                 and self._run_at_index(run_index).old_end < current_line
@@ -257,6 +261,65 @@ class _LineageRunTable:
                     run_index += 1
 
         return None
+
+    def translated_ranges_for_span(
+        self,
+        old_start: int,
+        old_end: int,
+    ) -> Iterator[tuple[int, int]]:
+        """Yield mapped intersections for one inclusive source span.
+
+        Lookup starts with a binary search and retains only the current run,
+        so a late or highly fragmented span does not rescan preceding lineage
+        or allocate one Python object per represented line.
+        """
+        if old_start <= 0 or old_end < old_start:
+            raise ValueError("lineage span must be positive and ordered")
+        run_index = self._first_run_ending_at_or_after(old_start)
+        while run_index < len(self):
+            run = self._run_at_index(run_index)
+            if run.old_start > old_end:
+                break
+            intersection_start = max(old_start, run.old_start)
+            intersection_end = min(old_end, run.old_end)
+            if intersection_start <= intersection_end:
+                yield run.translate_range(
+                    intersection_start,
+                    intersection_end,
+                )
+            run_index += 1
+
+    def first_unmapped_in_span(
+        self,
+        old_start: int,
+        old_end: int,
+    ) -> int | None:
+        """Return the first missing line in one inclusive source span."""
+        if old_start <= 0 or old_end < old_start:
+            raise ValueError("lineage span must be positive and ordered")
+        run_index = self._first_run_ending_at_or_after(old_start)
+        current_line = old_start
+        while current_line <= old_end:
+            if run_index >= len(self):
+                return current_line
+            run = self._run_at_index(run_index)
+            if run.old_start > current_line:
+                return current_line
+            current_line = min(run.old_end, old_end) + 1
+            run_index += 1
+        return None
+
+    def _first_run_ending_at_or_after(self, old_line: int) -> int:
+        """Locate a late selection without rescanning lineage from its start."""
+        low = 0
+        high = len(self)
+        while low < high:
+            middle = (low + high) // 2
+            if self._run_at_index(middle).old_end < old_line:
+                low = middle + 1
+            else:
+                high = middle
+        return low
 
     def close(self) -> None:
         if self._closed:
@@ -379,22 +442,64 @@ class _SourceExpansionTable:
     ) -> Iterator[tuple[int, int]]:
         """Yield destinations only when the complete source range is selected."""
         selected_ranges = selection.ranges()
-        selected_index = 0
-        for record in self._expansions:
-            expansion = _source_expansion_from_record(record)
-            while (
-                selected_index < len(selected_ranges)
-                and selected_ranges[selected_index][1] < expansion.source_start
-            ):
-                selected_index += 1
-            if selected_index >= len(selected_ranges):
-                return
-            selected_start, selected_end = selected_ranges[selected_index]
+        expansion_index: int | None = None
+        for selected_start, selected_end in selected_ranges:
+            if expansion_index is None:
+                expansion_index = self._first_expansion_ending_at_or_after(
+                    selected_start
+                )
+            while expansion_index < len(self._expansions):
+                expansion = self._expansion_at(expansion_index)
+                if expansion.source_end >= selected_start:
+                    break
+                expansion_index += 1
+
+            scan_index = expansion_index
+            while scan_index < len(self._expansions):
+                expansion = self._expansion_at(scan_index)
+                if expansion.source_start > selected_end:
+                    break
+                if (
+                    selected_start <= expansion.source_start
+                    and selected_end >= expansion.source_end
+                ):
+                    yield expansion.new_start, expansion.new_end
+                scan_index += 1
+            expansion_index = scan_index
+
+    def translated_ranges_for_span(
+        self,
+        source_start: int,
+        source_end: int,
+    ) -> Iterator[tuple[int, int]]:
+        """Yield expansions fully authorized by one inclusive source span."""
+        if source_start <= 0 or source_end < source_start:
+            raise ValueError("source expansion span must be positive and ordered")
+        expansion_index = self._first_expansion_ending_at_or_after(source_start)
+        while expansion_index < len(self._expansions):
+            expansion = self._expansion_at(expansion_index)
+            if expansion.source_start > source_end:
+                break
             if (
-                selected_start <= expansion.source_start
-                and selected_end >= expansion.source_end
+                source_start <= expansion.source_start
+                and source_end >= expansion.source_end
             ):
                 yield expansion.new_start, expansion.new_end
+            expansion_index += 1
+
+    def _first_expansion_ending_at_or_after(self, source_line: int) -> int:
+        low = 0
+        high = len(self._expansions)
+        while low < high:
+            middle = (low + high) // 2
+            if self._expansion_at(middle).source_end < source_line:
+                low = middle + 1
+            else:
+                high = middle
+        return low
+
+    def _expansion_at(self, index: int) -> SourceSelectionExpansion:
+        return _source_expansion_from_record(self._expansions[index])
 
     def append_translated_ranges(
         self,
@@ -540,6 +645,32 @@ class BatchSourceLineage:
                     )
                 )
 
+    def translate_source_span(
+        self,
+        source_start: int,
+        source_end: int,
+    ) -> tuple[int, int] | None:
+        """Translate one fully covered source span, including exact expansions.
+
+        The result is available only when every source line has lineage and
+        the mapped runs plus fully selected expansion witnesses form one
+        contiguous target span. Storage remains constant in the number of
+        represented lines.
+        """
+        self._require_open()
+        if self._source_runs.first_unmapped_in_span(source_start, source_end):
+            return None
+        return _single_compact_range(
+            self._source_runs.translated_ranges_for_span(
+                source_start,
+                source_end,
+            ),
+            self._source_expansions.translated_ranges_for_span(
+                source_start,
+                source_end,
+            ),
+        )
+
     def first_unmapped_source_line(
         self,
         selection: LineSelection | Iterable[int],
@@ -631,3 +762,37 @@ def _merged_compact_translated_ranges(
 
     if current_start is not None and current_end is not None:
         yield current_start, current_end
+
+
+def _single_compact_range(
+    primary: Iterator[tuple[int, int]],
+    secondary: Iterable[tuple[int, int]] = (),
+) -> tuple[int, int] | None:
+    """Merge two ordered range streams only when their union is contiguous."""
+    primary_item = next(primary, None)
+    secondary_iterator = iter(secondary)
+    secondary_item = next(secondary_iterator, None)
+    current_start: int | None = None
+    current_end: int | None = None
+
+    while primary_item is not None or secondary_item is not None:
+        if secondary_item is None or (
+            primary_item is not None and primary_item <= secondary_item
+        ):
+            assert primary_item is not None
+            start, end = primary_item
+            primary_item = next(primary, None)
+        else:
+            start, end = secondary_item
+            secondary_item = next(secondary_iterator, None)
+
+        if current_start is None or current_end is None:
+            current_start, current_end = start, end
+        elif start <= current_end + 1:
+            current_end = max(current_end, end)
+        else:
+            return None
+
+    if current_start is None or current_end is None:
+        return None
+    return current_start, current_end

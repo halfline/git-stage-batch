@@ -8,8 +8,8 @@ from dataclasses import dataclass
 import os
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.file_state import BatchMetadataRevision, SourceBoundOwnership
 from ...batch.ownership import insertion_references as _insertion_references
-from ...batch.ownership.model import BatchOwnership
 from ...batch.state.metadata_types import BatchMetadataDict
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
@@ -93,8 +93,9 @@ class _PreparedTextFileDiscardToBatch:
 
     file_path: str
     file_mode: str
-    ownership: BatchOwnership
-    batch_source_commit: str | None
+    bound_ownership: SourceBoundOwnership
+    batch_source_commit: str
+    expected_metadata_revision: BatchMetadataRevision
     patches_to_discard: list[_PreparedPatchDiscard]
 
 
@@ -191,6 +192,7 @@ def _prepare_text_file_discard_to_batch(
 
     file_path = discard_input.file_path
     file_metadata = metadata.get("files", {}).get(file_path)
+    metadata_revision = BatchMetadataRevision.from_metadata(metadata)
 
     try:
         with read_git_object_buffer_or_empty(
@@ -201,6 +203,7 @@ def _prepare_text_file_discard_to_batch(
                     batch_name=batch_name,
                     file_path=file_path,
                     file_metadata=file_metadata,
+                    metadata_revision=metadata_revision,
                     selected_lines=discard_input.all_lines_to_batch,
                     reference_source_lines=reference_source_lines,
                     batch_baseline_commit=metadata.get("baseline"),
@@ -223,8 +226,9 @@ def _prepare_text_file_discard_to_batch(
     return _PreparedTextFileDiscardToBatch(
         file_path=file_path,
         file_mode=discard_input.file_mode,
-        ownership=update.ownership_after,
+        bound_ownership=update.bound_ownership,
         batch_source_commit=update.batch_source_commit,
+        expected_metadata_revision=update.expected_metadata_revision,
         patches_to_discard=discard_input.patches_to_discard,
     )
 
@@ -384,9 +388,10 @@ def _discard_prepared_text_files_to_batch(
         [
             BatchFileUpdate(
                 file_path=prepared.file_path,
-                ownership=prepared.ownership,
-                file_mode=prepared.file_mode,
                 batch_source_commit=prepared.batch_source_commit,
+                bound_ownership=prepared.bound_ownership,
+                expected_metadata_revision=prepared.expected_metadata_revision,
+                file_mode=prepared.file_mode,
             )
             for prepared in prepared_discards
         ],

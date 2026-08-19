@@ -38,7 +38,8 @@ from ...git_paths import display_path
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
 from ...staging.content_buffers import (
-    build_target_index_buffer_with_replaced_lines,
+    build_target_index_buffer_with_edit_plan,
+    resolve_replacement_edit_plan,
 )
 from ...utils.paths import (
     get_index_snapshot_file_path,
@@ -103,9 +104,14 @@ def apply_include_line_replacement(
 
     replacement_payload = coerce_replacement_payload(replacement_text)
     try:
-        target_index_buffer = build_target_index_buffer_with_replaced_lines(
+        edit_plan = resolve_replacement_edit_plan(
             line_changes,
             effective_ids,
+            hunk_base_lines,
+            hunk_source_lines,
+        )
+        target_index_buffer = build_target_index_buffer_with_edit_plan(
+            edit_plan,
             replacement_payload,
             hunk_base_lines,
             base_has_trailing_newline=(

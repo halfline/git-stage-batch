@@ -44,18 +44,16 @@ def _record_diff_baseline_references_for_additions(
                 and line_changes.lines[index].kind == "+"
             ):
                 addition_line = line_changes.lines[index]
-                addition_line.baseline_reference_after_line = last_old_line
-                addition_line.baseline_reference_after_text_bytes = (
-                    last_old_text_bytes
-                )
-                addition_line.has_baseline_reference_after = True
-                addition_line.baseline_reference_before_line = next_old_line
-                addition_line.baseline_reference_before_text_bytes = (
-                    next_old_text_bytes
-                )
                 # A missing next old line is an explicit EOF boundary, not an
                 # unknown second side.
-                addition_line.has_baseline_reference_before = True
+                line_changes.lines[index] = addition_line.with_baseline_reference(
+                    after_line=last_old_line,
+                    after_content=last_old_text_bytes,
+                    has_after=True,
+                    before_line=next_old_line,
+                    before_content=next_old_text_bytes,
+                    has_before=True,
+                )
                 index += 1
             continue
 
@@ -65,21 +63,23 @@ def _record_diff_baseline_references_for_additions(
         index += 1
 
 
-def _clear_addition_baseline_reference(addition_line: LineEntry) -> None:
+def _clear_addition_baseline_reference(addition_line: LineEntry) -> LineEntry:
     """Remove insertion metadata that does not fit the captured baseline."""
-    addition_line.baseline_reference_after_line = None
-    addition_line.baseline_reference_after_text_bytes = None
-    addition_line.has_baseline_reference_after = False
-    addition_line.baseline_reference_before_line = None
-    addition_line.baseline_reference_before_text_bytes = None
-    addition_line.has_baseline_reference_before = False
+    return addition_line.with_baseline_reference(
+        after_line=None,
+        after_content=None,
+        has_after=False,
+        before_line=None,
+        before_content=None,
+        has_before=False,
+    )
 
 
 def _set_addition_baseline_reference(
     addition_line: LineEntry,
     baseline_lines: Sequence[bytes],
     insertion_position: int,
-) -> None:
+) -> LineEntry:
     """Record the two baseline lines surrounding an insertion position."""
     after_line = insertion_position or None
     before_line = (
@@ -87,20 +87,22 @@ def _set_addition_baseline_reference(
         if insertion_position < len(baseline_lines)
         else None
     )
-    addition_line.baseline_reference_after_line = after_line
-    addition_line.baseline_reference_after_text_bytes = (
-        bytes(baseline_lines[after_line - 1])
-        if after_line is not None
-        else None
+    return addition_line.with_baseline_reference(
+        after_line=after_line,
+        after_content=(
+            bytes(baseline_lines[after_line - 1])
+            if after_line is not None
+            else None
+        ),
+        has_after=True,
+        before_line=before_line,
+        before_content=(
+            bytes(baseline_lines[before_line - 1])
+            if before_line is not None
+            else None
+        ),
+        has_before=True,
     )
-    addition_line.has_baseline_reference_after = True
-    addition_line.baseline_reference_before_line = before_line
-    addition_line.baseline_reference_before_text_bytes = (
-        bytes(baseline_lines[before_line - 1])
-        if before_line is not None
-        else None
-    )
-    addition_line.has_baseline_reference_before = True
 
 
 def _record_snapshot_baseline_references_for_additions(
@@ -184,10 +186,12 @@ def _record_snapshot_baseline_references_for_additions(
                     if expected_before_line != actual_before_line:
                         # Target-only content leaves the relative insertion order
                         # ambiguous.
-                        _clear_addition_baseline_reference(addition_line)
+                        line_changes.lines[line_index] = (
+                            _clear_addition_baseline_reference(addition_line)
+                        )
                         continue
 
-                _set_addition_baseline_reference(
+                line_changes.lines[line_index] = _set_addition_baseline_reference(
                     addition_line,
                     baseline_lines,
                     after_line or 0,

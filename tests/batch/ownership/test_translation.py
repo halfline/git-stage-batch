@@ -13,6 +13,9 @@ from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
+from git_stage_batch.batch.ownership.replacement_origins import (
+    SameStreamReplacementOrigin,
+)
 from git_stage_batch.batch.ownership.translation import (
     translate_lines_to_batch_ownership,
 )
@@ -588,8 +591,7 @@ def test_translate_hunk_selection_pairs_repeated_context_suffix():
         lines,
         {3, 12},
         replacement_line_runs=[ReplacementLineRun(2, 4, 2, 12)],
-        replacement_origin_source_lines=baseline_lines,
-        replacement_runs_are_origin_runs=True,
+        replacement_origin=SameStreamReplacementOrigin(baseline_lines),
         baseline_lines=baseline_lines,
     )
 

@@ -216,14 +216,20 @@ def build_combined_file_line_changes(
                     )
                 )
 
-        if min_old_start is None:
-            min_old_start = line_changes.header.old_start
-            min_new_start = line_changes.header.new_start
-
-        max_old_end = line_changes.header.old_start + line_changes.header.old_len
-        max_new_end = line_changes.header.new_start + line_changes.header.new_len
-        previous_old_end = max_old_end
-        previous_new_end = max_new_end
+        old_start = line_changes.header.old_start
+        new_start = line_changes.header.new_start
+        old_end = old_start + line_changes.header.old_len
+        new_end = new_start + line_changes.header.new_len
+        min_old_start = (
+            old_start if min_old_start is None else min(min_old_start, old_start)
+        )
+        min_new_start = (
+            new_start if min_new_start is None else min(min_new_start, new_start)
+        )
+        max_old_end = old_end if max_old_end is None else max(max_old_end, old_end)
+        max_new_end = new_end if max_new_end is None else max(max_new_end, new_end)
+        previous_old_end = old_end
+        previous_new_end = new_end
 
         for line_entry in line_changes.lines:
             if line_entry.kind != " ":

@@ -19,7 +19,11 @@ from git_stage_batch.batch.ownership.translation import (
     translate_lines_to_batch_ownership,
 )
 from git_stage_batch.batch.ownership.references import BaselineReference
-from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.replacement_units import (
+    NoReplacementUnitOrigin,
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from git_stage_batch.batch.source.advancement import (
     BatchSourceAdvanceError,
     advance_batch_source_for_file_with_provenance,
@@ -276,6 +280,83 @@ def test_batch_source_lineage_finds_unmapped_source_ranges():
         ) == 25
 
 
+def test_late_source_selection_binary_searches_fragmented_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated unit remaps do not scan every preceding lineage run."""
+    run_count = 4096
+    with BatchSourceLineage(
+        source_runs=(
+            LineageRun(2 * index + 1, 2 * index + 1, 2 * index + 1)
+            for index in range(run_count)
+        ),
+    ) as lineage:
+        run_table = lineage._source_runs
+        run_lookups = 0
+        original_run_at_index = run_table._run_at_index
+
+        def counted_run_at_index(index: int) -> LineageRun:
+            nonlocal run_lookups
+            run_lookups += 1
+            return original_run_at_index(index)
+
+        monkeypatch.setattr(run_table, "_run_at_index", counted_run_at_index)
+        selected_line = 2 * run_count - 1
+
+        assert lineage.first_unmapped_source_line(
+            LineRanges.from_ranges(((selected_line, selected_line),))
+        ) is None
+        assert lineage.translate_source_selection(
+            LineRanges.from_ranges(((selected_line, selected_line),))
+        ).ranges() == ((selected_line, selected_line),)
+
+    assert run_lookups < 64
+
+
+def test_late_source_selection_binary_searches_source_expansions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late unit remap does not scan all preceding source expansions."""
+    expansion_count = 4096
+    with BatchSourceLineage(
+        source_runs=(
+            LineageRun(2 * index + 1, 2 * index + 1, 3 * index + 1)
+            for index in range(expansion_count)
+        ),
+        source_expansions=(
+            SourceSelectionExpansion(
+                2 * index + 1,
+                2 * index + 1,
+                3 * index + 1,
+                3 * index + 2,
+            )
+            for index in range(expansion_count)
+        ),
+    ) as lineage:
+        expansion_table = lineage._source_expansions
+        expansion_lookups = 0
+        original_expansion_at = expansion_table._expansion_at
+
+        def counted_expansion_at(index: int) -> SourceSelectionExpansion:
+            nonlocal expansion_lookups
+            expansion_lookups += 1
+            return original_expansion_at(index)
+
+        monkeypatch.setattr(
+            expansion_table,
+            "_expansion_at",
+            counted_expansion_at,
+        )
+        selected_line = 2 * expansion_count - 1
+        expected_start = 3 * (expansion_count - 1) + 1
+
+        assert lineage.translate_source_selection(
+            LineRanges.from_ranges(((selected_line, selected_line),))
+        ).ranges() == ((expected_start, expected_start + 1),)
+
+    assert expansion_lookups < 64
+
+
 def test_batch_source_lineage_rejects_overlapping_appends():
     """Lineage appends should require monotonic old-coordinate runs."""
     with BatchSourceLineage() as lineage:
@@ -369,6 +450,86 @@ def test_source_lineage_remaps_guarded_presence_ranges():
         )
 
     assert remapped.presence_claims[0].source_lines == ["10-1009,5000-5001"]
+
+
+def test_source_lineage_remaps_replacement_origin_new_span():
+    """Replacement origins remain aligned with refreshed source claims."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2-3"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(1, 1, 2, 3),
+            )
+        ],
+    )
+    with BatchSourceLineage(
+        source_runs=[
+            LineageRun(old_start=1, old_end=1, new_start=1),
+            LineageRun(old_start=2, old_end=3, new_start=4),
+        ],
+    ) as lineage:
+        remapped = remap_batch_ownership_with_lineage(ownership, lineage)
+
+    unit = remapped.replacement_units[0]
+    assert unit.presence_lines == ["4-5"]
+    assert unit.origin is not None
+    assert (unit.origin.new_start, unit.origin.new_end) == (4, 5)
+
+
+def test_source_lineage_demotes_origin_when_new_span_is_unmapped():
+    """Origin evidence is dropped when the produced-side span has no mapping."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2-3"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(1, 1, 2, 4),
+            )
+        ],
+    )
+    with BatchSourceLineage(
+        source_runs=[
+            LineageRun(old_start=1, old_end=3, new_start=1),
+        ],
+    ) as lineage:
+        remapped = remap_batch_ownership_with_lineage(ownership, lineage)
+
+    unit = remapped.replacement_units[0]
+    assert unit.presence_lines == ["2-3"]
+    assert isinstance(unit.origin_evidence, NoReplacementUnitOrigin)
+    assert unit.origin is None
+
+
+def test_source_lineage_demotes_origin_when_new_span_splits():
+    """Origin evidence is dropped when the produced-side span becomes non-contiguous."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [AbsenceClaim(anchor_line=None, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1-2"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(1, 1, 1, 3),
+            )
+        ],
+    )
+    with BatchSourceLineage(
+        source_runs=[
+            LineageRun(old_start=1, old_end=1, new_start=1),
+            LineageRun(old_start=2, old_end=2, new_start=4),
+            LineageRun(old_start=3, old_end=3, new_start=6),
+        ],
+    ) as lineage:
+        remapped = remap_batch_ownership_with_lineage(ownership, lineage)
+
+    unit = remapped.replacement_units[0]
+    assert isinstance(unit.origin_evidence, NoReplacementUnitOrigin)
+    assert unit.origin is None
 
 
 def test_merge_coalesces_overlapping_replacement_units_after_deduplication():
@@ -486,6 +647,21 @@ def test_advance_batch_source_reads_dangling_symlink(
     monkeypatch.setattr(
         advancement_module,
         "read_git_object_buffer_or_none",
+        lambda _revision: LineBuffer.from_bytes(b"missing-old-target"),
+    )
+    monkeypatch.setattr(
+        advancement_module,
+        "get_validated_baseline_commit",
+        lambda _batch_name: "baseline",
+    )
+    monkeypatch.setattr(
+        advancement_module,
+        "read_batch_metadata",
+        lambda _batch_name: {"revision": "metadata-revision"},
+    )
+    monkeypatch.setattr(
+        advancement_module,
+        "read_git_object_buffer_or_empty",
         lambda _revision: LineBuffer.from_bytes(b"missing-old-target"),
     )
 

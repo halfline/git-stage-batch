@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import replace
 
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...core.models import LineEntry
+from ...core.coordinates import BatchSourceSpace, WorktreeSpace
 from ..line_matching.lineage import BatchSourceLineage
+from ..line_matching.transforms import BatchSourceExactTransform
 from ..line_matching.match import match_lines
 from ..ownership.translation import detect_stale_batch_source_for_selection
-from .line_coordinates import translate_display_source_coordinates
+from .line_coordinates import (
+    ExactLineageSourceCoordinates,
+    ExactTransformSourceCoordinates,
+    IdentitySourceCoordinates,
+    SourceCoordinateTransform,
+    StructuralSourceCoordinates,
+    translate_display_source_coordinates,
+)
 
 
 _MAX_UINT64 = (1 << 64) - 1
@@ -135,9 +143,7 @@ def _refresh_selected_line_coordinates(
     selected_lines: Sequence[LineEntry],
     coordinate_lines: Sequence[LineEntry] | None,
     selected_line_records: MappedRecordVector | None,
-    map_working_line: Callable[[int], int | None],
-    *,
-    map_existing_source_line: Callable[[int], int | None] | None = None,
+    transform: SourceCoordinateTransform,
 ) -> list[LineEntry]:
     """Refresh selected entries while scanning complete coordinates when usable."""
     lines_to_refresh = (
@@ -149,11 +155,12 @@ def _refresh_selected_line_coordinates(
 
     for line, source_line in translate_display_source_coordinates(
         lines_to_refresh,
-        map_working_line,
-        map_existing_source_line=map_existing_source_line,
+        transform,
     ):
         if selected_line_records is None:
-            reannotated_lines.append(replace(line, source_line=source_line))
+            reannotated_lines.append(
+                line.with_source_line(source_line)
+            )
             continue
         line_id = line.id
         if (
@@ -193,14 +200,13 @@ def _refresh_selected_line_coordinates(
         _line_id, _count, coordinate_index, encoded_source_line = (
             selected_line_records[record_index]
         )
-        reannotated_lines.append(replace(
-            coordinate_lines[coordinate_index - 1],
-            source_line=(
+        reannotated_lines.append(
+            coordinate_lines[coordinate_index - 1].with_source_line(
                 encoded_source_line - 1
                 if encoded_source_line > 0
                 else None
-            ),
-        ))
+            )
+        )
 
     return reannotated_lines
 
@@ -242,7 +248,7 @@ def refresh_selected_lines_against_new_source(
             selected_lines,
             coordinate_lines,
             selected_line_records,
-            lambda line_number: line_number,
+            IdentitySourceCoordinates(),
         )
 
 
@@ -252,19 +258,26 @@ def refresh_selected_lines_against_source_lines(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     lineage: BatchSourceLineage | None = None,
+    exact_transforms: tuple[
+        BatchSourceExactTransform[BatchSourceSpace, BatchSourceSpace],
+        BatchSourceExactTransform[WorktreeSpace, BatchSourceSpace],
+    ] | None = None,
     coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> list[LineEntry]:
     """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None
-    if lineage is None:
+    if lineage is None and exact_transforms is None:
         mapping = match_lines(source_lines, working_lines)
 
     try:
-        def map_working_line(line_number: int) -> int | None:
-            if lineage is not None:
-                return lineage.translate_working_line(line_number)
+        transform: SourceCoordinateTransform
+        if exact_transforms is not None:
+            transform = ExactTransformSourceCoordinates(*exact_transforms)
+        elif lineage is not None:
+            transform = ExactLineageSourceCoordinates(lineage)
+        else:
             assert mapping is not None
-            return mapping.get_source_line_from_target_line(line_number)
+            transform = StructuralSourceCoordinates(mapping)
 
         with _acquire_coordinate_selected_line_records(
             selected_lines,
@@ -274,12 +287,7 @@ def refresh_selected_lines_against_source_lines(
                 selected_lines,
                 coordinate_lines,
                 selected_line_records,
-                map_working_line,
-                map_existing_source_line=(
-                    lineage.translate_source_line
-                    if lineage is not None
-                    else None
-                ),
+                transform,
             )
     finally:
         if mapping is not None:

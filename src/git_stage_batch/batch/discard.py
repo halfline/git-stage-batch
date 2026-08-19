@@ -36,9 +36,21 @@ from ..core.buffer import (
     LineBuffer,
     buffer_has_data,
 )
+from ..core.coordinates import (
+    FileSnapshot,
+    WorktreeSpace,
+    content_snapshot,
+    require_same_snapshot,
+)
 from ..core.line_selection import LineRanges
 from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ..core.resource_cleanup import close_resources_preserving_first
+from ..core.text_lines import (
+    AcquirableLineSequence,
+    as_acquirable_line_sequence,
+    normalize_line_endings,
+    normalize_line_sequence_endings,
+)
 from ..editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
@@ -48,11 +60,7 @@ from ..exceptions import (
     MissingAnchorError as _MissingAnchorError,
 )
 from ..i18n import _, ngettext
-from ..core.text_lines import (
-    AcquirableLineSequence,
-    normalize_line_endings,
-    normalize_line_sequence_endings,
-)
+from .file_state import BatchFileState
 
 if TYPE_CHECKING:
     from .ownership.model import BatchOwnership
@@ -71,6 +79,38 @@ def _discard_result_line_ending_from_lines(
     if buffer_has_data(baseline_lines):
         return choose_line_ending(baseline_lines)
     return choose_line_ending(source_lines)
+
+
+def discard_batch_file_state_as_buffer(
+    batch_file: BatchFileState,
+    target_snapshot: FileSnapshot[WorktreeSpace],
+    target_lines: Sequence[bytes],
+    *,
+    trusted_presence_lines: LineRanges | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    applied_presence_lines: LineRanges | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
+) -> LineBuffer:
+    """Discard a source-bound batch state from one exact target snapshot."""
+    if batch_file.path != target_snapshot.path:
+        raise ValueError("discard target path does not match batch file")
+    batch_file.validate()
+    target_sequence = as_acquirable_line_sequence(target_lines)
+    with target_sequence.acquire_lines() as acquired:
+        require_same_snapshot(
+            target_snapshot,
+            content_snapshot(batch_file.path, acquired, space=WorktreeSpace),
+        )
+    return discard_batch_from_line_sequences_as_buffer(
+        batch_file.source_lines,
+        batch_file.ownership,
+        target_lines,
+        batch_file.baseline_lines,
+        trusted_presence_lines=trusted_presence_lines,
+        trusted_target_lines=trusted_target_lines,
+        applied_presence_lines=applied_presence_lines,
+        index_preimage_presence_lines=index_preimage_presence_lines,
+    )
 
 
 def discard_batch_from_line_sequences_as_buffer(

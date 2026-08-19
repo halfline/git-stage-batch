@@ -48,7 +48,7 @@ def acquire_detached_batch_ownership(
                 ReplacementUnit(
                     presence_lines=unit.presence_lines[:],
                     deletion_indices=unit.deletion_indices[:],
-                    origin=unit.origin,
+                    origin_evidence=unit.origin_evidence,
                 )
                 for unit in ownership.replacement_units
             ],

@@ -17,6 +17,10 @@ from .merge import merge as batch_merge
 from .line_matching.match import match_lines
 from .ownership.model import BatchOwnership
 from .ownership.display_lines import OwnershipDisplayLine
+from .ownership.replacement_units import (
+    LegacyReplacementUnitOrigin,
+    NoReplacementUnitOrigin,
+)
 from .ownership.unit_rebuild import rebuild_ownership_from_units
 from .ownership.unit_types import OwnershipUnit, OwnershipUnitKind
 from .ownership.unit_validation import validate_ownership_units
@@ -199,11 +203,14 @@ def probe_batch_file_mergeability(
         unit_index = 0
         while unit_index < len(units):
             group_end = unit_index + 1
-            origin = units[unit_index].replacement_origin
-            if origin is not None:
+            origin = units[unit_index].replacement_origin_evidence
+            if not isinstance(origin, NoReplacementUnitOrigin) and not (
+                isinstance(origin, LegacyReplacementUnitOrigin)
+                and origin.value is None
+            ):
                 while (
                     group_end < len(units)
-                    and units[group_end].replacement_origin == origin
+                    and units[group_end].replacement_origin_evidence == origin
                 ):
                     group_end += 1
             else:

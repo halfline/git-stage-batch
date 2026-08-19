@@ -3,10 +3,27 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import cast
 
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
 from ...utils.paths import get_session_batch_sources_file_path
+
+
+@dataclass(frozen=True, slots=True)
+class SessionSourceHint:
+    """Path-scoped display hint with no durable ownership authority."""
+
+    file_path: str
+    commit: str
+
+
+def get_session_source_hint(file_path: str) -> SessionSourceHint | None:
+    """Return a path-scoped hint that persistence must independently verify."""
+    commit = load_session_batch_sources().get(file_path)
+    if commit is None:
+        return None
+    return SessionSourceHint(file_path, commit)
 
 
 def get_batch_source_for_file(file_path: str) -> str | None:
@@ -18,8 +35,8 @@ def get_batch_source_for_file(file_path: str) -> str | None:
     Returns:
         Batch source commit SHA if found, None otherwise
     """
-    batch_sources = load_session_batch_sources()
-    return batch_sources.get(file_path)
+    hint = get_session_source_hint(file_path)
+    return None if hint is None else hint.commit
 
 
 def load_session_batch_sources() -> dict[str, str]:

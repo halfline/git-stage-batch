@@ -57,11 +57,18 @@ from ..realization.entry_storage import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
 from ...core.buffer import LineBuffer
+from ...core.coordinates import (
+    FileSnapshot,
+    WorktreeSpace,
+    content_snapshot,
+    require_same_snapshot,
+)
 from ...core.resource_cleanup import (
     CloseableResource,
     close_resources_on_exit,
     close_resources_preserving_first,
 )
+from ..file_state import BatchFileState
 from ...editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
@@ -88,6 +95,33 @@ if TYPE_CHECKING:
 
 _MERGE_CANDIDATE_CAP = 50
 _MAPPED_OLD_SIDE_PREFLIGHT_LIMIT = 16
+
+
+def merge_batch_file_state_as_buffer(
+    batch_file: BatchFileState,
+    target_snapshot: FileSnapshot[WorktreeSpace],
+    target_lines: Sequence[bytes],
+    *,
+    resolution: _MergeResolution | None = None,
+    spool_dir: str | Path | None = None,
+) -> LineBuffer:
+    """Merge a source-bound batch state into one exact target snapshot."""
+    if batch_file.path != target_snapshot.path:
+        raise ValueError("merge target path does not match batch file")
+    batch_file.validate()
+    target_sequence = as_acquirable_line_sequence(target_lines)
+    with target_sequence.acquire_lines() as acquired:
+        require_same_snapshot(
+            target_snapshot,
+            content_snapshot(batch_file.path, acquired, space=WorktreeSpace),
+        )
+    return merge_batch_from_line_sequences_as_buffer(
+        batch_file.source_lines,
+        batch_file.ownership,
+        target_lines,
+        resolution=resolution,
+        spool_dir=spool_dir,
+    )
 
 
 class _CoordinateStrategyAmbiguity(_MergeError):

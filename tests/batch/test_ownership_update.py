@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import gc
 import inspect
+import tracemalloc
 
 import git_stage_batch.batch.ownership_update as ownership_update_module
 import git_stage_batch.batch.source.refresh as source_refresh
 from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.file_state import (
+    BatchMetadataRevision,
+    SourceBoundOwnership,
+)
 from git_stage_batch.batch.ownership_update import (
     PreparedBatchUpdate,
     acquire_batch_ownership_update_for_selection,
@@ -16,20 +22,60 @@ from git_stage_batch.commands.selection import (
     selected_change_batch_staging,
 )
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.coordinates import BatchSourceSpace, content_snapshot
 from git_stage_batch.core.models import LineEntry
 
 
 def test_prepared_batch_update_dataclass():
     """Test PreparedBatchUpdate dataclass construction."""
     ownership = BatchOwnership.from_presence_lines(["1-3"], [])
+    source = [b"one\n", b"two\n", b"three\n"]
 
     update = PreparedBatchUpdate(
         batch_source_commit="def456",
-        ownership_after=ownership
+        bound_ownership=SourceBoundOwnership(
+            content_snapshot(
+                "test.py",
+                source,
+                space=BatchSourceSpace,
+            ),
+            ownership,
+        ),
+        expected_metadata_revision=BatchMetadataRevision("metadata-1"),
     )
 
     assert update.batch_source_commit == "def456"
-    assert update.ownership_after == ownership
+    assert update.bound_ownership.value == ownership
+
+
+def test_refreshed_selected_overlay_does_not_copy_unselected_hunk() -> None:
+    """Refreshing one selection retains no second Python reference per row."""
+    line_count = 32768
+    hunk_lines = [
+        LineEntry(None, " ", index, index, text_bytes=b"context")
+        for index in range(1, line_count + 1)
+    ]
+    original = LineEntry(1, "+", None, line_count + 1, text_bytes=b"selected")
+    hunk_lines.append(original)
+    refreshed = original.with_source_line(7)
+
+    gc.collect()
+    tracemalloc.start()
+    try:
+        with ownership_update_module._RefreshedSelectedLineOverlay(
+            hunk_lines,
+            [refreshed],
+        ) as overlay:
+            assert overlay[0] is hunk_lines[0]
+            assert overlay[-1] is refreshed
+            assert overlay[::-1][0] is refreshed
+            assert overlay[::-1][1] is hunk_lines[-2]
+            retained, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert retained < 64 * 1024
+    assert peak < 128 * 1024
 
 
 def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
@@ -94,12 +140,13 @@ def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
         batch_name="test-batch",
         file_path="test.py",
         file_metadata={"batch_source_commit": "source123"},
+        metadata_revision=BatchMetadataRevision("metadata-1"),
         selected_lines=lines,
     ) as result:
         assert entered is True
         assert exited is False
         assert result.batch_source_commit == "source123"
-        assert result.ownership_after.presence_line_set() == {1, 2}
+        assert result.bound_ownership.value.presence_line_set() == {1, 2}
 
     assert exited is True
     assert cached_sources == {"test.py": "source123"}

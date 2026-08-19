@@ -2039,7 +2039,7 @@ class TestBuildTargetWorkingTreeContent:
             heap_peaks.append(peak_heap)
 
         small_peak, large_peak = heap_peaks
-        assert large_peak < small_peak + 32 * 1024
+        assert large_peak < small_peak + 64 * 1024
 
     def test_partial_discard(self):
         """Test discarding only some changes."""

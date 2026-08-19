@@ -19,11 +19,10 @@ from git_stage_batch.batch.attribution import (
 )
 from git_stage_batch.batch.attribution_units import (
     AttributionUnitKind,
-    FileComparison,
+    build_file_comparison_from_lines,
     enumerate_units_from_file_comparison,
 )
 from git_stage_batch.batch.attribution_projection import project_attribution_to_diff
-from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.state.references import get_batch_state_ref_name
 from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_lines,
@@ -100,30 +99,29 @@ def _enumerate_units_from_head_and_working_tree(file_path: str):
     working_tree_buffer = load_working_tree_file_as_buffer(file_path)
 
     with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
-        comparison = FileComparison(
-            file_path=file_path,
+        with build_file_comparison_from_lines(
+            file_path,
             baseline_lines=baseline_lines,
             working_tree_lines=working_tree_lines,
-            alignment=match_lines(baseline_lines, working_tree_lines),
-        )
-        units_map = {}
-        enumerate_units_from_file_comparison(comparison, units_map)
-        return units_map
+        ) as comparison:
+            units_map = {}
+            enumerate_units_from_file_comparison(comparison, units_map)
+            return units_map
 
 
 def test_file_comparison_accepts_non_list_line_sequences(line_sequence):
     """Attribution comparison only requires sized indexable line sequences."""
     baseline_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
     working_tree_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
-    comparison = FileComparison(
-        file_path="test.txt",
+    comparison = build_file_comparison_from_lines(
+        "test.txt",
         baseline_lines=baseline_lines,
         working_tree_lines=working_tree_lines,
-        alignment=match_lines(baseline_lines, working_tree_lines),
     )
     units_map = {}
 
-    enumerate_units_from_file_comparison(comparison, units_map)
+    with comparison:
+        enumerate_units_from_file_comparison(comparison, units_map)
 
     replacement_units = [
         unit
@@ -155,15 +153,15 @@ def test_multi_line_replacement_addition_uses_digest_for_projection(line_sequenc
             b"line4\n",
         ]
     )
-    comparison = FileComparison(
-        file_path="test.txt",
+    comparison = build_file_comparison_from_lines(
+        "test.txt",
         baseline_lines=baseline_lines,
         working_tree_lines=working_tree_lines,
-        alignment=match_lines(baseline_lines, working_tree_lines),
     )
     units_map = {}
 
-    enumerate_units_from_file_comparison(comparison, units_map)
+    with comparison:
+        enumerate_units_from_file_comparison(comparison, units_map)
 
     replacement_unit = next(
         unit

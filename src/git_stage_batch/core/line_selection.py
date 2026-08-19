@@ -352,6 +352,30 @@ class LineRanges:
 
         return LineRanges.from_ranges(remaining)
 
+    def is_subset_of(
+        self,
+        other: LineSelection | Iterable[int],
+    ) -> bool:
+        """Return whether every selected line is present in ``other``.
+
+        Checking this by constructing ``self.difference(other)`` rescans the
+        complete right-hand range table and allocates a result. Callers that
+        validate many small selections against one large ownership set can
+        thereby become quadratic. Normalized ranges let each left range find
+        its sole possible covering range directly.
+        """
+        other_selection = coerce_line_ranges(other)
+        if not self._ranges:
+            return True
+        if not other_selection._ranges:
+            return False
+
+        for start, end in self._ranges:
+            index = bisect_right(other_selection._starts, start) - 1
+            if index < 0 or other_selection._ranges[index][1] < end:
+                return False
+        return True
+
     def union(
         self,
         other: LineSelection | Iterable[int],

@@ -176,7 +176,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
             combined_replacement_units.append(ReplacementUnit(
                 presence_lines=unit.presence_lines,
                 deletion_indices=remapped_indices,
-                origin=unit.origin,
+                origin_evidence=unit.origin_evidence,
             ))
 
     return BatchOwnership(

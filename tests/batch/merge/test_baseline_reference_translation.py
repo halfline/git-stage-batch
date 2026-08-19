@@ -5,6 +5,7 @@ import pytest
 from git_stage_batch.batch.merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
 )
+import git_stage_batch.batch.merge.baseline_reference_translation as translation_module
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
@@ -88,6 +89,7 @@ def test_translates_deletion_range_from_shifted_selection_baseline():
 
     translate_ownership_baseline_references(ownership, source, target)
 
+    deletion = ownership.deletions[0]
     reference = deletion.baseline_reference
     assert reference is not None
     assert reference.after_line == 1
@@ -115,6 +117,7 @@ def test_translates_leading_deletion_past_target_prefix():
 
     translate_ownership_baseline_references(ownership, source, target)
 
+    deletion = ownership.deletions[0]
     reference = deletion.baseline_reference
     assert reference is not None
     assert reference.after_line == 1
@@ -139,6 +142,7 @@ def test_translates_trailing_deletion_before_target_suffix():
 
     translate_ownership_baseline_references(ownership, source, target)
 
+    deletion = ownership.deletions[0]
     reference = deletion.baseline_reference
     assert reference is not None
     assert reference.after_line == 1
@@ -199,10 +203,12 @@ def test_translates_replacement_origin_from_live_head_to_batch_baseline():
         replacement_origin_source_lines=head,
     )
 
+    deletion = ownership.deletions[0]
+    origin = ownership.replacement_units[0].origin
     assert deletion.baseline_reference is not None
     assert deletion.baseline_reference.after_line == 6
     assert deletion.baseline_reference.before_line == 8
-    assert origin.baseline_reference is not None
+    assert origin is not None and origin.baseline_reference is not None
     assert origin.baseline_reference.after_line == 6
     assert origin.baseline_reference.before_line == 8
 
@@ -256,12 +262,14 @@ def test_projects_split_replacement_content_through_parent_origin():
         replacement_origin_source_lines=head,
     )
 
+    deletion = ownership.deletions[0]
+    origin = ownership.replacement_units[0].origin
     assert list(deletion.content_lines) == [b"saved-one\n"]
     assert deletion.baseline_reference is not None
     assert deletion.baseline_reference.after_line == 1
     assert deletion.baseline_reference.before_line == 3
     assert deletion.baseline_reference.before_content == b"saved-two\n"
-    assert origin.baseline_reference is not None
+    assert origin is not None and origin.baseline_reference is not None
     assert origin.baseline_reference.after_line == 1
     assert origin.baseline_reference.before_line == 4
 
@@ -285,8 +293,48 @@ def test_does_not_project_plain_deletion_onto_different_content():
 
     translate_ownership_baseline_references(ownership, source, target)
 
+    deletion = ownership.deletions[0]
     assert deletion.baseline_reference is None
     assert list(deletion.content_lines) == [b"old\n"]
+
+
+def test_shared_origin_translation_does_not_rescan_all_units(monkeypatch):
+    """Immutable origin replacement remains linear in replacement-unit count."""
+    class CountingList(list):
+        iteration_count = 0
+
+        def __iter__(self):
+            self.iteration_count += 1
+            return super().__iter__()
+
+    units = CountingList(
+        ReplacementUnit(
+            [str(index)],
+            [index - 1],
+            origin=ReplacementUnitOrigin(index, index, index, index),
+        )
+        for index in range(1, 129)
+    )
+    ownership = BatchOwnership(
+        presence_claims=[],
+        deletions=[AbsenceClaim(None, (b"old\n",)) for _ in units],
+        replacement_units=units,
+    )
+    units.iteration_count = 0
+    monkeypatch.setattr(
+        translation_module,
+        "_translate_removal_reference",
+        lambda *_args, **_kwargs: None,
+    )
+
+    translation_module._translate_replacement_origin_references(
+        ownership,
+        [b"old\n"] * 128,
+        [b"old\n"] * 128,
+        object(),  # type: ignore[arg-type]
+    )
+
+    assert units.iteration_count == 1
 
 
 def test_rejects_replacement_missing_from_target_baseline():
@@ -333,3 +381,51 @@ def test_rejects_replacement_missing_from_target_baseline():
             target,
             replacement_origin_source_lines=source,
         )
+
+
+def test_source_alternative_flag_survives_reference_projection():
+    """A source-alternative deletion must keep its flag after translation."""
+    source = [b"staged\n", b"a\n", b"b\n"]
+    target = [b"a\n", b"b\n"]
+    deletion = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"a\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"staged",
+            before_line=3,
+            before_content=b"b",
+            has_before_line=True,
+        ),
+        source_alternative=True,
+    )
+    ownership = BatchOwnership.from_presence_lines([], [deletion])
+
+    translate_ownership_baseline_references(ownership, source, target)
+
+    translated = ownership.deletions[0]
+    assert translated.source_alternative is True
+    assert translated.baseline_reference is not None
+
+
+def test_source_alternative_flag_survives_unprojectable_reference():
+    """An unprojectable reference still preserves the source-alternative flag."""
+    source = [b"a\n", b"old\n"]
+    target = [b"different\n"]
+    deletion = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"old\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"a",
+            has_after_line=True,
+        ),
+        source_alternative=True,
+    )
+    ownership = BatchOwnership.from_presence_lines([], [deletion])
+
+    translate_ownership_baseline_references(ownership, source, target)
+
+    translated = ownership.deletions[0]
+    assert translated.source_alternative is True
+    assert translated.baseline_reference is None

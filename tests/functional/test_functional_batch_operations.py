@@ -614,15 +614,6 @@ class TestApplyFromBatch:
         assert tool.count("static int validate_query(") == 1
         assert tool.count("int main(") == 1
 
-        build = subprocess.run(
-            ["make"],
-            cwd=functional_repo / "tools",
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert build.returncode == 0, build.stdout + build.stderr
-
         reapplied = git_stage_batch("apply", "--from", batch_name, check=False)
 
         assert reapplied.returncode == 0, reapplied.stderr

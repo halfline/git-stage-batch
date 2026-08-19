@@ -2,16 +2,87 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
+from typing import Protocol
 
 from ...core.models import LineEntry
+from ...core.coordinates import BatchSourceSpace, WorktreeSpace
+from ..line_matching.line_mapping import LineMapping
+from ..line_matching.lineage import BatchSourceLineage
+from ..line_matching.transforms import BatchSourceExactTransform
+
+
+class SourceCoordinateTransform(Protocol):
+    """Explicit authority/evidence used to project display coordinates."""
+
+    def translate_working_line(self, line_number: int) -> int | None: ...
+
+    def translate_existing_source_line(self, line_number: int) -> int | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class IdentitySourceCoordinates:
+    """Exact coordinates for a worktree that becomes the initial source."""
+
+    def translate_working_line(self, line_number: int) -> int:
+        return line_number
+
+    def translate_existing_source_line(self, line_number: int) -> None:
+        del line_number
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class StructuralSourceCoordinates:
+    """Non-authoritative content mapping that persistence must revalidate."""
+
+    mapping: LineMapping
+
+    def translate_working_line(self, line_number: int) -> int | None:
+        return self.mapping.get_source_line_from_target_line(line_number)
+
+    def translate_existing_source_line(self, line_number: int) -> None:
+        del line_number
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class ExactLineageSourceCoordinates:
+    """Authority-bearing coordinates produced by recorded source lineage."""
+
+    lineage: BatchSourceLineage
+
+    def translate_working_line(self, line_number: int) -> int | None:
+        return self.lineage.translate_working_line(line_number)
+
+    def translate_existing_source_line(self, line_number: int) -> int | None:
+        return self.lineage.translate_source_line(line_number)
+
+
+@dataclass(frozen=True, slots=True)
+class ExactTransformSourceCoordinates:
+    """Line annotation backed by snapshot-validated exact transforms."""
+
+    source_transform: BatchSourceExactTransform[
+        BatchSourceSpace,
+        BatchSourceSpace,
+    ]
+    working_transform: BatchSourceExactTransform[
+        WorktreeSpace,
+        BatchSourceSpace,
+    ]
+
+    def translate_working_line(self, line_number: int) -> int | None:
+        return self.working_transform.translate_line_number(line_number)
+
+    def translate_existing_source_line(self, line_number: int) -> int | None:
+        return self.source_transform.translate_line_number(line_number)
 
 
 def translate_display_source_coordinates(
     lines: Iterable[LineEntry],
-    map_working_line: Callable[[int], int | None],
-    *,
-    map_existing_source_line: Callable[[int], int | None] | None = None,
+    transform: SourceCoordinateTransform,
 ) -> Iterator[tuple[LineEntry, int | None]]:
     """Yield each display row with its translated source coordinate.
 
@@ -31,7 +102,7 @@ def translate_display_source_coordinates(
             if line.new_line_number is None:
                 last_source_line = None
             else:
-                source_line = map_working_line(line.new_line_number)
+                source_line = transform.translate_working_line(line.new_line_number)
                 if source_line is not None:
                     last_source_line = source_line
                 if line.old_line_number is not None:
@@ -42,7 +113,7 @@ def translate_display_source_coordinates(
             previous_deleted_old_line = None
         elif line.kind == "+":
             if line.new_line_number is not None:
-                source_line = map_working_line(line.new_line_number)
+                source_line = transform.translate_working_line(line.new_line_number)
             if source_line is not None:
                 last_source_line = source_line
             coordinate_delta += 1
@@ -57,9 +128,8 @@ def translate_display_source_coordinates(
                 if (
                     deletion_run_anchor is None
                     and line.source_line is not None
-                    and map_existing_source_line is not None
                 ):
-                    deletion_run_anchor = map_existing_source_line(
+                    deletion_run_anchor = transform.translate_existing_source_line(
                         line.source_line
                     )
                 if (
@@ -70,7 +140,9 @@ def translate_display_source_coordinates(
                         line.old_line_number - 1 + coordinate_delta
                     )
                     if working_anchor > 0:
-                        deletion_run_anchor = map_working_line(working_anchor)
+                        deletion_run_anchor = transform.translate_working_line(
+                            working_anchor
+                        )
             source_line = deletion_run_anchor
             coordinate_delta -= 1
             previous_deleted_old_line = line.old_line_number

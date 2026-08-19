@@ -24,6 +24,11 @@ from .line_entries import (
 from .references import BaselineReference
 from .replacement_units import normalize_replacement_units
 from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
+from .replacement_origins import (
+    NoReplacementOrigin,
+    ReplacementOrigin,
+)
+from ..source.projection import SourceCoordinateProjection
 
 
 class _HunkOldLineContent(Mapping[int, bytes]):
@@ -107,14 +112,13 @@ class _HunkOldLineContent(Mapping[int, bytes]):
 
 
 def translate_hunk_selection_to_batch_ownership(
-    hunk_lines: list[LineEntry],
+    hunk_lines: Sequence[LineEntry],
     selected_display_ids: Collection[int],
     *,
     replacement_line_runs: Iterable[_ReplacementLineRun] | None = None,
-    replacement_origin_line_runs: Iterable[_ReplacementLineRun] | None = None,
-    replacement_origin_source_lines: Sequence[bytes] | None = None,
-    replacement_runs_are_origin_runs: bool = False,
+    replacement_origin: ReplacementOrigin = NoReplacementOrigin(),
     baseline_lines: Sequence[bytes] | None = None,
+    source_projection: SourceCoordinateProjection | None = None,
 ) -> BatchOwnership:
     """Translate selected live-hunk IDs while retaining full-hunk boundaries.
 
@@ -134,21 +138,19 @@ def translate_hunk_selection_to_batch_ownership(
             selected_display_ids,
             old_line_content=old_line_content,
             replacement_line_runs=replacement_line_runs,
-            replacement_origin_line_runs=replacement_origin_line_runs,
-            replacement_origin_source_lines=replacement_origin_source_lines,
-            replacement_runs_are_origin_runs=replacement_runs_are_origin_runs,
+            replacement_origin=replacement_origin,
+            source_projection=source_projection,
         )
 
 
 def _translate_hunk_selection_with_old_content(
-    hunk_lines: list[LineEntry],
+    hunk_lines: Sequence[LineEntry],
     selected_display_ids: Collection[int],
     *,
     old_line_content: Mapping[int, bytes],
     replacement_line_runs: Iterable[_ReplacementLineRun] | None,
-    replacement_origin_line_runs: Iterable[_ReplacementLineRun] | None,
-    replacement_origin_source_lines: Sequence[bytes] | None,
-    replacement_runs_are_origin_runs: bool,
+    replacement_origin: ReplacementOrigin,
+    source_projection: SourceCoordinateProjection | None,
 ) -> BatchOwnership:
     """Translate one hunk while its storage-backed old-line index is open."""
     hunk_content_view = _LineEntryContentSequence(hunk_lines)
@@ -159,9 +161,8 @@ def _translate_hunk_selection_with_old_content(
             replacement_line_runs=replacement_line_runs or (),
             old_line_content=old_line_content,
             hunk_content_view=hunk_content_view,
-            replacement_origin_line_runs=replacement_origin_line_runs,
-            replacement_origin_source_lines=replacement_origin_source_lines,
-            replacement_runs_are_origin_runs=replacement_runs_are_origin_runs,
+            replacement_origin=replacement_origin,
+            source_projection=source_projection,
         )
     )
     claimed_source_lines = LineRangeBuilder()
@@ -178,6 +179,11 @@ def _translate_hunk_selection_with_old_content(
     current_absence_old_start: int | None = None
     current_absence_old_end: int | None = None
     active_replacement_unit: _ReplacementUnitBuilder | None = None
+
+    def source_line_for(line: LineEntry) -> int | None:
+        if source_projection is None:
+            return line.source_line
+        return source_projection.source_line_for(line)
 
     def finish_replacement_unit(
         builder: _ReplacementUnitBuilder | None,
@@ -236,17 +242,20 @@ def _translate_hunk_selection_with_old_content(
             flushed_deletion_indices = flush_absence_run()
 
             if is_selected:
-                if line.source_line is None:
+                source_line = source_line_for(line)
+                if source_line is None:
                     raise ValueError(
                         f"Cannot translate line to batch ownership: source_line is None "
                         f"(kind={line.kind!r}, text={line.display_text()!r}). "
                         f"Batch source is stale and must be advanced before translation."
                     )
 
-                claimed_source_lines.add_line(line.source_line)
+                claimed_source_lines.add_line(source_line)
                 baseline_reference = _baseline_reference_for_presence_line(line)
                 if baseline_reference is not None:
-                    presence_baseline_references[line.source_line] = baseline_reference
+                    presence_baseline_references[source_line] = (
+                        baseline_reference
+                    )
 
                 if line.kind == "+":
                     if flushed_deletion_indices:
@@ -256,7 +265,7 @@ def _translate_hunk_selection_with_old_content(
                         )
 
                     if active_replacement_unit is not None:
-                        active_replacement_unit.add_presence_line(line.source_line)
+                        active_replacement_unit.add_presence_line(source_line)
                 else:
                     finish_replacement_unit(active_replacement_unit)
                     active_replacement_unit = None
@@ -264,8 +273,9 @@ def _translate_hunk_selection_with_old_content(
                 finish_replacement_unit(active_replacement_unit)
                 active_replacement_unit = None
 
-            if line.source_line is not None:
-                current_absence_anchor = line.source_line
+            source_line = source_line_for(line)
+            if source_line is not None:
+                current_absence_anchor = source_line
             continue
 
         if line.kind == "-":
@@ -278,7 +288,7 @@ def _translate_hunk_selection_with_old_content(
             finish_replacement_unit(active_replacement_unit)
             active_replacement_unit = None
             if current_absence_start is None:
-                current_absence_anchor = line.source_line
+                current_absence_anchor = source_line_for(line)
                 current_absence_start = index
             current_absence_stop = index + 1
             if line.old_line_number is not None:

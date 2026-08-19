@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import overload
 
+from ...core.coordinates import LineBoundary
 from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.text_lines import normalize_line_endings
 from ...exceptions import MergeError
@@ -57,10 +58,13 @@ class _ReanchoredAbsenceClaims(Sequence[AbsenceClaim]):
         anchor_line = claim.anchor_line
         if anchor_line is None or anchor_line not in self._suppressed_lines:
             return claim
+        reanchored = self._suppressed_lines.nearest_unselected_at_or_before(
+            anchor_line
+        )
         return replace(
             claim,
-            anchor_line=self._suppressed_lines.nearest_unselected_at_or_before(
-                anchor_line
+            anchor=LineBoundary(
+                0 if reanchored is None else reanchored
             ),
         )
 

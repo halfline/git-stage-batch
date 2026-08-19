@@ -18,8 +18,12 @@ from git_stage_batch.batch.ownership.model import (
 )
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import (
+    LegacyReplacementUnitOrigin,
+    NoReplacementUnitOrigin,
+    ProvenReplacementUnitOrigin,
     ReplacementUnit,
     ReplacementUnitOrigin,
+    normalize_replacement_units,
 )
 from git_stage_batch.batch.ownership.units import (
     build_ownership_units_from_batch_source_lines,
@@ -37,6 +41,226 @@ from git_stage_batch.batch.ownership.unit_types import (
 from git_stage_batch.batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.exceptions import AtomicUnitError
+
+
+def test_replacement_origin_variants_distinguish_legacy_and_current_units():
+    """Absent compatibility provenance is not conflated with current evidence."""
+    current = ReplacementUnit(["1"], [0])
+    legacy = ReplacementUnit.from_dict(
+        {"presence_lines": ["1"], "deletion_indices": [0]}
+    )
+
+    assert isinstance(current.origin_evidence, NoReplacementUnitOrigin)
+    assert isinstance(legacy.origin_evidence, LegacyReplacementUnitOrigin)
+
+
+def test_current_replacement_origin_conflict_fails_closed():
+    """Coalescing cannot silently erase disagreeing current provenance."""
+    left = ReplacementUnitOrigin(1, 1, 1, 1)
+    right = ReplacementUnitOrigin(2, 2, 1, 1)
+    units = [
+        ReplacementUnit(["1"], [0], origin=left),
+        ReplacementUnit(["1"], [0], origin=right),
+    ]
+
+    assert isinstance(units[0].origin_evidence, ProvenReplacementUnitOrigin)
+    with pytest.raises(ValueError, match="disagree"):
+        normalize_replacement_units(units, deletion_count=1)
+
+
+def test_current_replacement_origin_cannot_be_silently_downgraded_to_legacy():
+    """Only the compatibility decoder may construct legacy provenance."""
+    with pytest.raises(ValueError, match="provenance is malformed"):
+        ReplacementUnit(
+            ["1"],
+            [0],
+            origin={},  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "evidence_type",
+    [ProvenReplacementUnitOrigin, LegacyReplacementUnitOrigin],
+)
+def test_rebuild_preserves_replacement_origin_authority_tier(evidence_type):
+    """Semantic-unit round trips cannot promote or demote provenance."""
+    origin = ReplacementUnitOrigin(1, 1, 1, 1)
+    unit = OwnershipUnit(
+        kind=OwnershipUnitKind.REPLACEMENT,
+        claimed_source_lines=LineRanges.from_ranges(((1, 1),)),
+        deletion_claims=[
+            AbsenceClaim(anchor_line=None, content_lines=(b"old\n",))
+        ],
+        display_line_ids=LineRanges.from_ranges(((1, 2),)),
+        preserves_replacement_unit=True,
+        replacement_origin_evidence=evidence_type(origin),
+    )
+
+    rebuilt = rebuild_ownership_from_units([unit])
+
+    assert isinstance(
+        rebuilt.replacement_units[0].origin_evidence,
+        evidence_type,
+    )
+
+
+def test_replacement_normalization_coalesces_transitive_overlap() -> None:
+    """Presence and deletion overlap form one transitive replacement unit."""
+    units = [
+        ReplacementUnit(["1-2"], [0]),
+        ReplacementUnit(["4"], [1]),
+        ReplacementUnit(["2-4"], [2]),
+        ReplacementUnit(["8"], [2]),
+    ]
+
+    assert normalize_replacement_units(units, deletion_count=3) == [
+        ReplacementUnit(["1-4,8"], [0, 1, 2]),
+    ]
+
+
+def test_replacement_normalization_does_not_scan_all_disjoint_components(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Disjoint units use indexes instead of an all-components overlap scan."""
+    intersection_calls = 0
+    original_intersection = LineRanges.intersection
+
+    def counted_intersection(
+        ranges: LineRanges,
+        other: LineRanges,
+    ) -> LineRanges:
+        nonlocal intersection_calls
+        intersection_calls += 1
+        return original_intersection(ranges, other)
+
+    monkeypatch.setattr(LineRanges, "intersection", counted_intersection)
+    unit_count = 512
+    units = [
+        ReplacementUnit([str(2 * index + 1)], [index])
+        for index in range(unit_count)
+    ]
+
+    normalized = normalize_replacement_units(
+        units,
+        deletion_count=unit_count,
+    )
+
+    assert normalized == units
+    assert intersection_calls <= unit_count
+
+
+def test_explicit_unit_display_projection_does_not_rescan_for_every_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Many disjoint units are joined to display rows with one indexed pass."""
+    contains_calls = 0
+    original_contains = LineRanges.__contains__
+
+    def counted_contains(ranges: LineRanges, line_number: object) -> bool:
+        nonlocal contains_calls
+        contains_calls += 1
+        return original_contains(ranges, line_number)
+
+    monkeypatch.setattr(LineRanges, "__contains__", counted_contains)
+    unit_count = 256
+    ownership = BatchOwnership.from_presence_lines(
+        [f"1-{unit_count}"],
+        [
+            AbsenceClaim(anchor_line=line_number, content_lines=[b"old\n"])
+            for line_number in range(1, unit_count + 1)
+        ],
+        replacement_units=[
+            ReplacementUnit([str(line_number)], [line_number - 1])
+            for line_number in range(1, unit_count + 1)
+        ],
+    )
+
+    units = _ownership_units_for_source(
+        ownership,
+        b"new\n" * unit_count,
+    )
+
+    assert len(units) == unit_count
+    assert contains_calls <= unit_count * 5
+
+
+def test_rebuild_collects_fragmented_presence_without_iterative_unions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rebuild normalization is one bulk operation, not quadratic unions."""
+    def unexpected_union(*_args: object, **_kwargs: object) -> LineRanges:
+        raise AssertionError("ownership rebuild used iterative range unions")
+
+    monkeypatch.setattr(LineRanges, "union", unexpected_union)
+    unit_count = 512
+    units = [
+        OwnershipUnit(
+            kind=OwnershipUnitKind.PRESENCE_ONLY,
+            claimed_source_lines=LineRanges.from_ranges(((2 * index + 1,) * 2,)),
+            deletion_claims=[],
+            display_line_ids=LineRanges.from_ranges(((index + 1,) * 2,)),
+        )
+        for index in range(unit_count)
+    ]
+
+    rebuilt = rebuild_ownership_from_units(units)
+
+    assert len(rebuilt.presence_line_set()) == unit_count
+
+
+def test_presence_reference_index_is_built_once_for_many_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-line ownership units do not rebuild the complete reference map."""
+    line_count = 512
+    references = {
+        line_number: BaselineReference(after_line=line_number)
+        for line_number in range(1, line_count + 1)
+    }
+    ownership = BatchOwnership.from_presence_lines(
+        [f"1-{line_count}"],
+        baseline_references=references,
+    )
+    calls = 0
+    original_references = ownership.presence_baseline_references
+
+    def counted_references() -> dict[int, BaselineReference]:
+        nonlocal calls
+        calls += 1
+        return original_references()
+
+    monkeypatch.setattr(
+        ownership,
+        "presence_baseline_references",
+        counted_references,
+    )
+
+    units = _ownership_units_for_source(
+        ownership,
+        b"owned\n" * line_count,
+    )
+
+    assert len(units) == line_count
+    assert calls == 1
+
+
+def test_legacy_malformed_origin_is_repaired_without_becoming_provenance():
+    """Compatibility decoding may drop bad evidence but tags the result legacy."""
+    unit = ReplacementUnit.from_dict(
+        {
+            "presence_lines": ["1"],
+            "deletion_indices": [0],
+            "original_unit": {
+                "old_start": 0,
+                "old_end": 0,
+                "new_start": 0,
+                "new_end": 0,
+            },
+        }
+    )
+
+    assert isinstance(unit.origin_evidence, LegacyReplacementUnitOrigin)
+    assert unit.origin is None
 
 
 def _source_lines(content: bytes) -> list[bytes]:

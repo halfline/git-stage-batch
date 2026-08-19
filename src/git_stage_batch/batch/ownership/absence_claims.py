@@ -6,12 +6,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...core.buffer import LineBuffer, buffer_byte_chunks
+from ...core.coordinates import BatchSourceSpace, LineBoundary
 from ...utils.git_object_io import create_git_blob
 from .metadata_types import AbsenceClaimMetadata
 from .references import BaselineReference
 
 
-@dataclass
+@dataclass(init=False, frozen=True, slots=True)
 class AbsenceClaim:
     """A suppression constraint: specific old-side content that must not appear.
 
@@ -32,16 +33,47 @@ class AbsenceClaim:
                             payload rather than from the batch baseline.
     """
 
-    anchor_line: int | None
+    anchor: LineBoundary[BatchSourceSpace]
     content_lines: Sequence[bytes]
     baseline_reference: BaselineReference | None = None
     source_alternative: bool = False
+
+    def __init__(
+        self,
+        anchor_line: int | None = None,
+        content_lines: Sequence[bytes] = (),
+        baseline_reference: BaselineReference | None = None,
+        *,
+        anchor: LineBoundary[BatchSourceSpace] | None = None,
+        source_alternative: bool = False,
+    ) -> None:
+        if anchor is not None and not isinstance(anchor, LineBoundary):
+            raise TypeError("absence anchor must be a line boundary")
+        if anchor_line is not None and (
+            type(anchor_line) is not int or anchor_line <= 0
+        ):
+            raise ValueError("legacy absence anchor line must be positive")
+        if anchor is not None and anchor_line is not None:
+            raise ValueError("provide an anchor boundary or legacy anchor line")
+        if anchor is not None:
+            resolved = anchor
+        else:
+            resolved = LineBoundary(0 if anchor_line is None else anchor_line)
+        object.__setattr__(self, "anchor", resolved)
+        object.__setattr__(self, "content_lines", content_lines)
+        object.__setattr__(self, "baseline_reference", baseline_reference)
+        object.__setattr__(self, "source_alternative", source_alternative)
+
+    @property
+    def anchor_line(self) -> int | None:
+        """Return the v1 after-source-line encoding for compatibility."""
+        return self.anchor.offset or None
 
     def to_dict(self) -> AbsenceClaimMetadata:
         """Serialize to metadata dictionary."""
         blob_sha = create_git_blob(buffer_byte_chunks(self.content_lines))
         data: AbsenceClaimMetadata = {
-            "after_source_line": self.anchor_line,
+            "after_source_line": self.anchor.offset or None,
             "blob": blob_sha,
         }
         if self.baseline_reference is not None:
@@ -76,7 +108,8 @@ class AbsenceClaim:
             if baseline_metadata is not None else None
         )
         return cls(
-            anchor_line=anchor_line,
+            anchor_line=None,
+            anchor=LineBoundary(anchor_line or 0),
             content_lines=content_lines,
             baseline_reference=baseline_reference,
             source_alternative=data.get("source_alternative") is True,

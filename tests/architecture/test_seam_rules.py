@@ -86,9 +86,96 @@ UNDO_REFS_MODULE = f"{UNDO_PREFIX}.refs"
 UNDO_SNAPSHOTS_MODULE = f"{UNDO_PREFIX}.snapshots"
 UNDO_STATE_MODULE = f"{UNDO_PREFIX}.state"
 BLOCK_ACTIONS_MODULE = "git_stage_batch.tui.file_review.block_actions"
+SNAPSHOT_DOMAIN_MODULES = frozenset(
+    {
+        "git_stage_batch.batch.file_state",
+        "git_stage_batch.batch.line_matching.transforms",
+        "git_stage_batch.batch.source.projection",
+        "git_stage_batch.batch.transformed_selection",
+        "git_stage_batch.core.coordinates",
+        "git_stage_batch.core.edit_plan",
+    }
+)
+LINE_ENTRY_COMPATIBILITY_MODULES = frozenset(
+    {
+        "git_stage_batch.core.selection_geometry",
+        "git_stage_batch.batch.ownership.hunk_line_ranges",
+        "git_stage_batch.batch.ownership.hunk_replacement_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
+        "git_stage_batch.batch.ownership.insertion_references",
+        "git_stage_batch.batch.ownership.line_entries",
+        "git_stage_batch.batch.ownership.translation",
+        "git_stage_batch.batch.source.annotation",
+        "git_stage_batch.batch.source.line_coordinates",
+        "git_stage_batch.batch.source.refresh",
+        "git_stage_batch.batch.source.selected_line_refresh",
+        "git_stage_batch.staging.content_buffers",
+    }
+)
 
 
 ARCHITECTURE_SEAMS = (
+    ArchitectureSeam(
+        name="snapshot-bound-domain-values",
+        forbidden_imports=(
+            _forbid(
+                SNAPSHOT_DOMAIN_MODULES,
+                "git_stage_batch.core.models",
+                "snapshot-bound domain values must not depend on rendered diff rows",
+                names=("LineEntry", "LineLevelChange"),
+            ),
+        ),
+        consumers=(
+            _consumers(
+                ("git_stage_batch.batch.file_state",),
+                required=(
+                    "git_stage_batch.batch.discard",
+                    "git_stage_batch.batch.merge.merge",
+                    "git_stage_batch.batch.source.advancement",
+                    "git_stage_batch.batch.text_file_storage",
+                ),
+            ),
+            _consumers(
+                ("git_stage_batch.batch.transformed_selection",),
+                required=(
+                    "git_stage_batch.commands.selection.discard_line_replacement",
+                ),
+            ),
+            _consumers(
+                ("git_stage_batch.core.edit_plan",),
+                required=(
+                    "git_stage_batch.batch.transformed_selection",
+                    "git_stage_batch.staging.content_buffers",
+                ),
+            ),
+            _consumers(
+                ("git_stage_batch.core.selection_geometry",),
+                required=(
+                    "git_stage_batch.batch.transformed_selection",
+                    "git_stage_batch.commands.selection.discard_line_replacement",
+                ),
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="rendered-row-migration-boundary",
+        forbidden_imports=(
+            _forbid(
+                frozenset(
+                    {
+                        "git_stage_batch.batch.merge",
+                        "git_stage_batch.batch.ownership",
+                        "git_stage_batch.batch.source",
+                        "git_stage_batch.staging",
+                    }
+                ),
+                "git_stage_batch.core.models",
+                "rendered diff rows may enter only named compatibility adapters",
+                allowed_sources=tuple(sorted(LINE_ENTRY_COMPATIBILITY_MODULES)),
+                names=("LineEntry", "LineLevelChange"),
+            ),
+        ),
+    ),
     ArchitectureSeam(
         name="runtime-layer-directions",
         forbidden_imports=(

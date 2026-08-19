@@ -2,21 +2,40 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass, field
-from typing import Literal
+from collections.abc import Iterable, Iterator, Sequence
+from dataclasses import dataclass, field, replace
+from typing import Literal, cast, overload
 
 
 FileChangeType = Literal["added", "modified", "deleted"]
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class HunkHeader:
     """Represents the header line of a unified diff hunk."""
     old_start: int
     old_len: int
     new_start: int
     new_len: int
+
+    def __post_init__(self) -> None:
+        if any(
+            type(value) is not int
+            for value in (
+                self.old_start,
+                self.old_len,
+                self.new_start,
+                self.new_len,
+            )
+        ):
+            raise ValueError("hunk coordinates must be integers")
+        if (
+            self.old_start < 0
+            or self.old_len < 0
+            or self.new_start < 0
+            or self.new_len < 0
+        ):
+            raise ValueError("hunk coordinates must be non-negative")
 
     def remaining_body_counts(
         self,
@@ -158,9 +177,9 @@ class GitlinkChange:
         return self.change_type == "deleted"
 
 
-@dataclass(init=False, slots=True)
+@dataclass(init=False, frozen=True, slots=True)
 class LineEntry:
-    """Represents a single line in a hunk with metadata for line-level selection.
+    """Immutable rendered diff row used at presentation boundaries.
 
     Invariant: bytes are canonical, strings are derived.
     - text_bytes: Exact bytes from the diff (without +/- prefix)
@@ -170,7 +189,7 @@ class LineEntry:
     old_line_number: int | None  # Line number in old file (None for additions)
     new_line_number: int | None  # Line number in new file (None for deletions)
     text_bytes: bytes  # Canonical line content without the leading +/- marker
-    source_line: int | None = None  # Line position in source reference (e.g., batch source, merge base)
+    source_line: int | None = None
     baseline_reference_after_line: int | None = None
     baseline_reference_after_text_bytes: bytes | None = None
     has_baseline_reference_after: bool = False
@@ -198,32 +217,235 @@ class LineEntry:
     ) -> None:
         if text_bytes is None:
             raise TypeError("LineEntry requires text_bytes")
+        object.__setattr__(self, "id", id)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "old_line_number", old_line_number)
+        object.__setattr__(self, "new_line_number", new_line_number)
+        object.__setattr__(self, "text_bytes", text_bytes)
+        object.__setattr__(self, "source_line", source_line)
+        object.__setattr__(
+            self,
+            "baseline_reference_after_line",
+            baseline_reference_after_line,
+        )
+        object.__setattr__(
+            self,
+            "baseline_reference_after_text_bytes",
+            baseline_reference_after_text_bytes,
+        )
+        object.__setattr__(
+            self,
+            "has_baseline_reference_after",
+            has_baseline_reference_after,
+        )
+        object.__setattr__(
+            self,
+            "baseline_reference_before_line",
+            baseline_reference_before_line,
+        )
+        object.__setattr__(
+            self,
+            "baseline_reference_before_text_bytes",
+            baseline_reference_before_text_bytes,
+        )
+        object.__setattr__(
+            self,
+            "has_baseline_reference_before",
+            has_baseline_reference_before,
+        )
+        object.__setattr__(self, "has_trailing_newline", has_trailing_newline)
+        if not isinstance(text_bytes, bytes):
+            raise TypeError("LineEntry text_bytes must be bytes")
+        if kind not in {" ", "+", "-"}:
+            raise ValueError("LineEntry kind must be context, addition, or deletion")
+        if id is not None and (type(id) is not int or id <= 0):
+            raise ValueError("LineEntry display ID must be positive")
+        # Git uses zero as the coordinate on an empty side of a hunk.  Rendered
+        # rows therefore permit that sentinel even though durable source and
+        # baseline coordinates remain one-based.
+        for field_name, coordinate in (
+            ("old line number", old_line_number),
+            ("new line number", new_line_number),
+        ):
+            if coordinate is not None and (
+                type(coordinate) is not int or coordinate < 0
+            ):
+                raise ValueError(f"LineEntry {field_name} must be non-negative")
+        for field_name, coordinate in (
+            ("source line", source_line),
+            ("baseline after line", baseline_reference_after_line),
+            ("baseline before line", baseline_reference_before_line),
+        ):
+            if coordinate is not None and (
+                type(coordinate) is not int or coordinate <= 0
+            ):
+                raise ValueError(f"LineEntry {field_name} must be positive")
+        for field_name, content in (
+            ("baseline after content", baseline_reference_after_text_bytes),
+            ("baseline before content", baseline_reference_before_text_bytes),
+        ):
+            if content is not None and not isinstance(content, bytes):
+                raise TypeError(f"LineEntry {field_name} must be bytes")
+        if type(has_baseline_reference_after) is not bool:
+            raise TypeError("LineEntry baseline-after flag must be boolean")
+        if type(has_baseline_reference_before) is not bool:
+            raise TypeError("LineEntry baseline-before flag must be boolean")
+        if type(has_trailing_newline) is not bool:
+            raise TypeError("LineEntry trailing-newline flag must be boolean")
 
-        self.id = id
-        self.kind = kind
-        self.old_line_number = old_line_number
-        self.new_line_number = new_line_number
-        self.text_bytes = text_bytes
-        self.source_line = source_line
-        self.baseline_reference_after_line = baseline_reference_after_line
-        self.baseline_reference_after_text_bytes = baseline_reference_after_text_bytes
-        self.has_baseline_reference_after = has_baseline_reference_after
-        self.baseline_reference_before_line = baseline_reference_before_line
-        self.baseline_reference_before_text_bytes = baseline_reference_before_text_bytes
-        self.has_baseline_reference_before = has_baseline_reference_before
-        self.has_trailing_newline = has_trailing_newline
 
     def display_text(self) -> str:
         """Return display text decoded from canonical bytes."""
         return self.text_bytes.decode("utf-8", errors="replace")
 
+    def with_source_line(
+        self,
+        source_line: int | None,
+    ) -> LineEntry:
+        """Return a compatibility row with one projected source coordinate."""
+        return replace(self, source_line=source_line)
 
-@dataclass(slots=True)
+    def with_baseline_reference(
+        self,
+        *,
+        after_line: int | None,
+        after_content: bytes | None,
+        has_after: bool,
+        before_line: int | None,
+        before_content: bytes | None,
+        has_before: bool,
+    ) -> LineEntry:
+        """Return a compatibility row with explicit baseline boundary evidence."""
+        return replace(
+            self,
+            baseline_reference_after_line=after_line,
+            baseline_reference_after_text_bytes=after_content,
+            has_baseline_reference_after=has_after,
+            baseline_reference_before_line=before_line,
+            baseline_reference_before_text_bytes=before_content,
+            has_baseline_reference_before=has_before,
+        )
+
+
+class _TrackedLineEntries(Sequence[LineEntry]):
+    """List-compatible rows carrying an O(1) mutation revision.
+
+    This wrapper owns the caller's existing list instead of copying its
+    per-line references. A rendered-view identity can therefore detect row
+    changes without another line-scale Python container.
+    """
+
+    __slots__ = ("_lines", "revision")
+
+    def __init__(self, lines: list[LineEntry]) -> None:
+        self._lines = lines
+        self.revision = 0
+
+    def __len__(self) -> int:
+        return len(self._lines)
+
+    def __iter__(self) -> Iterator[LineEntry]:
+        return iter(self._lines)
+
+    @overload
+    def __getitem__(self, index: int) -> LineEntry: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[LineEntry]: ...
+
+    def __getitem__(self, index: int | slice) -> LineEntry | list[LineEntry]:
+        return self._lines[index]
+
+    @overload
+    def __setitem__(self, index: int, value: LineEntry) -> None: ...
+
+    @overload
+    def __setitem__(self, index: slice, value: Iterable[LineEntry]) -> None: ...
+
+    def __setitem__(
+        self,
+        index: int | slice,
+        value: LineEntry | Iterable[LineEntry],
+    ) -> None:
+        if isinstance(index, slice):
+            self._lines[index] = cast(Iterable[LineEntry], value)
+        else:
+            self._lines[index] = cast(LineEntry, value)
+        self.revision += 1
+
+    def __delitem__(self, index: int | slice) -> None:
+        del self._lines[index]
+        self.revision += 1
+
+    def insert(self, index: int, value: LineEntry) -> None:
+        self._lines.insert(index, value)
+        self.revision += 1
+
+    def append(self, value: LineEntry) -> None:
+        self._lines.append(value)
+        self.revision += 1
+
+    def extend(self, values: Iterable[LineEntry]) -> None:
+        self._lines.extend(values)
+        self.revision += 1
+
+    def clear(self) -> None:
+        self._lines.clear()
+        self.revision += 1
+
+    def pop(self, index: int = -1) -> LineEntry:
+        value = self._lines.pop(index)
+        self.revision += 1
+        return value
+
+    def remove(self, value: LineEntry) -> None:
+        self._lines.remove(value)
+        self.revision += 1
+
+    def reverse(self) -> None:
+        self._lines.reverse()
+        self.revision += 1
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _TrackedLineEntries):
+            return self._lines == other._lines
+        return self._lines == other
+
+    def __repr__(self) -> str:
+        return repr(self._lines)
+
+
+@dataclass(frozen=True, slots=True)
 class LineLevelChange:
     """Represents a hunk with line IDs for line-level selection."""
     path: str
     header: HunkHeader
     lines: list[LineEntry]
+
+    def __post_init__(self) -> None:
+        if isinstance(self.lines, _TrackedLineEntries):
+            return
+        # A few renderer/test adapters intentionally provide an immutable row
+        # tuple.  Retain it without copying; mutable production lists receive
+        # the cheap revision wrapper used by stale-view checks.
+        if isinstance(self.lines, tuple):
+            return
+        if not isinstance(self.lines, list):
+            raise TypeError("line-level change rows must be a list or tuple")
+        object.__setattr__(
+            self,
+            "lines",
+            cast(list[LineEntry], _TrackedLineEntries(self.lines)),
+        )
+
+    @property
+    def rendered_rows_revision(self) -> int:
+        """Return the cheap invalidation token for rendered-row mutation."""
+        return (
+            self.lines.revision
+            if isinstance(self.lines, _TrackedLineEntries)
+            else 0
+        )
 
     def changed_line_ids(self) -> list[int]:
         """Return list of line IDs that have changes (+ or -)."""

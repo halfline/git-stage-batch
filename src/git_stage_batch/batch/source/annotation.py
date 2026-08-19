@@ -15,8 +15,12 @@ from ...utils.repository_buffers import (
 )
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
-from .cache import get_batch_source_for_file
+from .cache import get_session_source_hint
 from .line_coordinates import translate_display_source_coordinates
+from .line_coordinates import (
+    IdentitySourceCoordinates,
+    StructuralSourceCoordinates,
+)
 
 
 def _apply_batch_source_mapping(
@@ -33,7 +37,7 @@ def _apply_batch_source_mapping(
 
     for line, source_line in translate_display_source_coordinates(
         line_changes.lines,
-        mapping.get_source_line_from_target_line,
+        StructuralSourceCoordinates(mapping),
     ):
         new_lines.append(
             LineEntry(
@@ -116,7 +120,7 @@ def _fill_source_from_working_tree(line_changes: LineLevelChange) -> LineLevelCh
 
     for line, source_line in translate_display_source_coordinates(
         line_changes.lines,
-        lambda line_number: line_number,
+        IdentitySourceCoordinates(),
     ):
         new_lines.append(
             LineEntry(
@@ -180,10 +184,12 @@ def annotate_with_batch_source_working_lines(
     spool_dir: str | Path | None = None,
 ) -> LineLevelChange:
     """Annotate LineLevelChange with indexed working content lines."""
-    batch_source_commit = get_batch_source_for_file(path_value)
+    source_hint = get_session_source_hint(path_value)
     with acquire_batch_source_mapping(
         path_value,
-        batch_source_commit=batch_source_commit,
+        batch_source_commit=(
+            None if source_hint is None else source_hint.commit
+        ),
         working_lines=working_lines,
         spool_dir=spool_dir,
     ) as mapping:

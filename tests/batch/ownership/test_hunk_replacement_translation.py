@@ -15,6 +15,10 @@ from git_stage_batch.batch.ownership.line_entries import (
 )
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.ownership.replacement_line_runs import ReplacementLineRun
+from git_stage_batch.batch.ownership.replacement_origins import (
+    ProjectedReplacementOrigin,
+    SameStreamReplacementOrigin,
+)
 from git_stage_batch.core.line_selection import LineRangeBuilder, LineRanges
 from git_stage_batch.core.models import LineEntry
 
@@ -96,8 +100,10 @@ def test_translate_hunk_replacement_line_runs_closes_inputs_on_error():
             replacement_line_runs=displayed_runs,
             old_line_content=old_line_content_by_number(lines),
             hunk_content_view=LineEntryContentSequence(lines),
-            replacement_origin_line_runs=origin_runs,
-            replacement_origin_source_lines=[b"old\n"],
+            replacement_origin=ProjectedReplacementOrigin(
+                origin_runs,
+                [b"old\n"],
+            ),
         )
 
     assert displayed_runs.closed is True
@@ -111,8 +117,7 @@ def test_translate_hunk_replacement_line_runs_closes_inputs_on_error():
             replacement_line_runs=same_stream_runs,
             old_line_content=old_line_content_by_number(lines),
             hunk_content_view=LineEntryContentSequence(lines),
-            replacement_origin_source_lines=[b"old\n"],
-            replacement_runs_are_origin_runs=True,
+            replacement_origin=SameStreamReplacementOrigin([b"old\n"]),
         )
 
     assert same_stream_runs.closed is True
@@ -241,8 +246,7 @@ def test_translate_hunk_replacement_uses_origin_baseline_content():
         replacement_line_runs=(displayed_run,),
         old_line_content=old_line_content_by_number(lines),
         hunk_content_view=LineEntryContentSequence(lines),
-        replacement_origin_line_runs=(origin_run,),
-        replacement_origin_source_lines=head_lines,
+        replacement_origin=ProjectedReplacementOrigin((origin_run,), head_lines),
     )
 
     assert list(result.absence_claims[0].content_lines) == [b"orig-one\n"]
@@ -298,8 +302,7 @@ def test_same_stream_replacement_origin_matches_independent_origin_stream():
         replacement_line_runs=(run,),
         old_line_content=old_line_content_by_number(lines),
         hunk_content_view=LineEntryContentSequence(lines),
-        replacement_origin_source_lines=origin_lines,
-        replacement_runs_are_origin_runs=True,
+        replacement_origin=SameStreamReplacementOrigin(origin_lines),
     )
     independent_streams = translate_hunk_replacement_line_runs(
         hunk_lines=lines,
@@ -307,8 +310,7 @@ def test_same_stream_replacement_origin_matches_independent_origin_stream():
         replacement_line_runs=(run,),
         old_line_content=old_line_content_by_number(lines),
         hunk_content_view=LineEntryContentSequence(lines),
-        replacement_origin_line_runs=(run,),
-        replacement_origin_source_lines=origin_lines,
+        replacement_origin=ProjectedReplacementOrigin((run,), origin_lines),
     )
 
     def metadata_signature(result):

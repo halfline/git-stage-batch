@@ -71,7 +71,6 @@ from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.text_lines import normalize_line_sequence_endings
 from ...core.line_selection import LineRangeBuilder, LineRanges
-from ...core.mapped_storage import MappedRecordVector
 from ...core.coordinates import (
     BaselineSpace,
     DiffNewSpace,
@@ -88,7 +87,6 @@ from ...core.coordinates import (
 )
 from ...core.edit_plan import ReplacementEditPlan
 from ...core.selection_geometry import (
-    DisplayIdRanges,
     diff_view_identity,
     resolve_selection,
 )

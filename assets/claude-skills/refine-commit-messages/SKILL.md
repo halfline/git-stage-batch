@@ -2,7 +2,6 @@
 name: refine-commit-messages
 description: Audit and refine messages in an existing local linear commit series without changing patches, order, or boundaries
 user-invocable: true
-disable-model-invocation: true
 context: fork
 argument-hint: "<base-sha> | audit <base-sha> | resume"
 when_to_use: "Use when the user wants Claude Code to polish commit prose, enforce repository message conventions, repair series narrative or fourth-paragraph transitions, audit messages without changing history, or resume an interrupted message-only rewrite. Examples: \"refine these commit messages\", \"fix the message narrative after BASE_SHA\", \"audit these messages only\", \"resume refine-commit-messages\". Do not use for changing commit contents, order, or boundaries."

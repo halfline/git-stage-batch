@@ -19,7 +19,6 @@ from git_stage_batch.core.coordinates import (
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.core.selection_geometry import (
     Deletion,
-    DisplayIdRanges,
     DiffViewIdentity,
     ExactContentWitness,
     FileDiff,

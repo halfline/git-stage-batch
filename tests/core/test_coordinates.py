@@ -12,14 +12,10 @@ import git_stage_batch.core.buffer as buffer_module
 from git_stage_batch.core.coordinates import (
     BaselineSpace,
     BatchSourceSpace,
-    DisplayLineId,
     FileSnapshot,
     HalfOpenRanges,
     LineBoundary,
-    LineSpan,
-    SnapshotBoundary,
     SnapshotIdentity,
-    SnapshotSpans,
     content_snapshot,
     require_same_snapshot,
 )

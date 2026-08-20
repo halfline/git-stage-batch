@@ -231,7 +231,9 @@ def _prepare_groups(plan: FixupCreatePlan) -> tuple[_PreparedGroup, ...]:
         original_parent_tree = replayed_tree
         for commit in reversed(plan.commit_range.commits_newest_first):
             commit_tree = tree_for_commit(commit)
-            if commit_tree != original_parent_tree:
+            if replayed_tree == original_parent_tree:
+                replayed_tree = commit_tree
+            elif commit_tree != original_parent_tree:
                 with load_tree_diff_as_buffer(
                     original_parent_tree,
                     commit_tree,

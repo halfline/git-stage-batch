@@ -1065,6 +1065,86 @@ class TestCommandIncludeLine:
         assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
         assert not batch_exists("invalid-lines")
 
+    def test_include_line_stages_move_before_unselected_replacement(
+        self,
+        temp_git_repo,
+    ):
+        """A moved selection must not look like a worktree mutation."""
+        test_file = temp_git_repo / "test.txt"
+        removed = (
+            b"\t\t\t/*\n"
+            b"\t\t\t */\n"
+            b"\t\t\t\t\t\t     DMA_RESV_USAGE_WRITE,\n"
+            b"\n"
+        )
+        shared = (
+            b"\t\t\tret = dma_resv_lock(obj->resv, NULL);\n"
+            b"\t\t\tif (ret)\n"
+            b"\t\t\t\treturn ret;\n"
+            b"\n"
+        )
+        added = (
+            b"\t\t\t/*\n"
+            b"\t\t\t */\n"
+            b"\t\t\t\t\t\t     DMA_RESV_USAGE_WRITE,\n"
+            b"\t\t\t\t\t\t     &dependency);\n"
+            b"\t\t\tif (ret) {\n"
+            b"\t\t\t\tdma_resv_unlock(obj->resv);\n"
+            b"\t\t\t\treturn ret;\n"
+            b"\n"
+        )
+        old_cursor = (
+            b"\tcastkms_capture_buffer_set_cursor(job->buffer,\n"
+            b"\t\t\t\t\t  &job->snapshot->cursor);\n"
+        )
+        new_cursor = (
+            b"\tif (!ret)\n"
+            b"\t\tret = castkms_capture_buffer_set_cursor(job->buffer,\n"
+            b"\t\t\t\t\t       &job->snapshot->cursor);\n"
+        )
+        base = removed + shared + old_cursor
+        final = shared + added + new_cursor
+
+        test_file.write_bytes(base)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add test file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        test_file.write_bytes(final)
+
+        command_start(quiet=True)
+        command_show(file="test.txt", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        cursor_line_id = min(
+            line.id
+            for line in line_changes.lines
+            if line.id is not None
+            and b"castkms_capture_buffer_set_cursor" in line.text_bytes
+        )
+        selected_ids = [
+            line.id
+            for line in line_changes.lines
+            if line.id is not None and line.id < cursor_line_id
+        ]
+
+        command_include_line(
+            ",".join(str(line_id) for line_id in selected_ids),
+            auto_advance=False,
+        )
+
+        assert _show_index_file(temp_git_repo, "test.txt") == (
+            shared + added + old_cursor
+        ).decode()
+        assert test_file.read_bytes() == final
+
     def test_include_line_failure_message_is_user_facing(self, temp_git_repo, monkeypatch):
         """Transient-batch refusal should not leak internal implementation terms."""
         test_file = temp_git_repo / "test.txt"

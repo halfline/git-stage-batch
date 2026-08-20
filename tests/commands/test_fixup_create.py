@@ -58,6 +58,48 @@ def fixup_create_repo(tmp_path, monkeypatch):
     return tmp_path, source, base, alpha_commit, gamma_commit
 
 
+def test_create_conserves_additions_assigned_to_different_targets(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.chdir(tmp_path)
+    _git("init")
+    _git("config", "user.name", "Test User")
+    _git("config", "user.email", "test@example.com")
+
+    source = tmp_path / "example.txt"
+    source.write_text("alpha\nmiddle\nomega\ntail\n")
+    _git("add", "example.txt")
+    _git("commit", "-m", "Base")
+    base = _git("rev-parse", "HEAD")
+
+    source.write_text("alpha topic\nmiddle\nomega\ntail\n")
+    _git("commit", "-am", "Change alpha")
+    source.write_text("alpha topic\nmiddle\nomega topic\ntail\n")
+    _git("commit", "-am", "Change omega")
+
+    source.write_text(
+        "alpha topic\n"
+        "alpha fixed\n"
+        "middle\n"
+        "omega topic\n"
+        "omega fixed\n"
+        "tail\n"
+    )
+    _git("add", "example.txt")
+
+    command_create_fixups(base, dry_run=True, porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert [unit["kind"] for unit in output["units"]] == [
+        "text-addition",
+        "text-addition",
+    ]
+    assert output["summary"]["assigned_units"] == 2
+    assert len(output["groups"]) == 2
+
+
 def test_create_makes_one_fixup_per_target_and_preserves_unstaged_work(
     fixup_create_repo,
     capsys,

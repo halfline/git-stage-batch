@@ -7904,3 +7904,31 @@ msgid ""
 msgstr ""
 "Nelze vytvořit kontrolní bod obnovy, dokud index obsahuje nesloučené "
 "položky: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Informativně zkontrolovat zmrazený plán přepisu bez Gitu a přehrání"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "Zmrazený plán přepisu obsahuje {count} chybu:"
+msgstr[1] "Zmrazený plán přepisu obsahuje {count} chyby:"
+msgstr[2] "Zmrazený plán přepisu obsahuje {count} chyb:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Zmrazený plán přepisu prošel informativní kontrolou."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Neplatný plán přepisu: statická kontrola našla {count} chyb:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Vypsat všechna zjištění jako strojově čitelnou zprávu"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Mezipaměť snímků: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Tento výsledek je informativní; rewrite validate ověřuje aktuální objekty."

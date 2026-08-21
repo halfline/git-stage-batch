@@ -8129,3 +8129,34 @@ msgid ""
 msgstr ""
 "لا يمكن إنشاء نقطة تحقق للاسترداد بينما يحتوي الفهرس على إدخالات غير مدمجة: "
 "{paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "فحص خطة إعادة كتابة مجمّدة استشاريًا دون ⁦Git⁩ أو إعادة تشغيل"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "تحتوي خطة إعادة الكتابة المجمّدة على {count} خطأ:"
+msgstr[1] "تحتوي خطة إعادة الكتابة المجمّدة على {count} خطأ:"
+msgstr[2] "تحتوي خطة إعادة الكتابة المجمّدة على {count} خطأ:"
+msgstr[3] "تحتوي خطة إعادة الكتابة المجمّدة على {count} خطأ:"
+msgstr[4] "تحتوي خطة إعادة الكتابة المجمّدة على {count} خطأ:"
+msgstr[5] "تحتوي خطة إعادة الكتابة المجمّدة على {count} خطأ:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "اجتازت خطة إعادة الكتابة المجمّدة الفحص الاستشاري."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "خطة إعادة كتابة غير صالحة: وجد الفحص الثابت {count} خطأ:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "إخراج جميع النتائج كتقرير قابل للقراءة آليًا"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "ذاكرة التخزين المؤقت للقطات: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "هذه النتيجة استشارية؛ يصادق ⁦rewrite validate⁩ على الكائنات الحالية."

@@ -7387,3 +7387,29 @@ msgid ""
 "Cannot create a recovery checkpoint while the index contains unmerged "
 "entries: {paths}"
 msgstr "索引包含未合并条目时，无法创建恢复检查点：{paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "在不使用 Git 或重放的情况下对冻结的重写计划进行建议性检查"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "冻结的重写计划有 {count} 个错误："
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "冻结的重写计划通过了建议性检查。"
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "无效的重写计划：静态检查发现 {count} 个错误："
+
+msgid "Output all findings as a machine-readable report"
+msgstr "将所有发现输出为机器可读报告"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "快照缓存：{status}（{reason}）"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "此结果仅供参考；rewrite validate 会验证当前对象。"

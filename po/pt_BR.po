@@ -7943,3 +7943,30 @@ msgid ""
 msgstr ""
 "Não é possível criar um ponto de recuperação enquanto o índice contiver "
 "entradas não mescladas: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Verificar de forma consultiva um plano de reescrita congelado sem Git nem reprodução"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "O plano de reescrita congelado tem {count} erro:"
+msgstr[1] "O plano de reescrita congelado tem {count} erros:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "O plano de reescrita congelado passou na verificação consultiva."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Plano de reescrita inválido: a verificação estática encontrou {count} erro(s):"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Exibir todas as constatações como um relatório legível por máquina"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Cache de instantâneos: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Este resultado é consultivo; rewrite validate autentica os objetos atuais."

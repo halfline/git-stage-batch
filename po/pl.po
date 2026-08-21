@@ -8012,3 +8012,31 @@ msgid ""
 msgstr ""
 "Nie można utworzyć punktu kontrolnego odzyskiwania, gdy indeks zawiera "
 "niescalone wpisy: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Sprawdź doradczo zamrożony plan przepisywania bez Gita i odtwarzania"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "Zamrożony plan przepisywania ma {count} błąd:"
+msgstr[1] "Zamrożony plan przepisywania ma {count} błędy:"
+msgstr[2] "Zamrożony plan przepisywania ma {count} błędów:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Zamrożony plan przepisywania przeszedł kontrolę doradczą."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Nieprawidłowy plan przepisywania: kontrola statyczna znalazła {count} błędów:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Wyświetl wszystkie ustalenia jako raport do odczytu maszynowego"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Pamięć podręczna migawek: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Ten wynik jest doradczy; rewrite validate uwierzytelnia bieżące obiekty."

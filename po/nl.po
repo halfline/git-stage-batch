@@ -7962,3 +7962,30 @@ msgid ""
 msgstr ""
 "Kan geen herstelcontrolepunt maken zolang de index niet-samengevoegde "
 "vermeldingen bevat: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Een bevroren herschrijfplan adviserend controleren zonder Git of herhaling"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "Het bevroren herschrijfplan heeft {count} fout:"
+msgstr[1] "Het bevroren herschrijfplan heeft {count} fouten:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Het bevroren herschrijfplan heeft de adviserende controle doorstaan."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Ongeldig herschrijfplan: statische controle vond {count} fout(en):"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Alle bevindingen als machineleesbaar rapport uitvoeren"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Momentopnamecache: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Dit resultaat is adviserend; rewrite validate verifieert de actuele objecten."

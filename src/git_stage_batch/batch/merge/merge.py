@@ -654,6 +654,19 @@ def _merge_batch_acquired_line_chunks(
     presence_line_set = effective_constraints.presence_lines
     deletion_claims = effective_constraints.deletion_claims
     source_alternative_lines = effective_constraints.source_alternative_lines
+    if (
+        resolution is None
+        and _baseline_edits.recorded_constraints_are_already_satisfied(
+            source_lines,
+            working_lines,
+            ownership,
+            presence_line_set,
+            deletion_claims,
+            spool_dir=spool_dir,
+        )
+    ):
+        yield from working_lines
+        return
     controlled_source_lines = _protected_presence_lines(
         ownership,
         resolved.presence_line_set,

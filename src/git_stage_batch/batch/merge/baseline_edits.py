@@ -71,6 +71,55 @@ def _has_complete_baseline_references(
     return bool(presence_line_set or deletion_claims)
 
 
+def _recorded_constraints_are_already_satisfied(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_references: EffectivePresenceReferenceIndex,
+    presence_line_set: LineSelection,
+    deletion_claims: Sequence[AbsenceClaim],
+) -> bool:
+    """Return whether exact source identity satisfies recorded ownership."""
+    return (
+        _line_sequences_match(source_lines, working_lines)
+        and _has_complete_baseline_references(
+            presence_references,
+            presence_line_set,
+            deletion_claims,
+        )
+        and _all_deletions_are_already_absent(
+            deletion_claims,
+            working_lines,
+        )
+    )
+
+
+def recorded_constraints_are_already_satisfied(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    deletion_claims: Sequence[AbsenceClaim],
+    *,
+    spool_dir: str | Path | None = None,
+) -> bool:
+    """Acquire scratch storage and check exact-source ownership satisfaction."""
+    if _selection_outside_bounds(presence_line_set, len(source_lines)):
+        return False
+
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        presence_references = EffectivePresenceReferenceIndex(
+            workspace,
+            ownership,
+        )
+        return _recorded_constraints_are_already_satisfied(
+            source_lines,
+            working_lines,
+            presence_references,
+            presence_line_set,
+            deletion_claims,
+        )
+
+
 def try_apply_baseline_coordinate_edits(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -128,17 +177,12 @@ def try_apply_baseline_coordinate_edits(
             workspace,
             ownership,
         )
-        if (
-            _line_sequences_match(source_lines, working_lines)
-            and _has_complete_baseline_references(
-                presence_references,
-                presence_line_set,
-                deletion_claims,
-            )
-            and _all_deletions_are_already_absent(
-                deletion_claims,
-                working_lines,
-            )
+        if _recorded_constraints_are_already_satisfied(
+            source_lines,
+            working_lines,
+            presence_references,
+            presence_line_set,
+            deletion_claims,
         ):
             workspace.close()
             return iter(working_lines)

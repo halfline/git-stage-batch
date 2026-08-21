@@ -8,6 +8,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.fixup.execution as fixup_execution
 from git_stage_batch.commands.fixup_create import command_create_fixups
 from git_stage_batch.exceptions import CommandError
 
@@ -126,6 +127,35 @@ def test_create_makes_one_fixup_per_target_and_preserves_unstaged_work(
     ]
     assert _git("diff", "--cached") == ""
     assert _git("diff") == unstaged_before
+
+
+def test_create_does_not_diff_an_exact_unmodified_prefix(
+    fixup_create_repo,
+    monkeypatch,
+    capsys,
+):
+    _repo, source, base, alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha topic\nbeta\ngamma fixed\n")
+    _git("add", "example.txt")
+    base_tree = _git("rev-parse", f"{base}^{{tree}}")
+    alpha_tree = _git("rev-parse", f"{alpha_commit}^{{tree}}")
+    load_tree_diff = fixup_execution.load_tree_diff_as_buffer
+
+    def reject_exact_prefix_diff(old_tree, new_tree, *, env=None):
+        if (old_tree, new_tree) == (base_tree, alpha_tree):
+            pytest.fail("exact unmodified prefix must not be materialized")
+        return load_tree_diff(old_tree, new_tree, env=env)
+
+    monkeypatch.setattr(
+        fixup_execution,
+        "load_tree_diff_as_buffer",
+        reject_exact_prefix_diff,
+    )
+
+    command_create_fixups(base, dry_run=True, porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["summary"]["assigned_units"] == 1
 
 
 def test_create_groups_multiple_exact_units_for_one_target(

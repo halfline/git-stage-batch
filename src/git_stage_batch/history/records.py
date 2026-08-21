@@ -91,6 +91,7 @@ def history_snapshot_record(snapshot: HistorySnapshot) -> dict[str, object]:
         "range": {
             "base": snapshot.base_commit,
             "tip": snapshot.tip_commit,
+            "movable_base": snapshot.movable_base,
             "commits_oldest_first": [
                 commit.commit_id for commit in snapshot.commits
             ],

@@ -161,6 +161,7 @@ def _build_snapshot_from_range(
         object_format=commit_range.object_format,
         base_commit=commit_range.base_commit,
         tip_commit=commit_range.tip_commit,
+        movable_base=commit_range.movable_base,
         base_tree=base_tree,
         final_tree=final_tree,
         branch_ref=branch_ref,
@@ -178,26 +179,36 @@ def acquire_frozen_history_snapshot(
     tip_commit: str,
     branch_ref: str | None,
     *,
+    movable_base: str | None = None,
     cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistorySnapshot:
     """Acquire one exact source snapshot independently of current HEAD."""
     with use_raw_git_object_graph():
         return _snapshot_from_range(
-            resolve_exact_history_range(base_commit, tip_commit),
+            resolve_exact_history_range(
+                base_commit, tip_commit, movable_base
+            ),
             branch_ref,
             cache_observer=cache_observer,
         )
 
 
 def acquire_history_plan_document(
-    boundary: str | None,
+    movable_boundary: str | None = None,
     *,
+    onto_boundary: str | None = None,
     allowed_remote_refs: tuple[str, ...] = (),
     cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistoryPlanDocument:
-    """Capture an immutable range and KEEP plan without operation-state writes."""
+    """Capture an immutable range and KEEP plan without operation-state writes.
+
+    ``movable_boundary`` is the exclusive base of the commits that may move;
+    ``onto_boundary`` is the older frozen base captured by the scan. When
+    ``onto_boundary`` is omitted the frozen base equals the movable base and
+    the whole range is movable.
+    """
     with use_raw_git_object_graph():
-        commit_range = resolve_history_range(boundary)
+        commit_range = resolve_history_range(onto_boundary, movable_boundary)
         branch_ref = _symbolic_head()
         history_snapshot = _snapshot_from_range(
             commit_range,

@@ -678,6 +678,42 @@ def lint_frozen_history_plan(
                 source_commits=output.source_commits,
             )
 
+    pinned_commit_ids: set[str] = set()
+    if (
+        snapshot.movable_base != snapshot.base_commit
+        and snapshot.movable_base in source_positions
+    ):
+        boundary_position = source_positions[snapshot.movable_base]
+        pinned_commit_ids = {
+            commit.commit_id
+            for commit in snapshot.commits[: boundary_position + 1]
+        }
+    for index, output in enumerate(plan.outputs):
+        target_id = output.source_commits[0]
+        if target_id in pinned_commit_ids and output.operation in {"SPLIT", "REORDER"}:
+            add(
+                "movable-scope-violation",
+                "a pinned source commit outside the movable scope may not be "
+                "split or reordered",
+                f"plan.outputs[{index}].operation",
+                output_index=index,
+                source_commits=(target_id,),
+            )
+        pinned_donors = tuple(
+            source_id
+            for source_id in output.source_commits[1:]
+            if source_id in pinned_commit_ids
+        )
+        if pinned_donors:
+            add(
+                "movable-scope-violation",
+                "a pinned source commit outside the movable scope may not donate "
+                "units; it may only receive units through INTEGRATE",
+                f"plan.outputs[{index}].source_commits",
+                output_index=index,
+                source_commits=pinned_donors,
+            )
+
     if not conservation_valid:
         if "dependencies" not in skipped_checks:
             skipped_checks.append("dependencies")

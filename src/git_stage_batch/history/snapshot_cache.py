@@ -72,6 +72,7 @@ _KEY_KEYS = frozenset(
         "object_format",
         "base_commit",
         "tip_commit",
+        "movable_base",
         "base_tree",
         "final_tree",
         "branch_ref",
@@ -102,7 +103,7 @@ _SNAPSHOT_KEYS = frozenset(
         "dependency_graph",
     }
 )
-_RANGE_KEYS = frozenset({"base", "tip", "commits_oldest_first"})
+_RANGE_KEYS = frozenset({"base", "tip", "movable_base", "commits_oldest_first"})
 _TREE_KEYS = frozenset({"base", "final"})
 _COMMIT_KEYS = frozenset(
     {
@@ -239,6 +240,7 @@ def _locator_record(
         "object_format": commit_range.object_format,
         "base_commit": commit_range.base_commit,
         "tip_commit": commit_range.tip_commit,
+        "movable_base": commit_range.movable_base,
         "base_tree": base_tree,
         "final_tree": final_tree,
         "branch_ref": branch_ref,
@@ -444,6 +446,7 @@ def _decode_snapshot(value: object) -> HistorySnapshot:
         object_format=object_format,
         base_commit=require_string(range_record, "base", "snapshot.range"),
         tip_commit=require_string(range_record, "tip", "snapshot.range"),
+        movable_base=require_string(range_record, "movable_base", "snapshot.range"),
         base_tree=require_string(tree_record, "base", "snapshot.trees"),
         final_tree=require_string(tree_record, "final", "snapshot.trees"),
         branch_ref=_nullable_string(record["branch_ref"], "snapshot.branch_ref"),
@@ -472,6 +475,10 @@ def _decode_snapshot(value: object) -> HistorySnapshot:
         _invalid("snapshot contains duplicate unit IDs")
     if tuple(dependency.unit_id for dependency in dependencies) != tuple(unit_ids):
         _invalid("snapshot dependency inventory does not match its units")
+    if snapshot.movable_base != snapshot.base_commit and not any(
+        commit.commit_id == snapshot.movable_base for commit in commits
+    ):
+        _invalid("snapshot movable base is not the base or a range commit")
     return snapshot
 
 
@@ -782,6 +789,7 @@ def acquire_cached_history_snapshot(
                 cached.object_format == commit_range.object_format
                 and cached.base_commit == commit_range.base_commit
                 and cached.tip_commit == commit_range.tip_commit
+                and cached.movable_base == commit_range.movable_base
                 and cached.base_tree == base_tree
                 and cached.final_tree == final_tree
                 and cached.branch_ref == branch_ref
@@ -810,6 +818,7 @@ def acquire_cached_history_snapshot(
         snapshot.object_format != commit_range.object_format
         or snapshot.base_commit != commit_range.base_commit
         or snapshot.tip_commit != commit_range.tip_commit
+        or snapshot.movable_base != commit_range.movable_base
         or snapshot.base_tree != base_tree
         or snapshot.final_tree != final_tree
         or snapshot.branch_ref != branch_ref

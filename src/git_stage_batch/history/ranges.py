@@ -24,6 +24,7 @@ class ResolvedHistoryRange:
     object_format: str
     base_commit: str
     tip_commit: str
+    movable_base: str
     commits_oldest_first: tuple[str, ...]
 
 
@@ -156,21 +157,59 @@ def _linear_commits(base: str, tip: str) -> tuple[str, ...]:
     return tuple(commits)
 
 
-def resolve_history_range(boundary: str | None) -> ResolvedHistoryRange:
-    """Return the frozen non-empty linear range ending at canonical HEAD."""
+def resolve_history_range(
+    onto_boundary: str | None,
+    movable_boundary: str | None = None,
+) -> ResolvedHistoryRange:
+    """Return the frozen non-empty linear range ending at canonical HEAD.
+
+    ``movable_boundary`` is the exclusive base of the commits that may move;
+    ``onto_boundary`` is the older frozen base that movable units may be
+    commuted back toward. When ``onto_boundary`` is omitted the frozen base
+    equals the movable base and the whole range is movable.
+    """
     _require_unmodified_object_graph()
     tip = resolve_history_commit("HEAD")
-    base = resolve_history_commit(boundary) if boundary is not None else _default_base()
-    return _resolved_range(base, tip)
+    movable_base = (
+        resolve_history_commit(movable_boundary)
+        if movable_boundary is not None
+        else _default_base()
+    )
+    base = (
+        resolve_history_commit(onto_boundary)
+        if onto_boundary is not None
+        else movable_base
+    )
+    return _resolved_range(base, tip, movable_base)
 
 
-def _resolved_range(base: str, tip: str) -> ResolvedHistoryRange:
+def _require_movable_base(base: str, movable_base: str, commits: tuple[str, ...]) -> None:
+    if movable_base == base:
+        return
+    if movable_base not in commits:
+        raise CommandError(
+            _(
+                "Movable base {movable_base} is not the frozen base or a commit "
+                "in the frozen range."
+            ).format(movable_base=movable_base)
+        )
+
+
+def _resolved_range(
+    base: str,
+    tip: str,
+    movable_base: str,
+) -> ResolvedHistoryRange:
     _require_ancestor(base, tip)
+    _require_ancestor(base, movable_base)
+    _require_ancestor(movable_base, tip)
     commits = _linear_commits(base, tip)
+    _require_movable_base(base, movable_base, commits)
     return ResolvedHistoryRange(
         object_format=get_git_object_format(),
         base_commit=base,
         tip_commit=tip,
+        movable_base=movable_base,
         commits_oldest_first=commits,
     )
 
@@ -178,9 +217,15 @@ def _resolved_range(base: str, tip: str) -> ResolvedHistoryRange:
 def resolve_exact_history_range(
     boundary: str,
     tip_revision: str,
+    movable_boundary: str | None = None,
 ) -> ResolvedHistoryRange:
     """Return one frozen linear range without consulting the current HEAD."""
     _require_unmodified_object_graph()
     base = resolve_history_commit(boundary)
     tip = resolve_history_commit(tip_revision)
-    return _resolved_range(base, tip)
+    movable_base = (
+        resolve_history_commit(movable_boundary)
+        if movable_boundary is not None
+        else base
+    )
+    return _resolved_range(base, tip, movable_base)

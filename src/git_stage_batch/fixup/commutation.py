@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Literal
 
 from ..core.buffer import LineBuffer
 from ..core.diff_parser import patch_requires_unidiff_zero
+from ..core.hunk_headers import line_is_hunk_header, parse_hunk_header_line
 from ..utils.git_command import (
     run_git_command,
     stream_git_command,
@@ -77,6 +78,45 @@ def load_tree_diff_as_buffer(
         requires_index_lock=False,
     )
     return LineBuffer.from_chunks(chunks)
+
+
+def stream_combined_unit_patch(
+    units: Iterable[FixupUnit],
+) -> Iterator[bytes]:
+    """Yield unit patches with coordinates relative to the selected subset.
+
+    A zero-context hunk split out of a larger diff retains new-side
+    coordinates that account for every preceding hunk in that original diff.
+    When only some units are selected, recompute those coordinates using only
+    the preceding selected hunks so each patch still addresses the frozen base
+    tree exactly.
+    """
+    line_deltas_by_path: dict[str, int] = {}
+    for unit in units:
+        if unit.patch_buffer is None:
+            continue
+
+        line_delta = line_deltas_by_path.get(unit.path, 0)
+        for line in unit.patch_buffer:
+            if not line_is_hunk_header(line):
+                yield line
+                continue
+
+            header = parse_hunk_header_line(line)
+            new_prefix = header.old_prefix_line_count() + line_delta
+            if new_prefix < 0:
+                raise ValueError("selected fixup hunks have invalid coordinates")
+            new_start = new_prefix if header.new_len == 0 else new_prefix + 1
+            closing_marker = line.find(b"@@", 2)
+            if closing_marker < 0:
+                raise ValueError("selected fixup hunk has no closing marker")
+            yield (
+                f"@@ -{header.old_start},{header.old_len} "
+                f"+{new_start},{header.new_len} @@"
+            ).encode("ascii") + line[closing_marker + 2 :]
+            line_delta += header.new_len - header.old_len
+
+        line_deltas_by_path[unit.path] = line_delta
 
 
 def apply_patch_to_tree(
@@ -200,6 +240,8 @@ def _commute_across_commit(
 def analyze_patch_placement(
     patch_buffer: LineBuffer,
     commit_range: FixupRange,
+    *,
+    patch_chunks: Iterable[bytes] | None = None,
 ) -> PlacementEvidence:
     """Find the first commit an exact textual patch cannot commute across."""
     commuted_across: list[str] = []
@@ -207,7 +249,11 @@ def analyze_patch_placement(
         current_original_tree = tree_for_commit(commit_range.head_commit)
         current_modified_tree = apply_patch_to_tree(
             current_original_tree,
-            patch_buffer.byte_chunks(),
+            (
+                patch_buffer.byte_chunks()
+                if patch_chunks is None
+                else patch_chunks
+            ),
             three_way=False,
             unidiff_zero=patch_requires_unidiff_zero(patch_buffer),
         )
@@ -302,4 +348,8 @@ def analyze_placement(
             commuted_across=(),
             detail="unit-has-no-text-patch",
         )
-    return analyze_patch_placement(unit.patch_buffer, commit_range)
+    return analyze_patch_placement(
+        unit.patch_buffer,
+        commit_range,
+        patch_chunks=stream_combined_unit_patch((unit,)),
+    )

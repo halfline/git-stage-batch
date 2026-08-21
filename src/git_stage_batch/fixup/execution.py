@@ -19,6 +19,7 @@ from .commutation import (
     apply_patch_to_tree,
     load_tree_diff_as_buffer,
     relocate_patch_to_target,
+    stream_combined_unit_patch,
     tree_for_commit,
 )
 from .models import (
@@ -80,9 +81,7 @@ def _commit_arguments(group: FixupTargetGroup, marker: str) -> list[str]:
 def _patch_chunks_for_units(
     units: tuple[FixupUnit, ...],
 ) -> Iterator[bytes]:
-    for unit in units:
-        if unit.patch_buffer is not None:
-            yield from unit.patch_buffer.byte_chunks()
+    yield from stream_combined_unit_patch(units)
 
 
 def _units_require_unidiff_zero(units: tuple[FixupUnit, ...]) -> bool:

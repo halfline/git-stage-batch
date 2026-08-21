@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 
 from ..exceptions import CommandError
@@ -27,7 +28,10 @@ from .ranges import (
     resolve_history_range,
 )
 from .safety import collect_history_safety_facts
-from .snapshot_cache import acquire_cached_history_snapshot
+from .snapshot_cache import (
+    HistorySnapshotCacheObservation,
+    acquire_cached_history_snapshot,
+)
 from .unit_ids import history_unit_id
 
 
@@ -102,20 +106,33 @@ def _commit_snapshot(commit: str, expected_parent: str) -> HistoryCommitSnapshot
 def _snapshot_from_range(
     commit_range: ResolvedHistoryRange,
     branch_ref: str | None,
+    *,
+    cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistorySnapshot:
     base_tree = tree_for_commit(commit_range.base_commit)
     final_tree = tree_for_commit(commit_range.tip_commit)
+    def build() -> HistorySnapshot:
+        return _build_snapshot_from_range(
+            commit_range,
+            branch_ref,
+            base_tree=base_tree,
+            final_tree=final_tree,
+        )
+    if cache_observer is None:
+        return acquire_cached_history_snapshot(
+            commit_range,
+            branch_ref,
+            base_tree=base_tree,
+            final_tree=final_tree,
+            build=build,
+        )
     return acquire_cached_history_snapshot(
         commit_range,
         branch_ref,
         base_tree=base_tree,
         final_tree=final_tree,
-        build=lambda: _build_snapshot_from_range(
-            commit_range,
-            branch_ref,
-            base_tree=base_tree,
-            final_tree=final_tree,
-        ),
+        build=build,
+        observe=cache_observer,
     )
 
 
@@ -160,12 +177,15 @@ def acquire_frozen_history_snapshot(
     base_commit: str,
     tip_commit: str,
     branch_ref: str | None,
+    *,
+    cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistorySnapshot:
     """Acquire one exact source snapshot independently of current HEAD."""
     with use_raw_git_object_graph():
         return _snapshot_from_range(
             resolve_exact_history_range(base_commit, tip_commit),
             branch_ref,
+            cache_observer=cache_observer,
         )
 
 
@@ -173,12 +193,17 @@ def acquire_history_plan_document(
     boundary: str | None,
     *,
     allowed_remote_refs: tuple[str, ...] = (),
+    cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistoryPlanDocument:
     """Capture an immutable range and KEEP plan without operation-state writes."""
     with use_raw_git_object_graph():
         commit_range = resolve_history_range(boundary)
         branch_ref = _symbolic_head()
-        history_snapshot = _snapshot_from_range(commit_range, branch_ref)
+        history_snapshot = _snapshot_from_range(
+            commit_range,
+            branch_ref,
+            cache_observer=cache_observer,
+        )
         _require_frozen_head(commit_range.tip_commit, branch_ref)
         safety = collect_history_safety_facts(
             tip=history_snapshot.tip_commit,

@@ -8,6 +8,7 @@ from ..git_paths import display_path, terminal_safe_text
 from ..history.models import HistoryPlanDocument
 from ..history.records import history_safety_record
 from ..history.resolution_workspace import HistoryAuthenticatedResolution
+from ..history.snapshot_cache import HistorySnapshotCacheObservation
 from ..i18n import _, ngettext
 
 
@@ -20,6 +21,7 @@ def _resolved_output_count(document: HistoryPlanDocument) -> int:
 def _validation_record(
     document: HistoryPlanDocument,
     resolution: HistoryAuthenticatedResolution | None,
+    cache_observation: HistorySnapshotCacheObservation | None,
 ) -> dict[str, object]:
     reword_count = sum(
         output.operation == "REWORD" for output in document.plan.outputs
@@ -79,6 +81,17 @@ def _validation_record(
                 "resolved_outputs": resolved_outputs,
             }
         ),
+        "snapshot_cache": (
+            None
+            if cache_observation is None
+            else {
+                "status": cache_observation.status,
+                "key": cache_observation.key,
+                "path": cache_observation.path,
+                "reason": cache_observation.reason,
+                "retained": cache_observation.retained,
+            }
+        ),
     }
 
 
@@ -86,19 +99,27 @@ def print_rewrite_validation(
     document: HistoryPlanDocument,
     *,
     resolution: HistoryAuthenticatedResolution | None = None,
+    cache_observation: HistorySnapshotCacheObservation | None = None,
     porcelain: bool,
 ) -> None:
     """Print successful semantic and mechanical plan validation."""
     if porcelain:
         print(
             json.dumps(
-                _validation_record(document, resolution),
+                _validation_record(document, resolution, cache_observation),
                 indent=2,
                 ensure_ascii=True,
             )
         )
         return
     print(_("Rewrite plan is valid."))
+    if cache_observation is not None:
+        print(
+            _("Snapshot cache: {status} ({reason})").format(
+                status=cache_observation.status,
+                reason=cache_observation.reason,
+            )
+        )
     print(
         ngettext(
             "{count} source commit is conserved.",

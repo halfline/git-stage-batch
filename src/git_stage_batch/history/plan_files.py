@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import NoReturn, cast
@@ -46,6 +47,7 @@ from .replay import validate_history_plan_materialization
 from .safety import collect_history_safety_facts
 from .scan import acquire_frozen_history_snapshot, acquire_history_plan_document
 from .snapshot_cache import (
+    HistorySnapshotCacheObservation,
     decode_history_snapshot_record,
 )
 
@@ -838,6 +840,7 @@ def read_and_validate_history_plan(
     plan_path: str,
     *,
     allowed_remote_refs: tuple[str, ...] = (),
+    cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistoryPlanDocument:
     """Reacquire immutable facts and validate the editable semantic plan."""
     payload = _read_plan_payload(plan_path)
@@ -846,6 +849,7 @@ def read_and_validate_history_plan(
     live = acquire_history_plan_document(
         base_commit,
         allowed_remote_refs=allowed_remote_refs,
+        cache_observer=cache_observer,
     )
     return _validated_document(frozen_snapshot, live, plan)
 
@@ -854,6 +858,7 @@ def read_and_validate_history_plan_semantics(
     plan_path: str,
     *,
     allowed_remote_refs: tuple[str, ...] = (),
+    cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> tuple[HistoryPlanDocument, str]:
     """Validate plan semantics and return its same-read exact SHA-256."""
     payload, plan_sha256 = _read_plan_payload_and_sha256(plan_path)
@@ -862,6 +867,7 @@ def read_and_validate_history_plan_semantics(
     live = acquire_history_plan_document(
         base_commit,
         allowed_remote_refs=allowed_remote_refs,
+        cache_observer=cache_observer,
     )
     return (
         _semantically_validated_document(frozen_snapshot, live, plan),

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import Path
 import subprocess
 import tempfile
-from typing import NoReturn, cast
+from typing import Literal, NoReturn, cast
 
 from ..exceptions import CommandError
 from ..fixup.models import FixupUnitKind
@@ -147,6 +148,20 @@ _DEPENDENCY_KEYS = frozenset(
         "detail",
     }
 )
+
+
+HistorySnapshotCacheStatus = Literal["hit", "miss", "rejected", "bypassed"]
+
+
+@dataclass(frozen=True, slots=True)
+class HistorySnapshotCacheObservation:
+    """One cache disposition suitable for user-visible success reports."""
+
+    status: HistorySnapshotCacheStatus
+    key: str | None
+    path: str | None
+    reason: str
+    retained: bool
 _UNIT_KINDS = frozenset(
     {
         "text-addition",
@@ -537,7 +552,7 @@ def _load(
         return None
 
 
-def _store(path: Path, record: dict[str, object]) -> None:
+def _store(path: Path, record: dict[str, object]) -> bool:
     try:
         try:
             path.parent.mkdir(parents=True, mode=0o700)
@@ -551,9 +566,10 @@ def _store(path: Path, record: dict[str, object]) -> None:
             mode_policy=AtomicWriteModePolicy.PRIVATE,
         )
         _evict_old_entries(path.parent, preserve=path)
+        return True
     except (CommandError, OSError):
         # Cache availability never changes command correctness.
-        return
+        return False
 
 
 def _evict_old_entries(root: Path, *, preserve: Path) -> None:
@@ -717,6 +733,7 @@ def acquire_cached_history_snapshot(
     base_tree: str,
     final_tree: str,
     build: Callable[[], HistorySnapshot],
+    observe: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistorySnapshot:
     """Reuse exact immutable range analysis, or build and publish it once."""
     try:
@@ -734,7 +751,23 @@ def acquire_cached_history_snapshot(
         TypeError,
         ValueError,
     ):
+        if observe is not None:
+            observe(
+                HistorySnapshotCacheObservation(
+                    status="bypassed",
+                    key=None,
+                    path=None,
+                    reason="cache-key-unavailable",
+                    retained=False,
+                )
+            )
         return build()
+    try:
+        cache_entry_existed = path.exists()
+        cache_path_unavailable = False
+    except OSError:
+        cache_entry_existed = False
+        cache_path_unavailable = True
     loaded = _load(path, locator)
     if loaded is not None:
         cached, stored_key = loaded
@@ -759,6 +792,16 @@ def acquire_cached_history_snapshot(
                 and stored_key == expected_key
                 and _source_object_closure_matches(cached)
             ):
+                if observe is not None:
+                    observe(
+                        HistorySnapshotCacheObservation(
+                            status="hit",
+                            key=history_canonical_json_sha256(stored_key),
+                            path=str(path),
+                            reason="authenticated",
+                            retained=True,
+                        )
+                    )
                 return cached
         except (OSError, RuntimeError, subprocess.CalledProcessError, ValueError):
             pass
@@ -774,6 +817,8 @@ def acquire_cached_history_snapshot(
         != commit_range.commits_oldest_first
     ):
         raise ValueError("history snapshot builder returned different range facts")
+    retained = False
+    reported_cache_key: str | None = None
     try:
         source_edge_diff_sha256, current_edge_units = _source_edge_analysis(snapshot)
         post_build_locator = _locator_record(
@@ -791,7 +836,26 @@ def acquire_cached_history_snapshot(
                 locator,
                 source_edge_diff_sha256=source_edge_diff_sha256,
             )
-            _store(path, _record(key, snapshot))
+            reported_cache_key = history_canonical_json_sha256(key)
+            retained = _store(path, _record(key, snapshot))
     except (OSError, RuntimeError, subprocess.CalledProcessError, ValueError):
         pass
+    if observe is not None:
+        observe(
+            HistorySnapshotCacheObservation(
+                status="rejected" if cache_entry_existed else "miss",
+                key=reported_cache_key,
+                path=str(path),
+                reason=(
+                    "entry-failed-authentication"
+                    if cache_entry_existed
+                    else (
+                        "cache-path-unavailable"
+                        if cache_path_unavailable
+                        else "entry-absent"
+                    )
+                ),
+                retained=retained,
+            )
+        )
     return snapshot

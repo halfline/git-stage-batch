@@ -217,11 +217,13 @@ def test_less_than_page_mapped_int_vector_uses_heap(monkeypatch):
 def test_page_sized_mapped_int_vector_uses_mmap(monkeypatch):
     """Page-sized integer vectors still use temporary mmap storage."""
     calls = 0
+    bufferings = []
     original_temporary_file = mapped_storage_module.tempfile.TemporaryFile
 
     def counting_temporary_file(*args, **kwargs):
         nonlocal calls
         calls += 1
+        bufferings.append(kwargs.get("buffering"))
         return original_temporary_file(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -235,6 +237,7 @@ def test_page_sized_mapped_int_vector_uses_mmap(monkeypatch):
         assert vector[0] == 3
 
     assert calls == 1
+    assert bufferings == [0]
 
 
 def test_mapped_vector_closes_spill_handle_when_mmap_is_cancelled(

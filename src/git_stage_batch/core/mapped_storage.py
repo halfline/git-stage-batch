@@ -136,7 +136,7 @@ def _byte_storage_from_chunk_prefix_and_remainder(
 
 def _temporary_file(spool_dir: str | Path | None = None) -> BinaryIO:
     directory = default_scratch_parent() if spool_dir is None else Path(spool_dir)
-    return tempfile.TemporaryFile(dir=directory)
+    return tempfile.TemporaryFile(dir=directory, buffering=0)
 
 
 def _normalize_width(width: int) -> int:

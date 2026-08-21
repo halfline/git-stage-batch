@@ -6960,8 +6960,19 @@ msgstr "Атомарно записати повторно використов�
 msgid "Output the reusable JSON plan on standard output"
 msgstr "Вивести повторно використовуваний план JSON у стандартний вивід"
 
-msgid "Commit excluded from the scan (default: fork point with upstream)"
-msgstr "Коміт, виключений із перевірки (типово: точка відгалуження від upstream)"
+msgid "rewrite scan --onto requires an explicit movable base argument"
+msgstr "rewrite scan --onto потребує явного аргументу рухомої бази"
+
+msgid "Older frozen base captured by the scan; movable commits may integrate into it but it is never split or reordered (default: the movable base)"
+msgstr "Найстаріша заморожена база, зафіксована перевіркою; рухомі коміти можуть бути інтегровані в неї, але вона ніколи не розділяється й не переупорядковується (типово: рухома база)"
+
+msgid "Movable base: commit excluded from the scan whose successors may move (default: fork point with upstream)"
+msgstr "Рухома база: коміт, виключений із перевірки, нащадки якого можуть переміщуватися (типово: точка відгалуження від upstream)"
+
+#: src/git_stage_batch/history/ranges.py:192
+#, python-brace-format
+msgid "Movable base {movable_base} is not the frozen base or a commit in the frozen range."
+msgstr "Рухома база {movable_base} не є замороженою базою або комітом із замороженого діапазону."
 
 msgid "Validate a reviewed rewrite plan against live objects"
 msgstr "Перевірити переглянутий план переписування за поточними об’єктами"

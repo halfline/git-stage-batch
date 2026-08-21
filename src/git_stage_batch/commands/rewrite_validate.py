@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..history.plan_files import (
     read_and_validate_history_plan,
     read_and_validate_history_plan_semantics,
+    require_frozen_history_plan_workspace,
 )
 from ..history.resolution_workspace import (
     HistoryAuthenticatedResolution,
@@ -25,6 +26,7 @@ def command_rewrite_validate(
     """Validate a semantic plan against independently reacquired source facts."""
     require_git_repository()
     require_repository_history()
+    require_frozen_history_plan_workspace(plan_path, resolutions_path)
     resolution: HistoryAuthenticatedResolution | None = None
     if resolutions_path is None:
         document = read_and_validate_history_plan(plan_path)

@@ -9,12 +9,14 @@ import json
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history import replay
+from git_stage_batch.history import plan_files, replay
 from git_stage_batch.history.plan_files import (
+    read_and_lint_frozen_history_plan,
     read_and_validate_frozen_history_plan_semantics,
     read_and_validate_history_plan,
     read_and_validate_history_plan_semantics,
 )
+from git_stage_batch.history.plan_lint import PrefixMaximumIndex
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 
@@ -33,6 +35,23 @@ def _plan(repo, path) -> dict[str, object]:
     return record
 
 
+def test_prefix_maximum_index_matches_linear_search() -> None:
+    for length in range(33):
+        values = tuple(((position * 17) % 13) - 2 for position in range(length))
+        index = PrefixMaximumIndex(values)
+        for end in range(length + 1):
+            for threshold in range(-2, 12):
+                expected = next(
+                    (
+                        position
+                        for position, value in enumerate(values[:end])
+                        if value > threshold
+                    ),
+                    None,
+                )
+                assert index.first_above(end, threshold) == expected
+
+
 def test_validate_accepts_unchanged_keep_plan(linear_history_repo):
     repo = linear_history_repo
     path = repo.root / "plan.json"
@@ -46,6 +65,66 @@ def test_validate_accepts_unchanged_keep_plan(linear_history_repo):
         "KEEP",
     ]
     assert history_plan_document_record(validated)["snapshot"] == original["snapshot"]
+
+
+def test_lint_accepts_keep_plan_without_reacquiring_git(linear_history_repo):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    _plan(repo, path)
+
+    result = read_and_lint_frozen_history_plan(str(path))
+
+    assert result.valid
+    assert result.diagnostics == ()
+    assert result.skipped_checks == ()
+
+
+def test_static_lint_aggregates_roots_before_snapshot_acquisition(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _plan(repo, path)
+    plan["plan"]["outputs"][0]["message"] = "Forged keep\n"
+    plan["plan"]["outputs"][1]["source_unit_ids"] = []
+    _write_plan(path, plan)
+    acquire = pytest.fail
+    monkeypatch.setattr(plan_files, "acquire_history_plan_document", acquire)
+
+    result = read_and_lint_frozen_history_plan(str(path))
+    with pytest.raises(CommandError, match="static lint found 2 error"):
+        read_and_validate_history_plan(str(path))
+
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "operation-message-shape",
+        "operation-unit-shape",
+    ]
+    assert result.skipped_checks == (
+        "conservation",
+        "relative-order",
+        "dependencies",
+    )
+
+
+def test_static_lint_reports_unsupported_resolution_units(linear_history_repo):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _plan(repo, path)
+    plan["plan"]["outputs"][0]["materialization"] = "RESOLVED"
+    plan["snapshot"]["commits"][0]["patch"]["units"][0]["kind"] = "rename"
+    _write_plan(path, plan)
+
+    result = read_and_lint_frozen_history_plan(str(path))
+
+    diagnostic = next(
+        item
+        for item in result.diagnostics
+        if item.code == "resolution-unit-kind-unsupported"
+    )
+    assert diagnostic.output_index == 0
+    assert diagnostic.unit_kinds == ("rename",)
+    assert diagnostic.paths
 
 
 def test_validate_ignores_json_object_key_order(linear_history_repo):
@@ -119,6 +198,33 @@ def test_validate_rejects_omitted_patch_unit(linear_history_repo):
 
     with pytest.raises(CommandError, match="without any of its units"):
         read_and_validate_history_plan(str(path))
+
+
+def test_lint_rejects_integrated_source_without_selected_units(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _plan(repo, path)
+    first, second = plan["plan"]["outputs"]
+    first["operation"] = "INTEGRATE"
+    first["source_commits"] = [
+        first["source_commits"][0],
+        second["source_commits"][0],
+    ]
+    plan["plan"]["outputs"] = [first]
+    _write_plan(path, plan)
+
+    result = read_and_lint_frozen_history_plan(str(path))
+
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "source-units-empty"
+    ]
+    assert result.skipped_checks == (
+        "conservation",
+        "relative-order",
+        "dependencies",
+    )
 
 
 def test_validate_rejects_duplicate_patch_unit(linear_history_repo):

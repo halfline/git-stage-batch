@@ -5,11 +5,13 @@ from __future__ import annotations
 from ..history.plan_files import (
     read_and_validate_history_plan,
     read_and_validate_history_plan_semantics,
+    require_frozen_history_plan_workspace,
 )
 from ..history.resolution_workspace import (
     HistoryAuthenticatedResolution,
     materialize_completed_history_resolution,
 )
+from ..history.snapshot_cache import HistorySnapshotCacheObservation
 from ..output.rewrite_validate import print_rewrite_validation
 from ..utils.git_object_io import temporary_git_object_environment
 from ..utils.git_repository import require_git_repository
@@ -25,11 +27,19 @@ def command_rewrite_validate(
     """Validate a semantic plan against independently reacquired source facts."""
     require_git_repository()
     require_repository_history()
+    require_frozen_history_plan_workspace(plan_path, resolutions_path)
     resolution: HistoryAuthenticatedResolution | None = None
+    cache_observations: list[HistorySnapshotCacheObservation] = []
     if resolutions_path is None:
-        document = read_and_validate_history_plan(plan_path)
+        document = read_and_validate_history_plan(
+            plan_path,
+            cache_observer=cache_observations.append,
+        )
     else:
-        document, raw_plan_sha256 = read_and_validate_history_plan_semantics(plan_path)
+        document, raw_plan_sha256 = read_and_validate_history_plan_semantics(
+            plan_path,
+            cache_observer=cache_observations.append,
+        )
         with temporary_git_object_environment(
             disable_replace_objects=True
         ) as quarantine:
@@ -47,5 +57,8 @@ def command_rewrite_validate(
     print_rewrite_validation(
         document,
         resolution=resolution,
+        cache_observation=(
+            cache_observations[-1] if cache_observations else None
+        ),
         porcelain=porcelain,
     )

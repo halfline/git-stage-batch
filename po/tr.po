@@ -7858,3 +7858,30 @@ msgid ""
 msgstr ""
 "Dizin birleştirilmemiş girdiler içerirken kurtarma denetim noktası "
 "oluşturulamaz: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Dondurulmuş bir yeniden yazma planını Git veya yeniden oynatma olmadan öneri amaçlı denetle"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "Dondurulmuş yeniden yazma planında {count} hata var:"
+msgstr[1] "Dondurulmuş yeniden yazma planında {count} hata var:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Dondurulmuş yeniden yazma planı öneri amaçlı denetimden geçti."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Geçersiz yeniden yazma planı: statik denetim {count} hata buldu:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Tüm bulguları makinece okunabilir bir rapor olarak çıkar"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Anlık görüntü önbelleği: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Bu sonuç öneri niteliğindedir; rewrite validate canlı nesneleri doğrular."

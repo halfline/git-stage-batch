@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import NoReturn, cast
@@ -33,13 +34,22 @@ from .models import (
     HistoryPlanMaterialization,
     HistoryPlannedCommit,
     HistoryPlanOperation,
-    HistoryUnitDependency,
+)
+from .plan_lint import (
+    HistoryPlanLint,
+    PrefixMaximumIndex,
+    grouped_block_chain_can_defer_to_replay,
+    lint_frozen_history_plan,
 )
 from .json_files import history_canonical_json_sha256
 from .records import history_snapshot_record
 from .replay import validate_history_plan_materialization
 from .safety import collect_history_safety_facts
 from .scan import acquire_frozen_history_snapshot, acquire_history_plan_document
+from .snapshot_cache import (
+    HistorySnapshotCacheObservation,
+    decode_history_snapshot_record,
+)
 
 
 _TOP_LEVEL_KEYS = frozenset(
@@ -328,39 +338,62 @@ def decode_frozen_history_plan_payload(
     return _decode_plan(payload, allow_legacy_v3=True)
 
 
-def _grouped_block_chain_can_defer_to_replay(
-    dependency: HistoryUnitDependency,
-    *,
-    dependencies_by_unit: dict[str, HistoryUnitDependency],
-    first_crossings: dict[str, str | None],
-    desired_positions: dict[str, int],
-    output_positions: dict[str, int],
-) -> bool:
-    """Return whether ordered blockers move inside one planned output.
+def read_and_lint_frozen_history_plan(plan_path: str) -> HistoryPlanLint:
+    """Advisory-check a persisted plan without repository reads or replay."""
+    payload = _read_plan_payload(plan_path)
+    frozen_snapshot, _base_commit, plan = _decode_plan(payload)
+    snapshot = decode_history_snapshot_record(frozen_snapshot)
+    return lint_frozen_history_plan(snapshot, plan)
 
-    A unit scan stops at its first real blocker, so it has no independent
-    evidence for the prefix crossed by that blocker. When the plan keeps a
-    chain of real blockers ordered inside one output, exact materialization can
-    prove the compound movement as a whole. UNKNOWN barriers never qualify.
-    """
-    visited: set[str] = set()
-    current = dependency
-    while first_crossings[current.unit_id] is not None:
-        if current.unit_id in visited:
-            return False
-        visited.add(current.unit_id)
-        barrier_unit = current.barrier_unit_id
-        if (
-            current.barrier != "BLOCKED"
-            or barrier_unit is None
-            or barrier_unit not in output_positions
-            or output_positions[barrier_unit] != output_positions[current.unit_id]
-            or desired_positions[barrier_unit]
-            >= desired_positions[current.unit_id]
-        ):
-            return False
-        current = dependencies_by_unit[barrier_unit]
-    return True
+
+def _require_static_plan_lint(
+    frozen_snapshot: dict[str, object],
+    plan: HistoryPlan,
+) -> None:
+    result = lint_frozen_history_plan(
+        decode_history_snapshot_record(frozen_snapshot),
+        plan,
+    )
+    _require_plan_lint_result(result)
+
+
+def _require_plan_lint_result(result: HistoryPlanLint) -> None:
+    """Raise one aggregate command error when advisory lint found failures."""
+    if result.valid:
+        return
+    lines = [
+        _("Invalid rewrite plan: static lint found {count} error(s):").format(
+            count=len(result.diagnostics)
+        )
+    ]
+    lines.extend(
+        f"- [{diagnostic.code}] {diagnostic.location}: {diagnostic.message}"
+        for diagnostic in result.diagnostics
+    )
+    raise CommandError("\n".join(lines))
+
+
+def require_frozen_history_plan_workspace(
+    plan_path: str,
+    workspace_path: str | None,
+) -> HistoryPlanLint:
+    """Preflight plan validity and workspace presence without reading Git."""
+    result = read_and_lint_frozen_history_plan(plan_path)
+    _require_plan_lint_result(result)
+    resolved_indexes = tuple(
+        index
+        for index, output in enumerate(result.plan.outputs)
+        if output.materialization == "RESOLVED"
+    )
+    if workspace_path is None and resolved_indexes:
+        raise CommandError(
+            _(
+                "Rewrite output {output} requires an explicit resolution workspace."
+            ).format(output=resolved_indexes[0] + 1)
+        )
+    if workspace_path is not None and not resolved_indexes:
+        raise CommandError(_("plan does not contain any RESOLVED outputs"))
+    return result
 
 
 def _validate_plan_semantics(
@@ -611,16 +644,17 @@ def _validate_plan_semantics(
             )
 
     moved_earlier_outputs: set[int] = set()
-    for earlier_index, earlier_position in enumerate(output_target_positions):
-        for later_position in output_target_positions[earlier_index + 1 :]:
-            if earlier_position <= later_position:
-                continue
+    suffix_minimum = output_target_positions[-1]
+    for earlier_index in range(len(output_target_positions) - 2, -1, -1):
+        earlier_position = output_target_positions[earlier_index]
+        if earlier_position > suffix_minimum:
             moved_earlier_outputs.add(earlier_index)
             if plan.outputs[earlier_index].operation not in {"REORDER", "SPLIT"}:
                 _invalid(
                     f"plan.outputs[{earlier_index}] must use REORDER or SPLIT "
                     "when moving before an earlier source"
                 )
+        suffix_minimum = min(suffix_minimum, earlier_position)
     for output_index, output in enumerate(plan.outputs):
         if output.operation == "REORDER" and output_index not in moved_earlier_outputs:
             _invalid(
@@ -644,6 +678,22 @@ def _validate_plan_semantics(
         for unit_id in output.source_unit_ids
         if unit_id not in partitioned_unit_ids
     }
+    nonpartitioned_position_index = PrefixMaximumIndex(
+        tuple(
+            desired_positions.get(unit_id, -1)
+            if unit_id not in partitioned_unit_ids
+            else -1
+            for unit_id in expected_units
+        )
+    )
+    partitioned_output_index = PrefixMaximumIndex(
+        tuple(
+            max(partitioned_by_id[unit_id].output_indexes)
+            if unit_id in partitioned_unit_ids
+            else -1
+            for unit_id in expected_units
+        )
+    )
     if len(live.snapshot.dependencies) != len(expected_units):
         _invalid("snapshot dependency graph does not cover every patch unit")
     dependencies_by_unit = {
@@ -684,25 +734,21 @@ def _validate_plan_semantics(
             continue
         moving_position = desired_positions[dependency.unit_id]
         moving_output = output_positions[dependency.unit_id]
-        first_crossings[dependency.unit_id] = next(
-            (
-                crossed_unit
-                for crossed_unit in expected_units[: dependency.earliest_position]
-                if (
-                    crossed_unit in partitioned_unit_ids
-                    and any(
-                        output_index > moving_output
-                        for output_index in partitioned_by_id[
-                            crossed_unit
-                        ].output_indexes
-                    )
-                )
-                or (
-                    crossed_unit not in partitioned_unit_ids
-                    and desired_positions[crossed_unit] > moving_position
-                )
-            ),
-            None,
+        nonpartitioned_crossing = nonpartitioned_position_index.first_above(
+            dependency.earliest_position,
+            moving_position,
+        )
+        partitioned_crossing = partitioned_output_index.first_above(
+            dependency.earliest_position,
+            moving_output,
+        )
+        crossing_positions = tuple(
+            position
+            for position in (nonpartitioned_crossing, partitioned_crossing)
+            if position is not None
+        )
+        first_crossings[dependency.unit_id] = (
+            expected_units[min(crossing_positions)] if crossing_positions else None
         )
 
     for dependency in live.snapshot.dependencies:
@@ -713,7 +759,7 @@ def _validate_plan_semantics(
         if plan.outputs[moving_output].materialization == "RESOLVED":
             continue
         if crossed_unit not in partitioned_unit_ids and (
-            _grouped_block_chain_can_defer_to_replay(
+            grouped_block_chain_can_defer_to_replay(
                 dependency,
                 dependencies_by_unit=dependencies_by_unit,
                 first_crossings=first_crossings,
@@ -794,13 +840,16 @@ def read_and_validate_history_plan(
     plan_path: str,
     *,
     allowed_remote_refs: tuple[str, ...] = (),
+    cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> HistoryPlanDocument:
     """Reacquire immutable facts and validate the editable semantic plan."""
     payload = _read_plan_payload(plan_path)
     frozen_snapshot, base_commit, plan = _decode_plan(payload)
+    _require_static_plan_lint(frozen_snapshot, plan)
     live = acquire_history_plan_document(
         base_commit,
         allowed_remote_refs=allowed_remote_refs,
+        cache_observer=cache_observer,
     )
     return _validated_document(frozen_snapshot, live, plan)
 
@@ -809,13 +858,16 @@ def read_and_validate_history_plan_semantics(
     plan_path: str,
     *,
     allowed_remote_refs: tuple[str, ...] = (),
+    cache_observer: Callable[[HistorySnapshotCacheObservation], None] | None = None,
 ) -> tuple[HistoryPlanDocument, str]:
     """Validate plan semantics and return its same-read exact SHA-256."""
     payload, plan_sha256 = _read_plan_payload_and_sha256(plan_path)
     frozen_snapshot, base_commit, plan = _decode_plan(payload)
+    _require_static_plan_lint(frozen_snapshot, plan)
     live = acquire_history_plan_document(
         base_commit,
         allowed_remote_refs=allowed_remote_refs,
+        cache_observer=cache_observer,
     )
     return (
         _semantically_validated_document(frozen_snapshot, live, plan),
@@ -836,6 +888,7 @@ def read_and_validate_frozen_history_plan_semantics_from_payload(
         payload,
         allow_legacy_v3=True,
     )
+    _require_static_plan_lint(frozen_snapshot, plan)
     if document_base != base_commit:
         _invalid("snapshot.range.base does not match operation state")
     live_snapshot = acquire_frozen_history_snapshot(

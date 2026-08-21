@@ -14,7 +14,10 @@ from git_stage_batch.history.execution import (
     start_history_operation,
 )
 from git_stage_batch.history.models import HistoryPhase
-from git_stage_batch.history.plan_files import read_and_validate_history_plan
+from git_stage_batch.history.plan_files import (
+    read_and_lint_frozen_history_plan,
+    read_and_validate_history_plan,
+)
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 from git_stage_batch.history.state import (
@@ -491,6 +494,13 @@ def test_reorder_fails_closed_for_an_unsupported_rename_unit(
     assert dependency["barrier"] == "UNKNOWN"
     assert dependency["detail"] == "rename"
 
+    lint = read_and_lint_frozen_history_plan(str(path))
+    assert [diagnostic.code for diagnostic in lint.diagnostics] == [
+        "dependency-crossing-unknown"
+    ]
+    assert lint.diagnostics[0].exact_supported is False
+    assert lint.diagnostics[0].resolved_supported is False
+
     with pytest.raises(CommandError, match="UNKNOWN dependency"):
         read_and_validate_history_plan(str(path))
 
@@ -588,3 +598,44 @@ def test_later_units_regain_reorder_proofs_after_an_unknown_segment(
         "Change beta",
         "Change alpha",
     ]
+
+
+def test_lint_aggregates_independent_unknown_crossings(
+    tmp_path,
+    monkeypatch,
+):
+    base = _initialize_repository(
+        tmp_path,
+        monkeypatch,
+        {
+            "alpha.txt": "alpha\n",
+            "beta.txt": "beta\n",
+            "old.txt": "renamed contents\n",
+        },
+    )
+    git("mv", "old.txt", "new.txt")
+    git("commit", "-m", "Rename file")
+    (tmp_path / "alpha.txt").write_text("alpha changed\n", encoding="utf-8")
+    git("commit", "-am", "Change alpha")
+    (tmp_path / "beta.txt").write_text("beta changed\n", encoding="utf-8")
+    git("commit", "-am", "Change beta")
+
+    def move_both_before_unknown(plan):
+        rename, alpha, beta = plan["plan"]["outputs"]
+        alpha["operation"] = "REORDER"
+        beta["operation"] = "REORDER"
+        plan["plan"]["outputs"] = [beta, alpha, rename]
+
+    path, _plan = _write_plan(tmp_path, base, move_both_before_unknown)
+
+    result = read_and_lint_frozen_history_plan(str(path))
+
+    crossings = [
+        diagnostic
+        for diagnostic in result.diagnostics
+        if diagnostic.code == "dependency-crossing-unknown"
+    ]
+    assert len(crossings) == 2
+    assert {diagnostic.output_index for diagnostic in crossings} == {0, 1}
+    assert all(diagnostic.exact_supported is False for diagnostic in crossings)
+    assert all(diagnostic.resolved_supported is True for diagnostic in crossings)

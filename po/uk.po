@@ -7966,3 +7966,31 @@ msgid ""
 msgstr ""
 "Не можна створити контрольну точку відновлення, доки індекс містить незлиті "
 "записи: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Рекомендаційно перевірити заморожений план переписування без Git і відтворення"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "У замороженому плані переписування {count} помилка:"
+msgstr[1] "У замороженому плані переписування {count} помилки:"
+msgstr[2] "У замороженому плані переписування {count} помилок:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Заморожений план переписування пройшов рекомендаційну перевірку."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Недійсний план переписування: статична перевірка знайшла {count} помилок:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Вивести всі результати як машинозчитуваний звіт"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Кеш знімків: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Цей результат рекомендаційний; rewrite validate перевіряє поточні об’єкти."

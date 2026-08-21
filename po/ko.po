@@ -7446,3 +7446,29 @@ msgid ""
 msgstr ""
 "인덱스에 병합되지 않은 항목이 있어 복구 체크포인트를 만들 수 없습니다: "
 "{paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Git 또는 재생 없이 고정된 재작성 계획을 참고용으로 검사"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "고정된 재작성 계획에 오류가 {count}개 있습니다:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "고정된 재작성 계획이 참고용 검사를 통과했습니다."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "잘못된 재작성 계획: 정적 검사에서 오류 {count}개를 찾았습니다:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "모든 발견 사항을 기계 판독 가능한 보고서로 출력"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "스냅샷 캐시: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "이 결과는 참고용입니다. rewrite validate가 현재 객체를 인증합니다."

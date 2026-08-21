@@ -41,7 +41,10 @@ from .json_files import (
     history_json_sha256,
 )
 from .models import HistoryPlanDocument, HistoryPlannedCommit, HistoryPatchUnit
-from .plan_files import read_and_validate_history_plan_semantics
+from .plan_files import (
+    read_and_validate_history_plan_semantics,
+    require_frozen_history_plan_workspace,
+)
 from .records import (
     history_plan_document_record,
     history_planned_commit_record,
@@ -1827,6 +1830,7 @@ def resolve_history_plan(
 ) -> HistoryResolutionWorkspaceResult:
     """Create, advance, or authenticate one explicit resolution workspace."""
     absolute_plan_path = os.path.abspath(plan_path)
+    require_frozen_history_plan_workspace(absolute_plan_path, workspace_path)
     document, plan_sha256 = read_and_validate_history_plan_semantics(absolute_plan_path)
     binding = _workspace_binding(document, plan_sha256)
     if not binding.resolved_output_indexes:

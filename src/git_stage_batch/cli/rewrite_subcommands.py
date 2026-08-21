@@ -7,6 +7,7 @@ import argparse
 from ..commands.rewrite_abort import command_rewrite_abort
 from ..commands.rewrite_apply import command_rewrite_apply
 from ..commands.rewrite_continue import command_rewrite_continue
+from ..commands.rewrite_lint import command_rewrite_lint
 from ..commands.rewrite_resolve import command_rewrite_resolve
 from ..commands.rewrite_scan import command_rewrite_scan
 from ..commands.rewrite_status import command_rewrite_status
@@ -27,6 +28,12 @@ REWRITE_READ_POLICY = CommandPolicy(
     session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
     locking=LockingPolicy.NONE,
     repository=RepositoryPolicy.REQUIRED,
+    pager=PagerPolicy.NEVER,
+)
+REWRITE_OFFLINE_POLICY = CommandPolicy(
+    session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+    locking=LockingPolicy.NONE,
+    repository=RepositoryPolicy.OPTIONAL,
     pager=PagerPolicy.NEVER,
 )
 REWRITE_MUTATION_POLICY = CommandPolicy(
@@ -57,6 +64,10 @@ def _dispatch_rewrite_validate(args: argparse.Namespace) -> None:
         resolutions_path=args.resolutions_path,
         porcelain=args.porcelain,
     )
+
+
+def _dispatch_rewrite_lint(args: argparse.Namespace) -> None:
+    command_rewrite_lint(args.plan_path, porcelain=args.porcelain)
 
 
 def _dispatch_rewrite_resolve(args: argparse.Namespace) -> None:
@@ -158,6 +169,25 @@ def add_rewrite_subcommand(subparsers: Subparsers) -> None:
         help=_("Output a machine-readable validation report"),
     )
     parser_validate.set_defaults(func=_dispatch_rewrite_validate)
+
+    parser_lint = add_subcommand_parser(
+        actions,
+        "lint",
+        policy=REWRITE_OFFLINE_POLICY,
+        help_topic="stage-batch-rewrite",
+        help=_("Advisory-check a frozen rewrite plan without Git or replay"),
+    )
+    parser_lint.add_argument(
+        "plan_path",
+        metavar="PLAN",
+        help=_("Reusable rewrite plan emitted by rewrite scan"),
+    )
+    parser_lint.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output all findings as a machine-readable report"),
+    )
+    parser_lint.set_defaults(func=_dispatch_rewrite_lint)
 
     parser_resolve = add_subcommand_parser(
         actions,

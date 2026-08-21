@@ -80,6 +80,19 @@ def test_rewrite_guides_disclose_bounded_analysis_cache() -> None:
         assert phrase not in combined
 
 
+def test_rewrite_reference_documents_offline_advisory_lint() -> None:
+    """The fast plan pass must stay distinct from authenticated validation."""
+    commands = _read("docs/commands.md")
+    manual = _read("man/git-stage-batch-rewrite.1.in")
+    combined = " ".join("\n".join((commands, manual)).split())
+
+    assert "git-stage-batch rewrite lint" in combined
+    assert "authoritative: false" in combined
+    assert "without reading Git" in combined
+    assert "never replaces" in combined
+    assert "summary.skipped_checks" in commands
+
+
 def test_rewrite_manual_states_remote_and_abort_boundaries() -> None:
     """Installed rewrite help should describe its mutation limits."""
     manual = " ".join(_read("man/git-stage-batch-rewrite.1.in").split())

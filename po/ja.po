@@ -7436,3 +7436,29 @@ msgid ""
 msgstr ""
 "インデックスに未マージのエントリがあるため、復旧チェックポイントを作成できま"
 "せん: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Git や再生を使わずに固定された書き換え計画を参考検査する"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "固定された書き換え計画に {count} 個のエラーがあります:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "固定された書き換え計画は参考検査に合格しました。"
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "無効な書き換え計画: 静的検査で {count} 個のエラーが見つかりました:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "すべての検出結果を機械可読レポートとして出力する"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "スナップショットキャッシュ: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "この結果は参考情報です。rewrite validate が現在のオブジェクトを認証します。"

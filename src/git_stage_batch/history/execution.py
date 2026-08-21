@@ -40,6 +40,7 @@ from .plan_files import (
     read_and_validate_frozen_history_plan_semantics,
     read_and_validate_history_plan,
     read_and_validate_history_plan_semantics,
+    require_frozen_history_plan_workspace,
 )
 from .records import history_plan_document_record
 from .replay import (
@@ -794,6 +795,7 @@ def start_history_operation(
 ) -> HistoryOperationState:
     """Validate, checkpoint, build, verify, and atomically finalize one plan."""
     allowed_refs = normalize_allowed_remote_refs(allowed_remote_refs)
+    require_frozen_history_plan_workspace(plan_path, resolutions_path)
     raw_plan_sha256: str | None = None
     resolution_complete_sha256: str | None = None
     if resolutions_path is None:

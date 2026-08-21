@@ -7,6 +7,10 @@ git-stage-batch-rewrite \- execute deterministic history refinements
 [\fB\-\-porcelain\fR]
 [\fIBOUNDARY\fR]
 .PP
+.B git-stage-batch rewrite lint
+[\fB\-\-porcelain\fR]
+\fIPLAN\fR
+.PP
 .B git-stage-batch rewrite validate
 [\fB\-\-workspace\fR \fIDIR\fR]
 [\fB\-\-porcelain\fR]
@@ -50,6 +54,14 @@ an unsupported commit boundary but retains an UNKNOWN edge across it.
 Patch bytes are not copied into JSON. Each commit records its exact old and
 new tree pair, from which later commands regenerate full-index binary patches
 through bounded storage.
+.PP
+.B rewrite lint
+strictly decodes and advisory-checks the complete frozen plan without reading
+Git, creating a cache entry, or replaying patches. It aggregates independent
+operation-shape, conservation, partition, relative-output-order, recorded
+dependency-crossing, and statically unsupported resolution-workspace findings
+while suppressing checks whose prerequisites failed. Frozen declarations remain
+untrusted; a successful lint never replaces live validation.
 .PP
 .B rewrite validate
 strictly parses a reviewed scan document, independently reacquires every
@@ -175,6 +187,15 @@ when both a file and standard output are useful.
 .I BOUNDARY
 Commit excluded from the source range. By default, use the fork point or
 merge base between HEAD and its configured upstream.
+.SH LINT OPTIONS
+.TP
+.B \-\-porcelain
+Print a versioned JSON report with stable diagnostic codes and locations,
+affected commits, units, paths and kinds, skipped prerequisite-dependent
+checks, and
+.BR "authoritative: false" .
+The command exits unsuccessfully after printing a complete invalid-plan report
+when any error is found.
 .SH VALIDATE OPTIONS
 .TP
 .BI \-\-workspace " DIR"
@@ -194,6 +215,12 @@ member is null for an all-EXACT plan; completed-workspace validation reports
 its canonical path, authenticated
 .B complete_sha256
 digest, and resolved-output count.
+The top-level
+.B snapshot_cache
+member reports whether immutable analysis was a hit, miss, rejected entry, or
+bypass, together with its content-addressed key, addressable path, reason, and
+retention status. It never implies that live safety collection or replay was
+skipped.
 .SH RESOLVE OPTIONS
 .TP
 .BI \-\-workspace " DIR"

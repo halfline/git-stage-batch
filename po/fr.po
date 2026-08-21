@@ -8046,3 +8046,30 @@ msgid ""
 msgstr ""
 "Impossible de créer un point de contrôle de récupération tant que l’index "
 "contient des entrées non fusionnées : {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Vérifier à titre indicatif un plan de réécriture figé sans Git ni rejeu"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "Le plan de réécriture figé comporte {count} erreur :"
+msgstr[1] "Le plan de réécriture figé comporte {count} erreurs :"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Le plan de réécriture figé a réussi la vérification indicative."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Plan de réécriture non valide : la vérification statique a trouvé {count} erreur(s) :"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Afficher tous les constats sous forme de rapport lisible par machine"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Cache d’instantanés : {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Ce résultat est indicatif ; rewrite validate authentifie les objets actuels."

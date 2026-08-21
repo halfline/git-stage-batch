@@ -8016,3 +8016,31 @@ msgid ""
 msgstr ""
 "Невозможно создать контрольную точку восстановления, пока индекс содержит "
 "неслитые записи: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Рекомендательно проверить замороженный план перезаписи без Git и воспроизведения"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "В замороженном плане перезаписи {count} ошибка:"
+msgstr[1] "В замороженном плане перезаписи {count} ошибки:"
+msgstr[2] "В замороженном плане перезаписи {count} ошибок:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Замороженный план перезаписи прошёл рекомендательную проверку."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Недопустимый план перезаписи: статическая проверка нашла {count} ошибок:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Вывести все результаты в виде машиночитаемого отчёта"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Кэш снимков: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Этот результат рекомендательный; rewrite validate проверяет текущие объекты."

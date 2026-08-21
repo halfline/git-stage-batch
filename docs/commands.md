@@ -1057,6 +1057,28 @@ range commits appear as safety blockers rather than preventing an audit.
 Merges, replace objects, and legacy grafts are rejected because they change
 the supported topology or commit identity semantics.
 
+### `rewrite lint`
+
+Advisory-check an edited plan before snapshot acquisition or replay:
+
+```bash
+❯ git-stage-batch rewrite lint rewrite-plan.json
+❯ git-stage-batch rewrite lint rewrite-plan.json --porcelain
+```
+
+Lint strictly decodes the complete frozen document, then reports independent
+operation-shape, source/unit conservation, partition, relative-output-order,
+recorded dependency-crossing, and statically unsupported resolution-workspace
+findings together. It performs no Git reads, creates no cache entry or candidate
+object, and can run outside a repository. Checks whose prerequisites failed are named in
+`summary.skipped_checks` instead of producing cascading diagnostics.
+
+The porcelain report has `operation: "rewrite-lint"`, `status: "valid"` or
+`"invalid-plan"`, stable diagnostic codes and locations, affected commits,
+units, paths and kinds, and `authoritative: false`. Frozen declarations are
+untrusted: a successful lint never replaces `rewrite validate`, which
+reacquires immutable facts and proves the complete replay and final tree.
+
 ### `rewrite validate`
 
 Validate edited semantic input against independently reacquired source facts:
@@ -1077,6 +1099,11 @@ gratuitous workspace is rejected rather than ignored. A plan containing any
 `RESOLVED` output requires `--workspace DIR`, where `DIR` is the `COMPLETE`
 private workspace produced by `rewrite resolve` for that exact plan. Missing,
 incomplete, or differently bound workspaces fail validation.
+Successful validation reports expose the immutable-analysis cache disposition
+as `snapshot_cache.status` (`hit`, `miss`, `rejected`, or `bypassed`), its
+content-addressed key and entry path when one was addressable, a stable reason,
+and whether rebuilt analysis was retained. This is provenance only; live safety
+collection and full replay still run.
 `KEEP`, `REWORD`, and `REORDER` consume every unit of one source commit.
 `REORDER` marks a whole source moved earlier and preserves its exact message
 and encoding. `SPLIT` consumes a non-empty ordered subset of one source; every

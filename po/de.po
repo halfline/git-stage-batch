@@ -8051,3 +8051,30 @@ msgid ""
 msgstr ""
 "Ein Wiederherstellungskontrollpunkt kann nicht erstellt werden, solange der "
 "Index nicht zusammengeführte Einträge enthält: {paths}"
+
+# Rewrite lint and cache reporting translations.
+msgid "Advisory-check a frozen rewrite plan without Git or replay"
+msgstr "Einen eingefrorenen Umschreibungsplan ohne Git oder Wiedergabe beratend prüfen"
+
+#, python-brace-format
+msgid "Frozen rewrite plan has {count} error:"
+msgid_plural "Frozen rewrite plan has {count} errors:"
+msgstr[0] "Der eingefrorene Umschreibungsplan hat {count} Fehler:"
+msgstr[1] "Der eingefrorene Umschreibungsplan hat {count} Fehler:"
+
+msgid "Frozen rewrite plan passed advisory lint."
+msgstr "Der eingefrorene Umschreibungsplan hat die beratende Prüfung bestanden."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: static lint found {count} error(s):"
+msgstr "Ungültiger Umschreibungsplan: Die statische Prüfung fand {count} Fehler:"
+
+msgid "Output all findings as a machine-readable report"
+msgstr "Alle Befunde als maschinenlesbaren Bericht ausgeben"
+
+#, python-brace-format
+msgid "Snapshot cache: {status} ({reason})"
+msgstr "Snapshot-Cache: {status} ({reason})"
+
+msgid "This result is advisory; rewrite validate authenticates live objects."
+msgstr "Dieses Ergebnis ist beratend; rewrite validate authentifiziert die aktuellen Objekte."

@@ -2301,6 +2301,20 @@ def test_parse_command_line_rewrite_validate_dispatches_resolutions(monkeypatch)
     )
 
 
+def test_parse_command_line_rewrite_lint_is_offline(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(rewrite_subcommands, "command_rewrite_lint", mock_command)
+    args = parse_command_line(
+        ["rewrite", "lint", "plan.json", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command_policy is rewrite_subcommands.REWRITE_OFFLINE_POLICY
+    args.func(args)
+    mock_command.assert_called_once_with("plan.json", porcelain=True)
+
+
 def test_parse_command_line_rewrite_validate_omits_resolutions_by_default(
     monkeypatch,
 ):

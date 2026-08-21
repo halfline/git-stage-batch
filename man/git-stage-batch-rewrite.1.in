@@ -5,7 +5,8 @@ git-stage-batch-rewrite \- execute deterministic history refinements
 .B git-stage-batch rewrite scan
 [\fB\-\-output\fR \fIFILE\fR]
 [\fB\-\-porcelain\fR]
-[\fIBOUNDARY\fR]
+[\fB\-\-onto\fR \fIONTO\fR]
+[\fIMOVABLE_BASE\fR]
 .PP
 .B git-stage-batch rewrite lint
 [\fB\-\-porcelain\fR]
@@ -184,9 +185,30 @@ combined with
 .B \-\-output
 when both a file and standard output are useful.
 .TP
-.I BOUNDARY
-Commit excluded from the source range. By default, use the fork point or
-merge base between HEAD and its configured upstream.
+.BI \-\-onto " ONTO"
+Older frozen base captured by the scan, mirroring the
+.I <newbase>
+of
+.BR "git rebase \-\-onto" .
+The scan snapshots the whole
+.IR ONTO ..HEAD
+range but computes movable dependency evidence only for
+.IR MOVABLE_BASE ..HEAD.
+Commits in the pinned prefix
+.IR ONTO ".." MOVABLE_BASE
+may only be kept, reworded, or receive movable units through INTEGRATE; they
+are never split, reordered, or used as a donor source. Requires an explicit
+.IR MOVABLE_BASE .
+When omitted the frozen base equals the movable base and the whole range is
+movable.
+.TP
+.I MOVABLE_BASE
+Excluded base of the commits that may move, mirroring the
+.I <upstream>
+of
+.BR "git rebase \-\-onto" .
+By default, use the fork point or merge base between HEAD and its configured
+upstream.
 .SH LINT OPTIONS
 .TP
 .B \-\-porcelain
@@ -318,6 +340,17 @@ explicit, path-authorized output snapshots and a complete replay that
 reproduces the frozen final tree. Dependency evidence is not a substitute for
 that final oracle. Empty source commits remain explicit unless deliberately
 consumed by an integration.
+.PP
+When the scan was scoped with
+.BR \-\-onto ,
+commits in the pinned prefix
+.IR ONTO ".." MOVABLE_BASE
+are restricted: an output whose target is a pinned commit may only KEEP, REWORD,
+or INTEGRATE movable units into it, never SPLIT or REORDER it, and a pinned
+commit may never appear as a donor (secondary) source. Validation still
+conserves every unit and replays the complete
+.IR ONTO ..HEAD
+tree.
 .SH SAFETY
 Scan, validation, and resolution do not change commits or refs. They
 materialize candidate trees only in a temporary object quarantine. They may

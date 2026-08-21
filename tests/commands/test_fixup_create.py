@@ -180,6 +180,41 @@ def test_create_groups_multiple_exact_units_for_one_target(
     assert _git("diff", "--cached") == ""
 
 
+def test_create_replays_target_relative_fixup_patch(
+    fixup_create_repo,
+    monkeypatch,
+    capsys,
+):
+    _repo, source, base, alpha_commit, gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    alpha_tree = _git("rev-parse", f"{alpha_commit}^{{tree}}")
+    head_tree = _git("rev-parse", f"{gamma_commit}^{{tree}}")
+    index_tree = _git("write-tree")
+    diff_pairs: list[tuple[str, str]] = []
+    load_tree_diff = fixup_execution.load_tree_diff_as_buffer
+
+    def record_tree_diff(old_tree, new_tree, *, env=None):
+        diff_pairs.append((old_tree, new_tree))
+        return load_tree_diff(old_tree, new_tree, env=env)
+
+    monkeypatch.setattr(
+        fixup_execution,
+        "load_tree_diff_as_buffer",
+        record_tree_diff,
+    )
+
+    command_create_fixups(base, dry_run=True, porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["summary"]["assigned_units"] == 1
+    assert diff_pairs.count((head_tree, index_tree)) == 1
+    assert any(
+        old_tree == alpha_tree and new_tree != head_tree
+        for old_tree, new_tree in diff_pairs
+    )
+
+
 def test_create_dry_run_does_not_mutate(fixup_create_repo, capsys):
     _repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
     source.write_text("alpha fixed\nbeta\ngamma topic\n")

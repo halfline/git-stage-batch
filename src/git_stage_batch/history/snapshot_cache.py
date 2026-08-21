@@ -460,6 +460,14 @@ def _decode_snapshot(value: object) -> HistorySnapshot:
     return snapshot
 
 
+def decode_history_snapshot_record(value: object) -> HistorySnapshot:
+    """Strictly decode one frozen snapshot record without reading Git."""
+    try:
+        return _decode_snapshot(value)
+    except StrictJsonError as error:
+        _invalid(str(error))
+
+
 def _record(key: dict[str, object], snapshot: HistorySnapshot) -> dict[str, object]:
     snapshot_record = history_snapshot_record(snapshot)
     return {

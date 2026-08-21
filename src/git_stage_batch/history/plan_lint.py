@@ -125,7 +125,7 @@ def lint_frozen_history_plan(
     from producing a page of misleading conservation and dependency errors.
     """
     diagnostics: list[HistoryPlanDiagnostic] = []
-    skipped: list[str] = []
+    skipped_checks: list[str] = []
     source_by_id = {commit.commit_id: commit for commit in snapshot.commits}
     source_positions = {
         commit.commit_id: index for index, commit in enumerate(snapshot.commits)
@@ -449,8 +449,10 @@ def lint_frozen_history_plan(
                 )
 
     if not all(output_valid):
-        skipped.extend(("conservation", "relative-order", "dependencies"))
-        return HistoryPlanLint(snapshot, plan, tuple(diagnostics), tuple(skipped))
+        skipped_checks.extend(("conservation", "relative-order", "dependencies"))
+        return HistoryPlanLint(
+            snapshot, plan, tuple(diagnostics), tuple(skipped_checks)
+        )
 
     expected_units = tuple(
         unit.unit_id for commit in snapshot.commits for unit in commit.units
@@ -562,7 +564,7 @@ def lint_frozen_history_plan(
 
     conservation_valid = partition_inventory_valid
     if not partition_inventory_valid:
-        skipped.extend(("conservation", "dependencies"))
+        skipped_checks.extend(("conservation", "dependencies"))
     else:
         for unit_id, indexes in occurrences.items():
             declared_partition = partitioned.get(unit_id)
@@ -677,9 +679,11 @@ def lint_frozen_history_plan(
             )
 
     if not conservation_valid:
-        if "dependencies" not in skipped:
-            skipped.append("dependencies")
-        return HistoryPlanLint(snapshot, plan, tuple(diagnostics), tuple(skipped))
+        if "dependencies" not in skipped_checks:
+            skipped_checks.append("dependencies")
+        return HistoryPlanLint(
+            snapshot, plan, tuple(diagnostics), tuple(skipped_checks)
+        )
 
     partitioned_unit_ids = set(partitioned)
     ordered_nonpartitioned_units = tuple(
@@ -704,8 +708,10 @@ def lint_frozen_history_plan(
             "snapshot dependency graph does not cover every patch unit",
             "snapshot.dependency_graph.units",
         )
-        skipped.append("dependencies")
-        return HistoryPlanLint(snapshot, plan, tuple(diagnostics), tuple(skipped))
+        skipped_checks.append("dependencies")
+        return HistoryPlanLint(
+            snapshot, plan, tuple(diagnostics), tuple(skipped_checks)
+        )
     dependencies_by_unit = {
         dependency.unit_id: dependency for dependency in snapshot.dependencies
     }
@@ -740,8 +746,10 @@ def lint_frozen_history_plan(
                 "snapshot.dependency_graph.units",
                 unit_ids=(dependency.unit_id,),
             )
-            skipped.append("dependencies")
-            return HistoryPlanLint(snapshot, plan, tuple(diagnostics), tuple(skipped))
+            skipped_checks.append("dependencies")
+            return HistoryPlanLint(
+                snapshot, plan, tuple(diagnostics), tuple(skipped_checks)
+            )
         expected_barrier = (
             expected_units[dependency.earliest_position - 1]
             if dependency.earliest_position > 0
@@ -759,8 +767,10 @@ def lint_frozen_history_plan(
                 "snapshot.dependency_graph.units",
                 unit_ids=(dependency.unit_id,),
             )
-            skipped.append("dependencies")
-            return HistoryPlanLint(snapshot, plan, tuple(diagnostics), tuple(skipped))
+            skipped_checks.append("dependencies")
+            return HistoryPlanLint(
+                snapshot, plan, tuple(diagnostics), tuple(skipped_checks)
+            )
         if dependency.unit_id in partitioned_unit_ids:
             first_crossings[dependency.unit_id] = None
             continue
@@ -828,4 +838,4 @@ def lint_frozen_history_plan(
             exact_supported=False,
             resolved_supported=resolution_supported,
         )
-    return HistoryPlanLint(snapshot, plan, tuple(diagnostics), tuple(skipped))
+    return HistoryPlanLint(snapshot, plan, tuple(diagnostics), tuple(skipped_checks))

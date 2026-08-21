@@ -10,6 +10,7 @@ from git_stage_batch.history.resolution_workspace import (
     HistoryAuthenticatedResolution,
 )
 from git_stage_batch.history.scan import acquire_history_plan_document
+from git_stage_batch.history.snapshot_cache import HistorySnapshotCacheObservation
 from git_stage_batch.output.rewrite_validate import print_rewrite_validation
 
 
@@ -37,6 +38,36 @@ def test_exact_validation_porcelain_has_explicit_empty_resolution(
     record = json.loads(capsys.readouterr().out)
     assert record["summary"]["resolved_outputs"] == 0
     assert record["resolution"] is None
+    assert record["snapshot_cache"] is None
+
+
+def test_validation_porcelain_reports_snapshot_cache_disposition(
+    linear_history_repo,
+    capsys,
+):
+    document = acquire_history_plan_document(linear_history_repo.base)
+    observation = HistorySnapshotCacheObservation(
+        status="hit",
+        key="a" * 64,
+        path="/var/tmp/cache/history-snapshot-example.json",
+        reason="authenticated",
+        retained=True,
+    )
+
+    print_rewrite_validation(
+        document,
+        cache_observation=observation,
+        porcelain=True,
+    )
+
+    record = json.loads(capsys.readouterr().out)
+    assert record["snapshot_cache"] == {
+        "status": "hit",
+        "key": "a" * 64,
+        "path": "/var/tmp/cache/history-snapshot-example.json",
+        "reason": "authenticated",
+        "retained": True,
+    }
 
 
 def test_authenticated_validation_porcelain_exposes_only_safe_provenance(

@@ -89,13 +89,20 @@ def test_scan_reuses_immutable_snapshot_analysis_across_process_boundaries(
 ):
     cache = tmp_path / "snapshot-cache"
     monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
-    first = acquire_history_plan_document(linear_history_repo.base)
+    observations = []
+    first = acquire_history_plan_document(
+        linear_history_repo.base,
+        cache_observer=observations.append,
+    )
 
     def unexpected_rebuild(*_args, **_kwargs):
         raise AssertionError("immutable snapshot analysis was repeated")
 
     monkeypatch.setattr(scan, "_build_snapshot_from_range", unexpected_rebuild)
-    second = acquire_history_plan_document(linear_history_repo.base)
+    second = acquire_history_plan_document(
+        linear_history_repo.base,
+        cache_observer=observations.append,
+    )
 
     assert second.snapshot == first.snapshot
     records = tuple(cache.glob("*.json"))
@@ -121,6 +128,15 @@ def test_scan_reuses_immutable_snapshot_analysis_across_process_boundaries(
     assert len(key["git_behavior_fingerprint"]) == 64
     assert len(key["git_config_fingerprint"]) == 64
     assert len(key["source_edge_diff_sha256"]) == 64
+    assert [observation.status for observation in observations] == ["miss", "hit"]
+    assert observations[0].reason == "entry-absent"
+    assert observations[0].retained is True
+    assert observations[1].reason == "authenticated"
+    assert observations[1].retained is True
+    assert observations[0].key == observations[1].key
+    assert observations[0].key is not None
+    assert len(observations[0].key) == 64
+    assert observations[0].path == observations[1].path == str(records[0])
 
 
 def test_scan_cache_uses_dynamic_default_scratch_parent(
@@ -430,11 +446,17 @@ def test_scan_rebuilds_a_corrupt_snapshot_cache(
         return original_builder(*args, **kwargs)
 
     monkeypatch.setattr(scan, "_build_snapshot_from_range", counted_rebuild)
-    second = acquire_history_plan_document(linear_history_repo.base)
+    observations = []
+    second = acquire_history_plan_document(
+        linear_history_repo.base,
+        cache_observer=observations.append,
+    )
 
     assert build_count == 1
     assert second.snapshot == first.snapshot
     assert cache_record.read_text(encoding="utf-8").startswith("{\n")
+    assert observations[0].status == "rejected"
+    assert observations[0].reason == "entry-failed-authentication"
 
 
 def test_scan_rebuilds_when_cached_source_objects_are_unavailable(

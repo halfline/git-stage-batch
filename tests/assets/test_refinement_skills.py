@@ -436,12 +436,22 @@ def test_refine_history_uses_identifiable_durable_scratch() -> None:
         "PLAN_PARENT=/var/tmp",
         'PLAN_DIR=$(mktemp -d "$PLAN_PARENT/git-stage-batch-refine-history.XXXXXXXX")',
         "PLAN_DIR=$(mktemp -d)",
+        'LINT_REPORT="$PLAN_DIR/lint.json"',
+        "Keep the unique `PLAN_DIR` and every resolution workspace separate",
+        "`XDG_CACHE_HOME` does not select this cache",
+        "pin one stable `GIT_STAGE_BATCH_HISTORY_CACHE_ROOT`",
+        "one read-only advisory audit of the complete frozen document",
+        "every planned relative-order inversion",
+        "the current grammar cannot move and reword one complete source",
+        "This audit uses untrusted frozen declarations and is never authoritative",
+        'git-stage-batch rewrite lint "$REWRITE_PLAN" --porcelain > "$LINT_REPORT"',
     )
 
     for root in (CODEX_HISTORY, CLAUDE_HISTORY):
         skill = _read(root / "SKILL.md")
+        skill_prose = " ".join(skill.split())
         for value in required:
-            assert value in skill
+            assert value in skill_prose
     assert "Bash(uname *)" in _read(CLAUDE_HISTORY / "SKILL.md")
 
 

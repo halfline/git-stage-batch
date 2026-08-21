@@ -201,7 +201,10 @@ def _prepare_groups(plan: FixupCreatePlan) -> tuple[_PreparedGroup, ...]:
                     ).format(target=group.target)
                 )
             target_patches[group.target] = target_patch_stack.enter_context(
-                load_tree_diff_as_buffer(current_tree, expected_tree)
+                load_tree_diff_as_buffer(
+                    tree_for_commit(group.target),
+                    relocated_tree,
+                )
             )
             prepared.append(
                 _PreparedGroup(group=group, expected_tree=expected_tree)

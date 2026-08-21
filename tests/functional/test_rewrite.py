@@ -34,7 +34,7 @@ def test_history_cli_scans_and_validates_reword_plan(functional_repo):
     assert plan["snapshot"]["dependency_graph"]["algorithm_version"] == 1
     assert len(plan["snapshot"]["dependency_graph"]["units"]) == 1
     assert plan["safety"]["mutation_ready"] is True
-    assert plan["schema_version"] == 4
+    assert plan["schema_version"] == 5
     assert plan["plan"]["partitioned_units"] == []
     assert plan["plan"]["outputs"][0]["operation"] == "KEEP"
     assert plan["plan"]["outputs"][0]["materialization"] == "EXACT"
@@ -77,7 +77,7 @@ def test_history_cli_atomically_writes_plan(functional_repo):
     )
 
     assert "Wrote reusable rewrite plan" in result.stdout
-    assert json.loads(plan_path.read_text(encoding="utf-8"))["schema_version"] == 4
+    assert json.loads(plan_path.read_text(encoding="utf-8"))["schema_version"] == 5
 
 
 def test_history_cli_reuses_snapshot_analysis_between_processes(

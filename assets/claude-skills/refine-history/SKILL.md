@@ -116,6 +116,7 @@ else
   PLAN_DIR=$(mktemp -d)
 fi
 REWRITE_PLAN="$PLAN_DIR/rewrite-plan.json"
+LINT_REPORT="$PLAN_DIR/lint.json"
 VALIDATION="$PLAN_DIR/validation.json"
 CAUSAL_LEDGER="$PLAN_DIR/causal-ledger.md"
 REWRITE_WORKSPACE="$PLAN_DIR/rewrite-workspace"
@@ -144,6 +145,15 @@ resolution workspaces. They may reuse or update the disposable
 history-snapshot cache; their candidate objects are quarantined and they create
 no operation state. Dirty state may appear as an audit fact, but it blocks
 apply.
+
+Keep the unique `PLAN_DIR` and every resolution workspace separate from the
+product's reusable history-snapshot cache. Do not point `TMPDIR`, `TEMP`,
+`TMP`, or `GIT_STAGE_BATCH_HISTORY_CACHE_ROOT` at `PLAN_DIR`, and do not change
+those cache selectors merely to create a fresh attempt. `XDG_CACHE_HOME` does
+not select this cache. If an execution harness must vary its temporary-file
+root between attempts, pin one stable `GIT_STAGE_BATCH_HISTORY_CACHE_ROOT`
+outside every run root before the first scan. A cache hit accelerates immutable
+analysis only; it never authenticates an edited plan or replaces replay.
 
 Before classifying publication, bind an explicit run-local publication scope.
 By default it contains only the exact remote-tracking ref mapped from the
@@ -357,6 +367,26 @@ candidate can move without such breakage, keep auditing rather than accepting
 a generic "related" rationale. Every output rationale should name the product
 state and why its exact units belong together, while recognizing that the CLI
 does not use prose as proof.
+
+Before invoking the first expensive validation or resolution command for an
+edited full-series plan, perform one read-only advisory audit of the complete
+frozen document. Check operation shapes, source and unit conservation, unit
+order, partition declarations, and every planned relative-order inversion.
+Do not compare only planned absolute positions with `earliest_position`.
+Require a moved complete source to use `REORDER` with its exact message or to
+produce at least two non-empty `SPLIT` outputs; the current grammar cannot move
+and reword one complete source in one output. Reject `RESOLVED` candidates that
+contain `rename`, `file-type`, or `gitlink` units, or content-coupled rename or
+file-type transitions. Collect independent root findings together and suppress
+checks made meaningless by an earlier schema or conservation failure. This
+audit uses untrusted frozen declarations and is never authoritative; product
+validation must still reacquire immutable facts and replay the complete plan.
+Run the product's aggregate offline pass and inspect every diagnostic before
+continuing:
+
+```bash
+git-stage-batch rewrite lint "$REWRITE_PLAN" --porcelain > "$LINT_REPORT"
+```
 
 Edit the external plan according to `references/rewrite-procedures.md`. For an
 all-`EXACT` plan, validate it directly:

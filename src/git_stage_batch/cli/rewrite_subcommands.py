@@ -13,6 +13,7 @@ from ..commands.rewrite_scan import command_rewrite_scan
 from ..commands.rewrite_status import command_rewrite_status
 from ..commands.rewrite_validate import command_rewrite_validate
 from ..commands.rewrite_verify import command_rewrite_verify
+from ..exceptions import CommandError
 from ..i18n import _
 from .command_policy import (
     CommandPolicy,
@@ -51,8 +52,13 @@ REWRITE_VERIFICATION_POLICY = CommandPolicy(
 
 
 def _dispatch_rewrite_scan(args: argparse.Namespace) -> None:
+    if args.onto is not None and args.boundary is None:
+        raise CommandError(
+            _("rewrite scan --onto requires an explicit movable base argument")
+        )
     command_rewrite_scan(
         args.boundary,
+        onto_boundary=args.onto,
         output_path=args.output_path,
         porcelain=args.porcelain,
     )
@@ -136,11 +142,22 @@ def add_rewrite_subcommand(subparsers: Subparsers) -> None:
         help=_("Output the reusable JSON plan on standard output"),
     )
     parser_scan.add_argument(
+        "--onto",
+        metavar="ONTO",
+        default=None,
+        help=_(
+            "Older frozen base captured by the scan; movable commits may "
+            "integrate into it but it is never split or reordered (default: "
+            "the movable base)"
+        ),
+    )
+    parser_scan.add_argument(
         "boundary",
         nargs="?",
         default=None,
         help=_(
-            "Commit excluded from the scan (default: fork point with upstream)"
+            "Movable base: commit excluded from the scan whose successors may "
+            "move (default: fork point with upstream)"
         ),
     )
     parser_scan.set_defaults(func=_dispatch_rewrite_scan)

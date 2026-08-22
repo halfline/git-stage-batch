@@ -35,6 +35,15 @@ def _plan(repo, path) -> dict[str, object]:
     return record
 
 
+def _scoped_plan(repo, path) -> dict[str, object]:
+    """Write a plan whose first commit is pinned and second is movable."""
+    record = history_plan_document_record(
+        acquire_history_plan_document(repo.first, onto_boundary=repo.base)
+    )
+    _write_plan(path, record)
+    return record
+
+
 def test_prefix_maximum_index_matches_linear_search() -> None:
     for length in range(33):
         values = tuple(((position * 17) % 13) - 2 for position in range(length))
@@ -152,6 +161,71 @@ def test_validate_accepts_message_only_reword(linear_history_repo):
     assert validated.plan.outputs[0].operation == "REWORD"
     assert validated.plan.outputs[0].message == "Explain alpha better\n"
     assert validated.snapshot.final_tree == git("rev-parse", "HEAD^{tree}")
+
+
+def test_lint_rejects_restructuring_a_pinned_commit(linear_history_repo):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _scoped_plan(repo, path)
+    plan["plan"]["outputs"][0]["operation"] = "REORDER"
+    _write_plan(path, plan)
+
+    result = read_and_lint_frozen_history_plan(str(path))
+
+    assert "movable-scope-violation" in [
+        diagnostic.code for diagnostic in result.diagnostics
+    ]
+
+
+def test_validate_rejects_restructuring_a_pinned_commit(linear_history_repo):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _scoped_plan(repo, path)
+    plan["plan"]["outputs"][0]["operation"] = "REORDER"
+    _write_plan(path, plan)
+
+    with pytest.raises(CommandError, match="movable scope"):
+        read_and_validate_history_plan(str(path))
+
+
+def test_validate_accepts_rewording_a_pinned_commit(linear_history_repo):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _scoped_plan(repo, path)
+    plan["plan"]["outputs"][0]["operation"] = "REWORD"
+    plan["plan"]["outputs"][0]["message"] = "Explain alpha better\n"
+    _write_plan(path, plan)
+
+    validated = read_and_validate_history_plan(str(path))
+
+    assert validated.snapshot.movable_base == repo.first
+    assert validated.plan.outputs[0].operation == "REWORD"
+    assert validated.plan.outputs[0].message == "Explain alpha better\n"
+
+
+def test_validate_accepts_integrating_movable_units_into_a_pinned_commit(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _scoped_plan(repo, path)
+    pinned, movable = plan["plan"]["outputs"]
+    pinned["operation"] = "INTEGRATE"
+    pinned["source_commits"] = [
+        pinned["source_commits"][0],
+        movable["source_commits"][0],
+    ]
+    pinned["source_unit_ids"] = [
+        *pinned["source_unit_ids"],
+        *movable["source_unit_ids"],
+    ]
+    plan["plan"]["outputs"] = [pinned]
+    _write_plan(path, plan)
+
+    validated = read_and_validate_history_plan(str(path))
+
+    assert validated.plan.outputs[0].operation == "INTEGRATE"
+    assert validated.snapshot.movable_base == repo.first
 
 
 def test_validate_rejects_message_edit_marked_keep(linear_history_repo):
@@ -292,7 +366,7 @@ def test_validate_recalculates_informational_safety(linear_history_repo):
             '"operation": "rewrite-plan", "operation": "rewrite-plan"',
             1,
         ),
-        lambda payload: payload.replace('"schema_version": 4', '"schema_version": NaN', 1),
+        lambda payload: payload.replace('"schema_version": 5', '"schema_version": NaN', 1),
         lambda payload: payload.replace(
             '"operation": "rewrite-plan"',
             '"operation": "rewrite-plan", "unknown": true',
@@ -336,7 +410,7 @@ def test_validate_requires_a_fresh_scan_for_schema_three_plan(
     plan["schema_version"] = 3
     _write_plan(path, plan)
 
-    with pytest.raises(CommandError, match="schema_version must be 4"):
+    with pytest.raises(CommandError, match="schema_version must be 5"):
         read_and_validate_history_plan(str(path))
 
 

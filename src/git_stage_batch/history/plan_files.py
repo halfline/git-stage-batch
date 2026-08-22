@@ -266,7 +266,7 @@ def _decode_plan(
     payload: str,
     *,
     allow_legacy_v3: bool = False,
-) -> tuple[dict[str, object], str, HistoryPlan]:
+) -> tuple[dict[str, object], str, str, HistoryPlan]:
     try:
         raw = loads(payload)
         document = require_object(raw, "document")
@@ -289,8 +289,14 @@ def _decode_plan(
         range_record = require_object(snapshot.get("range"), "snapshot.range")
         base = require_string(range_record, "base", "snapshot.range")
         tip = require_string(range_record, "tip", "snapshot.range")
+        movable_base = require_string(
+            range_record, "movable_base", "snapshot.range"
+        )
         _require_full_hex_id(base, oid_length, "snapshot.range.base")
         _require_full_hex_id(tip, oid_length, "snapshot.range.tip")
+        _require_full_hex_id(
+            movable_base, oid_length, "snapshot.range.movable_base"
+        )
 
         plan_record = require_object(document["plan"], "plan")
         partitioned_units: tuple[HistoryPartitionedUnit, ...]
@@ -324,6 +330,7 @@ def _decode_plan(
     return (
         snapshot,
         base,
+        movable_base,
         HistoryPlan(
             partitioned_units=partitioned_units,
             outputs=outputs,
@@ -333,7 +340,7 @@ def _decode_plan(
 
 def decode_frozen_history_plan_payload(
     payload: str,
-) -> tuple[dict[str, object], str, HistoryPlan]:
+) -> tuple[dict[str, object], str, str, HistoryPlan]:
     """Strictly decode persisted plan declarations without Git reads."""
     return _decode_plan(payload, allow_legacy_v3=True)
 
@@ -341,7 +348,7 @@ def decode_frozen_history_plan_payload(
 def read_and_lint_frozen_history_plan(plan_path: str) -> HistoryPlanLint:
     """Advisory-check a persisted plan without repository reads or replay."""
     payload = _read_plan_payload(plan_path)
-    frozen_snapshot, _base_commit, plan = _decode_plan(payload)
+    frozen_snapshot, _base_commit, _movable_base, plan = _decode_plan(payload)
     snapshot = decode_history_snapshot_record(frozen_snapshot)
     return lint_frozen_history_plan(snapshot, plan)
 
@@ -403,6 +410,11 @@ def _validate_plan_semantics(
     source_commits = live.snapshot.commits
     if not plan.outputs:
         _invalid("plan.outputs must contain at least one output commit")
+    movable_commit_start = live.snapshot.movable_commit_start
+    pinned_commit_ids = {
+        commit.commit_id
+        for commit in source_commits[:movable_commit_start]
+    }
     source_by_id = {commit.commit_id: commit for commit in source_commits}
     source_positions = {
         commit.commit_id: index for index, commit in enumerate(source_commits)
@@ -494,6 +506,30 @@ def _validate_plan_semantics(
                     "of its units"
                 )
         target_source = sources[0]
+        if (
+            target_source.commit_id in pinned_commit_ids
+            and output.operation in {"SPLIT", "REORDER"}
+        ):
+            _invalid(
+                f"{location}.{output.operation} may not restructure pinned "
+                f"source commit {target_source.commit_id} outside the movable "
+                "scope"
+            )
+        pinned_secondary = next(
+            (
+                source
+                for source in sources[1:]
+                if source.commit_id in pinned_commit_ids
+            ),
+            None,
+        )
+        if pinned_secondary is not None:
+            _invalid(
+                f"{location} may not consume pinned source commit "
+                f"{pinned_secondary.commit_id} as a donor; pinned commits "
+                "outside the movable scope may only receive units through "
+                "INTEGRATE"
+            )
         unsupported_source = next(
             (source for source in sources if source.unsupported_headers),
             None,
@@ -844,10 +880,11 @@ def read_and_validate_history_plan(
 ) -> HistoryPlanDocument:
     """Reacquire immutable facts and validate the editable semantic plan."""
     payload = _read_plan_payload(plan_path)
-    frozen_snapshot, base_commit, plan = _decode_plan(payload)
+    frozen_snapshot, base_commit, movable_base, plan = _decode_plan(payload)
     _require_static_plan_lint(frozen_snapshot, plan)
     live = acquire_history_plan_document(
-        base_commit,
+        movable_base,
+        onto_boundary=base_commit,
         allowed_remote_refs=allowed_remote_refs,
         cache_observer=cache_observer,
     )
@@ -862,10 +899,11 @@ def read_and_validate_history_plan_semantics(
 ) -> tuple[HistoryPlanDocument, str]:
     """Validate plan semantics and return its same-read exact SHA-256."""
     payload, plan_sha256 = _read_plan_payload_and_sha256(plan_path)
-    frozen_snapshot, base_commit, plan = _decode_plan(payload)
+    frozen_snapshot, base_commit, movable_base, plan = _decode_plan(payload)
     _require_static_plan_lint(frozen_snapshot, plan)
     live = acquire_history_plan_document(
-        base_commit,
+        movable_base,
+        onto_boundary=base_commit,
         allowed_remote_refs=allowed_remote_refs,
         cache_observer=cache_observer,
     )
@@ -884,7 +922,7 @@ def read_and_validate_frozen_history_plan_semantics_from_payload(
     allowed_remote_refs: tuple[str, ...],
 ) -> HistoryPlanDocument:
     """Validate one captured persisted plan against its frozen source objects."""
-    frozen_snapshot, document_base, plan = _decode_plan(
+    frozen_snapshot, document_base, movable_base, plan = _decode_plan(
         payload,
         allow_legacy_v3=True,
     )
@@ -895,6 +933,7 @@ def read_and_validate_frozen_history_plan_semantics_from_payload(
         base_commit,
         tip_commit,
         branch_ref,
+        movable_base=movable_base,
     )
     safety = collect_history_safety_facts(
         tip=tip_commit,

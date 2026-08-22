@@ -44,11 +44,16 @@ def acquire_history_replay_units(
     snapshot: HistorySnapshot,
     *,
     env: dict[str, str] | None = None,
+    from_commit_index: int = 0,
 ) -> Iterator[tuple[HistoryReplayUnit, ...]]:
-    """Reacquire every exact unit while retaining only bounded patch buffers."""
+    """Reacquire exact units while retaining only bounded patch buffers.
+
+    ``from_commit_index`` skips the pinned prefix so dependency analysis only
+    pays to reacquire the units it actually replays.
+    """
     acquired: list[HistoryReplayUnit] = []
     with ExitStack() as stack:
-        for commit in snapshot.commits:
+        for commit in snapshot.commits[from_commit_index:]:
             patches = stack.enter_context(
                 acquire_tree_fixup_units(
                     commit.parent_tree,

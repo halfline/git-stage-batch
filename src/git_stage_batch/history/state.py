@@ -1038,7 +1038,9 @@ def _persisted_plan_facts(
         payload, plan_sha256 = read_required_text_file_contents_and_sha256(plan_path)
         if plan_sha256 != state.plan_sha256:
             return False, (), None, None
-        snapshot, _base_commit, plan = decode_frozen_history_plan_payload(payload)
+        snapshot, _base_commit, _movable_base, plan = (
+            decode_frozen_history_plan_payload(payload)
+        )
         range_record = require_object(snapshot["range"], "snapshot.range")
         trees = require_object(snapshot["trees"], "snapshot.trees")
         source_values = require_list(

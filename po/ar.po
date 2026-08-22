@@ -7114,8 +7114,19 @@ msgstr "كتابة خطة ⁦JSON⁩ القابلة لإعادة الاستخد�
 msgid "Output the reusable JSON plan on standard output"
 msgstr "إخراج خطة ⁦JSON⁩ القابلة لإعادة الاستخدام على الخرج القياسي"
 
-msgid "Commit excluded from the scan (default: fork point with upstream)"
-msgstr "الإيداع المستبعد من الفحص (الافتراضي: نقطة التفرع مع ⁦upstream⁩)"
+msgid "rewrite scan --onto requires an explicit movable base argument"
+msgstr "يتطلب الأمر ⁦rewrite scan --onto⁩ وسيطة قاعدة متحركة صريحة"
+
+msgid "Older frozen base captured by the scan; movable commits may integrate into it but it is never split or reordered (default: the movable base)"
+msgstr "أقدم قاعدة مجمّدة يلتقطها الفحص؛ يمكن دمج الإيداعات المتحركة فيها لكنها لا تُقسَّم ولا يُعاد ترتيبها أبدًا (الافتراضي: القاعدة المتحركة)"
+
+msgid "Movable base: commit excluded from the scan whose successors may move (default: fork point with upstream)"
+msgstr "القاعدة المتحركة: الإيداع المستبعد من الفحص الذي يمكن نقل توابعه (الافتراضي: نقطة التفرع مع ⁦upstream⁩)"
+
+#: src/git_stage_batch/history/ranges.py:192
+#, python-brace-format
+msgid "Movable base {movable_base} is not the frozen base or a commit in the frozen range."
+msgstr "القاعدة المتحركة {movable_base} ليست القاعدة المجمّدة ولا إيداعًا في المدى المجمّد."
 
 msgid "Validate a reviewed rewrite plan against live objects"
 msgstr "التحقق من خطة إعادة كتابة مُراجعة مقابل الكائنات الحالية"

@@ -6464,8 +6464,19 @@ msgstr "재사용 가능한 JSON 계획을 FILE에 원자적으로 쓰기"
 msgid "Output the reusable JSON plan on standard output"
 msgstr "재사용 가능한 JSON 계획을 표준 출력으로 내보내기"
 
-msgid "Commit excluded from the scan (default: fork point with upstream)"
-msgstr "검사에서 제외할 커밋(기본값: upstream과의 분기점)"
+msgid "rewrite scan --onto requires an explicit movable base argument"
+msgstr "rewrite scan --onto에는 명시적인 이동 가능 기준 인수가 필요합니다"
+
+msgid "Older frozen base captured by the scan; movable commits may integrate into it but it is never split or reordered (default: the movable base)"
+msgstr "검사가 캡처한 가장 오래된 고정 기준입니다. 이동 가능한 커밋은 여기에 통합될 수 있지만 분할되거나 재정렬되지는 않습니다(기본값: 이동 가능한 기준)"
+
+msgid "Movable base: commit excluded from the scan whose successors may move (default: fork point with upstream)"
+msgstr "이동 가능한 기준: 검사에서 제외되며 그 후속 커밋을 이동할 수 있는 커밋(기본값: upstream과의 분기점)"
+
+#: src/git_stage_batch/history/ranges.py:192
+#, python-brace-format
+msgid "Movable base {movable_base} is not the frozen base or a commit in the frozen range."
+msgstr "이동 가능한 기준 {movable_base}은(는) 고정된 기준도 아니고 고정된 범위의 커밋도 아닙니다."
 
 msgid "Validate a reviewed rewrite plan against live objects"
 msgstr "검토된 재작성 계획을 현재 객체와 대조하여 검증"

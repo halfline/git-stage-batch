@@ -6942,8 +6942,19 @@ msgstr "Gravar atomicamente o plano JSON reutilizável em FILE"
 msgid "Output the reusable JSON plan on standard output"
 msgstr "Exibir o plano JSON reutilizável na saída padrão"
 
-msgid "Commit excluded from the scan (default: fork point with upstream)"
-msgstr "Commit excluído da análise (padrão: ponto de bifurcação com upstream)"
+msgid "rewrite scan --onto requires an explicit movable base argument"
+msgstr "rewrite scan --onto requer um argumento de base móvel explícito"
+
+msgid "Older frozen base captured by the scan; movable commits may integrate into it but it is never split or reordered (default: the movable base)"
+msgstr "Base congelada mais antiga capturada pela análise; os commits móveis podem se integrar a ela, mas ela nunca é dividida ou reordenada (padrão: a base móvel)"
+
+msgid "Movable base: commit excluded from the scan whose successors may move (default: fork point with upstream)"
+msgstr "Base móvel: commit excluído da análise cujos sucessores podem se mover (padrão: ponto de bifurcação com upstream)"
+
+#: src/git_stage_batch/history/ranges.py:192
+#, python-brace-format
+msgid "Movable base {movable_base} is not the frozen base or a commit in the frozen range."
+msgstr "A base móvel {movable_base} não é a base congelada nem um commit do intervalo congelado."
 
 msgid "Validate a reviewed rewrite plan against live objects"
 msgstr "Validar um plano de reescrita revisado em relação aos objetos atuais"

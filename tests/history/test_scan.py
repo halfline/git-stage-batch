@@ -41,7 +41,7 @@ def test_scan_captures_exact_commit_chain_and_keep_template(linear_history_repo)
     document = acquire_history_plan_document(repo.base)
 
     snapshot = document.snapshot
-    assert document.schema_version == 4
+    assert document.schema_version == 5
     assert snapshot.base_commit == repo.base
     assert snapshot.tip_commit == repo.tip
     assert snapshot.branch_ref == "refs/heads/topic"
@@ -120,7 +120,7 @@ def test_scan_reuses_immutable_snapshot_analysis_across_process_boundaries(
     assert key["commits_oldest_first"] == [
         commit.commit_id for commit in first.snapshot.commits
     ]
-    assert key["plan_schema_version"] == 4
+    assert key["plan_schema_version"] == 5
     assert key["snapshot_algorithm_version"] == 1
     assert key["dependency_algorithm_version"] == 1
     assert key["code_version"] == 1
@@ -556,6 +556,60 @@ def test_scan_records_compact_per_unit_dependency_evidence(linear_history_repo):
             for dependency in dependencies
         ],
     }
+
+
+def test_scan_scopes_movable_base_and_pins_the_prefix(linear_history_repo):
+    repo = linear_history_repo
+
+    document = acquire_history_plan_document(repo.first, onto_boundary=repo.base)
+
+    snapshot = document.snapshot
+    assert snapshot.base_commit == repo.base
+    assert snapshot.movable_base == repo.first
+    assert snapshot.tip_commit == repo.tip
+    assert snapshot.movable_commit_start == 1
+    assert [commit.commit_id for commit in snapshot.commits] == [
+        repo.first,
+        repo.tip,
+    ]
+
+    pinned, movable = snapshot.dependencies
+    assert pinned.original_position == 0
+    assert pinned.earliest_position == 0
+    assert pinned.barrier is None
+    assert pinned.barrier_unit_id is None
+    assert pinned.detail is None
+    # The disjoint tip unit would commute to the front in a full scan, but the
+    # movable scope clamps it to the pinned boundary instead of paying for the
+    # backward walk.
+    assert movable.original_position == 1
+    assert movable.earliest_position == 1
+    assert movable.barrier == "UNKNOWN"
+    assert movable.barrier_unit_id == pinned.unit_id
+    assert movable.detail == "outside-movable-scope"
+
+
+def test_scan_scope_preserves_full_range_movable_evidence(linear_history_repo):
+    repo = linear_history_repo
+
+    full = acquire_history_plan_document(repo.base)
+    scoped = acquire_history_plan_document(repo.first, onto_boundary=repo.base)
+
+    # The two scans agree on which unit is movable and its identity; only the
+    # backward evidence differs because the scoped run does not look past the
+    # pinned boundary.
+    assert full.snapshot.dependencies[1].unit_id == (
+        scoped.snapshot.dependencies[1].unit_id
+    )
+    assert full.snapshot.dependencies[1].earliest_position == 0
+    assert scoped.snapshot.dependencies[1].earliest_position == 1
+
+
+def test_scan_rejects_onto_newer_than_the_movable_base(linear_history_repo):
+    repo = linear_history_repo
+
+    with pytest.raises(CommandError, match="ancestor"):
+        acquire_history_plan_document(repo.base, onto_boundary=repo.first)
 
 
 def test_scan_decodes_a_declared_commit_message_encoding(linear_history_repo):

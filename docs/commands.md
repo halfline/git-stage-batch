@@ -1013,12 +1013,28 @@ its excluded base.
 Capture an immutable linear range and emit a reusable KEEP plan template:
 
 ```bash
-❯ git-stage-batch rewrite scan [BOUNDARY] --output rewrite-plan.json
-❯ git-stage-batch rewrite scan [BOUNDARY] --porcelain >rewrite-plan.json
+❯ git-stage-batch rewrite scan [MOVABLE_BASE] --output rewrite-plan.json
+❯ git-stage-batch rewrite scan [MOVABLE_BASE] --porcelain >rewrite-plan.json
+❯ git-stage-batch rewrite scan --onto ONTO MOVABLE_BASE --output rewrite-plan.json
 ```
 
-The excluded boundary defaults to the fork point or merge base with the
-configured upstream. The JSON snapshot records full commit, parent, and tree
+The positional `MOVABLE_BASE` is the excluded base of the commits that may be
+split, reordered, consumed, or donate units, and defaults to the fork point or
+merge base with the configured upstream. It mirrors the `<upstream>` argument
+of `git rebase --onto`.
+
+`--onto ONTO` supplies an older frozen base — like the `<newbase>` of
+`git rebase --onto`. The scan then captures the whole `ONTO..HEAD` range but
+only computes movable dependency evidence for `MOVABLE_BASE..HEAD`. Commits in
+the pinned prefix `ONTO..MOVABLE_BASE` may only be kept, reworded, or receive
+movable units through `INTEGRATE`; they are never split, reordered, or used as
+a donor source. This directly expresses "fold only the newest commits into the
+existing history" while still replaying the complete `ONTO..HEAD` tree during
+validation. Passing `--onto` without a `MOVABLE_BASE` is an error. When `--onto`
+is omitted the frozen base equals the movable base and the whole range is
+movable.
+
+The JSON snapshot records full commit, parent, and tree
 IDs; byte-faithful messages with declared encodings and raw-content digests;
 author and committer metadata; signature-header digests without signature
 payloads; stable patch-unit identities; and compact per-unit dependency

@@ -148,7 +148,7 @@ def _commute_across_disjoint_run(
 
 def _record_replayable_segment(
     dependencies: list[HistoryUnitDependency | None],
-    all_units: tuple[HistoryReplayUnit, ...],
+    expected_unit_ids: tuple[str, ...],
     segment_start: int,
     segment_units: tuple[HistoryReplayUnit, ...],
     segment_trees: tuple[str, ...],
@@ -171,7 +171,7 @@ def _record_replayable_segment(
             dependency = replace(
                 dependency,
                 barrier_unit_id=(
-                    all_units[segment_start - 1].snapshot.unit_id
+                    expected_unit_ids[segment_start - 1]
                     if segment_start > 0
                     else None
                 ),
@@ -186,49 +186,98 @@ def _record_replayable_segment(
 
 
 def _unknown_dependency(
-    units: tuple[HistoryReplayUnit, ...],
+    unit_id: str,
     position: int,
+    barrier_unit_id: str | None,
     detail: str,
 ) -> HistoryUnitDependency:
     return HistoryUnitDependency(
-        unit_id=units[position].snapshot.unit_id,
+        unit_id=unit_id,
         original_position=position,
         earliest_position=position,
-        barrier_unit_id=(
-            units[position - 1].snapshot.unit_id if position > 0 else None
-        ),
+        barrier_unit_id=barrier_unit_id,
         barrier="UNKNOWN",
         detail=detail,
+    )
+
+
+def _pinned_dependency(
+    unit_id: str,
+    position: int,
+    barrier_unit_id: str | None,
+) -> HistoryUnitDependency:
+    """Return a trivial immovable record for one out-of-scope pinned unit."""
+    return HistoryUnitDependency(
+        unit_id=unit_id,
+        original_position=position,
+        earliest_position=position,
+        barrier_unit_id=barrier_unit_id,
+        barrier="UNKNOWN" if position > 0 else None,
+        detail="outside-movable-scope" if position > 0 else None,
     )
 
 
 def analyze_history_dependencies(
     snapshot: HistorySnapshot,
 ) -> tuple[HistoryUnitDependency, ...]:
-    """Return compact first-barrier evidence for every exact source unit."""
+    """Return compact first-barrier evidence for every exact source unit.
+
+    Backward-commutation evidence is computed only for units in the movable
+    scope ``movable_base..tip``. Units in the pinned prefix
+    ``base..movable_base`` receive trivial immovable records because the plan
+    contract forbids splitting, reordering, or donating them.
+    """
+    movable_commit_start = snapshot.movable_commit_start
+    movable_unit_start = sum(
+        len(commit.units) for commit in snapshot.commits[:movable_commit_start]
+    )
+    boundary_tree = (
+        snapshot.base_tree
+        if movable_commit_start == 0
+        else snapshot.commits[movable_commit_start - 1].tree
+    )
+    expected_unit_ids = tuple(
+        unit.unit_id for commit in snapshot.commits for unit in commit.units
+    )
+
     with (
         temporary_git_object_environment(disable_replace_objects=True) as quarantine,
         quarantine.pinned_environment() as env,
     ):
-        with acquire_history_replay_units(snapshot, env=env) as units:
+        with acquire_history_replay_units(
+            snapshot, env=env, from_commit_index=movable_commit_start
+        ) as units:
             replay_cache: dict[tuple[str, str], PatchApplicationResult] = {}
-            dependencies: list[HistoryUnitDependency | None] = [None] * len(units)
-            segment_start = 0
-            segment_units: list[HistoryReplayUnit] = []
-            segment_trees = [snapshot.base_tree]
-            segment_boundary_detail: str | None = None
-            unit_offset = 0
+            dependencies: list[HistoryUnitDependency | None] = [None] * len(
+                expected_unit_ids
+            )
+            for position in range(movable_unit_start):
+                dependencies[position] = _pinned_dependency(
+                    expected_unit_ids[position],
+                    position,
+                    expected_unit_ids[position - 1] if position > 0 else None,
+                )
 
-            for commit in snapshot.commits:
+            segment_start = movable_unit_start
+            segment_units: list[HistoryReplayUnit] = []
+            segment_trees = [boundary_tree]
+            segment_boundary_detail: str | None = (
+                "outside-movable-scope" if movable_commit_start > 0 else None
+            )
+            unit_offset = movable_unit_start
+
+            for commit in snapshot.commits[movable_commit_start:]:
                 commit_start = unit_offset
                 commit_end = commit_start + len(commit.units)
+                local_start = commit_start - movable_unit_start
+                local_end = commit_end - movable_unit_start
                 trial_tree = segment_trees[-1]
                 trial_trees: list[str] = []
                 failure_detail: str | None = None
-                for position in range(commit_start, commit_end):
+                for local_position in range(local_start, local_end):
                     result = apply_history_replay_unit(
                         trial_tree,
-                        units[position],
+                        units[local_position],
                         env=env,
                         replay_cache=replay_cache,
                     )
@@ -241,12 +290,12 @@ def analyze_history_dependencies(
                     failure_detail = "source-units-do-not-reconstruct-commit-tree"
 
                 if failure_detail is None:
-                    segment_units.extend(units[commit_start:commit_end])
+                    segment_units.extend(units[local_start:local_end])
                     segment_trees.extend(trial_trees)
                 else:
                     _record_replayable_segment(
                         dependencies,
-                        units,
+                        expected_unit_ids,
                         segment_start,
                         tuple(segment_units),
                         tuple(segment_trees),
@@ -256,8 +305,9 @@ def analyze_history_dependencies(
                     )
                     for position in range(commit_start, commit_end):
                         dependencies[position] = _unknown_dependency(
-                            units,
+                            expected_unit_ids[position],
                             position,
+                            expected_unit_ids[position - 1] if position > 0 else None,
                             failure_detail,
                         )
                     segment_start = commit_end
@@ -268,7 +318,7 @@ def analyze_history_dependencies(
 
             _record_replayable_segment(
                 dependencies,
-                units,
+                expected_unit_ids,
                 segment_start,
                 tuple(segment_units),
                 tuple(segment_trees),

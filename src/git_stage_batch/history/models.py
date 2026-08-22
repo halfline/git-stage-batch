@@ -9,7 +9,7 @@ from typing import Literal
 from ..fixup.models import FixupUnitKind
 
 
-CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 4
+CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 5
 CURRENT_HISTORY_STATE_SCHEMA_VERSION = 3
 
 HistoryPlanOperation = Literal[
@@ -128,11 +128,28 @@ class HistorySnapshot:
     object_format: str
     base_commit: str
     tip_commit: str
+    movable_base: str
     base_tree: str
     final_tree: str
     branch_ref: str | None
     commits: tuple[HistoryCommitSnapshot, ...]
     dependencies: tuple[HistoryUnitDependency, ...]
+
+    @property
+    def movable_commit_start(self) -> int:
+        """Return the first ``commits`` index whose commit may move.
+
+        Every commit before this index is pinned: it lies in the frozen
+        prefix ``base_commit..movable_base`` and only receives movable units
+        through INTEGRATE. When ``movable_base`` equals ``base_commit`` the
+        whole range is movable and this is ``0``.
+        """
+        if self.movable_base == self.base_commit:
+            return 0
+        for index, commit in enumerate(self.commits):
+            if commit.commit_id == self.movable_base:
+                return index + 1
+        raise ValueError("movable_base is not the base or a range commit")
 
 
 @dataclass(frozen=True, slots=True)

@@ -6858,8 +6858,19 @@ msgstr "Yeniden kullanılabilir JSON planını atomik olarak FILE konumuna yaz"
 msgid "Output the reusable JSON plan on standard output"
 msgstr "Yeniden kullanılabilir JSON planını standart çıktıya yazdır"
 
-msgid "Commit excluded from the scan (default: fork point with upstream)"
-msgstr "Taramanın dışında tutulan commit (öntanımlı: upstream ile çatallanma noktası)"
+msgid "rewrite scan --onto requires an explicit movable base argument"
+msgstr "rewrite scan --onto açık bir taşınabilir taban argümanı gerektirir"
+
+msgid "Older frozen base captured by the scan; movable commits may integrate into it but it is never split or reordered (default: the movable base)"
+msgstr "Tarama tarafından yakalanan en eski dondurulmuş taban; taşınabilir commit’ler buna bütünleştirilebilir ancak taban asla bölünmez veya yeniden sıralanmaz (öntanımlı: taşınabilir taban)"
+
+msgid "Movable base: commit excluded from the scan whose successors may move (default: fork point with upstream)"
+msgstr "Taşınabilir taban: taramanın dışında tutulan, ardılları taşınabilen commit (öntanımlı: upstream ile çatallanma noktası)"
+
+#: src/git_stage_batch/history/ranges.py:192
+#, python-brace-format
+msgid "Movable base {movable_base} is not the frozen base or a commit in the frozen range."
+msgstr "Taşınabilir taban {movable_base} dondurulmuş taban veya dondurulmuş aralıktaki bir commit değil."
 
 msgid "Validate a reviewed rewrite plan against live objects"
 msgstr "Gözden geçirilmiş bir yeniden yazma planını canlı nesnelere göre doğrula"

@@ -2267,9 +2267,42 @@ def test_parse_command_line_history_scan_dispatches_snapshot_options(monkeypatch
     args.func(args)
     mock_command.assert_called_once_with(
         "main",
+        onto_boundary=None,
         output_path="plan.json",
         porcelain=True,
     )
+
+
+def test_parse_command_line_history_scan_dispatches_onto(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_scan",
+        mock_command,
+    )
+    args = parse_command_line(
+        ["rewrite", "scan", "--onto", "base", "movable"],
+        quiet=True,
+    )
+
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "movable",
+        onto_boundary="base",
+        output_path=None,
+        porcelain=False,
+    )
+
+
+def test_parse_command_line_history_scan_onto_requires_movable_base(monkeypatch):
+    monkeypatch.setattr(rewrite_subcommands, "command_rewrite_scan", Mock())
+    args = parse_command_line(
+        ["rewrite", "scan", "--onto", "base"],
+        quiet=True,
+    )
+
+    with pytest.raises(CommandError, match="--onto requires an explicit movable"):
+        args.func(args)
 
 
 def test_parse_command_line_rewrite_validate_dispatches_resolutions(monkeypatch):

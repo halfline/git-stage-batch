@@ -110,6 +110,17 @@ class LineMapping:
             if target_line != 0:
                 yield source_index + 1, target_line
 
+    def take_reversed(self) -> LineMapping:
+        """Transfer owned vectors into the reciprocal mapping orientation."""
+        self._require_open()
+        reversed_mapping = LineMapping(
+            self.target_to_source,
+            self.source_to_target,
+            may_have_unmapped_equal_lines=self.may_have_unmapped_equal_lines,
+        )
+        self._closed = True
+        return reversed_mapping
+
     def _require_open(self) -> None:
         if self._closed:
             raise ValueError("line mapping is closed")

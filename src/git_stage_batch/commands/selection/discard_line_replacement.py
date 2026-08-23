@@ -29,15 +29,25 @@ from ...batch.line_matching.match import match_lines
 from ...batch.line_matching.match_workspace import MatcherWorkspace
 from ...batch.line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from ...batch.line_matching.line_range_view import LineRangeView
+from ...batch.line_matching.transforms import (
+    BatchSourceExactTransform,
+    SameContentSpanProjection,
+)
 from ...batch.line_matching.sequence_equality import line_slice_equals
 from ...batch.ownership.line_entries import (
     baseline_reference_for_file_line_range,
     replacement_unit_origin_for_line_run,
 )
 from ...batch.ownership.references import BaselineReference
-from ...batch.ownership.replacement_units import ReplacementUnit
+from ...batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from ...batch.ownership.replacement_units import normalize_replacement_units
-from ...batch.ownership.replacement_origins import SameStreamReplacementOrigin
+from ...batch.ownership.replacement_origins import (
+    ReplacementOriginSourceProjection,
+    SameStreamReplacementOrigin,
+)
 from ...batch.ownership.claims import (
     presence_claims_from_source_lines,
 )
@@ -81,6 +91,7 @@ from ...core.coordinates import (
     LineBoundary,
     LineSpan,
     RewrittenWorktreeSpace,
+    SnapshotSpan,
     WorktreeSpace,
     content_snapshot,
     snapshot_as_role,
@@ -689,6 +700,10 @@ def add_discard_line_replacement_to_batch(
                     source_lines=selection.rewritten_working_lines,
                     transform=IdentitySourceCoordinates(),
                 ) as source_projection:
+                    origin_source_projection = SameContentSpanProjection(
+                        selection.transformed_projection.rewritten_snapshot,
+                        source_projection.source_snapshot,
+                    )
                     ownership = _translate_rewritten_selection_ownership(
                         selection,
                         baseline_lines=reference_source_lines,
@@ -696,6 +711,9 @@ def add_discard_line_replacement_to_batch(
                         rewritten_lines=selection.rewritten_working_lines,
                         exact_presence_range=(_explicit_owned_prefix_range(selection)),
                         source_projection=source_projection,
+                        replacement_origin_source_projection=(
+                            origin_source_projection
+                        ),
                     )
                     _refine_presence_references_from_source_content(
                         ownership,
@@ -817,6 +835,13 @@ def _merge_replacement_with_batch(
                 source_with_provenance.lineage
             ),
         ) as source_projection:
+            origin_source_projection = (
+                BatchSourceExactTransform.from_rewritten_working_lineage(
+                    selection.transformed_projection.rewritten_snapshot,
+                    source_projection.source_snapshot,
+                    source_with_provenance.lineage,
+                )
+            )
             exact_prefix_range = _exact_owned_prefix_source_range(
                 selection,
                 source_with_provenance.source_buffer,
@@ -849,6 +874,9 @@ def _merge_replacement_with_batch(
                 rewritten_lines=selection.rewritten_working_lines,
                 exact_presence_range=exact_prefix_range,
                 source_projection=source_projection,
+                replacement_origin_source_projection=(
+                    origin_source_projection
+                ),
             )
             _refine_presence_references_from_source_content(
                 new_ownership,
@@ -1008,6 +1036,9 @@ def _translate_rewritten_selection_ownership(
     rewritten_lines: LineBuffer,
     exact_presence_range: tuple[int, int] | None = None,
     source_projection: SourceCoordinateProjection,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[RewrittenWorktreeSpace]
+    ),
 ) -> BatchOwnership:
     """Translate the selected rewritten rows with full-hunk provenance."""
     source_projection.require_view(
@@ -1035,6 +1066,9 @@ def _translate_rewritten_selection_ownership(
         replacement_origin=SameStreamReplacementOrigin(baseline_lines),
         baseline_lines=baseline_lines,
         source_projection=source_projection,
+        replacement_origin_source_projection=(
+            replacement_origin_source_projection
+        ),
     )
     ownership = _add_expanded_replacement_parents(
         ownership,
@@ -1042,6 +1076,9 @@ def _translate_rewritten_selection_ownership(
         expanded_parents=expanded_parents,
         baseline_lines=baseline_lines,
         source_projection=source_projection,
+        replacement_origin_source_projection=(
+            replacement_origin_source_projection
+        ),
     )
     if selection.discard_exact_rewritten_prefix and (
         exact_presence_range is None
@@ -2372,6 +2409,9 @@ def _add_expanded_replacement_parents(
     expanded_parents: tuple[_ExpandedReplacementParent, ...],
     baseline_lines: LineBuffer,
     source_projection: SourceCoordinateProjection,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[RewrittenWorktreeSpace]
+    ),
 ) -> BatchOwnership:
     """Add full semantic-parent absence claims without dropping other units."""
     deletions = list(ownership.deletions)
@@ -2382,6 +2422,36 @@ def _add_expanded_replacement_parents(
 
     def source_line_for(line: LineEntry) -> int | None:
         return source_projection.source_line_for(line)
+
+    def source_bound_origin_for(
+        parent: ReplacementLineRun,
+    ) -> ReplacementUnitOrigin | None:
+        origin = replacement_unit_origin_for_line_run(
+            parent,
+            old_file_lines=baseline_lines,
+        )
+        original_span = SnapshotSpan(
+            selection.transformed_projection.explicit_edit.source_snapshot,
+            LineSpan(
+                LineBoundary(parent.new_start - 1),
+                LineBoundary(parent.new_end),
+            ),
+        )
+        rewritten_span = (
+            selection.transformed_projection.explicit_edit.translate_span(
+                original_span
+            )
+        )
+        if rewritten_span is None:
+            return None
+        source_span = replacement_origin_source_projection.translate_span(
+            rewritten_span
+        )
+        return (
+            origin.with_batch_source_span(source_span)
+            if source_span is not None
+            else None
+        )
 
     for expanded_parent in expanded_parents:
         deletion_first = expanded_parent.rewritten_deletion_ids.first()
@@ -2488,10 +2558,7 @@ def _add_expanded_replacement_parents(
                 ReplacementUnit(
                     presence_lines=presence_lines.to_range_strings(),
                     deletion_indices=[len(deletions) - 1],
-                    origin=replacement_unit_origin_for_line_run(
-                        parent,
-                        old_file_lines=baseline_lines,
-                    ),
+                    origin=source_bound_origin_for(parent),
                 )
             )
     return BatchOwnership(

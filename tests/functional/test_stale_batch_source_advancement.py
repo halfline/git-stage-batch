@@ -153,6 +153,94 @@ def test_new_batch_uses_source_after_prior_deletion_restore(functional_repo):
     )
 
 
+def test_separate_replacement_peels_preserve_evolved_markdown(functional_repo):
+    """A later replacement peel must not restore an earlier baseline block."""
+    test_file = functional_repo / "guide.md"
+    test_file.write_text(
+        "# Guide\n"
+        "old command\n"
+        "separator\n"
+        "legacy block alpha\n"
+        "legacy block beta\n"
+        "footer\n"
+    )
+    subprocess.run(["git", "add", "guide.md"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add guide"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text(
+        "# Guide\n"
+        "new command\n"
+        "separator\n"
+        "replacement narrative gamma\n"
+        "replacement narrative delta\n"
+        "footer\n"
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    command_view = git_stage_batch(
+        "show", "--file", "guide.md", "--page", "all"
+    ).stdout
+    command_ids = [
+        int(_display_id_for_text(command_view, text))
+        for text in ("old command", "new command")
+    ]
+    git_stage_batch(
+        "discard",
+        "--to",
+        "guide-update",
+        "--line",
+        f"{min(command_ids)}-{max(command_ids)}",
+        "--no-auto-advance",
+    )
+
+    legacy_view = git_stage_batch(
+        "show", "--file", "guide.md", "--page", "all"
+    ).stdout
+    legacy_ids = [
+        int(_display_id_for_text(legacy_view, text))
+        for text in ("legacy block alpha", "legacy block beta")
+    ]
+    git_stage_batch(
+        "discard",
+        "--to",
+        "guide-update",
+        "--line",
+        f"{min(legacy_ids)}-{max(legacy_ids)}",
+        "--no-auto-advance",
+    )
+
+    replacement_view = git_stage_batch(
+        "show", "--file", "guide.md", "--page", "all"
+    ).stdout
+    replacement_ids = [
+        int(_display_id_for_text(replacement_view, text))
+        for text in ("replacement narrative gamma", "replacement narrative delta")
+    ]
+    git_stage_batch(
+        "discard",
+        "--to",
+        "guide-update",
+        "--line",
+        f"{min(replacement_ids)}-{max(replacement_ids)}",
+        "--no-auto-advance",
+    )
+
+    batch_commit = get_batch_commit_sha("guide-update")
+    assert batch_commit is not None
+    assert _show_file(batch_commit, "guide.md") == (
+        "# Guide\n"
+        "new command\n"
+        "separator\n"
+        "replacement narrative gamma\n"
+        "replacement narrative delta\n"
+        "footer\n"
+    )
+
+
 def test_stale_source_advancement_on_discard(functional_repo):
     """Test that batch source is advanced when discarding new code added after initial batch source."""
     # Create initial file

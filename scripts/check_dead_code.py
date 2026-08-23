@@ -339,12 +339,6 @@ ALLOWED_FINDINGS = (
         "build_target_index_buffer_with_replaced_lines",
         "Compatibility staging adapter remains available during edit-plan migration.",
     ),
-    _allowed(
-        "src/git_stage_batch/staging/content_buffers.py",
-        "function",
-        "build_target_working_tree_buffer_with_edit_plan",
-        "Snapshot-bound worktree adapter remains available during edit-plan migration.",
-    ),
 )
 
 

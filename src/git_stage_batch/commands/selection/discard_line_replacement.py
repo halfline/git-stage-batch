@@ -116,6 +116,7 @@ from ...git_paths import display_path
 from ...i18n import _
 from ...staging.content_buffers import (
     build_target_working_tree_buffer_from_lines,
+    build_target_working_tree_buffer_with_edit_plan,
     build_target_working_tree_buffer_with_replaced_lines,
     replacement_baseline_span_indices,
     replacement_working_tree_span_indices,
@@ -205,6 +206,13 @@ def prepare_discard_line_replacement_selection(
             preserve_partial_addition_prefix=True,
         )
     )
+    has_explicit_addition_subspan = (
+        uses_explicit_addition_span
+        and _selected_run_has_unselected_addition(
+            line_changes,
+            effective_ids,
+        )
+    )
 
     if not any(line.id in effective_ids for line in line_changes.lines):
         exit_with_error(
@@ -223,6 +231,7 @@ def prepare_discard_line_replacement_selection(
 
     replacement_owned_prefix_count: int | None = None
     replacement_discard_prefix_context_count = 0
+    retains_explicit_addition_subspan = False
     try:
         with (
             load_working_tree_file_as_buffer(line_changes.path) as working_lines,
@@ -234,6 +243,7 @@ def prepare_discard_line_replacement_selection(
             while True:
                 replacement_owned_prefix_count = None
                 replacement_discard_prefix_context_count = 0
+                retains_explicit_addition_subspan = False
                 selects_partial_new_prefix = (
                     _selects_complete_old_partial_new_prefix(
                         line_changes,
@@ -278,6 +288,9 @@ def prepare_discard_line_replacement_selection(
                     or selected_additions_cover_working_span
                 ) and replacement_start < replacement_end:
                     with replacement_line_bodies(replacement_payload) as payload_lines:
+                        retains_explicit_addition_subspan = (
+                            has_explicit_addition_subspan and bool(payload_lines)
+                        )
                         if len(payload_lines) > selected_working_line_count and all(
                             payload_lines[index]
                             == _line_body(
@@ -303,6 +316,7 @@ def prepare_discard_line_replacement_selection(
                 if (
                     uses_explicit_addition_span
                     and replacement_owned_prefix_count is None
+                    and not retains_explicit_addition_subspan
                 ):
                     effective_ids = (
                         replacement_selection.expand_replacement_selection_ids(
@@ -314,7 +328,7 @@ def prepare_discard_line_replacement_selection(
                     uses_explicit_addition_span = False
                     continue
                 break
-            preserve_trailing_addition_wording = (
+            preserve_selected_addition_wording = (
                 baseline_start == baseline_end
                 and replacement_owned_prefix_count is None
                 and _selected_run_has_unselected_deletion(
@@ -377,8 +391,19 @@ def prepare_discard_line_replacement_selection(
                 (DisplayLineId(line_id) for line_id in effective_ids),
                 view=original_view,
             )
-            rewritten_working_buffer = (
-                build_target_working_tree_buffer_with_replaced_lines(
+            if (
+                retains_explicit_addition_subspan
+                and replacement_owned_prefix_count is None
+            ):
+                rewritten_working_buffer = build_target_working_tree_buffer_with_edit_plan(
+                    edit_plan,
+                    replacement_payload,
+                    working_lines,
+                    working_has_trailing_newline=buffer_ends_with_lf(working_lines),
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                )
+            else:
+                rewritten_working_buffer = build_target_working_tree_buffer_with_replaced_lines(
                     line_changes,
                     effective_ids,
                     replacement_payload,
@@ -395,7 +420,6 @@ def prepare_discard_line_replacement_selection(
                         replacement_owned_prefix_count or 0
                     ),
                 )
-            )
     except ValueError as error:
         exit_with_error(str(error))
 
@@ -430,12 +454,12 @@ def prepare_discard_line_replacement_selection(
             rewritten_snapshot=rewritten_snapshot,
             materialized_new_start=(
                 replacement_new_start
-                if preserve_trailing_addition_wording
+                if preserve_selected_addition_wording
                 else None
             ),
             materialized_new_end=(
                 replacement_new_end
-                if preserve_trailing_addition_wording
+                if preserve_selected_addition_wording
                 else None
             ),
         )
@@ -483,7 +507,7 @@ def prepare_discard_line_replacement_selection(
             rewritten_selection_runs,
             rewritten_span_ids,
             rewritten_line_changes,
-            preserve_selected_additions=preserve_trailing_addition_wording,
+            preserve_selected_additions=preserve_selected_addition_wording,
         )
         rewritten_view = diff_view_identity(
             rewritten_line_changes,
@@ -1488,10 +1512,10 @@ def _selected_run_has_unselected_deletion(
 ) -> bool:
     """Return whether the selection's enclosing +/- run also deletes lines.
 
-    A trailing addition beyond the matched old/new core of a mixed run is
-    still one piece of that run's replacement, not a free-floating
-    insertion; its enclosing run keeps at least one deletion even though
-    none of the deletions are themselves selected.
+    An addition selected independently from the rest of a mixed run is still
+    one piece of that run's replacement, not a free-floating insertion; its
+    enclosing run keeps at least one deletion even though none of the
+    deletions are themselves selected.
     """
     line_index = 0
     while line_index < len(line_changes.lines):
@@ -1512,6 +1536,33 @@ def _selected_run_has_unselected_deletion(
             line_index += 1
         if run_has_selection:
             return run_has_deletion
+    return False
+
+
+def _selected_run_has_unselected_addition(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+) -> bool:
+    """Return whether the selection is a proper subspan of its added side."""
+    line_index = 0
+    while line_index < len(line_changes.lines):
+        if line_changes.lines[line_index].kind not in ("+", "-"):
+            line_index += 1
+            continue
+        run_has_selection = False
+        run_has_unselected_addition = False
+        while (
+            line_index < len(line_changes.lines)
+            and line_changes.lines[line_index].kind in ("+", "-")
+        ):
+            line = line_changes.lines[line_index]
+            if line.id is not None and line.id in selected_ids:
+                run_has_selection = True
+            elif line.kind == "+":
+                run_has_unselected_addition = True
+            line_index += 1
+        if run_has_selection:
+            return run_has_unselected_addition
     return False
 
 

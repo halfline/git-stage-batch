@@ -269,6 +269,38 @@ class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
         """Return the reciprocal structural correspondence as evidence only."""
         return self._mapping.get_source_line_from_target_line(target_line)
 
+    def translate_span(
+        self,
+        span: SnapshotSpan[SourceSpace],
+    ) -> SnapshotSpan[TargetSpace] | None:
+        """Project a complete span only when its structural mapping is exact.
+
+        Structural correspondence is not provenance.  Require every line in
+        the requested source span to have reciprocal, contiguous mapping into
+        the target snapshot.  Unmapped equal lines elsewhere in the file do
+        not make this particular span ambiguous.
+        """
+        require_same_snapshot(span.snapshot, self.source_snapshot)
+        if len(span.span) == 0:
+            return None
+        source_start = span.span.start.offset + 1
+        source_end = span.span.end.offset
+        target_start = self._mapping.get_target_line_from_source_line(source_start)
+        if target_start is None:
+            return None
+        for source_line in range(source_start + 1, source_end + 1):
+            if self._mapping.get_target_line_from_source_line(
+                source_line
+            ) != target_start + source_line - source_start:
+                return None
+        return SnapshotSpan(
+            self.target_snapshot,
+            LineSpan(
+                LineBoundary(target_start - 1),
+                LineBoundary(target_start + source_end - source_start),
+            ),
+        )
+
     def _boundary_placement(
         self,
         offset: int,

@@ -130,6 +130,236 @@ def test_single_added_line_transform_preserves_neighboring_markdown(functional_r
     )
 
 
+def test_single_added_line_transform_preserves_evolved_markdown(functional_repo):
+    """Replacing one added sentence must not restore its large deleted peer."""
+    baseline_text = """`provision` downloads the base image, creates a 30 GiB sparse overlay, boots
+the guest, installs the pinned kernel and build tools, and reboots the guest
+into that kernel. Re-running it is safe and idempotent.
+
+`test` mirrors the current working tree into the guest and then:
+
+1. builds `castkms.ko` and the four-suite KUnit module with `W=1`;
+2. verifies both modules' names, vermagic, dependencies, legacy strings, and
+   exported symbols;
+3. loads stock `vkms` and `castkms` together without default devices;
+4. verifies independent `vkms` and `castkms` configfs roots;
+5. creates a device through configfs and verifies topology removal safely
+   disables and unplugs it before detaching configuration, including explicit
+   ioctl and debugfs failures through file descriptors kept open across
+   removal;
+6. creates a default `castkms` DRM card with a color pipeline and writeback
+   connector;
+7. performs a bounded preferred-mode, vsynced page-flip test;
+8. keeps CRC capture open across two writeback jobs, verifies both fences and
+   output buffers, and requires fresh CRC records after writeback cleanup;
+9. records `modetest`, `drm_info`, CRC, writeback, and lifecycle output;
+10. unloads every module it loaded and verifies cleanup.
+
+The pinned Fedora kernel publishes the KUnit ABI in its development package
+but does not ship the corresponding `kunit.ko`, so the VM currently provides
+compile and linkage coverage for the KUnit suites rather than executing them.
+The standalone build target is also available directly with `make kunit`.
+
+Results are copied to:
+
+```text
+~/.cache/castkms-vm/results/default/
+```
+
+Useful commands:
+
+```sh
+./scripts/vm/castkms-vm status
+./scripts/vm/castkms-vm shell
+./scripts/vm/castkms-vm logs
+./scripts/vm/castkms-vm sync
+./scripts/vm/castkms-vm stop
+```
+
+"""
+    final_text = """`provision` downloads the base image, creates a 30 GiB sparse overlay, boots
+the guest, installs the pinned kernel and build tools, and reboots into that
+kernel. Re-running it is safe and idempotent.
+
+`kunit-test` mirrors the current working tree into the guest, builds all four
+audio/CEC inclusion combinations and the kernel-options-disabled fallback with
+`W=1`, runs the nine KUnit suites, then loads the normal device with CEC
+enabled and two outputs, and runs the focused live grant-fd lifecycle gate. The
+live gate checks cross-connector denial and verifies that revoking one grant
+does not prevent the other output's grant from managing its attachment. It
+rejects kernel warnings and requires a clean module unload.
+
+The broader `test` command runs that fast gate first, reuses its build
+artifacts, then builds the userspace protocol and PipeWire tests and runs the
+product scenarios. Setting `CASTKMS_VM_FAST_GATE=skip` skips the fast gate and
+does one warning-enabled production build instead. GitHub CI uses that mode
+because its separate fast lane has already run the matrix and KUnit.
+
+CI runs three lanes on every pull request and push to `main`:
+
+- **Userspace / protocol and entrypoints**: `make check` on the host,
+  including the EDID suite and every available CLI entrypoint.
+- **Fast / KUnit and grant security**: `castkms-vm kunit-test`.
+- **Product / full capture stack**:
+  `CASTKMS_VM_FAST_GATE=skip ./scripts/vm/castkms-vm test`.
+
+A separate desktop instance checks that Mutter discovers an attached virtual
+monitor, so GNOME packages never land on the default guest:
+
+```sh
+./scripts/vm/castkms-vm desktop-provision
+./scripts/vm/castkms-vm desktop-test
+```
+
+## Commands
+
+```sh
+./scripts/vm/castkms-vm status
+./scripts/vm/castkms-vm shell
+./scripts/vm/castkms-vm logs
+./scripts/vm/castkms-vm sync
+./scripts/vm/castkms-vm stop
+```
+
+"""
+    path = _commit_file(functional_repo, baseline_text)
+    path.write_text(final_text)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    sentence_id = _display_id_for_text(
+        view,
+        "CI runs three lanes on every pull request and push to `main`:",
+    )
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "lane-count",
+        "--line",
+        sentence_id,
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text="CI runs on every pull request and push to `main`:\n",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    transformed_sentence = "CI runs on every pull request and push to `main`:\n"
+    retained = final_text.replace(
+        "CI runs three lanes on every pull request and push to `main`:\n",
+        transformed_sentence,
+    )
+    assert path.read_text() == retained
+    assert _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/lane-count",
+    ) == baseline_text.replace(
+        "Useful commands:\n",
+        transformed_sentence + "Useful commands:\n",
+    )
+
+    git_stage_batch("stop")
+    replay = git_stage_batch("apply", "--from", "lane-count", check=False)
+    assert replay.returncode == 0, replay.stderr
+    assert path.read_text() == retained
+
+
+@pytest.mark.parametrize(
+    ("first_text", "last_text", "replacement_text", "retained"),
+    [
+        (
+            "new-b",
+            "new-b",
+            "saved-b-one\nsaved-b-two\n",
+            "head\nnew-a\nsaved-b-one\nsaved-b-two\nnew-c\nnew-d\ntail\n",
+        ),
+        (
+            "new-b",
+            "new-c",
+            "saved-middle\n",
+            "head\nnew-a\nsaved-middle\nnew-d\ntail\n",
+        ),
+    ],
+    ids=("growing-rewrite", "shrinking-rewrite"),
+)
+def test_inner_added_span_transform_preserves_scope_across_cardinality(
+    functional_repo,
+    first_text,
+    last_text,
+    replacement_text,
+    retained,
+):
+    """An explicit added subspan must not inherit its whole replacement run."""
+    path = _commit_file(
+        functional_repo,
+        "head\nold-a\nold-b\nold-c\ntail\n",
+    )
+    path.write_text("head\nnew-a\nnew-b\nnew-c\nnew-d\ntail\n")
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    selected = _display_id_range(view, first_text, last_text)
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "inner-rewrite",
+        "--line",
+        selected,
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=replacement_text,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == retained
+
+    git_stage_batch("stop")
+    replay = git_stage_batch("apply", "--from", "inner-rewrite", check=False)
+    assert replay.returncode == 0, replay.stderr
+    assert path.read_text() == retained
+
+
+def test_complete_added_side_transform_retains_replacement_scope(functional_repo):
+    """Selecting every added peer must still restore the deleted side."""
+    baseline = "head\nold-a\nold-b\ntail\n"
+    path = _commit_file(functional_repo, baseline)
+    path.write_text("head\nnew-a\nnew-b\ntail\n")
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    selected = _display_id_range(view, "new-a", "new-b")
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "complete-rewrite",
+        "--line",
+        selected,
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text="saved-a\nsaved-b\n",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == baseline
+    assert _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/complete-rewrite",
+    ) == "head\nsaved-a\nsaved-b\ntail\n"
+
+    git_stage_batch("stop")
+    replay = git_stage_batch("apply", "--from", "complete-rewrite", check=False)
+    assert replay.returncode == 0, replay.stderr
+    assert path.read_text() == "head\nsaved-a\nsaved-b\ntail\n"
+
+
 def test_single_added_line_transform_can_reuse_deleted_baseline_wording(
     functional_repo,
 ):

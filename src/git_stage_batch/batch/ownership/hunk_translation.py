@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from types import TracebackType
+from typing import TypeVar
 
 from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.mapped_storage import MappedRecordVector
@@ -27,8 +28,12 @@ from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
 from .replacement_origins import (
     NoReplacementOrigin,
     ReplacementOrigin,
+    ReplacementOriginSourceProjection,
 )
 from ..source.projection import SourceCoordinateProjection
+
+
+OriginSourceSpace = TypeVar("OriginSourceSpace")
 
 
 class _HunkOldLineContent(Mapping[int, bytes]):
@@ -119,6 +124,9 @@ def translate_hunk_selection_to_batch_ownership(
     replacement_origin: ReplacementOrigin = NoReplacementOrigin(),
     baseline_lines: Sequence[bytes] | None = None,
     source_projection: SourceCoordinateProjection | None = None,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[OriginSourceSpace] | None
+    ) = None,
 ) -> BatchOwnership:
     """Translate selected live-hunk IDs while retaining full-hunk boundaries.
 
@@ -140,6 +148,9 @@ def translate_hunk_selection_to_batch_ownership(
             replacement_line_runs=replacement_line_runs,
             replacement_origin=replacement_origin,
             source_projection=source_projection,
+            replacement_origin_source_projection=(
+                replacement_origin_source_projection
+            ),
         )
 
 
@@ -151,6 +162,9 @@ def _translate_hunk_selection_with_old_content(
     replacement_line_runs: Iterable[_ReplacementLineRun] | None,
     replacement_origin: ReplacementOrigin,
     source_projection: SourceCoordinateProjection | None,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[OriginSourceSpace] | None
+    ),
 ) -> BatchOwnership:
     """Translate one hunk while its storage-backed old-line index is open."""
     hunk_content_view = _LineEntryContentSequence(hunk_lines)
@@ -163,6 +177,9 @@ def _translate_hunk_selection_with_old_content(
             hunk_content_view=hunk_content_view,
             replacement_origin=replacement_origin,
             source_projection=source_projection,
+            replacement_origin_source_projection=(
+                replacement_origin_source_projection
+            ),
         )
     )
     claimed_source_lines = LineRangeBuilder()

@@ -19,6 +19,13 @@ from git_stage_batch.batch.ownership.replacement_origins import (
     ProjectedReplacementOrigin,
     SameStreamReplacementOrigin,
 )
+from git_stage_batch.batch.line_matching.match import match_lines
+from git_stage_batch.batch.line_matching.transforms import StructuralAlignment
+from git_stage_batch.core.coordinates import (
+    BatchSourceSpace,
+    WorktreeSpace,
+    content_snapshot,
+)
 from git_stage_batch.core.line_selection import LineRangeBuilder, LineRanges
 from git_stage_batch.core.models import LineEntry
 
@@ -331,6 +338,89 @@ def test_same_stream_replacement_origin_matches_independent_origin_stream():
 
     assert metadata_signature(same_stream) == metadata_signature(independent_streams)
     assert tuple(same_stream.absence_claims[0].content_lines) == (b"origin-one\n",)
+
+
+@pytest.mark.parametrize(
+    ("source_lines", "source_coordinates", "expected_origin"),
+    [
+        (
+            [b"one\n", b"two\n", b"three\n", b"four\n", b"new-one\n", b"new-two\n"],
+            (5, 6),
+            (5, 6),
+        ),
+        (
+            [b"new-one\n", b"gap\n", b"new-two\n"],
+            (1, 3),
+            None,
+        ),
+    ],
+)
+def test_replacement_origin_requires_contiguous_batch_source_span(
+    source_lines,
+    source_coordinates,
+    expected_origin,
+):
+    """Origin provenance is rebound exactly or omitted when it fragments."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"old-one",
+            source_line=None,
+        ),
+        LineEntry(
+            id=2,
+            kind="-",
+            old_line_number=2,
+            new_line_number=None,
+            text_bytes=b"old-two",
+            source_line=None,
+        ),
+        LineEntry(
+            id=3,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new-one",
+            source_line=source_coordinates[0],
+        ),
+        LineEntry(
+            id=4,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"new-two",
+            source_line=source_coordinates[1],
+        ),
+    ]
+    run = ReplacementLineRun(1, 2, 1, 2)
+    worktree_lines = [b"new-one\n", b"new-two\n"]
+
+    with StructuralAlignment(
+        content_snapshot("file.txt", worktree_lines, space=WorktreeSpace),
+        content_snapshot("file.txt", source_lines, space=BatchSourceSpace),
+        match_lines(worktree_lines, source_lines),
+    ) as projection:
+        result = translate_hunk_replacement_line_runs(
+            hunk_lines=lines,
+            selected_display_ids={1, 2, 3, 4},
+            replacement_line_runs=(run,),
+            old_line_content=old_line_content_by_number(lines),
+            hunk_content_view=LineEntryContentSequence(lines),
+            replacement_origin=SameStreamReplacementOrigin(
+                [b"old-one\n", b"old-two\n"]
+            ),
+            replacement_origin_source_projection=projection,
+        )
+
+    origins = [unit.origin for unit in result.replacement_units]
+    assert origins
+    assert [
+        None if origin is None else (origin.new_start, origin.new_end)
+        for origin in origins
+    ] == [expected_origin] * len(origins)
 
 
 def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(

@@ -11,6 +11,7 @@ from ...core.coordinates import (
     FileSnapshot,
     LineBoundary,
     LineSpan,
+    RewrittenWorktreeSpace,
     SnapshotBoundary,
     SnapshotSpan,
     WorktreeSpace,
@@ -374,7 +375,16 @@ class _WorkingLineageVariant:
     """Evidence that the transform projects observed worktree coordinates."""
 
 
-_LineageVariant = Union[_SourceLineageVariant, _WorkingLineageVariant]
+@dataclass(frozen=True, slots=True)
+class _RewrittenWorkingLineageVariant:
+    """Evidence that the transform projects an explicit rewritten worktree."""
+
+
+_LineageVariant = Union[
+    _SourceLineageVariant,
+    _WorkingLineageVariant,
+    _RewrittenWorkingLineageVariant,
+]
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -437,6 +447,26 @@ class BatchSourceExactTransform(Generic[SourceSpace, TargetSpace]):
             transform,
         )
 
+    @classmethod
+    def from_rewritten_working_lineage(
+        cls,
+        source_snapshot: FileSnapshot[RewrittenWorktreeSpace],
+        target_snapshot: FileSnapshot[BatchSourceSpace],
+        lineage: BatchSourceLineage,
+    ) -> BatchSourceExactTransform[RewrittenWorktreeSpace, BatchSourceSpace]:
+        """Bind rewritten-worktree lineage to its exact batch-source result."""
+        transform = object.__new__(cls)
+        transform._initialize(
+            source_snapshot,
+            target_snapshot,
+            lineage,
+            _RewrittenWorkingLineageVariant(),
+        )
+        return cast(
+            "BatchSourceExactTransform[RewrittenWorktreeSpace, BatchSourceSpace]",
+            transform,
+        )
+
     def _initialize(
         self,
         source_snapshot: FileSnapshot[Any],
@@ -469,7 +499,14 @@ class BatchSourceExactTransform(Generic[SourceSpace, TargetSpace]):
                 target_count=self.target_snapshot.line_count,
             )
         else:
-            require_snapshot_role(self.source_snapshot, WorktreeSpace)
+            require_snapshot_role(
+                self.source_snapshot,
+                (
+                    WorktreeSpace
+                    if isinstance(self._variant, _WorkingLineageVariant)
+                    else RewrittenWorktreeSpace
+                ),
+            )
             _validate_lineage_runs(
                 self.lineage.working_runs(),
                 source_count=self.source_snapshot.line_count,

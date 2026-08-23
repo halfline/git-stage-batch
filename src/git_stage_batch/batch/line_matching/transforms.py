@@ -127,6 +127,47 @@ PlacementResult = Union[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class SameContentSpanProjection(Generic[SourceSpace, TargetSpace]):
+    """Exact coordinate projection between roles for identical file content."""
+
+    source_snapshot: FileSnapshot[SourceSpace]
+    target_snapshot: FileSnapshot[TargetSpace]
+
+    def __post_init__(self) -> None:
+        if (
+            self.source_snapshot.path != self.target_snapshot.path
+            or self.source_snapshot.identity != self.target_snapshot.identity
+            or self.source_snapshot.line_count != self.target_snapshot.line_count
+        ):
+            raise ValueError("same-content projection endpoints differ")
+
+    def translate_boundary(
+        self,
+        boundary: SnapshotBoundary[SourceSpace],
+    ) -> SnapshotBoundary[TargetSpace]:
+        """Rebind an exact boundary to the identical target content."""
+        require_same_snapshot(boundary.snapshot, self.source_snapshot)
+        return SnapshotBoundary(
+            self.target_snapshot,
+            LineBoundary(boundary.boundary.offset),
+        )
+
+    def translate_span(
+        self,
+        span: SnapshotSpan[SourceSpace],
+    ) -> SnapshotSpan[TargetSpace]:
+        """Rebind an exact span to the identical target content snapshot."""
+        require_same_snapshot(span.snapshot, self.source_snapshot)
+        return SnapshotSpan(
+            self.target_snapshot,
+            LineSpan(
+                LineBoundary(span.span.start.offset),
+                LineBoundary(span.span.end.offset),
+            ),
+        )
+
+
 @dataclass(slots=True)
 class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
     """Content-derived correspondence that cannot silently become provenance."""

@@ -14,6 +14,7 @@ from git_stage_batch.batch.line_matching.transforms import (
     AmbiguousPlacements,
     BatchSourceExactTransform,
     compose_exact_transforms,
+    SameContentSpanProjection,
     StaleEvidence,
     StructuralAlignment,
     UniquePlacement,
@@ -69,6 +70,33 @@ def test_line_mapping_reversal_transfers_reciprocal_storage():
         assert reversed_mapping.get_target_line_from_source_line(3) == 2
         with pytest.raises(ValueError, match="closed"):
             mapping.get_target_line_from_source_line(1)
+
+
+def test_same_content_projection_rebinds_coordinate_roles_exactly():
+    """Identical content changes coordinate role without structural matching."""
+    source = FileSnapshot(
+        "file.txt",
+        SnapshotIdentity("content", "same"),
+        2,
+        WorktreeSpace,
+    )
+    target = FileSnapshot(
+        "file.txt",
+        source.identity,
+        2,
+        BatchSourceSpace,
+    )
+    projection = SameContentSpanProjection(source, target)
+
+    assert projection.translate_span(
+        SnapshotSpan(
+            source,
+            LineSpan(LineBoundary(0), LineBoundary(2)),
+        )
+    ) == SnapshotSpan(
+        target,
+        LineSpan(LineBoundary(0), LineBoundary(2)),
+    )
 
 
 def test_structural_alignment_rejects_stale_snapshot_evidence():

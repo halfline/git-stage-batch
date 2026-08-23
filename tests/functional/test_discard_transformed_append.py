@@ -130,6 +130,52 @@ def test_single_added_line_transform_preserves_neighboring_markdown(functional_r
     )
 
 
+def test_single_added_line_transform_can_reuse_deleted_baseline_wording(
+    functional_repo,
+):
+    """A retained trailing addition may match a deleted line byte-for-byte."""
+    path = _commit_file(
+        functional_repo,
+        "head\nold one\nold two\ntail\n",
+    )
+    path.write_text("head\nnew one\nnew two\nextra\ntail\n")
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    extra_id = _display_id_for_text(view, "extra")
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "baseline-wording",
+        "--line",
+        extra_id,
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text="old one\n",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    retained = "head\nnew one\nnew two\nold one\ntail\n"
+    assert path.read_text() == retained
+    assert _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/baseline-wording",
+    ) == "head\nold one\nold two\nold one\ntail\n"
+
+    git_stage_batch("stop")
+    replay = git_stage_batch(
+        "apply",
+        "--from",
+        "baseline-wording",
+        check=False,
+    )
+    assert replay.returncode == 0, replay.stderr
+    assert path.read_text() == retained
+
+
 def _prepare_guest_smoke_fixture(functional_repo):
     relative_path = GUEST_SMOKE_PATH
     file_path = functional_repo / relative_path

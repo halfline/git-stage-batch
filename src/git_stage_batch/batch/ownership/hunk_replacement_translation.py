@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 from ...core.line_selection import LineRangeBuilder, LineRanges
+from ...core.coordinates import LineBoundary, LineSpan, SnapshotSpan
 from ...core.models import LineEntry
 from ...core.repeated_context_replacement import (
     RepeatedContextSuffixReplacement,
@@ -30,9 +32,13 @@ from .replacement_origins import (
     NoReplacementOrigin,
     ProjectedReplacementOrigin,
     ReplacementOrigin,
+    ReplacementOriginSourceProjection,
     SameStreamReplacementOrigin,
 )
 from ..source.projection import SourceCoordinateProjection
+
+
+OriginSourceSpace = TypeVar("OriginSourceSpace")
 
 
 @dataclass
@@ -61,6 +67,9 @@ def translate_hunk_replacement_line_runs(
     hunk_content_view: Sequence[bytes],
     replacement_origin: ReplacementOrigin = NoReplacementOrigin(),
     source_projection: SourceCoordinateProjection | None = None,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[OriginSourceSpace] | None
+    ) = None,
 ) -> HunkReplacementTranslation:
     """Translate selected portions of file-derived replacement runs."""
     replacement_run_iterator = iter(replacement_line_runs)
@@ -80,6 +89,9 @@ def translate_hunk_replacement_line_runs(
                 origin_run_iterator=origin_run_iterator,
                 replacement_origin=replacement_origin,
                 source_projection=source_projection,
+                replacement_origin_source_projection=(
+                    replacement_origin_source_projection
+                ),
             )
         finally:
             _close_replacement_run_iterator(origin_run_iterator)
@@ -97,6 +109,9 @@ def _translate_hunk_replacement_line_runs(
     origin_run_iterator: Iterator[ReplacementLineRun],
     replacement_origin: ReplacementOrigin,
     source_projection: SourceCoordinateProjection | None,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[OriginSourceSpace] | None
+    ),
 ) -> HunkReplacementTranslation:
     """Translate replacement runs whose iterator lifetimes are caller-owned."""
     replacement_origin_source_lines = (
@@ -282,7 +297,25 @@ def _translate_hunk_replacement_line_runs(
                 origin_run,
                 old_file_lines=replacement_origin_source_lines,
             )
-        assert cached_origin is not None
+            if replacement_origin_source_projection is not None:
+                source_span = (
+                    replacement_origin_source_projection.translate_span(
+                        SnapshotSpan(
+                            replacement_origin_source_projection.source_snapshot,
+                            LineSpan(
+                                LineBoundary(origin_run.new_start - 1),
+                                LineBoundary(origin_run.new_end),
+                            ),
+                        )
+                    )
+                )
+                cached_origin = (
+                    cached_origin.with_batch_source_span(source_span)
+                    if source_span is not None
+                    else None
+                )
+        if cached_origin is None:
+            return None
         return cached_origin, origin_old_start, origin_old_end
 
     def repeated_context_suffix_selection(

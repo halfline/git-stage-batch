@@ -56,6 +56,21 @@ def test_structural_alignment_does_not_grant_ambiguous_provenance():
     assert isinstance(result, AmbiguousPlacements)
 
 
+def test_line_mapping_reversal_transfers_reciprocal_storage():
+    """Directional matching can be consumed safely in its inverse orientation."""
+    mapping = LineMapping(
+        [2, 3],
+        [0, 1, 2],
+        may_have_unmapped_equal_lines=False,
+    )
+    with mapping.take_reversed() as reversed_mapping:
+        assert reversed_mapping.get_target_line_from_source_line(1) is None
+        assert reversed_mapping.get_target_line_from_source_line(2) == 1
+        assert reversed_mapping.get_target_line_from_source_line(3) == 2
+        with pytest.raises(ValueError, match="closed"):
+            mapping.get_target_line_from_source_line(1)
+
+
 def test_structural_alignment_rejects_stale_snapshot_evidence():
     """Equal numeric boundaries from another snapshot do not map."""
     source = _snapshot("source")

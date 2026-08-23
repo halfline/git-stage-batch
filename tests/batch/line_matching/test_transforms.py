@@ -114,6 +114,109 @@ def test_structural_alignment_rejects_stale_snapshot_evidence():
     assert isinstance(result, StaleEvidence)
 
 
+def test_structural_alignment_projects_one_exact_contiguous_span():
+    """A complete unambiguous span retains exact snapshot endpoints."""
+    source = FileSnapshot(
+        "file.txt",
+        SnapshotIdentity("test", "working"),
+        2,
+        WorktreeSpace,
+    )
+    target = _snapshot("batch-source", count=4)
+    with StructuralAlignment(
+        source,
+        target,
+        LineMapping([3, 4], [0, 0, 1, 2], may_have_unmapped_equal_lines=False),
+    ) as alignment:
+        result = alignment.translate_span(
+            SnapshotSpan(
+                source,
+                LineSpan(LineBoundary(0), LineBoundary(2)),
+            )
+        )
+
+    assert result == SnapshotSpan(
+        target,
+        LineSpan(LineBoundary(2), LineBoundary(4)),
+    )
+
+
+def test_structural_alignment_refuses_fragmented_span():
+    """A fragmented structural span cannot become replacement provenance."""
+    source = FileSnapshot(
+        "file.txt",
+        SnapshotIdentity("test", "working"),
+        2,
+        WorktreeSpace,
+    )
+    span = SnapshotSpan(
+        source,
+        LineSpan(LineBoundary(0), LineBoundary(2)),
+    )
+    target = _snapshot("batch-source", count=3)
+    with StructuralAlignment(
+        source,
+        target,
+        LineMapping([1, 3], [1, 0, 2], may_have_unmapped_equal_lines=False),
+    ) as alignment:
+        assert alignment.translate_span(span) is None
+
+
+def test_structural_span_ignores_unrelated_equal_line_ambiguity():
+    """Global ambiguity does not invalidate a fully mapped requested span."""
+    source = FileSnapshot(
+        "file.txt",
+        SnapshotIdentity("test", "working"),
+        2,
+        WorktreeSpace,
+    )
+    target = _snapshot("batch-source", count=3)
+    with StructuralAlignment(
+        source,
+        target,
+        LineMapping([1, 2], [1, 2, 0], may_have_unmapped_equal_lines=True),
+    ) as alignment:
+        result = alignment.translate_span(
+            SnapshotSpan(
+                source,
+                LineSpan(LineBoundary(0), LineBoundary(2)),
+            )
+        )
+
+    assert result == SnapshotSpan(
+        target,
+        LineSpan(LineBoundary(0), LineBoundary(2)),
+    )
+
+
+def test_structural_span_projection_rejects_another_snapshot():
+    """Numerically equal worktree spans do not cross snapshot identities."""
+    source = FileSnapshot(
+        "file.txt",
+        SnapshotIdentity("test", "working"),
+        2,
+        WorktreeSpace,
+    )
+    stale = FileSnapshot(
+        "file.txt",
+        SnapshotIdentity("test", "stale-working"),
+        2,
+        WorktreeSpace,
+    )
+    with StructuralAlignment(
+        source,
+        _snapshot("batch-source"),
+        LineMapping([1, 2], [1, 2], may_have_unmapped_equal_lines=False),
+    ) as alignment:
+        with pytest.raises(ValueError, match="snapshot"):
+            alignment.translate_span(
+                SnapshotSpan(
+                    stale,
+                    LineSpan(LineBoundary(0), LineBoundary(2)),
+                )
+            )
+
+
 def test_recorded_lineage_is_an_exact_snapshot_bound_transform():
     """Recorded source advancement may translate ordinary coordinates."""
     source = _snapshot("source")

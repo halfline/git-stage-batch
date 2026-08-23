@@ -314,6 +314,14 @@ def prepare_discard_line_replacement_selection(
                     uses_explicit_addition_span = False
                     continue
                 break
+            preserve_trailing_addition_wording = (
+                baseline_start == baseline_end
+                and replacement_owned_prefix_count is None
+                and _selected_run_has_unselected_deletion(
+                    line_changes,
+                    effective_ids,
+                )
+            )
             baseline_snapshot_for_plan = cast(
                 FileSnapshot[BaselineSpace],
                 content_snapshot(
@@ -464,6 +472,7 @@ def prepare_discard_line_replacement_selection(
             rewritten_selection_runs,
             rewritten_span_ids,
             rewritten_line_changes,
+            preserve_selected_additions=preserve_trailing_addition_wording,
         )
         rewritten_view = diff_view_identity(
             rewritten_line_changes,
@@ -1304,6 +1313,39 @@ def _selects_complete_old_partial_new_prefix(
     return matches()
 
 
+def _selected_run_has_unselected_deletion(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+) -> bool:
+    """Return whether the selection's enclosing +/- run also deletes lines.
+
+    A trailing addition beyond the matched old/new core of a mixed run is
+    still one piece of that run's replacement, not a free-floating
+    insertion; its enclosing run keeps at least one deletion even though
+    none of the deletions are themselves selected.
+    """
+    line_index = 0
+    while line_index < len(line_changes.lines):
+        if line_changes.lines[line_index].kind not in ("+", "-"):
+            line_index += 1
+            continue
+        run_has_selection = False
+        run_has_deletion = False
+        while (
+            line_index < len(line_changes.lines)
+            and line_changes.lines[line_index].kind in ("+", "-")
+        ):
+            line = line_changes.lines[line_index]
+            if line.id is not None and line.id in selected_ids:
+                run_has_selection = True
+            if line.kind == "-":
+                run_has_deletion = True
+            line_index += 1
+        if run_has_selection:
+            return run_has_deletion
+    return False
+
+
 def _contiguous_selected_addition_count(
     line_changes: LineLevelChange,
     selected_ids: set[int],
@@ -1721,8 +1763,17 @@ def _rewritten_worktree_discard_ids(
     selection_runs: tuple[_RewrittenSelectionRun, ...],
     rewritten_span_ids: LineRanges,
     rewritten_line_changes: LineLevelChange,
+    *,
+    preserve_selected_additions: bool = False,
 ) -> LineRanges:
-    """Select rewritten rows whose inverse preserves each live alternative."""
+    """Select rewritten rows whose inverse preserves each live alternative.
+
+    A selected addition with no baseline overlap normally reverts to
+    nothing, since it never displaced any old content. When it shares its
+    original run with a real deletion, though, it is one wording of an
+    already in-progress replacement rather than a free-floating insertion,
+    so its rewritten wording stays visible on disk instead of vanishing.
+    """
     protected_old_lines = LineRanges.from_ranges(
         range_pair
         for selection_run in selection_runs
@@ -1758,7 +1809,10 @@ def _rewritten_worktree_discard_ids(
                     line.old_line_number,
                 )
             )
-        if line.kind == "+" or (line.kind == "-" and not old_line_is_protected):
+        if (
+            (line.kind == "+" and not preserve_selected_additions)
+            or (line.kind == "-" and not old_line_is_protected)
+        ):
             discard_builder.add_line(line_id)
     return discard_builder.finish()
 

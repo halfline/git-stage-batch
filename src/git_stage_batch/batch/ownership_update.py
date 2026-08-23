@@ -7,7 +7,12 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import overload
 
-from ..core.coordinates import BatchSourceSpace, FileSnapshot, content_snapshot
+from ..core.coordinates import (
+    BatchSourceSpace,
+    FileSnapshot,
+    WorktreeSpace,
+    content_snapshot,
+)
 from ..core.models import LineEntry
 from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ..core.line_selection import LineRangeBuilder
@@ -23,6 +28,7 @@ from .ownership.replacement_origins import (
     NoReplacementOrigin,
     ProjectedReplacementOrigin,
     ReplacementOrigin,
+    ReplacementOriginSourceProjection,
 )
 from .merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
@@ -32,6 +38,8 @@ from .source.refresh import (
     ensure_batch_source_current_for_selection,
     prepare_initial_batch_source_for_selection,
 )
+from .line_matching.match import match_lines
+from .line_matching.transforms import SameContentSpanProjection, StructuralAlignment
 from ..utils.repository_buffers import read_git_object_buffer_or_empty
 
 
@@ -161,6 +169,9 @@ def _translate_selection_to_batch_ownership(
     replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
     replacement_origin: ReplacementOrigin = NoReplacementOrigin(),
     baseline_lines: Sequence[bytes] | None = None,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[WorktreeSpace] | None
+    ) = None,
 ) -> BatchOwnership:
     """Translate a selection, using full-hunk replacement context when available."""
     selected_id_builder = LineRangeBuilder()
@@ -179,6 +190,9 @@ def _translate_selection_to_batch_ownership(
                 replacement_line_runs=replacement_line_runs,
                 replacement_origin=replacement_origin,
                 baseline_lines=baseline_lines,
+                replacement_origin_source_projection=(
+                    replacement_origin_source_projection
+                ),
             )
 
     return translate_lines_to_batch_ownership(selected_lines)
@@ -234,6 +248,9 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
     reference_source_lines: Sequence[bytes] | None = None,
     reference_target_lines: Sequence[bytes] | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
+    replacement_origin_source_projection: (
+        ReplacementOriginSourceProjection[WorktreeSpace] | None
+    ) = None,
 ) -> PreparedBatchUpdate:
     """Translate and merge a selection whose source is already established."""
 
@@ -252,6 +269,9 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
         replacement_line_runs=replacement_line_runs,
         replacement_origin=replacement_origin,
         baseline_lines=reference_source_lines,
+        replacement_origin_source_projection=(
+            replacement_origin_source_projection
+        ),
     )
     if (reference_source_lines is None) != (reference_target_lines is None):
         raise ValueError(
@@ -316,6 +336,7 @@ def acquire_batch_ownership_update_for_selection(
     reference_source_lines: Sequence[bytes] | None = None,
     batch_baseline_commit: str | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
+    replacement_origin_target_lines: Sequence[bytes] | None = None,
 ) -> Iterator[PreparedBatchUpdate]:
     """Acquire existing ownership metadata while preparing a batch update.
 
@@ -373,6 +394,32 @@ def acquire_batch_ownership_update_for_selection(
             space=BatchSourceSpace,
         )
 
+        replacement_origin_source_projection: (
+            ReplacementOriginSourceProjection[WorktreeSpace] | None
+        ) = None
+        if replacement_origin_target_lines is not None:
+            working_snapshot = content_snapshot(
+                file_path,
+                replacement_origin_target_lines,
+                space=WorktreeSpace,
+            )
+            if working_snapshot.identity == source_snapshot.identity:
+                replacement_origin_source_projection = SameContentSpanProjection(
+                    working_snapshot,
+                    source_snapshot,
+                )
+            else:
+                replacement_origin_source_projection = stack.enter_context(
+                    StructuralAlignment(
+                        working_snapshot,
+                        source_snapshot,
+                        match_lines(
+                            source_lines,
+                            replacement_origin_target_lines,
+                        ).take_reversed(),
+                    )
+                )
+
         def prepare_update(
             reference_target_lines: Sequence[bytes] | None,
         ) -> PreparedBatchUpdate:
@@ -387,6 +434,9 @@ def acquire_batch_ownership_update_for_selection(
                 reference_source_lines=reference_source_lines,
                 reference_target_lines=reference_target_lines,
                 replacement_origin_source_lines=replacement_origin_source_lines,
+                replacement_origin_source_projection=(
+                    replacement_origin_source_projection
+                ),
             )
 
         if reference_source_lines is None:

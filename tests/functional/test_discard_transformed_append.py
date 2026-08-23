@@ -66,6 +66,70 @@ def _display_id_range(view, first_text, last_text):
     return f"{first}-{last}"
 
 
+def test_single_added_line_transform_preserves_neighboring_markdown(functional_repo):
+    """Replacing one added sentence must retain neighboring list additions.
+
+    This is the minimal form of the CastKMS deconstruction failure: the line
+    selected below is one addition inside a larger old-to-new replacement
+    hunk, past the point where the old side runs out of matched lines.
+    """
+    path = functional_repo / "guide.md"
+    path.write_text(
+        "# Guide\n\n"
+        "The old guide explains the original workflow.\n"
+        "It includes several details that the new guide replaces.\n"
+        "The original workflow has one lane.\n\n"
+        "## Commands\n"
+    )
+    subprocess.run(
+        ["git", "add", "guide.md"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add guide"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+
+    final_text = (
+        "# Guide\n\n"
+        "The new guide explains the expanded workflow.\n"
+        "It records why each lane runs.\n\n"
+        "CI runs three lanes on every push:\n\n"
+        "- Userspace lane.\n"
+        "- Fast lane.\n"
+        "- Product lane.\n\n"
+        "## Commands\n"
+    )
+    path.write_text(final_text)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "guide.md", "--page", "all"
+    ).stdout
+    sentence_id = _display_id_for_text(
+        view, "CI runs three lanes on every push:"
+    )
+    git_stage_batch(
+        "discard",
+        "--to",
+        "lane-count",
+        "--line",
+        sentence_id,
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text="CI runs on every push:\n",
+    )
+
+    assert path.read_text() == final_text.replace(
+        "CI runs three lanes on every push:\n",
+        "CI runs on every push:\n",
+    )
+
+
 def _prepare_guest_smoke_fixture(functional_repo):
     relative_path = GUEST_SMOKE_PATH
     file_path = functional_repo / relative_path

@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Union
+from typing import Protocol, TypeVar, Union
+
+from ...core.coordinates import (
+    BatchSourceSpace,
+    FileSnapshot,
+    SnapshotSpan,
+)
 
 from .replacement_line_runs import ReplacementLineRun
 
@@ -34,3 +40,21 @@ ReplacementOrigin = Union[
     SameStreamReplacementOrigin,
     ProjectedReplacementOrigin,
 ]
+
+
+OriginSourceSpace = TypeVar("OriginSourceSpace")
+
+
+class ReplacementOriginSourceProjection(Protocol[OriginSourceSpace]):
+    """Snapshot-bound projection from live replacement to batch source."""
+
+    @property
+    def source_snapshot(self) -> FileSnapshot[OriginSourceSpace]: ...
+
+    @property
+    def target_snapshot(self) -> FileSnapshot[BatchSourceSpace]: ...
+
+    def translate_span(
+        self,
+        span: SnapshotSpan[OriginSourceSpace],
+    ) -> SnapshotSpan[BatchSourceSpace] | None: ...

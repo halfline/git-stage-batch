@@ -110,6 +110,7 @@ def add_selected_lines_to_batch(
                     replacement_origin_source_lines=(
                         replacement_origin_source_lines
                     ),
+                    replacement_origin_target_lines=working_source_lines,
                 )
             )
         except ValueError as e:

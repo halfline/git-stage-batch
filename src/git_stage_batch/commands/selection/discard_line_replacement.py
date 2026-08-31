@@ -351,9 +351,13 @@ def prepare_discard_line_replacement_selection(
                         replacement_end=replacement_end,
                     )
                 )
+                selects_explicit_tracked_span = (
+                    baseline_start < baseline_end and selected_working_line_count > 0
+                )
                 if (
                     selects_partial_new_prefix
                     or selected_additions_cover_working_span
+                    or selects_explicit_tracked_span
                 ) and replacement_start < replacement_end:
                     with replacement_line_bodies(replacement_payload) as payload_lines:
                         retains_explicit_addition_subspan = (
@@ -413,6 +417,24 @@ def prepare_discard_line_replacement_selection(
                                 replacement_owned_prefix_count += (
                                     replacement_discard_prefix_context_count
                                 )
+                        if (
+                            replacement_owned_prefix_count is None
+                            and selects_explicit_tracked_span
+                            and not _replacement_payload_matches_line_span(
+                                payload_lines,
+                                working_lines,
+                                start=replacement_start,
+                                end=replacement_end,
+                            )
+                            and _replacement_payload_retains_selected_addition(
+                                line_changes,
+                                effective_ids,
+                                payload_lines,
+                                baseline_lines,
+                            )
+                        ):
+                            replacement_owned_prefix_count = selected_working_line_count
+                            materializes_saved_then_live = True
                         if (
                             replacement_owned_prefix_count is None
                             and selected_additions_cover_working_span
@@ -2173,6 +2195,60 @@ def _requires_explicit_added_side_alternative(
             destination_has_file or not baseline_file_exists
         ):
             return True
+    return False
+
+
+def _replacement_payload_matches_line_span(
+    replacement_lines: Sequence[bytes],
+    lines: Sequence[bytes],
+    *,
+    start: int,
+    end: int,
+) -> bool:
+    """Return whether the payload equals one span, ignoring line endings."""
+    return len(replacement_lines) == end - start and all(
+        replacement_lines[offset] == _line_body(lines[start + offset])
+        for offset in range(len(replacement_lines))
+    )
+
+
+def _replacement_payload_retains_selected_addition(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+    replacement_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+) -> bool:
+    """Check whether the replacement keeps selected text absent from the old file.
+
+    This replacement is the version to leave in the worktree, not just new text
+    for the batch. Store both versions so undo cannot overwrite it with the old
+    file. For large files, keep the indexes in temporary mapped files instead
+    of Python objects for every line.
+    """
+    with MatcherWorkspace() as workspace:
+        replacement_occurrences = LinePayloadOccurrenceIndex(
+            workspace,
+            replacement_lines,
+            ignore_indentation=True,
+        )
+        baseline_occurrences: LinePayloadOccurrenceIndex | None = None
+        for line in line_changes.lines:
+            if line.kind != "+" or line.id is None or line.id not in selected_ids:
+                continue
+            content = normalized_line_payload(line.text_bytes)
+            if (
+                _line_is_delimiter_only(content)
+                or replacement_occurrences.occurrence_count(content) == 0
+            ):
+                continue
+            if baseline_occurrences is None:
+                baseline_occurrences = LinePayloadOccurrenceIndex(
+                    workspace,
+                    baseline_lines,
+                    ignore_indentation=True,
+                )
+            if baseline_occurrences.occurrence_count(content) == 0:
+                return True
     return False
 
 

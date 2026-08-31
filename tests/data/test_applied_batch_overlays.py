@@ -13,6 +13,8 @@ from git_stage_batch.batch.state.lifecycle import create_batch, update_batch_not
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.data.applied_batch_overlays import (
     AppliedFileProvenance,
+    AppliedTextPreimageInput,
+    applied_batch_overlay_repository_paths,
     fresh_applied_batch_overlay_for_path,
     load_applied_batch_overlay_snapshot,
     rebind_applied_batch_overlays_after_session,
@@ -24,7 +26,10 @@ from git_stage_batch.data.file_target_identity import (
 )
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.paths import get_applied_batch_overlays_file_path
+from git_stage_batch.utils.paths import (
+    get_applied_batch_overlays_file_path,
+    get_applied_batch_preimages_directory_path,
+)
 
 
 @pytest.fixture
@@ -84,6 +89,43 @@ def _record_overlay(
         before_worktree_identities={"file.txt": before_identity},
         expected_index_identities=expected_index_identities,
     )
+
+
+def test_recorded_text_preimage_restores_the_latest_batch(temp_git_repo):
+    """A saved predecessor retains the exact text from before apply."""
+    captured_path = temp_git_repo.parent / "captured-before"
+    captured_path.write_bytes(b"before\n")
+    before_identity = capture_worktree_identity("file.txt")
+    preimage = AppliedTextPreimageInput(before_identity, captured_path)
+    provenance = AppliedFileProvenance(
+        file_metadata={
+            "batch_source_commit": "a" * 40,
+            "change_type": "modified",
+            "presence_claims": [{"source_lines": ["1"]}],
+        },
+        source_object_id="b" * 40,
+        supports_text_replay=True,
+        text_preimage=preimage,
+    )
+    revision = read_batch_metadata("saved")["revision"]
+    assert isinstance(revision, str)
+    (temp_git_repo / "file.txt").write_text("after\n")
+
+    record_applied_batch_overlays(
+        batch_name="saved",
+        batch_revision=revision,
+        files={"file.txt": provenance},
+        before_worktree_identities={"file.txt": before_identity},
+    )
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    stored = state["files"]["file.txt"]["applications"][0]["text_preimage"]
+    stored_path = get_applied_batch_preimages_directory_path() / stored["sha256"]
+    assert stored_path.read_bytes() == b"before\n"
+    assert applied_batch_overlay_repository_paths({"file.txt": provenance}) == [
+        "git-stage-batch/applied-batch-overlays.json",
+        f"git-stage-batch/applied-batch-preimages/{stored['sha256']}",
+    ]
 
 
 def test_fresh_overlay_requires_exact_repository_and_batch_identity(temp_git_repo):

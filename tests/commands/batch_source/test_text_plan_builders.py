@@ -31,6 +31,9 @@ class _Ownership:
     def to_attribution_metadata_dict(self):
         return {"presence_claims": [], "deletions": []}
 
+    def to_applied_metadata_dict(self):
+        return {"presence_claims": [], "deletions": []}
+
 
 class _OwnershipContext(AbstractContextManager):
     def __init__(self, ownership: _Ownership) -> None:

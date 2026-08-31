@@ -95,6 +95,12 @@ ALLOWED_FINDINGS = (
         "TypedDict key read from persisted metadata by string name.",
     ),
     _allowed(
+        "src/git_stage_batch/batch/state/metadata_types.py",
+        "variable",
+        "batch_source_is_target",
+        "TypedDict key read from persisted metadata by string name.",
+    ),
+    _allowed(
         "src/git_stage_batch/commands/batch_source/text_plan_jobs.py",
         "variable",
         "replacement_display_text",

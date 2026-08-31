@@ -9,13 +9,21 @@ from typing import Optional, TypedDict
 
 from ...batch.line_matching.comparison import (
     SemanticChangeKind,
-    derive_semantic_change_runs,
+    stream_semantic_change_runs,
 )
 from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.ownership.absence_content import AbsenceContentBuilder
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.absence_claims import AbsenceClaim
+from ...batch.ownership.line_entries import (
+    baseline_reference_for_file_line_range,
+)
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.ownership.references import BaselineReference
+from ...batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from ...batch.realized_file_content import build_realized_buffer_from_lines
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import (
@@ -220,11 +228,15 @@ def compute_sifted_text_file(
             spool_dir=spool_dir,
         ) as source_ownership,
     ):
-        target_buffer = build_realized_buffer_from_lines(
-            baseline_buffer,
-            batch_source_buffer,
-            source_ownership,
-            spool_dir=spool_dir,
+        target_buffer = (
+            batch_source_buffer.clone(spool_dir=spool_dir)
+            if file_meta.get("batch_source_is_target") is True
+            else build_realized_buffer_from_lines(
+                baseline_buffer,
+                batch_source_buffer,
+                source_ownership,
+                spool_dir=spool_dir,
+            )
         )
         try:
             target_exists = change_type != TextFileChangeType.DELETED
@@ -316,6 +328,32 @@ def _text_ownership_buffers(ownership: BatchOwnership) -> list[LineBuffer]:
     ]
 
 
+def _baseline_reference_for_insertion(
+    after_line: int | None,
+    old_file_lines: Sequence[bytes],
+) -> BaselineReference:
+    """Record the old-file gap where added lines belong."""
+    before_line: int | None = 1 if after_line is None else after_line + 1
+    if before_line is not None and before_line > len(old_file_lines):
+        before_line = None
+    return BaselineReference(
+        after_line=after_line,
+        after_content=(
+            bytes(old_file_lines[after_line - 1])
+            if after_line is not None
+            else None
+        ),
+        has_after_line=True,
+        before_line=before_line,
+        before_content=(
+            bytes(old_file_lines[before_line - 1])
+            if before_line is not None
+            else None
+        ),
+        has_before_line=True,
+    )
+
+
 def build_ownership_from_working_and_target_lines(
     working_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
@@ -323,20 +361,23 @@ def build_ownership_from_working_and_target_lines(
     spool_dir: str | Path | None = None,
 ) -> Optional[BatchOwnership]:
     """Build ownership from normalized working and target byte-line sequences."""
-    semantic_runs = derive_semantic_change_runs(
+    semantic_runs = stream_semantic_change_runs(
         source_lines=working_lines,
         target_lines=target_lines,
         **_spool_dir_options(spool_dir),
     )
 
     claimed_ranges: list[tuple[int, int]] = []
-    deletion_claims = []
+    deletion_claims: list[AbsenceClaim] = []
+    baseline_references: dict[int, BaselineReference] = {}
+    replacement_units: list[ReplacementUnit] = []
 
     def build_absence_claim(
         *,
         anchor_line: int | None,
         source_start: int,
         source_end: int,
+        baseline_reference: BaselineReference,
     ) -> AbsenceClaim:
         with AbsenceContentBuilder(spool_dir=spool_dir) as builder:
             builder.append_line_range(
@@ -348,6 +389,7 @@ def build_ownership_from_working_and_target_lines(
         return AbsenceClaim(
             anchor_line=anchor_line,
             content_lines=content_lines,
+            baseline_reference=baseline_reference,
         )
 
     try:
@@ -355,26 +397,65 @@ def build_ownership_from_working_and_target_lines(
             if run.kind == SemanticChangeKind.PRESENCE:
                 if run.target_start is not None and run.target_end is not None:
                     claimed_ranges.append((run.target_start, run.target_end))
+                    baseline_references[run.target_start] = (
+                        _baseline_reference_for_insertion(
+                            getattr(run, "source_anchor", run.target_anchor),
+                            working_lines,
+                        )
+                    )
             elif run.kind == SemanticChangeKind.DELETION:
                 if run.source_start is not None and run.source_end is not None:
+                    baseline_reference = baseline_reference_for_file_line_range(
+                        run.source_start,
+                        run.source_end,
+                        working_lines,
+                    )
                     deletion_claims.append(
                         build_absence_claim(
                             anchor_line=run.target_anchor,
                             source_start=run.source_start,
                             source_end=run.source_end,
+                            baseline_reference=baseline_reference,
                         )
                     )
             elif run.kind == SemanticChangeKind.REPLACEMENT:
-                if run.source_start is not None and run.source_end is not None:
+                if (
+                    run.source_start is not None
+                    and run.source_end is not None
+                    and run.target_start is not None
+                    and run.target_end is not None
+                ):
+                    baseline_reference = baseline_reference_for_file_line_range(
+                        run.source_start,
+                        run.source_end,
+                        working_lines,
+                    )
+                    deletion_index = len(deletion_claims)
                     deletion_claims.append(
                         build_absence_claim(
                             anchor_line=run.target_anchor,
                             source_start=run.source_start,
                             source_end=run.source_end,
+                            baseline_reference=baseline_reference,
                         )
                     )
-                if run.target_start is not None and run.target_end is not None:
                     claimed_ranges.append((run.target_start, run.target_end))
+                    baseline_references[run.target_start] = baseline_reference
+                    replacement_units.append(
+                        ReplacementUnit(
+                            presence_lines=LineRanges.from_ranges(
+                                ((run.target_start, run.target_end),)
+                            ).to_range_strings(),
+                            deletion_indices=[deletion_index],
+                            origin=ReplacementUnitOrigin(
+                                old_start=run.source_start,
+                                old_end=run.source_end,
+                                new_start=run.target_start,
+                                new_end=run.target_end,
+                                baseline_reference=baseline_reference,
+                            ),
+                        )
+                    )
 
         claimed_line_ranges = LineRanges.from_ranges(claimed_ranges)
         if not claimed_line_ranges and not deletion_claims:
@@ -383,6 +464,8 @@ def build_ownership_from_working_and_target_lines(
         return BatchOwnership.from_presence_lines(
             claimed_line_ranges.to_range_strings(),
             deletion_claims,
+            replacement_units=replacement_units,
+            baseline_references=baseline_references,
         )
     except BaseException:
         closed_ids: set[int] = set()
@@ -396,6 +479,10 @@ def build_ownership_from_working_and_target_lines(
             closed_ids.add(buffer_id)
             content_lines.close()
         raise
+    finally:
+        close = getattr(semantic_runs, "close", None)
+        if close is not None:
+            close()
 
 
 def validate_sifted_text_file_result_from_lines(

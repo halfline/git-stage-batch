@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from base64 import b64decode, b64encode
+from binascii import Error as Base64Error
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -11,8 +13,15 @@ from typing import Literal, TypedDict, cast
 from . import sift_results as _sift_results
 from ...batch.ownership.absence_claims import AbsenceClaim
 from ...batch.ownership.model import BatchOwnership
+from ...batch.ownership.references import BaselineReference
+from ...batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+    normalize_replacement_units,
+)
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
+from ...core.line_selection import LineRanges
 from ...data.file_target_identity import WorktreeIdentity
 from ...exceptions import MergeError
 from ...git_paths import display_path
@@ -21,7 +30,7 @@ from ...utils.file_job_workspace import FileJobWorkspace
 
 
 SiftTextJobOutcome = Literal["retained", "removed", "merge_error"]
-_MANIFEST_VERSION = 1
+_MANIFEST_VERSION = 2
 _MAX_ERROR_MESSAGE_CHARACTERS = 4 * 1024
 
 
@@ -37,6 +46,7 @@ class SiftTextJobInput(TypedDict):
 class _SiftDeletionRecord(TypedDict):
     anchor_line: int | None
     content_path: str
+    baseline_reference: BaselineReference | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +177,13 @@ def load_sifted_text_file_result(
         raise ValueError("only retained sift text results can be loaded")
 
     manifest = workspace.read_json(job.manifest_output_path)
-    presence_lines, deletion_records, change_type = _validate_manifest(
+    (
+        presence_lines,
+        presence_references,
+        deletion_records,
+        replacement_units,
+        change_type,
+    ) = _validate_manifest(
         manifest,
         job,
     )
@@ -193,11 +209,16 @@ def load_sifted_text_file_result(
                 AbsenceClaim(
                     anchor_line=deletion_record["anchor_line"],
                     content_lines=content_buffer,
+                    baseline_reference=deletion_record[
+                        "baseline_reference"
+                    ],
                 )
             )
         ownership = BatchOwnership.from_presence_lines(
             presence_lines,
             deletions,
+            replacement_units=replacement_units,
+            baseline_references=presence_references,
         )
         loaded = _sift_results.SiftedTextFileResult(
             ownership=ownership,
@@ -228,8 +249,17 @@ def _write_sifted_text_result(
                 "anchor_line": deletion.anchor_line,
                 "content_path": str(content_path),
                 "output_order": index,
+                "baseline_reference": (
+                    _baseline_reference_record(deletion.baseline_reference)
+                    if deletion.baseline_reference is not None
+                    else None
+                ),
             }
         )
+    replacement_units = normalize_replacement_units(
+        result.ownership.replacement_units,
+        deletion_count=len(result.ownership.deletions),
+    )
     manifest = {
         "version": _MANIFEST_VERSION,
         "ordinal": job.ordinal,
@@ -239,7 +269,19 @@ def _write_sifted_text_result(
         "presence_lines": (
             result.ownership.presence_line_set().to_range_strings()
         ),
+        "presence_references": [
+            {
+                "line": line,
+                "reference": _baseline_reference_record(reference),
+            }
+            for line, reference in sorted(
+                result.ownership.presence_baseline_references().items()
+            )
+        ],
         "deletions": deletion_records,
+        "replacement_units": [
+            _replacement_unit_record(unit) for unit in replacement_units
+        ],
     }
     with Path(job.manifest_output_path).open("x", encoding="utf-8") as output:
         json.dump(manifest, output, ensure_ascii=True, separators=(",", ":"))
@@ -247,21 +289,28 @@ def _write_sifted_text_result(
 
 
 def _require_supported_ownership(ownership: BatchOwnership) -> None:
-    if ownership.replacement_units:
-        raise ValueError("sift text artifacts do not support replacement units")
-    if any(claim.baseline_references for claim in ownership.presence_claims):
-        raise ValueError("sift text artifacts do not support presence references")
     if any(
-        deletion.baseline_reference is not None
+        deletion.source_alternative or deletion.complete_file_pair
         for deletion in ownership.deletions
     ):
-        raise ValueError("sift text artifacts do not support deletion references")
+        raise ValueError("sift text artifacts do not support source alternatives")
+    if any(
+        not isinstance(unit, ReplacementUnit)
+        for unit in ownership.replacement_units
+    ):
+        raise TypeError("sift text artifacts require replacement-unit records")
 
 
 def _validate_manifest(
     value: object,
     job: SiftTextFileJob,
-) -> tuple[list[str], list[_SiftDeletionRecord], str]:
+) -> tuple[
+    list[str],
+    dict[int, BaselineReference],
+    list[_SiftDeletionRecord],
+    list[ReplacementUnit],
+    str,
+]:
     if type(value) is not dict:
         raise TypeError("sift text manifest must be a dictionary")
     if set(value) != {
@@ -271,7 +320,9 @@ def _validate_manifest(
         "output_order",
         "change_type",
         "presence_lines",
+        "presence_references",
         "deletions",
+        "replacement_units",
     }:
         raise ValueError("sift text manifest has unsupported fields")
     if value.get("version") != _MANIFEST_VERSION:
@@ -288,6 +339,11 @@ def _validate_manifest(
         not isinstance(line_range, str) for line_range in presence_lines
     ):
         raise TypeError("sift text manifest has invalid presence ranges")
+    presence_line_set = LineRanges.from_specs(presence_lines)
+    presence_references = _validate_presence_references(
+        value.get("presence_references"),
+        presence_line_set,
+    )
     deletion_values = value.get("deletions")
     if not isinstance(deletion_values, list):
         raise TypeError("sift text manifest has invalid deletions")
@@ -300,6 +356,7 @@ def _validate_manifest(
             "anchor_line",
             "content_path",
             "output_order",
+            "baseline_reference",
         }:
             raise ValueError("sift text manifest deletion has unsupported fields")
         anchor_line = deletion_value.get("anchor_line")
@@ -312,16 +369,260 @@ def _validate_manifest(
             raise ValueError("sift text manifest has a mismatched deletion path")
         if deletion_value.get("output_order") != index:
             raise ValueError("sift text manifest has a mismatched deletion order")
+        baseline_value = deletion_value.get("baseline_reference")
         deletion_records.append(
             {
                 "anchor_line": anchor_line,
                 "content_path": str(expected_path),
+                "baseline_reference": (
+                    _baseline_reference_from_record(
+                        baseline_value,
+                        label="deletion reference",
+                    )
+                    if baseline_value is not None
+                    else None
+                ),
             }
         )
+    replacement_units = _validate_replacement_units(
+        value.get("replacement_units"),
+        presence_line_set=presence_line_set,
+        deletion_count=len(deletion_records),
+    )
     return (
         cast(list[str], presence_lines),
+        presence_references,
         deletion_records,
+        replacement_units,
         cast(str, change_type),
+    )
+
+
+def _baseline_reference_record(reference: BaselineReference) -> dict[str, object]:
+    return {
+        "after_known": reference.has_after_line,
+        "after_line": reference.after_line,
+        "after_content": _encoded_bytes(reference.after_content),
+        "before_known": reference.has_before_line,
+        "before_line": reference.before_line,
+        "before_content": _encoded_bytes(reference.before_content),
+    }
+
+
+def _encoded_bytes(content: bytes | None) -> str | None:
+    if content is None:
+        return None
+    return b64encode(content).decode("ascii")
+
+
+def _baseline_reference_from_record(
+    value: object,
+    *,
+    label: str,
+) -> BaselineReference:
+    if type(value) is not dict or set(value) != {
+        "after_known",
+        "after_line",
+        "after_content",
+        "before_known",
+        "before_line",
+        "before_content",
+    }:
+        raise ValueError(f"sift text manifest has an invalid {label}")
+
+    after_known, after_line, after_content = _validated_boundary_record(
+        value,
+        side="after",
+        label=label,
+    )
+    before_known, before_line, before_content = _validated_boundary_record(
+        value,
+        side="before",
+        label=label,
+    )
+    return BaselineReference(
+        after_line=after_line,
+        after_content=after_content,
+        has_after_line=after_known,
+        before_line=before_line,
+        before_content=before_content,
+        has_before_line=before_known,
+    )
+
+
+def _validated_boundary_record(
+    value: dict[object, object],
+    *,
+    side: str,
+    label: str,
+) -> tuple[bool, int | None, bytes | None]:
+    known = value[f"{side}_known"]
+    line = value[f"{side}_line"]
+    encoded_content = value[f"{side}_content"]
+    if type(known) is not bool:
+        raise TypeError(f"sift text manifest has an invalid {label}")
+    if line is not None and (type(line) is not int or line < 1):
+        raise ValueError(f"sift text manifest has an invalid {label}")
+    if encoded_content is not None and not isinstance(encoded_content, str):
+        raise TypeError(f"sift text manifest has an invalid {label}")
+    if not known and (line is not None or encoded_content is not None):
+        raise ValueError(f"sift text manifest has an invalid {label}")
+    if line is None and encoded_content is not None:
+        raise ValueError(f"sift text manifest has an invalid {label}")
+    try:
+        content = (
+            b64decode(encoded_content, validate=True)
+            if encoded_content is not None
+            else None
+        )
+    except (Base64Error, ValueError) as error:
+        raise ValueError(
+            f"sift text manifest has an invalid {label}"
+        ) from error
+    return known, line, content
+
+
+def _validate_presence_references(
+    value: object,
+    presence_line_set: LineRanges,
+) -> dict[int, BaselineReference]:
+    if not isinstance(value, list):
+        raise TypeError("sift text manifest has invalid presence references")
+    references: dict[int, BaselineReference] = {}
+    for record in value:
+        if type(record) is not dict or set(record) != {"line", "reference"}:
+            raise ValueError(
+                "sift text manifest has an invalid presence reference"
+            )
+        line = record.get("line")
+        if type(line) is not int or line < 1 or line not in presence_line_set:
+            raise ValueError(
+                "sift text manifest has an invalid presence reference line"
+            )
+        if line in references:
+            raise ValueError(
+                "sift text manifest has a duplicate presence reference"
+            )
+        references[line] = _baseline_reference_from_record(
+            record.get("reference"),
+            label="presence reference",
+        )
+    return references
+
+
+def _replacement_unit_record(unit: ReplacementUnit) -> dict[str, object]:
+    origin = unit.origin
+    return {
+        "presence_lines": list(unit.presence_lines),
+        "deletion_indices": unit.deletion_indices,
+        "origin": (
+            {
+                "old_start": origin.old_start,
+                "old_end": origin.old_end,
+                "new_start": origin.new_start,
+                "new_end": origin.new_end,
+                "baseline_reference": (
+                    _baseline_reference_record(origin.baseline_reference)
+                    if origin.baseline_reference is not None
+                    else None
+                ),
+            }
+            if origin is not None
+            else None
+        ),
+    }
+
+
+def _validate_replacement_units(
+    value: object,
+    *,
+    presence_line_set: LineRanges,
+    deletion_count: int,
+) -> list[ReplacementUnit]:
+    if not isinstance(value, list):
+        raise TypeError("sift text manifest has invalid replacement units")
+    units: list[ReplacementUnit] = []
+    for record in value:
+        if type(record) is not dict or set(record) != {
+            "presence_lines",
+            "deletion_indices",
+            "origin",
+        }:
+            raise ValueError(
+                "sift text manifest has an invalid replacement unit"
+            )
+        unit_presence = record.get("presence_lines")
+        if not isinstance(unit_presence, list) or any(
+            not isinstance(line_range, str) for line_range in unit_presence
+        ):
+            raise TypeError(
+                "sift text manifest has invalid replacement presence ranges"
+            )
+        unit_presence_set = LineRanges.from_specs(unit_presence)
+        if not unit_presence_set or any(
+            line not in presence_line_set for line in unit_presence_set
+        ):
+            raise ValueError(
+                "sift text manifest replacement presence is not owned"
+            )
+        deletion_indices = record.get("deletion_indices")
+        if not isinstance(deletion_indices, list) or any(
+            type(index) is not int or not 0 <= index < deletion_count
+            for index in deletion_indices
+        ):
+            raise ValueError(
+                "sift text manifest has invalid replacement deletions"
+            )
+        if deletion_indices != sorted(set(deletion_indices)):
+            raise ValueError(
+                "sift text manifest has duplicate replacement deletions"
+            )
+        origin = _replacement_origin_from_record(record.get("origin"))
+        units.append(
+            ReplacementUnit(
+                presence_lines=cast(list[str], unit_presence),
+                deletion_indices=cast(list[int], deletion_indices),
+                origin=origin,
+            )
+        )
+    return units
+
+
+def _replacement_origin_from_record(
+    value: object,
+) -> ReplacementUnitOrigin | None:
+    if value is None:
+        return None
+    if type(value) is not dict or set(value) != {
+        "old_start",
+        "old_end",
+        "new_start",
+        "new_end",
+        "baseline_reference",
+    }:
+        raise ValueError("sift text manifest has an invalid replacement origin")
+    coordinates = [
+        value.get("old_start"),
+        value.get("old_end"),
+        value.get("new_start"),
+        value.get("new_end"),
+    ]
+    if any(type(coordinate) is not int for coordinate in coordinates):
+        raise TypeError("sift text manifest has an invalid replacement origin")
+    reference_value = value.get("baseline_reference")
+    return ReplacementUnitOrigin(
+        old_start=cast(int, coordinates[0]),
+        old_end=cast(int, coordinates[1]),
+        new_start=cast(int, coordinates[2]),
+        new_end=cast(int, coordinates[3]),
+        baseline_reference=(
+            _baseline_reference_from_record(
+                reference_value,
+                label="replacement origin reference",
+            )
+            if reference_value is not None
+            else None
+        ),
     )
 
 

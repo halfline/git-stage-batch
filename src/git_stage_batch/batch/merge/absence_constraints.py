@@ -23,7 +23,10 @@ from ...core.mapped_storage import (
     sort_mapped_records,
 )
 from ...core.resource_cleanup import close_resources_preserving_first
+from ..line_matching.occurrence_index import normalized_line_payload
 from ..line_matching.match_workspace import MatcherWorkspace
+from ..ownership.claims import parse_ownership_line_ranges
+from .presence_reference_index import EffectivePresenceReferenceIndex
 from .candidates import MergeResolution as _MergeResolution
 from ..realization.boundaries import (
     boundary_choices_after_source_line as _boundary_choices_for_source_line,
@@ -40,10 +43,106 @@ from ..realization.entry_storage import (
 
 if TYPE_CHECKING:
     from ..ownership.absence_claims import AbsenceClaim
+    from ..ownership.model import BatchOwnership
 
 
 _DEFAULT_CHOICE_SCAN_CAP = 50
 ABSENCE_AMBIGUITY_PREFIX = "absence:"
+
+
+class _ReplacementEndAnchorCursor:
+    """Read saved replacement endpoints in deletion-claim order."""
+
+    def __init__(self, records: MappedRecordVector) -> None:
+        self._records = records
+        self._index = 0
+
+    def source_line_for_claim(self, claim_index: int) -> int | None:
+        """Return the one endpoint shared by this claim's records."""
+        while (
+            self._index < len(self._records)
+            and self._records[self._index][0] < claim_index
+        ):
+            self._index += 1
+        if (
+            self._index >= len(self._records)
+            or self._records[self._index][0] != claim_index
+        ):
+            return None
+
+        source_line = self._records[self._index][1]
+        self._index += 1
+        while (
+            self._index < len(self._records)
+            and self._records[self._index][0] == claim_index
+        ):
+            if self._records[self._index][1] != source_line:
+                source_line = 0
+            self._index += 1
+        return source_line or None
+
+
+def _replacement_end_anchors(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership | None,
+    deletion_claims: Sequence[AbsenceClaim],
+) -> _ReplacementEndAnchorCursor:
+    """Find saved replacement lines attached to the old text's endpoint."""
+    units = () if ownership is None else ownership.replacement_units
+    capacity = sum(len(unit.deletion_indices) for unit in units)
+    records = workspace.record_vector(capacity, "QQ")
+    if ownership is None or not units:
+        return _ReplacementEndAnchorCursor(records)
+
+    references = EffectivePresenceReferenceIndex(workspace, ownership)
+    for unit in units:
+        presence = parse_ownership_line_ranges(unit.presence_lines)
+        ranges = presence.ranges()
+        if len(ranges) != 1:
+            continue
+        source_start, source_end = ranges[0]
+
+        for deletion_index in unit.deletion_indices:
+            if (
+                type(deletion_index) is not int
+                or deletion_index < 0
+                or deletion_index >= len(deletion_claims)
+            ):
+                continue
+            claim = deletion_claims[deletion_index]
+            claim_reference = claim.baseline_reference
+            if (
+                not claim.content_lines
+                or claim_reference is None
+                or not claim_reference.has_after_line
+                or not claim_reference.has_before_line
+                or claim_reference.before_line is None
+            ):
+                continue
+            old_end = claim_reference.before_line - 1
+            old_start = claim_reference.after_line or 0
+            if old_end - old_start != len(claim.content_lines):
+                continue
+
+            for source_line in range(source_start, source_end + 1):
+                reference = references.reference_for(source_line)
+                if (
+                    reference is None
+                    or not reference.has_after_line
+                    or not reference.has_before_line
+                    or reference.before_line is None
+                    or (reference.after_line or 0) != old_end
+                    or reference.before_line - 1 != old_end
+                    or reference.after_content is None
+                    or normalized_line_payload(reference.after_content)
+                    != normalized_line_payload(claim.content_lines[-1])
+                ):
+                    break
+            else:
+                records.append((deletion_index, source_end))
+
+    sort_mapped_records(records)
+    return _ReplacementEndAnchorCursor(records)
 
 
 @dataclass(frozen=True)
@@ -394,6 +493,7 @@ def _apply_strict_absence_constraints_indexed(
     result: RealizedEntries,
     deletion_claims: Sequence[AbsenceClaim],
     *,
+    ownership: BatchOwnership | None = None,
     spool_dir: str | Path | None,
 ) -> RealizedEntries:
     """Apply ordinary strict removals without rebuilding after each claim."""
@@ -405,8 +505,13 @@ def _apply_strict_absence_constraints_indexed(
     try:
         with MatcherWorkspace(spool_dir=spool_dir) as workspace:
             active = _ActiveRealizedLineIndex(workspace, result)
+            replacement_anchors = _replacement_end_anchors(
+                workspace,
+                ownership,
+                deletion_claims,
+            )
             changed = False
-            for claim in deletion_claims:
+            for claim_index, claim in enumerate(deletion_claims):
                 if not claim.content_lines:
                     continue
                 forbidden_sequence = claim.content_lines
@@ -417,36 +522,54 @@ def _apply_strict_absence_constraints_indexed(
                     removal_position,
                     forbidden_sequence,
                 ):
-                    after_claimed = active.position_after_claimed(boundary)
-                    if after_claimed != boundary and active.sequence_matches(
+                    replacement_boundary = None
+                    anchor_source_line = replacement_anchors.source_line_for_claim(
+                        claim_index
+                    )
+                    if anchor_source_line is not None:
+                        try:
+                            replacement_boundary = active.boundary_after_source_line(
+                                anchor_source_line
+                            )
+                        except (_MissingAnchorError, _AmbiguousAnchorError):
+                            pass
+                    if replacement_boundary is not None and active.sequence_matches(
                         lines,
-                        after_claimed,
+                        replacement_boundary,
                         forbidden_sequence,
                     ):
-                        removal_position = after_claimed
+                        removal_position = replacement_boundary
                     else:
-                        search_end = min(
-                            boundary + 20,
-                            active.active_count - len(forbidden_sequence) + 1,
-                        )
-                        if any(
-                            active.sequence_matches(
-                                lines,
-                                check_position,
-                                forbidden_sequence,
-                            )
-                            for check_position in range(
-                                boundary + 1,
-                                search_end,
-                            )
+                        after_claimed = active.position_after_claimed(boundary)
+                        if after_claimed != boundary and active.sequence_matches(
+                            lines,
+                            after_claimed,
+                            forbidden_sequence,
                         ):
-                            raise _MergeError(
-                                _(
-                                    "Batch was created from a different "
-                                    "version of the file"
-                                )
+                            removal_position = after_claimed
+                        else:
+                            search_end = min(
+                                boundary + 20,
+                                active.active_count - len(forbidden_sequence) + 1,
                             )
-                        continue
+                            if any(
+                                active.sequence_matches(
+                                    lines,
+                                    check_position,
+                                    forbidden_sequence,
+                                )
+                                for check_position in range(
+                                    boundary + 1,
+                                    search_end,
+                                )
+                            ):
+                                raise _MergeError(
+                                    _(
+                                        "Batch was created from a different "
+                                        "version of the file"
+                                    )
+                                )
+                            continue
                 active.remove_sequence(
                     removal_position,
                     len(forbidden_sequence),
@@ -475,6 +598,7 @@ def apply_absence_constraints(
     strict: bool = True,
     resolution: _MergeResolution | None = None,
     realization_fallback_target_positions: Sequence[tuple[int, ...]] = (),
+    ownership: BatchOwnership | None = None,
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply absence constraints with boundary enforcement.
@@ -538,6 +662,7 @@ def apply_absence_constraints(
             indexed_result = _apply_strict_absence_constraints_indexed(
                 result,
                 deletion_claims,
+                ownership=ownership,
                 spool_dir=spool_dir,
             )
         except BaseException:

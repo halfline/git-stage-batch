@@ -84,6 +84,17 @@ class EffectivePresenceReferenceIndex:
             return None
         return self._reference_from_claim(source_line, claim_index)
 
+    def line_came_from_empty_file(self, source_line: int) -> bool:
+        """Return whether both recorded sides point to an empty file."""
+        reference = self.reference_for(source_line)
+        return bool(
+            reference is not None
+            and reference.has_after_line
+            and reference.after_line is None
+            and reference.has_before_line
+            and reference.before_line is None
+        )
+
     def _reference_from_claim(
         self,
         source_line: int,

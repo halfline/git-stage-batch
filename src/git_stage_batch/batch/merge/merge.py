@@ -622,6 +622,7 @@ def _build_structural_realized_entries(
                 presence_line_set,
                 source_lines,
             ),
+            ownership=ownership,
             spool_dir=spool_dir,
         )
     except BaseException:

@@ -1,12 +1,16 @@
 """Tests for complete saved/live source replacement snapshots."""
 
 from git_stage_batch.batch.complete_source_replacement import (
+    changes_from_complete_source_replacement,
     materialize_untracked_source_replacement,
     promote_untracked_presence_to_complete_source_replacement,
     refresh_complete_source_replacement,
     resolve_complete_source_replacement,
 )
 from git_stage_batch.batch.file_state import SourceBoundOwnership
+from git_stage_batch.batch.merge.merge import (
+    merge_batch_from_line_sequences_as_buffer,
+)
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
@@ -76,7 +80,46 @@ def test_resolve_complete_source_replacement_binds_both_file_snapshots() -> None
             LineBoundary(3),
         )
 
+def test_complete_source_replacement_owns_only_changed_lines() -> None:
+    """Complete snapshots preserve unrelated worktree edits during replay."""
+    saved_file = (b"# Heading\n", b"anchor\n", b"new value\n", b"tail\n")
+    live_file = (b"# Heading\n", b"anchor\n", b"old value\n", b"tail\n")
+    working_file = (
+        b"# Revised heading\n",
+        b"anchor\n",
+        b"old value\n",
+        b"tail\n",
+    )
+    with LineBuffer.from_chunks((*saved_file, *live_file)) as source_lines:
+        complete_ownership = _complete_ownership(
+            "file.txt",
+            source_lines,
+            saved_line_count=len(saved_file),
+        ).value
 
+        changes = changes_from_complete_source_replacement(
+            source_lines,
+            complete_ownership,
+        )
+
+        assert changes is not None
+        assert tuple(changes.source_lines) == saved_file
+        assert changes.ownership.presence_line_set().ranges() == ((3, 3),)
+        assert len(changes.ownership.deletions) == 1
+        assert tuple(changes.ownership.deletions[0].content_lines) == (b"old value\n",)
+        assert not changes.ownership.deletions[0].source_alternative
+
+        with merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            complete_ownership,
+            working_file,
+        ) as merged:
+            assert tuple(merged) == (
+                b"# Revised heading\n",
+                b"anchor\n",
+                b"new value\n",
+                b"tail\n",
+            )
 def test_materialize_untracked_replacement_stores_complete_file_snapshots() -> None:
     """A narrow first replacement retains complete saved and live files."""
     path = "file.txt"
@@ -126,8 +169,6 @@ def test_materialize_untracked_replacement_stores_complete_file_snapshots() -> N
             )
             is not None
         )
-
-
 def test_promote_untracked_presence_requires_exact_batch_predecessor() -> None:
     """Promotion succeeds before, but not after, an independent peel."""
     path = "file.txt"

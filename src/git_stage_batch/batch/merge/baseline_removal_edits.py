@@ -223,12 +223,21 @@ def _plan_mapped_independent_removal_edits(
             )
             if (
                 old_side is None
-                or old_side.state is ReplacementOldSideState.PARTIAL
+                or old_side.state
+                not in (
+                    ReplacementOldSideState.FULL,
+                    ReplacementOldSideState.FULLY_CLAIMED,
+                    ReplacementOldSideState.ABSENT,
+                )
             ):
                 return False
             removal_start = (
                 gap_start
-                if old_side.state is ReplacementOldSideState.ABSENT
+                if old_side.state
+                in (
+                    ReplacementOldSideState.FULLY_CLAIMED,
+                    ReplacementOldSideState.ABSENT,
+                )
                 else old_side.target_position
             )
             if removal_start is None:

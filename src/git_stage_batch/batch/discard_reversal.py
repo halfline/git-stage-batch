@@ -44,9 +44,9 @@ def reverse_presence_constraints(
     trusted_insertion_lines: LineSelection | None = None,
     preserved_presence_lines: Container[int] | None = None,
     separately_restored_ranges: Sequence[tuple[int, ...]] = (),
+    independent_insertion_lines: LineSelection | None = None,
 ) -> RealizedEntries:
     """Replace or remove batch-owned claimed lines during discard."""
-    result = RealizedEntries()
     processed_replace_regions: set[int] = set()
     trusted_lines = (
         LineRanges.empty()
@@ -54,6 +54,14 @@ def reverse_presence_constraints(
         else coerce_line_ranges(trusted_insertion_lines)
     )
     trusted_ranges = trusted_lines.ranges()
+    independent_insertions = (
+        LineRanges.empty()
+        if independent_insertion_lines is None
+        else coerce_line_ranges(independent_insertion_lines)
+    )
+    if not independent_insertions.is_subset_of(trusted_lines):
+        raise ValueError("independent insertions must be trusted applied lines")
+    result = RealizedEntries()
 
     def flush_copy(start: int | None, stop: int) -> None:
         if start is not None and start < stop:
@@ -103,6 +111,10 @@ def reverse_presence_constraints(
             pass
 
         elif region.kind == _RegionKind.REPLACE_BY_HUNK:
+            if source_line in independent_insertions:
+                # This line has no baseline counterpart. Remove it without
+                # pulling in the neighboring unselected replacement.
+                return
             if sorted_line_ranges_contain(
                 separately_restored_ranges,
                 source_line,

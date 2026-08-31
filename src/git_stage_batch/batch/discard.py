@@ -16,6 +16,11 @@ from .merge.baseline_replacement_ranges import (
     collect_replacement_source_ranges as _collect_replacement_source_ranges,
     replacement_source_range_capacity as _replacement_source_range_capacity,
 )
+from .merge.baseline_reference_positions import (
+    baseline_reference_insertion_position,
+)
+from .merge.presence_reference_index import EffectivePresenceReferenceIndex
+from .merge.presence_mapping import match_lines_preserving_unowned_context
 from .ownership.replacement_units import replacement_counts_cover_origin
 from .discard_reversal import (
     reverse_presence_constraints as _reverse_batch_presence_constraints,
@@ -42,7 +47,7 @@ from ..core.coordinates import (
     content_snapshot,
     require_same_snapshot,
 )
-from ..core.line_selection import LineRanges
+from ..core.line_selection import LineRangeBuilder, LineRanges
 from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ..core.resource_cleanup import close_resources_preserving_first
 from ..core.text_lines import (
@@ -79,6 +84,33 @@ def _discard_result_line_ending_from_lines(
     if buffer_has_data(baseline_lines):
         return choose_line_ending(baseline_lines)
     return choose_line_ending(source_lines)
+
+
+@contextmanager
+def _acquire_discard_presence_mapping(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_lines: LineRanges,
+    ownership: BatchOwnership,
+    *,
+    anchor_pairs: Sequence[tuple[int, int]],
+    anchor_lines: LineRanges,
+) -> Iterator[LineMapping]:
+    """Use surrounding text to choose the right copy of repeated lines."""
+    result = match_lines_preserving_unowned_context(
+        source_lines,
+        working_lines,
+        presence_lines,
+        ownership=ownership,
+        presence_lines=presence_lines,
+        anchor_pairs=anchor_pairs,
+        anchor_authorized_source_lines=anchor_lines,
+    )
+    try:
+        yield result.mapping
+    finally:
+        if result.owned:
+            result.mapping.close()
 
 
 def discard_batch_file_state_as_buffer(
@@ -206,6 +238,15 @@ def _discard_batch_acquired_line_chunks(
 
     with ExitStack() as stack:
         discard_workspace = stack.enter_context(MatcherWorkspace())
+        anchor_candidate_lines = (
+            LineRanges.empty()
+            if trusted_presence_lines is None
+            else trusted_presence_lines
+        )
+        if applied_presence_lines is not None:
+            anchor_candidate_lines = anchor_candidate_lines.union(
+                applied_presence_lines
+            )
         source_to_trusted_target = (
             None
             if trusted_target_lines is None
@@ -221,17 +262,33 @@ def _discard_batch_acquired_line_chunks(
                 source_lines,
                 working_lines,
                 presence_line_set,
-                trusted_presence_lines,
+                anchor_candidate_lines,
                 trusted_target_to_working=trusted_target_to_working,
                 index_preimage_presence_lines=(index_preimage_presence_lines),
             )
         )
         source_to_working = stack.enter_context(
-            match_lines(
+            _acquire_discard_presence_mapping(
                 source_lines,
                 working_lines,
+                presence_line_set,
+                ownership,
                 anchor_pairs=trusted_anchor_result[0],
+                anchor_lines=trusted_anchor_result[1],
             )
+        )
+        independent_insertion_lines = _trusted_independent_insertion_lines(
+            discard_workspace,
+            ownership,
+            source_lines,
+            working_lines,
+            baseline_lines,
+            source_to_working,
+            applied_presence_lines,
+            trusted_anchor_result[1],
+        )
+        trusted_insertion_lines = trusted_anchor_result[1].union(
+            independent_insertion_lines
         )
         preexisting_applied_presence = _trusted_preexisting_applied_presence(
             source_lines,
@@ -249,6 +306,7 @@ def _discard_batch_acquired_line_chunks(
             ownership,
             source_to_working_mapping=source_to_working,
             working_lines=working_lines,
+            trusted_presence_lines=trusted_insertion_lines,
         ) as baseline_anchor_pairs:
             correspondence = _build_discard_baseline_correspondence(
                 baseline_lines,
@@ -286,9 +344,10 @@ def _discard_batch_acquired_line_chunks(
                 presence_line_set,
                 correspondence,
                 indexed_content_lines=working_lines,
-                trusted_insertion_lines=trusted_anchor_result[1],
+                trusted_insertion_lines=trusted_insertion_lines,
                 preserved_presence_lines=(preexisting_applied_presence),
                 separately_restored_ranges=(separately_restored_presence_ranges),
+                independent_insertion_lines=independent_insertion_lines,
             )
             if updated_entries is not realized_entries:
                 try:
@@ -405,6 +464,90 @@ def _acquire_trusted_discard_presence_anchors(
             (workspace,),
             suppress_errors=not scope_completed,
         )
+
+
+def _trusted_independent_insertion_lines(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+    source_to_working: LineMapping,
+    applied_lines: LineRanges | None,
+    anchored_lines: LineRanges,
+) -> LineRanges:
+    """Find applied additions whose text and surrounding gap match exactly."""
+    if not applied_lines or not anchored_lines:
+        return LineRanges.empty()
+
+    references = EffectivePresenceReferenceIndex(workspace, ownership)
+    replacement_lines = LineRanges.from_specs(
+        line_range
+        for unit in ownership.replacement_units
+        for line_range in unit.presence_lines
+    )
+    eligible_lines = applied_lines.difference(replacement_lines)
+    candidates = workspace.record_vector(eligible_lines.count(), "QQB")
+    insertion_lines = LineRangeBuilder()
+    try:
+        for applied_start, applied_end in eligible_lines.ranges():
+            for source_line in range(applied_start, applied_end + 1):
+                if source_line > len(source_lines):
+                    continue
+                reference = references.reference_for(source_line)
+                if (
+                    reference is None
+                    or not reference.has_after_line
+                    or not reference.has_before_line
+                ):
+                    continue
+                after_position = reference.after_line or 0
+                before_position = (
+                    len(baseline_lines)
+                    if reference.before_line is None
+                    else reference.before_line - 1
+                )
+                if (
+                    after_position != before_position
+                    or baseline_reference_insertion_position(
+                        reference,
+                        baseline_lines,
+                    )
+                    != after_position
+                ):
+                    continue
+                working_line = source_to_working.get_target_line_from_source_line(
+                    source_line
+                )
+                if (
+                    working_line is None
+                    or source_lines[source_line - 1] != working_lines[working_line - 1]
+                ):
+                    continue
+                candidates.append(
+                    (
+                        after_position,
+                        source_line,
+                        int(source_line in anchored_lines),
+                    )
+                )
+
+        sort_mapped_records(candidates)
+        group_start = 0
+        while group_start < len(candidates):
+            position = candidates[group_start][0]
+            group_end = group_start + 1
+            has_anchor = bool(candidates[group_start][2])
+            while group_end < len(candidates) and candidates[group_end][0] == position:
+                has_anchor = has_anchor or bool(candidates[group_end][2])
+                group_end += 1
+            if has_anchor:
+                for candidate_index in range(group_start, group_end):
+                    insertion_lines.add_line(candidates[candidate_index][1])
+            group_start = group_end
+        return insertion_lines.finish()
+    finally:
+        workspace.close_resource(candidates)
 
 
 def _strictly_increasing_anchor_pairs(

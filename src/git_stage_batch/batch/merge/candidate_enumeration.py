@@ -499,7 +499,7 @@ def _absence_candidate_set(
         ) as (
             _distinctive_lines,
             recorded_context_lines,
-            _presence_references,
+            presence_references,
         ):
             contextual_placements = _check_merge_structural_validity(
                 owned_mapping,
@@ -509,6 +509,10 @@ def _absence_candidate_set(
                 working_lines,
                 distinctive_presence_context_lines=distinctive_context_lines,
                 recorded_presence_context_lines=recorded_context_lines,
+                include_leading_blank_for_line=(
+                    presence_references.line_came_from_empty_file
+                ),
+                replacement_units=ownership.replacement_units,
                 spool_dir=spool_dir,
             )
         realized_entries = _presence_constraints.apply_presence_constraints(
@@ -670,6 +674,8 @@ def enumerate_merge_batch_candidates_for_lines(
                     source_lines,
                     working_lines,
                     deletion_claims,
+                    compatible_mapping=discovery_mapping,
+                    protected_source_lines=discovery_controlled_source_lines,
                     spool_dir=spool_dir,
                 ) as deletion_anchor_pairs:
                     if deletion_anchor_pairs:
@@ -687,6 +693,12 @@ def enumerate_merge_batch_candidates_for_lines(
                                 presence_lines=presence_line_set,
                                 preferred_context_lines=source_alternative_lines,
                                 ordinary_mapping=ordinary_structural_mapping,
+                                anchor_pairs=deletion_anchor_pairs,
+                                anchor_authorized_source_lines=(
+                                    discovery_controlled_source_lines.difference(
+                                        effective_constraints.source_alternative_presence_lines
+                                    )
+                                ),
                                 spool_dir=spool_dir,
                                 matcher=match_lines,
                             )

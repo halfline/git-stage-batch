@@ -54,6 +54,9 @@ def test_apply_planning_owns_ownership_and_builder_arguments(monkeypatch):
         def to_attribution_metadata_dict(self):
             return {"claimed_lines": ["9"]}
 
+        def to_applied_metadata_dict(self):
+            return {"claimed_lines": ["9"]}
+
     ownership = _Ownership()
     ownership_context = _Context(ownership)
     source = LineBuffer.from_bytes(b"source\n")

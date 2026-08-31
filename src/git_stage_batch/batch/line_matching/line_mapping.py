@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
-from typing import Protocol
+from typing import Protocol, TypeVar
 
+from ...core.coordinates import LineSpan
+from ...core.line_selection import LineSelection, coerce_line_ranges
 from ...core.mapped_storage import MappedIntVector
 from ...core.resource_cleanup import close_resources_preserving_first
 
 
 _MAX_UINT32 = (1 << 32) - 1
+_TargetSpace = TypeVar("_TargetSpace")
 
 
 def allocate_mapping_vector(
@@ -153,6 +156,58 @@ def allocate_line_mapping(
             _close_vectors(source_to_target, target_to_source)
         except BaseException:
             pass
+        raise
+
+
+def copy_line_mapping_excluding(
+    mapping: LineMapping,
+    excluded_source_lines: LineSelection,
+    *,
+    excluded_target_spans: Sequence[LineSpan[_TargetSpace]] = (),
+    spool_dir: str | Path | None = None,
+) -> LineMapping:
+    """Copy a mapping without pairs covered by either exclusion."""
+    excluded_ranges = coerce_line_ranges(excluded_source_lines)
+    previous_target_end = 0
+    for span in excluded_target_spans:
+        if (
+            span.start.offset < previous_target_end
+            or span.end.offset > len(mapping.target_to_source)
+        ):
+            raise ValueError("excluded target spans are invalid or overlap")
+        previous_target_end = span.end.offset
+
+    result = allocate_line_mapping(
+        len(mapping.source_to_target),
+        len(mapping.target_to_source),
+        spool_dir=spool_dir,
+    )
+    try:
+        span_index = 0
+        for target_index in range(len(mapping.target_to_source)):
+            while (
+                span_index < len(excluded_target_spans)
+                and excluded_target_spans[span_index].end.offset <= target_index
+            ):
+                span_index += 1
+            if (
+                span_index < len(excluded_target_spans)
+                and excluded_target_spans[span_index].start.offset <= target_index
+            ):
+                continue
+            source_line = mapping.target_to_source[target_index]
+            if source_line == 0 or source_line in excluded_ranges:
+                continue
+            result.source_to_target[source_line - 1] = target_index + 1
+            result.target_to_source[target_index] = source_line
+        result.may_have_unmapped_equal_lines = (
+            bool(excluded_ranges)
+            or bool(excluded_target_spans)
+            or mapping.may_have_unmapped_equal_lines
+        )
+        return result
+    except BaseException:
+        result.close()
         raise
 
 

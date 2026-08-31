@@ -1,7 +1,11 @@
-"""Tests for persisted replacement alternatives."""
+"""Tests for explicit saved/live replacement geometry."""
 
 import pytest
 
+from git_stage_batch.batch.replacement_alternatives import (
+    ExplicitReplacementAlternatives,
+    ReplacementAlternativeOwnership,
+)
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
@@ -9,7 +13,86 @@ from git_stage_batch.batch.ownership.resolved_replacement_alternatives import (
     InvalidReplacementAlternatives,
     ResolvedReplacementAlternative,
 )
-from git_stage_batch.core.coordinates import BatchSourceSpace, LineBoundary, LineSpan
+from git_stage_batch.core.coordinates import (
+    BaselineSpace,
+    BatchSourceSpace,
+    LineBoundary,
+    LineSpan,
+    RewrittenWorktreeSpace,
+    SnapshotSpan,
+    WorktreeSpace,
+    content_snapshot,
+)
+from git_stage_batch.core.edit_plan import ReplacementEditPlan
+
+
+def _replacement_geometry():
+    baseline = content_snapshot(
+        "file.txt",
+        [b"old\n", b"shared\n", b"tail\n"],
+        space=BaselineSpace,
+    )
+    worktree = content_snapshot(
+        "file.txt",
+        [b"current\n", b"shared\n", b"tail\n"],
+        space=WorktreeSpace,
+    )
+    rewritten = content_snapshot(
+        "file.txt",
+        [b"saved\n", b"live\n", b"shared\n", b"tail\n"],
+        space=RewrittenWorktreeSpace,
+    )
+    plan = ReplacementEditPlan(
+        path="file.txt",
+        baseline_snapshot=baseline,
+        worktree_snapshot=worktree,
+        baseline_span=LineSpan(LineBoundary(0), LineBoundary(1)),
+        worktree_span=LineSpan(LineBoundary(0), LineBoundary(1)),
+    )
+    return plan.bind_result(rewritten, replacement_line_count=2), rewritten
+
+
+def test_alternatives_bind_saved_and_live_spans() -> None:
+    """Saved/live roles remain distinct even when live extends past the edit."""
+    edit, rewritten = _replacement_geometry()
+    alternatives = ExplicitReplacementAlternatives(
+        edit=edit,
+        saved=SnapshotSpan(
+            rewritten,
+            LineSpan(LineBoundary(0), LineBoundary(1)),
+        ),
+        live=SnapshotSpan(
+            rewritten,
+            LineSpan(LineBoundary(1), LineBoundary(3)),
+        ),
+        ownership_scope=ReplacementAlternativeOwnership.TRANSLATED_SELECTION,
+    )
+
+    assert alternatives.saved_range == (1, 1)
+    assert alternatives.live_range == (2, 3)
+    assert alternatives.boundary_search_span.span == LineSpan(
+        LineBoundary(0),
+        LineBoundary(3),
+    )
+
+
+def test_alternatives_reject_nonadjacent_live_span() -> None:
+    """A live predecessor must immediately follow its saved snapshot."""
+    edit, rewritten = _replacement_geometry()
+
+    with pytest.raises(ValueError, match="not adjacent"):
+        ExplicitReplacementAlternatives(
+            edit=edit,
+            saved=SnapshotSpan(
+                rewritten,
+                LineSpan(LineBoundary(0), LineBoundary(1)),
+            ),
+            live=SnapshotSpan(
+                rewritten,
+                LineSpan(LineBoundary(2), LineBoundary(3)),
+            ),
+            ownership_scope=ReplacementAlternativeOwnership.TRANSLATED_SELECTION,
+        )
 
 
 def test_batch_ownership_resolves_persisted_replacement_alternative() -> None:

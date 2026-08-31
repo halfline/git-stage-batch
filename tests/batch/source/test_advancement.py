@@ -29,6 +29,10 @@ from git_stage_batch.batch.source.advancement import (
     advance_batch_source_for_file_with_provenance,
     advance_source_lines_preserving_existing_presence,
 )
+from git_stage_batch.batch.replacement_alternatives import (
+    ExplicitReplacementAlternatives,
+    ReplacementAlternativeOwnership,
+)
 from git_stage_batch.batch.line_matching.comparison import (
     SemanticChangeKind,
     SemanticChangeRun,
@@ -40,6 +44,16 @@ from git_stage_batch.batch.line_matching.lineage import (
     SourceSelectionExpansion,
 )
 from git_stage_batch.core.line_selection import LineRanges
+from git_stage_batch.core.coordinates import (
+    BaselineSpace,
+    LineBoundary,
+    LineSpan,
+    RewrittenWorktreeSpace,
+    SnapshotSpan,
+    WorktreeSpace,
+    content_snapshot,
+)
+from git_stage_batch.core.edit_plan import ReplacementEditPlan
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.core.buffer import LineBuffer
 
@@ -104,6 +118,8 @@ def _advance_source_from_content(
     old_source_buffer: bytes,
     working_buffer: bytes,
     ownership: BatchOwnership,
+    advancing_working_ranges: LineRanges | None = None,
+    advancing_alternatives: ExplicitReplacementAlternatives | None = None,
 ):
     with (
         LineBuffer.from_bytes(old_source_buffer) as old_source_lines,
@@ -113,6 +129,8 @@ def _advance_source_from_content(
             old_lines=old_source_lines,
             working_lines=working_lines,
             ownership=ownership,
+            advancing_working_ranges=advancing_working_ranges,
+            advancing_alternatives=advancing_alternatives,
         )
 
 
@@ -893,6 +911,29 @@ def test_advance_source_does_not_duplicate_changed_method_signature():
         assert source_with_provenance.source_buffer.to_bytes() == working_tree
 
 
+def test_advance_source_preserves_owned_run_outside_explicit_update() -> None:
+    """An unrelated edit cannot replace content already owned by the batch."""
+    old_source = b"head\ncapture\nanchor\nold list\n"
+    working_tree = b"head\nconfigfs\nanchor\nnew list one\nnew list two\n"
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
+        ownership=ownership,
+        advancing_working_ranges=LineRanges.from_ranges(((4, 5),)),
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"head\ncapture\nanchor\nnew list one\nnew list two\n"
+        )
+        remapped = remap_batch_ownership_with_lineage(
+            ownership,
+            source_with_provenance.lineage,
+        )
+
+    assert remapped.presence_line_set().ranges() == ((2, 2),)
+
+
 def test_advance_source_does_not_nest_superseded_guard():
     """Refreshing an extended guard should not retain its old first line."""
     old_source = (
@@ -1163,6 +1204,71 @@ def test_advance_source_replaces_all_suppressed_spans_for_one_unit(
         assert source_with_provenance.source_buffer.to_bytes() == expected_source
 
 
+def test_advance_source_keeps_saved_and_live_alternatives_adjacent():
+    """An unrelated live insertion cannot split persisted alternative sides."""
+    old_source = (
+        b"KDIR ?= /kernel\n"
+        b"AUDIO ?= y\n"
+        b"\n"
+        b"OPTIONS := \\\n"
+        b"\tAUDIO=$(AUDIO)\n"
+        b"\n"
+        b".PHONY: all matrix check clean\n"
+        b".PHONY: all check clean\n"
+        b"\n"
+        b"all:\n"
+        b"\tbuild $(OPTIONS) modules\n"
+    )
+    rewritten_worktree = (
+        b"KDIR ?= /kernel\n"
+        b"\n"
+        b".PHONY: all check clean\n"
+        b"\n"
+        b"all:\n"
+        b"\tbuild $(OPTIONS) modules\n"
+        b"\tbuild modules\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "4-7"],
+        [
+            AbsenceClaim(anchor_line=3, content_lines=[b".PHONY: all clean\n"]),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b".PHONY: all check clean\n"],
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["4-7"],
+                deletion_indices=[0, 1],
+            )
+        ],
+    )
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=rewritten_worktree,
+        ownership=ownership,
+        advancing_working_ranges=LineRanges.from_ranges(((6, 7),)),
+    ) as advanced:
+        assert advanced.source_buffer.to_bytes() == (
+            b"KDIR ?= /kernel\n"
+            b"AUDIO ?= y\n"
+            b"\n"
+            b"OPTIONS := \\\n"
+            b"\tAUDIO=$(AUDIO)\n"
+            b"\n"
+            b".PHONY: all matrix check clean\n"
+            b".PHONY: all check clean\n"
+            b"\n"
+            b"all:\n"
+            b"\tbuild $(OPTIONS) modules\n"
+            b"\tbuild modules\n"
+        )
+        assert advanced.lineage.translate_working_line(2) is None
+
+
 def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
     """Repeated live baseline variants must not replace saved ownership."""
     ownership = BatchOwnership.from_presence_lines(
@@ -1269,6 +1375,64 @@ def test_advance_source_refuses_owned_replacement_contraction() -> None:
             ownership=ownership,
         ):
             pass
+
+
+def test_advance_source_keeps_owned_block_after_explicit_live_wording() -> None:
+    """Recorded live text is inserted instead of replacing an owned block."""
+    path = "file.txt"
+    current = (b"head\n", b"saved one\n", b"saved two\n", b"tail\n")
+    rewritten = (
+        b"head\n",
+        b"saved one\n",
+        b"saved two\n",
+        b"live\n",
+        b"tail\n",
+    )
+    rewritten_snapshot = content_snapshot(
+        path,
+        rewritten,
+        space=RewrittenWorktreeSpace,
+    )
+    edit = ReplacementEditPlan(
+        path=path,
+        baseline_snapshot=content_snapshot(path, (), space=BaselineSpace),
+        worktree_snapshot=content_snapshot(path, current, space=WorktreeSpace),
+        baseline_span=LineSpan(LineBoundary(0), LineBoundary(0)),
+        worktree_span=LineSpan(LineBoundary(1), LineBoundary(3)),
+    ).bind_result(rewritten_snapshot, replacement_line_count=3)
+    alternatives = ExplicitReplacementAlternatives(
+        edit=edit,
+        saved=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(1), LineBoundary(3)),
+        ),
+        live=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(3), LineBoundary(4)),
+        ),
+        ownership_scope=ReplacementAlternativeOwnership.EXACT_SAVED_SPAN,
+    )
+
+    with _advance_source_from_content(
+        old_source_buffer=(
+            b"head\nsaved one\nsaved two\nowned one\nowned two\nowned three\ntail\n"
+        ),
+        working_buffer=b"".join(rewritten),
+        ownership=BatchOwnership.from_presence_lines(["4-6"]),
+        advancing_alternatives=alternatives,
+    ) as advanced:
+        assert advanced.source_buffer.to_bytes() == (
+            b"head\n"
+            b"saved one\n"
+            b"saved two\n"
+            b"live\n"
+            b"owned one\n"
+            b"owned two\n"
+            b"owned three\n"
+            b"tail\n"
+        )
+        assert advanced.lineage.translate_working_line(4) == 4
+        assert advanced.lineage.translate_source_line(4) == 5
 
 
 def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):

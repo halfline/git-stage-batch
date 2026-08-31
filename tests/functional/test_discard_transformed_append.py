@@ -1751,3 +1751,515 @@ suffix
 
     assert result.returncode == 0, result.stderr
     assert path.read_text() == final
+def test_expanded_provider_list_stays_before_heading_after_same_batch_peels(
+    functional_repo,
+):
+    """A provider-list snapshot must remain contiguous with earlier batch peels."""
+    baseline = "head\n\n## Graphical testing\n\ngraphical details\n"
+    source = (
+        "head\n\n"
+        "```sh\nSCENARIO=capture run-test\n```\n\n"
+        "The available scenarios are `configfs` and `capture`. The default runs\n"
+        "them in that order.\n\n"
+        "**capture** checks frame delivery.\n\n"
+        "## Graphical testing\n\n"
+        "graphical details\n"
+    )
+    path = _commit_file(functional_repo, baseline)
+    path.write_text(source)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    capture_first = int(_display_id_for_text(view, "**capture**"))
+    capture_last = capture_first
+    capture_result = git_stage_batch(
+        "discard",
+        "--to",
+        "capture-provider",
+        "--line",
+        f"{capture_first}-{capture_last + 1}",
+        "--no-auto-advance",
+        check=False,
+    )
+    assert capture_result.returncode == 0, capture_result.stderr
+
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    command_id = int(_display_id_for_text(view, "SCENARIO=capture run-test"))
+    before_selector = path.read_text()
+    selector_result = git_stage_batch(
+        "discard",
+        "--to",
+        "capture-provider",
+        "--line",
+        f"{command_id - 1}-{command_id + 2}",
+        "--no-auto-advance",
+        check=False,
+    )
+    assert selector_result.returncode == 0, selector_result.stderr
+
+    configfs_selector = before_selector.replace(
+        "SCENARIO=capture run-test",
+        "SCENARIO=configfs run-test",
+    )
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    restore_selector = git_stage_batch(
+        "discard",
+        "--file",
+        "file.txt",
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=configfs_selector,
+        check=False,
+    )
+    assert restore_selector.returncode == 0, restore_selector.stderr
+
+    one_provider = configfs_selector.replace(
+        "The available scenarios are `configfs` and `capture`. The default runs\n"
+        "them in that order.\n",
+        "The available scenario is `configfs`. The default runs it.\n",
+    )
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    narrow_list = git_stage_batch(
+        "discard",
+        "--file",
+        "file.txt",
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=one_provider,
+        check=False,
+    )
+    assert narrow_list.returncode == 0, narrow_list.stderr
+
+    expected_partial = baseline.replace(
+        "## Graphical testing\n",
+        (
+            "```sh\nSCENARIO=capture run-test\n```\n\n"
+            "**capture** checks frame delivery.\n\n"
+            "## Graphical testing\n"
+        ),
+    )
+    assert (
+        _show_file(
+            functional_repo,
+            "refs/git-stage-batch/batches/capture-provider",
+        )
+        == expected_partial
+    )
+
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    list_id = int(_display_id_for_text(view, "The available scenario is"))
+    replacement = (
+        "The available scenarios are `configfs` and `capture`. The default runs\n"
+        "them in that order.\n\n"
+    )
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "capture-provider",
+        "--line",
+        f"{list_id}-{list_id + 1}",
+        "--as-stdin",
+        "--no-edge-overlap",
+        "--no-auto-advance",
+        input_text=replacement,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    expected_owned = (
+        "```sh\nSCENARIO=capture run-test\n```\n\n"
+        + replacement
+        + "**capture** checks frame delivery.\n\n"
+    )
+    expected = baseline.replace(
+        "## Graphical testing\n",
+        expected_owned + "## Graphical testing\n",
+    )
+    assert (
+        _show_file(
+            functional_repo,
+            "refs/git-stage-batch/batches/capture-provider",
+        )
+        == expected
+    )
+
+
+def test_repeeled_transformed_tail_stays_before_retained_suffix(
+    functional_repo,
+):
+    """A transformed predecessor tail must remain ahead of its scaffold suffix."""
+    prefix = "# Guide\n\n"
+    final_region = "shared line\nfinal tail\n\n"
+    predecessor_region = "shared line\npredecessor tail\n\n"
+    suffix = "## Build\n\nbuild details\n"
+    final = prefix + final_region + suffix
+    predecessor = prefix + predecessor_region + suffix
+    path = functional_repo / "guide.md"
+    path.write_text(final)
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch(
+        "discard",
+        "--to",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+        "--no-auto-advance",
+    )
+    git_stage_batch(
+        "apply",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+    )
+
+    batch_view = git_stage_batch(
+        "show",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+        "--page",
+        "all",
+    ).stdout
+    first = int(_display_id_for_text(batch_view, "shared line"))
+    last = int(_display_id_for_text(batch_view, "final tail")) + 1
+    git_stage_batch(
+        "reset",
+        "--from",
+        "predecessor-scaffold",
+        "--line",
+        f"{first}-{last}",
+    )
+    git_stage_batch(
+        "discard",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+    )
+    assert path.read_text() == final_region
+
+    live_view = git_stage_batch("show", "--file", "guide.md", "--page", "all").stdout
+    first = int(_display_id_for_text(live_view, "shared line"))
+    last = int(_display_id_for_text(live_view, "final tail")) + 1
+    transform = git_stage_batch(
+        "discard",
+        "--to",
+        "grant-adopter",
+        "--line",
+        f"{first}-{last}",
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=final_region + predecessor_region,
+        check=False,
+    )
+    assert transform.returncode == 0, transform.stderr
+    assert path.read_text() == predecessor_region
+    assert (
+        _show_file(
+            functional_repo,
+            "refs/git-stage-batch/batches/grant-adopter",
+            "guide.md",
+        )
+        == final_region
+    )
+
+    live_view = git_stage_batch("show", "--file", "guide.md", "--page", "all").stdout
+    first = int(_display_id_for_text(live_view, "shared line"))
+    last = int(_display_id_for_text(live_view, "predecessor tail")) + 1
+    repeel = git_stage_batch(
+        "discard",
+        "--to",
+        "predecessor-scaffold",
+        "--line",
+        f"{first}-{last}",
+        "--no-auto-advance",
+        check=False,
+    )
+    assert repeel.returncode == 0, repeel.stderr
+    actual = _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/predecessor-scaffold",
+        "guide.md",
+    )
+    assert actual == predecessor
+
+
+def test_transformed_batch_replays_after_predecessor_scaffold_is_dropped(
+    functional_repo,
+):
+    """Dropping a temporary scaffold must not invalidate its transformed peer."""
+    prefix = "# Guide\n\n"
+    final_region = "shared line\nfinal tail\n\n"
+    predecessor_region = "shared line\npredecessor tail\n\n"
+    suffix = "## Build\n\nbuild details\n"
+    final = prefix + final_region + suffix
+    predecessor = prefix + predecessor_region + suffix
+    path = functional_repo / "guide.md"
+    path.write_text(final)
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch(
+        "discard",
+        "--to",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+        "--no-auto-advance",
+    )
+    git_stage_batch(
+        "apply",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+    )
+
+    batch_view = git_stage_batch(
+        "show",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+        "--page",
+        "all",
+    ).stdout
+    first = int(_display_id_for_text(batch_view, "shared line"))
+    last = int(_display_id_for_text(batch_view, "final tail")) + 1
+    git_stage_batch(
+        "reset",
+        "--from",
+        "predecessor-scaffold",
+        "--line",
+        f"{first}-{last}",
+    )
+    git_stage_batch(
+        "discard",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+    )
+    assert path.read_text() == final_region
+
+    live_view = git_stage_batch("show", "--file", "guide.md", "--page", "all").stdout
+    first = int(_display_id_for_text(live_view, "shared line"))
+    last = int(_display_id_for_text(live_view, "final tail")) + 1
+    transform = git_stage_batch(
+        "discard",
+        "--to",
+        "grant-adopter",
+        "--line",
+        f"{first}-{last}",
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=final_region + predecessor_region,
+        check=False,
+    )
+    assert transform.returncode == 0, transform.stderr
+    assert path.read_text() == predecessor_region
+    assert (
+        _show_file(
+            functional_repo,
+            "refs/git-stage-batch/batches/grant-adopter",
+            "guide.md",
+        )
+        == final_region
+    )
+
+    live_view = git_stage_batch("show", "--file", "guide.md", "--page", "all").stdout
+    first = int(_display_id_for_text(live_view, "shared line"))
+    last = int(_display_id_for_text(live_view, "predecessor tail")) + 1
+    repeel = git_stage_batch(
+        "discard",
+        "--to",
+        "predecessor-scaffold",
+        "--line",
+        f"{first}-{last}",
+        "--no-auto-advance",
+        check=False,
+    )
+    assert repeel.returncode == 0, repeel.stderr
+    if path.exists():
+        cleanup = git_stage_batch(
+            "discard",
+            "--file",
+            "guide.md",
+            "--no-auto-advance",
+            check=False,
+        )
+        assert cleanup.returncode == 0, cleanup.stderr
+    assert not path.exists()
+    assert (
+        _show_file(
+            functional_repo,
+            "refs/git-stage-batch/batches/predecessor-scaffold",
+            "guide.md",
+        )
+        == predecessor
+    )
+
+    git_stage_batch(
+        "apply",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+    )
+    assert path.read_text() == predecessor
+    git_stage_batch(
+        "reset",
+        "--from",
+        "predecessor-scaffold",
+        "--file",
+        "guide.md",
+    )
+    git_stage_batch("drop", "predecessor-scaffold")
+    assert path.read_text() == predecessor
+
+    git_stage_batch("stop")
+    subprocess.run(
+        ["git", "add", "guide.md"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add predecessor"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    replay = git_stage_batch(
+        "apply",
+        "--from",
+        "grant-adopter",
+        "--file",
+        "guide.md",
+        check=False,
+    )
+    assert replay.returncode == 0, replay.stderr
+    assert path.read_text() == final
+
+
+def test_transformed_matrix_row_stays_between_adjacent_siblings(functional_repo):
+    """An F7-to-P5 matrix transform must retain its predecessor row."""
+    baseline = "# build rules\n\nall:\n\tbuild module\n"
+    first_row = (
+        "\t$(MAKE) module-clean\n"
+        "\t$(MAKE) all CONFIG_SND=n\n"
+        "\ttest ! -e src/castkms_audio.o\n"
+        '\tcase "$$(modinfo -F depends ./castkms.ko)" in *snd*) false;; esac\n'
+        '\tcase "$$(modinfo -F softdep ./castkms.ko)" in *snd*) false;; esac\n'
+    )
+    second_final = (
+        "\t$(MAKE) module-clean\n"
+        "\t$(MAKE) all CASTKMS_BUILD_AUDIO=n CASTKMS_BUILD_CEC=y\n"
+        "\ttest ! -e src/castkms_audio.o\n"
+        "\ttest -e src/castkms_cec_core.o\n"
+        "\ttest -e src/castkms_cec_uapi.o\n"
+        '\tcase "$$(modinfo -F depends ./castkms.ko)" in *snd*) false;; esac\n'
+        '\tcase "$$(modinfo -F softdep ./castkms.ko)" in *snd*) false;; esac\n'
+    )
+    second_predecessor = (
+        "\t$(MAKE) module-clean\n"
+        "\t$(MAKE) all CASTKMS_BUILD_AUDIO=n\n"
+        "\ttest ! -e src/castkms_audio.o\n"
+        '\tcase "$$(modinfo -F depends ./castkms.ko)" in *snd*) false;; esac\n'
+        '\tcase "$$(modinfo -F softdep ./castkms.ko)" in *snd*) false;; esac\n'
+    )
+    third_row = (
+        "\t$(MAKE) module-clean\n"
+        "\t$(MAKE) all CASTKMS_BUILD_AUDIO=y CASTKMS_BUILD_CEC=y\n"
+        "\ttest -e src/castkms_audio.o\n"
+        "\ttest -e src/castkms_cec_core.o\n"
+        "\ttest -e src/castkms_cec_uapi.o\n"
+        "\tcheck undefined symbols\n"
+    )
+    final = (
+        "# build rules\n"
+        "CASTKMS_BUILD_AUDIO ?= y\n"
+        "\n"
+        "CASTKMS_KBUILD_OPTIONS := \\\n"
+        "\tCASTKMS_BUILD_AUDIO=$(CASTKMS_BUILD_AUDIO)\n\n"
+        "all:\n"
+        "\tbuild module\n\n"
+        "build-matrix:\n"
+        + first_row
+        + second_final
+        + third_row
+        + "\ncheck:\n\tverify\n"
+    )
+    predecessor = final.replace(second_final, second_predecessor)
+
+    path = functional_repo / "Makefile"
+    path.write_text(baseline)
+    subprocess.run(
+        ["git", "add", "Makefile"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add build rules"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    path.write_text(final)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch("show", "--file", "Makefile", "--page", "all").stdout
+    build_id = int(
+        _display_id_for_text(
+            view,
+            "\t$(MAKE) all CASTKMS_BUILD_AUDIO=n CASTKMS_BUILD_CEC=y",
+        )
+    )
+    transform = git_stage_batch(
+        "discard",
+        "--to",
+        "cec-build-selection",
+        "--line",
+        f"{build_id - 1}-{build_id + 5}",
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=second_predecessor,
+        check=False,
+    )
+    assert transform.returncode == 0, transform.stderr
+    assert path.read_text() == predecessor
+    assert (
+        _show_file(
+            functional_repo,
+            "refs/git-stage-batch/batches/cec-build-selection",
+            "Makefile",
+        )
+        == final
+    )
+
+    git_stage_batch("stop")
+    subprocess.run(
+        ["git", "add", "Makefile"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add CEC build predecessor"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    replay = git_stage_batch(
+        "apply",
+        "--from",
+        "cec-build-selection",
+        "--file",
+        "Makefile",
+        check=False,
+    )
+    assert replay.returncode == 0, replay.stderr
+    assert path.read_text() == final

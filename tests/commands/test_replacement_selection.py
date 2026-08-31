@@ -17,6 +17,7 @@ from git_stage_batch.commands.selection.discard_line_replacement import (
     _contiguous_selected_addition_count,
     _expand_parent_through_relocated_prefix_context,
     _matching_discard_prefix_context_count,
+    _verified_explicit_alternative_end,
     _selected_additions_cover_working_span,
 )
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
@@ -426,6 +427,25 @@ def test_discard_prefix_context_leaves_final_context_copy_unclaimed():
         prefix_count=1,
         working_suffix_start=0,
     ) == 0
+
+
+def test_explicit_alternative_extends_through_verified_shared_tail():
+    """A trimmed live alternative includes its contiguous payload suffix."""
+    assert (
+        _verified_explicit_alternative_end(
+            selection_lines=[
+                b"saved\n",
+                b"old changed\n",
+                b"shared\n",
+                b"after\n",
+            ],
+            payload_lines=[b"saved", b"old changed", b"shared"],
+            owned_prefix_count=1,
+            alternative_start=2,
+            fallback_end=2,
+        )
+        == 3
+    )
 
 
 def test_discard_prefix_context_avoids_line_scale_python_heap():

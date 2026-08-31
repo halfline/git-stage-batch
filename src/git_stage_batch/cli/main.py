@@ -39,6 +39,20 @@ def acquire_session_lock() -> AbstractContextManager[None]:
     return acquire_lock()
 
 
+def _request_status_cache_refresh() -> None:
+    """Request prompt cache maintenance without changing command success."""
+    try:
+        from ..commands.status_cache import (
+            request_status_summary_cache_refresh,
+        )
+
+        request_status_summary_cache_refresh()
+    except Exception:
+        # A disposable prompt cache must never turn a successful command into
+        # a failure or replace the command's original diagnostic.
+        return
+
+
 def _configure_terminal_streams() -> None:
     """Preserve arbitrary filesystem bytes when writing terminal output."""
     for stream in (sys.stdout, sys.stderr):
@@ -55,6 +69,8 @@ def _configure_terminal_streams() -> None:
 def main() -> None:
     """Main entry point for git-stage-batch."""
     _configure_terminal_streams()
+    args = None
+    dispatched = False
     try:
         if os.name != "posix":
             raise CommandError(
@@ -84,6 +100,7 @@ def main() -> None:
                         is SessionOwnershipPolicy.REQUIRE_AVAILABLE
                     ):
                         require_no_foreign_session_owner()
+                    dispatched = True
                     dispatch_cli_mode(args)
         else:
             # Parsing failed
@@ -111,6 +128,12 @@ def main() -> None:
         sys.exit(130)
     finally:
         flush_journal()
+        if (
+            dispatched
+            and args is not None
+            and getattr(args, "refresh_prompt_cache_after_command", True)
+        ):
+            _request_status_cache_refresh()
 
 
 if __name__ == "__main__":

@@ -201,6 +201,7 @@ def add_status_subcommand(subparsers: Subparsers) -> None:
         help=argparse.SUPPRESS,
     )
     parser_status.set_defaults(
+        refresh_prompt_cache_after_command=False,
         func=lambda args: command_status(
             porcelain=args.porcelain,
             prompt_format=args.prompt_format,

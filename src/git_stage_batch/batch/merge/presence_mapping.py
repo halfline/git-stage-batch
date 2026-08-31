@@ -6,6 +6,7 @@ from bisect import bisect_right
 from collections.abc import Callable, Hashable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, overload
@@ -40,6 +41,19 @@ if TYPE_CHECKING:
 
 _CONTROLLED_SOURCE_LINE = object()
 _RECORDED_PRESENCE_BOUNDARY_FORMAT = "QQQ"
+class PresenceMappingCorrection(Enum):
+    """Whether the usual line mapping had to be changed."""
+
+    ORDINARY = auto()
+    CORRECTED = auto()
+
+
+class PresenceMappingAmbiguity(Enum):
+    """Whether another mapping could also be valid."""
+
+    NONE = auto()
+    UNRESOLVED = auto()
+    COMPETING_CONTEXT = auto()
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,9 +62,38 @@ class PresenceMappingResult:
 
     mapping: LineMapping
     owned: bool
-    corrected: bool
-    ambiguous: bool
-    competing_context: bool
+    correction: PresenceMappingCorrection
+    ambiguity: PresenceMappingAmbiguity
+
+    @property
+    def corrected(self) -> bool:
+        """Return whether the usual mapping was changed."""
+        return self.correction is PresenceMappingCorrection.CORRECTED
+
+    @property
+    def ambiguous(self) -> bool:
+        """Return whether placement is still ambiguous."""
+        return self.ambiguity is not PresenceMappingAmbiguity.NONE
+
+    @property
+    def competing_context(self) -> bool:
+        """Return whether another valid mapping puts lines elsewhere."""
+        return self.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
+
+
+def _presence_mapping_ambiguity(
+    *,
+    ambiguous: bool,
+    competing_context: bool,
+) -> PresenceMappingAmbiguity:
+    """Choose the ambiguity state for these results."""
+    if competing_context:
+        if not ambiguous:
+            raise ValueError("competing context requires an ambiguous mapping")
+        return PresenceMappingAmbiguity.COMPETING_CONTEXT
+    if ambiguous:
+        return PresenceMappingAmbiguity.UNRESOLVED
+    return PresenceMappingAmbiguity.NONE
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,6 +545,68 @@ def _mark_distinctively_anchored_controlled_spans(
     mark_run()
 
 
+def _mark_explicitly_anchored_controlled_lines(
+    controlled_source_lines: LineRanges,
+    anchor_authorized_source_lines: LineRanges,
+    ordinary_mapping: LineMapping,
+    anchor_pairs: Sequence[tuple[int, int]],
+    authorized_targets: MappedIntVector,
+) -> None:
+    """Accept a repeated line when an exact anchor chooses this copy."""
+    for source_line, target_line in anchor_pairs:
+        if (
+            source_line not in controlled_source_lines
+            or source_line not in anchor_authorized_source_lines
+            or target_line < 1
+            or target_line > len(authorized_targets)
+            or ordinary_mapping.get_target_line_from_source_line(source_line)
+            != target_line
+        ):
+            continue
+        authorized_targets[target_line - 1] = 1
+
+
+def _deduplicate_sorted_corrections(corrections: MappedRecordVector) -> None:
+    """Remove duplicate corrections."""
+    write_index = 0
+    previous: tuple[int, ...] | None = None
+    for correction in corrections:
+        if correction == previous:
+            continue
+        corrections[write_index] = correction
+        write_index += 1
+        previous = correction
+    corrections.truncate(write_index)
+
+
+def _corrections_have_conflicting_assignments(
+    workspace: MatcherWorkspace,
+    corrections: Sequence[tuple[int, ...]],
+    target_line_count: int,
+) -> bool:
+    """Return whether corrected lines collide or appear out of order."""
+    target_sources = workspace.int_vector(
+        target_line_count,
+        width=8,
+        fill=0,
+    )
+    try:
+        previous_source = 0
+        previous_target = 0
+        for source_line, target_line in corrections:
+            if previous_source == source_line and previous_target != target_line:
+                return True
+            target_source = target_sources[target_line - 1]
+            if target_source not in (0, source_line):
+                return True
+            target_sources[target_line - 1] = source_line
+            previous_source = source_line
+            previous_target = target_line
+    finally:
+        workspace.close_resource(target_sources)
+    return False
+
+
 def match_lines_preserving_unowned_context(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
@@ -512,6 +617,7 @@ def match_lines_preserving_unowned_context(
     preferred_context_lines: LineRanges | None = None,
     ordinary_mapping: LineMapping | None = None,
     anchor_pairs: Sequence[tuple[int, int]] = (),
+    anchor_authorized_source_lines: LineRanges | None = None,
     spool_dir: str | Path | None = None,
     matcher: Callable[..., LineMapping] = match_lines,
 ) -> PresenceMappingResult:
@@ -534,6 +640,8 @@ def match_lines_preserving_unowned_context(
     try:
         if preferred_context_lines is None:
             preferred_context_lines = LineRanges.empty()
+        if anchor_authorized_source_lines is None:
+            anchor_authorized_source_lines = LineRanges.empty()
         if ordinary_mapping is None:
             owned_ordinary = matcher(
                 source_lines,
@@ -588,9 +696,8 @@ def match_lines_preserving_unowned_context(
                 transferred = PresenceMappingResult(
                     ordinary_mapping,
                     owned_ordinary is not None,
-                    False,
-                    False,
-                    False,
+                    PresenceMappingCorrection.ORDINARY,
+                    PresenceMappingAmbiguity.NONE,
                 )
                 owned_ordinary = None
                 returning_result = True
@@ -619,6 +726,13 @@ def match_lines_preserving_unowned_context(
             corrections = workspace.record_vector(
                 len(controlled_source_lines) * 2,
                 "QQ",
+            )
+            _mark_explicitly_anchored_controlled_lines(
+                controlled_source_lines,
+                anchor_authorized_source_lines,
+                ordinary_mapping,
+                anchor_pairs,
+                ordinary_authorized_targets,
             )
             _mark_distinctively_anchored_controlled_spans(
                 source_lines,
@@ -664,8 +778,24 @@ def match_lines_preserving_unowned_context(
                     context_authorized_targets,
                 )
             sort_mapped_records(corrections)
+            _deduplicate_sorted_corrections(corrections)
+            has_conflicting_corrections = _corrections_have_conflicting_assignments(
+                workspace,
+                corrections,
+                len(target_lines),
+            )
             source_occurrences.close()
             target_occurrences.close()
+            if has_conflicting_corrections:
+                transferred = PresenceMappingResult(
+                    ordinary_mapping,
+                    owned_ordinary is not None,
+                    PresenceMappingCorrection.ORDINARY,
+                    PresenceMappingAmbiguity.COMPETING_CONTEXT,
+                )
+                owned_ordinary = None
+                returning_result = True
+                return transferred
             corrected_targets = workspace.int_vector(
                 len(target_lines),
                 width=4,
@@ -695,9 +825,11 @@ def match_lines_preserving_unowned_context(
                 transferred = PresenceMappingResult(
                     ordinary_mapping,
                     owned_ordinary is not None,
-                    False,
-                    has_unresolved_collision,
-                    has_competing_context,
+                    PresenceMappingCorrection.ORDINARY,
+                    _presence_mapping_ambiguity(
+                        ambiguous=has_unresolved_collision,
+                        competing_context=has_competing_context,
+                    ),
                 )
                 owned_ordinary = None
                 returning_result = True
@@ -765,9 +897,11 @@ def match_lines_preserving_unowned_context(
         transferred = PresenceMappingResult(
             result,
             True,
-            True,
-            has_unresolved_collision,
-            has_competing_context,
+            PresenceMappingCorrection.CORRECTED,
+            _presence_mapping_ambiguity(
+                ambiguous=has_unresolved_collision,
+                competing_context=has_competing_context,
+            ),
         )
         result = None
         returning_result = True

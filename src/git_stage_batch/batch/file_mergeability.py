@@ -7,6 +7,11 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import overload
 
+from .applied_text_replay import (
+    AppliedTextReplayContext,
+    acquire_applied_text_replay_context,
+)
+from .applied_overlay_view import AppliedBatchOverlayView
 from ..core.line_selection import LineRangeBuilder, LineRanges
 from ..core.text_lines import normalize_line_sequence_endings
 from ..utils.repository_buffers import (
@@ -32,6 +37,7 @@ from .ownership.units import (
     build_ownership_units_from_batch_source_lines,
     build_ownership_units_from_display_lines,
 )
+from ..exceptions import MergeError
 
 
 @dataclass
@@ -128,6 +134,7 @@ def probe_batch_file_mergeability(
     display_lines: list[OwnershipDisplayLine],
     batch_source_lines: Sequence[bytes],
     complete_changes: CompleteSourceReplacementChanges | None = None,
+    applied_overlay: AppliedBatchOverlayView | None = None,
 ) -> BatchFileMergeability:
     """Return mergeable display IDs and ownership units for batch display lines."""
     if not display_lines:
@@ -176,6 +183,18 @@ def probe_batch_file_mergeability(
                 match_lines(trusted_match_lines, working_match_lines)
             )
         )
+        replay_context: AppliedTextReplayContext | None = None
+        if applied_overlay is not None and applied_overlay.text_applications:
+            try:
+                replay_context = resources.enter_context(
+                    acquire_applied_text_replay_context(
+                        applied_overlay.text_applications,
+                        working_tree_lines,
+                        trusted_target_lines=trusted_target_lines,
+                    )
+                )
+            except MergeError:
+                replay_context = None
 
         if complete_changes is None:
             complete_changes = changes_from_complete_source_replacement(
@@ -207,6 +226,17 @@ def probe_batch_file_mergeability(
                 )
                 if ownership_for_units.is_empty():
                     return False
+                if replay_context is not None:
+                    try:
+                        replayed = replay_context.merge(
+                            source_match_lines,
+                            ownership_for_units,
+                        )
+                    except MergeError:
+                        pass
+                    else:
+                        replayed.close()
+                        return True
                 return batch_merge.can_merge_batch_from_line_sequences(
                     source_match_lines,
                     ownership_for_units,

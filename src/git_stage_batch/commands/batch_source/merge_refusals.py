@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ...batch.file_display import render_batch_file_display
+from ...data.applied_batch_overlays import (
+    fresh_applied_batch_overlay_for_path,
+)
 from ...exceptions import exit_with_error
 from ...git_paths import display_path
 from ...i18n import _
@@ -18,7 +21,11 @@ def refuse_batch_source_merge_failures(
     """Exit for merge failures without enumerable candidate details."""
     if len(failed_files) == 1:
         file_path = failed_files[0]
-        rendered = render_batch_file_display(batch_name, file_path)
+        rendered = render_batch_file_display(
+            batch_name,
+            file_path,
+            applied_overlay=fresh_applied_batch_overlay_for_path(file_path),
+        )
         has_mergeable_lines = (
             rendered is not None and len(rendered.gutter_to_selection_id) > 0
         )

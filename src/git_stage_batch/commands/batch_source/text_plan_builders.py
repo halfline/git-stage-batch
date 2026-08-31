@@ -11,6 +11,10 @@ from typing import TypedDict, cast
 
 from . import action_plans as _action_plans
 from ...batch.discard import discard_batch_from_line_sequences_as_buffer
+from ...batch.applied_text_replay import (
+    acquire_applied_text_replay_context,
+    load_predecessor_before_trailing_batch,
+)
 from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.merge.legacy_intent import (
     reject_ambiguous_legacy_presence_replay,
@@ -47,6 +51,7 @@ from ...data.applied_batch_overlays import (
     selected_presence_was_introduced,
 )
 from ...data.file_modes import detect_file_mode_in_commit
+from ...exceptions import MergeError
 from ...utils.repository_buffers import (
     load_git_blob_as_buffer,
     read_git_object_buffer_or_none,
@@ -325,20 +330,39 @@ def build_apply_text_file_action_plan(
                                 **spool_options,
                             )
                         )
-                    merged_buffer = merge_batch_from_line_sequences_as_buffer(
-                        batch_source_lines,
-                        ownership,
-                        working_lines,
-                        trusted_target_lines=trusted_target_lines,
-                        source_to_working_mapping=source_to_working_mapping,
-                        source_to_trusted_target_mapping=(
-                            source_to_trusted_target_mapping
-                        ),
-                        trusted_target_to_working_mapping=(
-                            trusted_target_to_working_mapping
-                        ),
-                        **spool_options,
-                    )
+                    merged_buffer = None
+                    if (
+                        applied_overlay is not None
+                        and applied_overlay.text_applications
+                    ):
+                        try:
+                            with acquire_applied_text_replay_context(
+                                applied_overlay.text_applications,
+                                working_lines,
+                                trusted_target_lines=trusted_target_lines,
+                                **spool_options,
+                            ) as replay_context:
+                                merged_buffer = replay_context.merge(
+                                    batch_source_lines,
+                                    ownership,
+                                )
+                        except MergeError:
+                            merged_buffer = None
+                    if merged_buffer is None:
+                        merged_buffer = merge_batch_from_line_sequences_as_buffer(
+                            batch_source_lines,
+                            ownership,
+                            working_lines,
+                            trusted_target_lines=trusted_target_lines,
+                            source_to_working_mapping=source_to_working_mapping,
+                            source_to_trusted_target_mapping=(
+                                source_to_trusted_target_mapping
+                            ),
+                            trusted_target_to_working_mapping=(
+                                trusted_target_to_working_mapping
+                            ),
+                            **spool_options,
+                        )
                     if (
                         trusted_target_lines is not None
                         and source_to_working_mapping is not None
@@ -629,6 +653,8 @@ def build_discard_text_file_action_plan(
     baseline_commit: str,
     selected_ids: set[int] | None,
     selection_ids_to_discard: set[int] | None,
+    batch_name: str | None = None,
+    applied_overlay: AppliedBatchOverlayView | None = None,
     trusted_presence_lines: LineRanges | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
@@ -734,26 +760,41 @@ def build_discard_text_file_action_plan(
                 if ownership.is_empty():
                     return DiscardTextPlanBuildResult()
 
-                discard_options = (
-                    {}
-                    if not trusted_presence_lines
-                    else {"trusted_presence_lines": trusted_presence_lines}
-                )
-                if applied_presence_lines:
-                    discard_options["applied_presence_lines"] = applied_presence_lines
-                if added_separator_lines:
-                    discard_options["added_separator_lines"] = (
-                        added_separator_lines
+                if (
+                    selected_ids is None
+                    and batch_name is not None
+                    and applied_overlay is not None
+                ):
+                    discarded_buffer = load_predecessor_before_trailing_batch(
+                        applied_overlay.text_applications,
+                        batch_name,
+                        spool_dir=spool_dir,
                     )
-                discarded_buffer = discard_batch_from_line_sequences_as_buffer(
-                    batch_source_lines,
-                    ownership,
-                    working_lines,
-                    baseline_lines,
-                    trusted_target_lines=trusted_target_lines,
-                    index_preimage_presence_lines=(index_preimage_presence_lines),
-                    **discard_options,
-                )
+                if discarded_buffer is None:
+                    discard_options = (
+                        {}
+                        if not trusted_presence_lines
+                        else {"trusted_presence_lines": trusted_presence_lines}
+                    )
+                    if applied_presence_lines:
+                        discard_options["applied_presence_lines"] = (
+                            applied_presence_lines
+                        )
+                    if added_separator_lines:
+                        discard_options["added_separator_lines"] = (
+                            added_separator_lines
+                        )
+                    discarded_buffer = discard_batch_from_line_sequences_as_buffer(
+                        batch_source_lines,
+                        ownership,
+                        working_lines,
+                        baseline_lines,
+                        trusted_target_lines=trusted_target_lines,
+                        index_preimage_presence_lines=(
+                            index_preimage_presence_lines
+                        ),
+                        **discard_options,
+                    )
 
         effective_change_type = selected_text_discard_change_type(
             text_change_type,

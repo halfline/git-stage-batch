@@ -62,9 +62,7 @@ def plan_apply_candidate_previews(
             spool_dir=spool_dir,
         )
         if capture_selected_ownership is not None:
-            capture_selected_ownership(
-                ownership.to_attribution_metadata_dict()
-            )
+            capture_selected_ownership(ownership.to_applied_metadata_dict())
         return _build_apply_candidate_previews(
             batch_name=batch_name,
             file_path=file_path,

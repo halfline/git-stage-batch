@@ -401,6 +401,12 @@ def _build_discard_action_plans(
                         (),
                     )
                 )
+                added_separator_lines = LineRanges.from_ranges(
+                    applied_overlay.added_separator_source_line_ranges_by_batch.get(
+                        batch_name,
+                        (),
+                    )
+                )
                 uses_index_preimage = bool(
                     applied_presence_lines or index_preimage_presence_lines
                 )
@@ -413,9 +419,12 @@ def _build_discard_action_plans(
                         baseline_commit=baseline_commit,
                         selected_ids=selection.selected_ids,
                         selection_ids_to_discard=selection.selection_ids,
+                        batch_name=batch_name,
+                        applied_overlay=applied_overlay,
                         trusted_presence_lines=trusted_presence_lines,
                         applied_presence_lines=applied_presence_lines,
                         index_preimage_presence_lines=(index_preimage_presence_lines),
+                        added_separator_lines=added_separator_lines,
                         captured_index_identity=index_identities[file_path],
                         working_tree_artifact_path=(text_input.worktree_artifact),
                         captured_working_tree_exists=(text_input.identity.exists),

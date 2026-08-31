@@ -8,6 +8,7 @@ from typing import Optional
 from .complete_source_replacement import (
     changes_from_complete_source_replacement,
 )
+from .applied_overlay_view import AppliedBatchOverlayView
 from .ownership import display_lines as batch_display
 from . import file_display_model as _file_display_model
 from . import file_mergeability as _file_mergeability
@@ -32,7 +33,8 @@ def render_batch_file_display(
     metadata: BatchMetadataDict | None = None,
     *,
     probe_mergeability: bool = True,
-) -> Optional['RenderedBatchDisplay']:
+    applied_overlay: AppliedBatchOverlayView | None = None,
+) -> Optional["RenderedBatchDisplay"]:
     """Pure function to render batch file display with gutter ID translation.
 
     This is a side-effect-free helper that:
@@ -78,6 +80,7 @@ def render_batch_file_display(
             file_meta=file_meta,
             ownership=ownership,
             probe_mergeability=probe_mergeability,
+            applied_overlay=applied_overlay,
         )
 
 
@@ -89,7 +92,8 @@ def _render_batch_file_display_from_ownership(
     file_meta: BatchFileMetadataDict,
     ownership: BatchOwnership,
     probe_mergeability: bool,
-) -> Optional['RenderedBatchDisplay']:
+    applied_overlay: AppliedBatchOverlayView | None,
+) -> Optional["RenderedBatchDisplay"]:
     """Render batch file display from already-acquired ownership metadata."""
 
     source_path = file_meta.get("source_path")
@@ -114,6 +118,7 @@ def _render_batch_file_display_from_ownership(
             ownership=ownership,
             batch_source_lines=batch_source_lines,
             probe_mergeability=probe_mergeability,
+            applied_overlay=applied_overlay,
         )
 
 
@@ -124,6 +129,7 @@ def build_batch_file_display_from_inputs(
     ownership: BatchOwnership,
     batch_source_lines: Sequence[bytes],
     probe_mergeability: bool,
+    applied_overlay: AppliedBatchOverlayView | None = None,
 ) -> Optional[RenderedBatchDisplay]:
     """Build a batch display from caller-owned source and ownership inputs."""
     display_source_lines = batch_source_lines
@@ -158,6 +164,7 @@ def build_batch_file_display_from_inputs(
             display_lines=display_lines,
             batch_source_lines=batch_source_lines,
             complete_changes=complete_changes,
+            applied_overlay=applied_overlay,
         )
         mergeable_id_ranges = mergeability.mergeable_id_ranges
         mergeable_selection_groups = (

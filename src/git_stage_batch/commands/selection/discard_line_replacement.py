@@ -46,7 +46,10 @@ from ...batch.line_matching.transforms import (
     BatchSourceExactTransform,
     SameContentSpanProjection,
 )
-from ...batch.line_matching.sequence_equality import line_slice_equals
+from ...batch.line_matching.sequence_equality import (
+    line_sequences_equal,
+    line_slice_equals,
+)
 from ...batch.ownership.line_entries import (
     baseline_reference_for_file_line_range,
     replacement_unit_origin_for_line_run,
@@ -166,6 +169,7 @@ class DiscardLineReplacementSelection:
     rewritten_selected_ids: LineRanges
     rewritten_worktree_discard_ids: LineRanges
     rewritten_working_lines: LineBuffer
+    destination: _ReplacementDestinationState
     replacement_alternatives: ExplicitReplacementAlternatives | None = None
 
     def __post_init__(self) -> None:
@@ -199,8 +203,29 @@ class _RewrittenSelectionRun:
     restore_deletions: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _ReplacementDestinationState:
+    """What the destination batch already contains."""
+
+    batch_name: str
+    file_exists: bool
+
+
+def _replacement_destination_state(
+    batch_name: str,
+    file_path: str,
+) -> _ReplacementDestinationState:
+    """Check whether this file is already in the destination batch."""
+    file_exists = False
+    if batch_exists(batch_name):
+        files = read_batch_metadata(batch_name).get("files", {})
+        file_exists = file_path in files
+    return _ReplacementDestinationState(batch_name, file_exists)
+
+
 @contextmanager
 def prepare_discard_line_replacement_selection(
+    batch_name: str,
     line_id_specification: str,
     replacement_text: str | ReplacementPayload,
     *,
@@ -210,6 +235,7 @@ def prepare_discard_line_replacement_selection(
     line_changes = load_line_changes_from_state()
     if line_changes is None:
         exit_with_error(_("No selected hunk. Run 'start' first."))
+    destination = _replacement_destination_state(batch_name, line_changes.path)
     requested_ids = set(parse_command_line_selection(line_id_specification))
     require_line_selection_in_view(
         line_changes,
@@ -232,6 +258,10 @@ def prepare_discard_line_replacement_selection(
             effective_ids,
         )
     )
+    requested_run_has_deletion = _selected_run_has_deletion(
+        line_changes,
+        requested_ids,
+    )
 
     if not any(line.id in effective_ids for line in line_changes.lines):
         exit_with_error(
@@ -253,6 +283,7 @@ def prepare_discard_line_replacement_selection(
     retains_explicit_addition_subspan = False
     materializes_saved_then_live = False
     replacement_ownership_scope = ReplacementAlternativeOwnership.TRANSLATED_SELECTION
+    source_has_independent_session_edits: bool | None = None
     try:
         with ExitStack() as source_stack:
             working_lines = source_stack.enter_context(
@@ -286,6 +317,11 @@ def prepare_discard_line_replacement_selection(
                     line_changes,
                     effective_ids,
                 )
+                selects_added_side_prefix = _selects_added_side_prefix(
+                    line_changes,
+                    effective_ids,
+                )
+                selected_run_has_deletion = requested_run_has_deletion
                 replacement_start, replacement_end = (
                     replacement_working_tree_span_indices(
                         line_changes,
@@ -377,6 +413,55 @@ def prepare_discard_line_replacement_selection(
                                 replacement_owned_prefix_count += (
                                     replacement_discard_prefix_context_count
                                 )
+                        if (
+                            replacement_owned_prefix_count is None
+                            and selected_additions_cover_working_span
+                            and (
+                                not has_explicit_addition_subspan
+                                or selects_added_side_prefix
+                            )
+                            and baseline_start == baseline_end
+                            and _requires_explicit_added_side_alternative(
+                                payload_lines,
+                                working_lines,
+                                working_start=replacement_start,
+                                working_end=replacement_end,
+                                baseline_file_exists=baseline_file_exists,
+                                has_deletion_peer=selected_run_has_deletion,
+                                destination_has_file=destination.file_exists,
+                                no_edge_overlap=no_edge_overlap,
+                            )
+                        ):
+                            if (
+                                not destination.file_exists
+                                and source_has_independent_session_edits is None
+                            ):
+                                if not baseline_file_exists:
+                                    snapshot_file_if_untracked(line_changes.path)
+                                session_start_lines = source_stack.enter_context(
+                                    load_saved_session_file_as_buffer(line_changes.path)
+                                )
+                                source_has_independent_session_edits = (
+                                    not line_sequences_equal(
+                                        session_start_lines,
+                                        working_lines,
+                                    )
+                                )
+                            replacement_ownership_scope = (
+                                ReplacementAlternativeOwnership.EXACT_SAVED_SPAN
+                                if (
+                                    not payload_lines
+                                    or has_explicit_addition_subspan
+                                    or source_has_independent_session_edits is True
+                                )
+                                else (
+                                    ReplacementAlternativeOwnership.UNTRACKED_SOURCE
+                                    if not baseline_file_exists
+                                    else ReplacementAlternativeOwnership.SOURCE_WITHOUT_LIVE
+                                )
+                            )
+                            replacement_owned_prefix_count = selected_working_line_count
+                            materializes_saved_then_live = True
                 if (
                     uses_explicit_addition_span
                     and replacement_owned_prefix_count is None
@@ -610,6 +695,30 @@ def prepare_discard_line_replacement_selection(
             rewritten_selection_runs,
             additional_ids=rewritten_span_ids,
         )
+        selected_rewritten_lines = [
+            line
+            for line in rewritten_line_changes.lines
+            if line.id is not None and line.id in rewritten_selected_ids
+        ]
+        reanchored_selected_lines = (
+            _insertion_references.reanchor_selected_additions_after_relocated_context_boundary(
+                rewritten_line_changes.lines,
+                selected_rewritten_lines,
+                rewritten_working_lines,
+            )
+        )
+        reanchored_by_id = {
+            line.id: line
+            for line in reanchored_selected_lines
+            if line.id is not None
+        }
+        if reanchored_by_id:
+            for line_index, line in enumerate(rewritten_line_changes.lines):
+                if line.id in reanchored_by_id:
+                    rewritten_line_changes.lines[line_index] = reanchored_by_id[line.id]
+            rewritten_selected_ids = rewritten_selected_ids.union(
+                LineRanges.from_lines(reanchored_by_id)
+            )
         rewritten_worktree_discard_ids = _rewritten_worktree_discard_ids(
             rewritten_selection_runs,
             rewritten_span_ids,
@@ -720,6 +829,7 @@ def prepare_discard_line_replacement_selection(
             rewritten_selected_ids=rewritten_selected_ids,
             rewritten_worktree_discard_ids=rewritten_worktree_discard_ids,
             rewritten_working_lines=rewritten_working_lines,
+            destination=destination,
             replacement_alternatives=replacement_alternatives,
         )
 
@@ -755,12 +865,16 @@ def add_discard_line_replacement_to_batch(
     selection: DiscardLineReplacementSelection,
 ) -> None:
     """Persist a rewritten discard replacement selection to a batch."""
+    if selection.destination.batch_name != batch_name:
+        raise ValueError("replacement selection belongs to a different batch")
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
     metadata = read_batch_metadata(batch_name)
     metadata_revision = BatchMetadataRevision.from_metadata(metadata)
     file_metadata = metadata.get("files", {}).get(selection.file_path)
+    if (file_metadata is not None) != selection.destination.file_exists:
+        raise ValueError("replacement destination file changed during preparation")
 
     with ExitStack() as ownership_stack:
         original_working_lines = (
@@ -837,6 +951,13 @@ def add_discard_line_replacement_to_batch(
                         replacement_origin_source_projection=(
                             origin_source_projection
                         ),
+                    )
+                    ownership = _expand_source_scoped_alternative_ownership(
+                        ownership,
+                        selection=selection,
+                        source_line_count=len(selection.rewritten_working_lines),
+                        alternative_range=_explicit_alternative_range(selection),
+                        materialize_source_scope=True,
                     )
                     ownership = _refine_and_preserve_explicit_presence_span_boundary(
                         ownership,
@@ -1054,6 +1175,13 @@ def _merge_replacement_with_batch(
                         origin_source_projection
                     ),
                 )
+                new_ownership = _expand_source_scoped_alternative_ownership(
+                    new_ownership,
+                    selection=selection,
+                    source_line_count=len(source_with_provenance.source_buffer),
+                    alternative_range=exact_alternative_range,
+                    materialize_source_scope=False,
+                )
                 new_ownership = _refine_and_preserve_explicit_presence_span_boundary(
                     new_ownership,
                     selection=selection,
@@ -1129,6 +1257,8 @@ def _refine_presence_references_from_source_content(
             preceding_content = normalize_line_sequence_endings(
                 [bytes(source_lines[source_line - 2])]
             )[0]
+            if not normalized_line_payload(preceding_content):
+                continue
 
             positions = baseline_positions.get(preceding_content)
             if positions is None:
@@ -1286,6 +1416,42 @@ def _translate_rewritten_selection_ownership(
                 exact_presence_lines,
                 ownership.presence_baseline_references(),
             )
+    return ownership
+
+
+def _expand_source_scoped_alternative_ownership(
+    ownership: BatchOwnership,
+    *,
+    selection: DiscardLineReplacementSelection,
+    source_line_count: int,
+    alternative_range: tuple[int, int] | None,
+    materialize_source_scope: bool,
+) -> BatchOwnership:
+    """Select every source line except the version left in the worktree."""
+    alternatives = selection.replacement_alternatives
+    if (
+        alternatives is None
+        or not alternatives.owns_source_without_live
+        or not materialize_source_scope
+    ):
+        return ownership
+    if alternative_range is None:
+        raise ValueError("source-scoped replacement has no live source range")
+    if ownership.deletions or ownership.replacement_units:
+        raise ValueError("source-scoped replacement did not translate to presence")
+    alternative_start, alternative_end = alternative_range
+    if not 1 <= alternative_start <= alternative_end <= source_line_count:
+        raise ValueError("source-scoped replacement has an invalid live range")
+
+    owned_builder = LineRangeBuilder()
+    if alternative_start > 1:
+        owned_builder.add_range(1, alternative_start - 1)
+    if alternative_end < source_line_count:
+        owned_builder.add_range(alternative_end + 1, source_line_count)
+    ownership.presence_claims = presence_claims_from_source_lines(
+        owned_builder.finish(),
+        {},
+    )
     return ownership
 
 
@@ -1964,6 +2130,52 @@ def _line_body(line: bytes) -> bytes:
     return line
 
 
+def _requires_explicit_added_side_alternative(
+    replacement_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    *,
+    working_start: int,
+    working_end: int,
+    baseline_file_exists: bool,
+    has_deletion_peer: bool,
+    destination_has_file: bool,
+    no_edge_overlap: bool,
+) -> bool:
+    """Check whether the source must store both versions of the text.
+
+    A shorter replacement always needs both. A longer replacement needs both
+    unless it begins with all selected text. For equal line counts, keep the
+    older behavior only when each new line still contains its selected text.
+    """
+    working_count = working_end - working_start
+    replacement_count = len(replacement_lines)
+    if replacement_count == 0:
+        return working_count > 0
+    if replacement_count > working_count:
+        if baseline_file_exists or has_deletion_peer:
+            return False
+        return any(
+            replacement_lines[index] != _line_body(working_lines[working_start + index])
+            for index in range(working_count)
+        )
+    if replacement_count < working_count:
+        return True
+    if has_deletion_peer:
+        return False
+    for index in range(working_count):
+        replacement_line = replacement_lines[index]
+        working_line = _line_body(working_lines[working_start + index])
+        if replacement_line == working_line:
+            continue
+        if no_edge_overlap:
+            return True
+        if replacement_line not in working_line and (
+            destination_has_file or not baseline_file_exists
+        ):
+            return True
+    return False
+
+
 def _matching_discard_prefix_context_count(
     payload_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -2060,6 +2272,32 @@ def _selects_complete_old_partial_new_prefix(
     return matches()
 
 
+def _selected_run_has_deletion(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+) -> bool:
+    """Return whether the selected changed block also deletes lines."""
+    line_index = 0
+    while line_index < len(line_changes.lines):
+        if line_changes.lines[line_index].kind not in ("+", "-"):
+            line_index += 1
+            continue
+        run_has_selection = False
+        run_has_deletion = False
+        while line_index < len(line_changes.lines) and line_changes.lines[
+            line_index
+        ].kind in ("+", "-"):
+            line = line_changes.lines[line_index]
+            if line.id is not None and line.id in selected_ids:
+                run_has_selection = True
+            if line.kind == "-":
+                run_has_deletion = True
+            line_index += 1
+        if run_has_selection:
+            return run_has_deletion
+    return False
+
+
 def _selected_run_has_unselected_deletion(
     line_changes: LineLevelChange,
     selected_ids: set[int],
@@ -2118,6 +2356,41 @@ def _selected_run_has_unselected_addition(
         if run_has_selection:
             return run_has_unselected_addition
     return False
+
+
+def _selects_added_side_prefix(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+) -> bool:
+    """Return True when the selection starts an added block but does not end it."""
+    addition_count = 0
+    selected_prefix_count = 0
+    addition_prefix_ended = False
+    selected_after_prefix = False
+
+    def matches() -> bool:
+        return 0 < selected_prefix_count < addition_count and not selected_after_prefix
+
+    for line in line_changes.lines:
+        if line.kind == "+":
+            addition_count += 1
+            is_selected = line.id is not None and line.id in selected_ids
+            if is_selected and not addition_prefix_ended:
+                selected_prefix_count += 1
+            elif is_selected:
+                selected_after_prefix = True
+            else:
+                addition_prefix_ended = True
+            continue
+        if line.kind == "-":
+            continue
+        if matches():
+            return True
+        addition_count = 0
+        selected_prefix_count = 0
+        addition_prefix_ended = False
+        selected_after_prefix = False
+    return matches()
 
 
 def _contiguous_selected_addition_count(

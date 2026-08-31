@@ -24,6 +24,7 @@ class ReplacementAlternativeOwnership(Enum):
 
     TRANSLATED_SELECTION = auto()
     EXACT_SAVED_SPAN = auto()
+    SOURCE_WITHOUT_LIVE = auto()
     UNTRACKED_SOURCE = auto()
 
 
@@ -111,13 +112,18 @@ class ExplicitReplacementAlternatives:
             self.ownership_scope
             in (
                 ReplacementAlternativeOwnership.EXACT_SAVED_SPAN,
+                ReplacementAlternativeOwnership.SOURCE_WITHOUT_LIVE,
                 ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
             )
             and self.parent is not None
         ):
             raise ValueError("presence-scoped replacement cannot have a tracked parent")
         if (
-            self.ownership_scope is ReplacementAlternativeOwnership.UNTRACKED_SOURCE
+            self.ownership_scope
+            in (
+                ReplacementAlternativeOwnership.SOURCE_WITHOUT_LIVE,
+                ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+            )
             and self.live is None
         ):
             raise ValueError("source-scoped replacement requires a live alternative")
@@ -126,6 +132,13 @@ class ExplicitReplacementAlternatives:
     def requires_exact_saved_presence(self) -> bool:
         """Return whether ownership must contain only the saved span."""
         return self.ownership_scope is ReplacementAlternativeOwnership.EXACT_SAVED_SPAN
+
+    @property
+    def owns_source_without_live(self) -> bool:
+        """Return whether all source content except the live side is owned."""
+        return (
+            self.ownership_scope is ReplacementAlternativeOwnership.SOURCE_WITHOUT_LIVE
+        )
 
     @property
     def uses_untracked_source(self) -> bool:

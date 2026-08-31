@@ -115,6 +115,7 @@ def discard_lines_as_to_batch(
     replacement = None
     try:
         with _discard_line_replacement.prepare_discard_line_replacement_selection(
+            batch_name,
             line_id_specification,
             replacement_text,
             no_edge_overlap=no_edge_overlap,

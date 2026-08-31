@@ -7,6 +7,7 @@ from git_stage_batch.core.text_lifecycle import (
     resolve_text_change_type,
     selected_text_discard_change_type,
     selected_text_target_change_type,
+    sifted_text_path_change_type,
 )
 from git_stage_batch.core.buffer import LineBuffer
 
@@ -64,3 +65,19 @@ def test_selected_discard_change_type_accepts_empty_buffer():
         )
 
     assert change_type == TextFileChangeType.DELETED
+
+
+def test_sifted_text_path_change_type_uses_current_and_target_existence():
+    """A sifted batch should describe the transition from its new predecessor."""
+    assert sifted_text_path_change_type(
+        target_exists=True,
+        working_exists=False,
+    ) == TextFileChangeType.ADDED
+    assert sifted_text_path_change_type(
+        target_exists=False,
+        working_exists=True,
+    ) == TextFileChangeType.DELETED
+    assert sifted_text_path_change_type(
+        target_exists=True,
+        working_exists=True,
+    ) == TextFileChangeType.MODIFIED

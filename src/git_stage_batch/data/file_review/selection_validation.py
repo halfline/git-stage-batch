@@ -47,7 +47,10 @@ def shown_review_selections_for_action(
         selection
         for selection in review_state.selections
         if review_action in selection.actions
-        and set(range(selection.first_page, selection.last_page + 1)).issubset(
+        and set(
+            selection.pages
+            or range(selection.first_page, selection.last_page + 1)
+        ).issubset(
             shown_pages
         )
     ]

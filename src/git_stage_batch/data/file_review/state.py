@@ -42,6 +42,7 @@ def read_last_file_review_state(
                     _records.coerce_review_action(action)
                     for action in selection["actions"]
                 ),
+                pages=tuple(selection.get("pages", ())),
                 is_splittable=bool(selection["is_splittable"]),
             )
             for selection in data.get("selections", [])

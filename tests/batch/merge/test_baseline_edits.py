@@ -136,6 +136,37 @@ def test_baseline_edit_planning_composes_all_edit_kinds() -> None:
     assert list(result) == [b"new value\n", b"inserted\n", b"tail\n"]
 
 
+def test_mapped_replacement_can_reuse_its_identical_old_line() -> None:
+    """An unchanged replacement line is already present, not a duplicate old side."""
+    source_lines = [b"head\n", b"same\n", b"tail\n"]
+    working_lines = [b"staged\n", *source_lines]
+    deletion = AbsenceClaim(anchor_line=1, content_lines=[b"same\n"])
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [deletion],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(2, 2, 2, 2),
+            )
+        ],
+    )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_specs(["2"]),
+            [deletion],
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is not None
+    assert list(result) == working_lines
+
+
 def test_baseline_edit_planning_places_presence_after_replacement_anchor() -> None:
     """An unmapped presence beside a replacement anchor joins that edit."""
     source_lines = [

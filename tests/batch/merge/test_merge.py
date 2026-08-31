@@ -27,6 +27,8 @@ from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
 from git_stage_batch.batch.discard import (
     _build_realized_entries_for_discard,
     _discard_batch_line_chunks,
+    _superseded_replacement_deletions,
+    _surviving_source_neighbor_lines,
     discard_batch_file_state_as_buffer,
     discard_batch_from_line_sequences_as_buffer,
 )
@@ -1057,6 +1059,102 @@ def test_strict_absence_anchor_queries_aggregate_duplicate_provenance(
 
     entries.close()
     assert source_group_reads <= duplicate_count * 4
+
+
+def test_surviving_source_neighbors_skip_owned_and_unmapped_lines() -> None:
+    """Discard neighbor indexes describe the source that remains live."""
+    with (
+        match_lines(
+            [b"a\n", b"owned\n", b"unmapped\n", b"d\n"],
+            [b"a\n", b"d\n"],
+        ) as mapping,
+        MatcherWorkspace() as workspace,
+    ):
+        before, after = _surviving_source_neighbor_lines(
+            workspace,
+            4,
+            mapping,
+            LineRanges.from_ranges(((2, 2),)),
+            None,
+        )
+
+        assert list(before) == [0, 1, 1, 1]
+        assert list(after) == [4, 4, 4, 0]
+
+
+def test_distinct_source_alternative_does_not_supersede_deletion() -> None:
+    """Alternative indexing verifies content instead of trusting coordinates."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical\n"],
+                baseline_reference=reference,
+            ),
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"live predecessor\n"],
+                baseline_reference=reference,
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[ReplacementUnit(["2"], [0, 1])],
+    )
+
+    with MatcherWorkspace() as workspace:
+        superseded = _superseded_replacement_deletions(workspace, ownership, 2)
+        assert list(superseded) == [(0,), (0,)]
+
+
+def test_source_alternative_index_avoids_deletion_scale_python_heap() -> None:
+    """Alternative identity indexing keeps claim-scale state out of the heap."""
+    heap_peaks = []
+    for alternative_count in (512, 8192):
+        deletions = []
+        deletion_indices = []
+        for alternative_index in range(alternative_count):
+            content = f"old {alternative_index}\n".encode()
+            deletion_indices.append(len(deletions))
+            deletions.append(AbsenceClaim(anchor_line=1, content_lines=[content]))
+            deletion_indices.append(len(deletions))
+            deletions.append(
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[content],
+                    source_alternative=True,
+                )
+            )
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            deletions,
+            replacement_units=[ReplacementUnit(["2"], deletion_indices)],
+        )
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            with MatcherWorkspace() as workspace:
+                superseded = _superseded_replacement_deletions(
+                    workspace,
+                    ownership,
+                    len(deletions),
+                )
+                assert sum(record[0] for record in superseded) == alternative_count
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
 def test_nested_source_alternative_projection_avoids_line_scale_python_heap() -> None:
@@ -7379,6 +7477,46 @@ class TestDiscardBatch:
         )
 
         assert result == b"head\nold-call\ncurrent-neighbor\ntail\n"
+
+    def test_discard_restores_adjacent_explicit_predecessor_once(self):
+        """An explicit old side supersedes its duplicate split-replacement claim."""
+        baseline = b"head\nbefore\nold\ntail\n"
+        batch_source = b"head\nbefore\nscenario\nnew\nold\ntail\n"
+        working = b"head\nbefore\nscenario\nnew\ntail\n"
+        reference = BaselineReference(
+            after_line=2,
+            after_content=b"before\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["3-4"],
+            [
+                AbsenceClaim(
+                    anchor_line=5,
+                    content_lines=[b"old\n"],
+                    baseline_reference=reference,
+                ),
+                AbsenceClaim(
+                    anchor_line=3,
+                    content_lines=[b"old\n"],
+                    baseline_reference=reference,
+                    source_alternative=True,
+                ),
+            ],
+            replacement_units=[ReplacementUnit(["4"], [0, 1])],
+        )
+
+        assert (
+            discard_batch(
+                batch_source,
+                ownership,
+                working,
+                baseline,
+            )
+            == baseline
+        )
 
     def test_discard_does_not_restore_missing_legacy_replacement(self):
         """An unapplied legacy new side must not introduce its historical old side."""

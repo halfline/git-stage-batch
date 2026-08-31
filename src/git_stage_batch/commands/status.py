@@ -15,6 +15,9 @@ from ..output.status import print_status_summary as _print_status_summary
 from ..output.status_prompt import prompt_needs_status_summary, render_prompt_status
 from ..utils.git_command import run_git_command
 from ..utils.git_repository import require_git_repository
+from .status_cache import (
+    refresh_status_summary_cache,
+)
 
 
 def _git_directory_for_prompt() -> Path | None:
@@ -29,15 +32,29 @@ def _git_directory_for_prompt() -> Path | None:
     return Path(git_dir) if git_dir else None
 
 
-def command_status(*, porcelain: bool = False, prompt_format: str | None = None) -> None:
+def command_status(
+    *,
+    porcelain: bool = False,
+    prompt_format: str | None = None,
+    refresh_cache: bool = False,
+) -> None:
     """Show session progress and selected state.
 
     Args:
         porcelain: If True, output JSON for scripting instead of human-readable text
         prompt_format: If set, render this format string only for active sessions
+        refresh_cache: Rebuild the prompt cache without producing output
     """
+    if refresh_cache and (porcelain or prompt_format is not None):
+        raise CommandError(_("Cache refresh cannot be combined with status output."))
     if porcelain and prompt_format is not None:
         raise CommandError(_("Cannot use --porcelain with --for-prompt."))
+
+    if refresh_cache:
+        require_git_repository()
+        if session_is_active():
+            refresh_status_summary_cache()
+        return
 
     if prompt_format is not None:
         git_dir = _git_directory_for_prompt()

@@ -104,4 +104,7 @@ def policy_uses_session_lock(
         return True
     if policy.locking is LockingPolicy.NONE:
         return False
-    return getattr(args, "prompt_format", None) is None
+    return (
+        getattr(args, "prompt_format", None) is None
+        and not getattr(args, "refresh_cache", False)
+    )

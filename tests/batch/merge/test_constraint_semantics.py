@@ -222,6 +222,43 @@ def test_merge_collapses_nested_source_alternatives():
     )
 
 
+def test_merge_projects_referenced_saved_deletion_into_live_alternative():
+    """A later deletion can reuse the saved copy of an old-side line."""
+    edge_reference = BaselineReference(
+        after_line=None,
+        before_line=None,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-3"],
+        [
+            AbsenceClaim(
+                content_lines=[
+                    b"head\n",
+                    b"adopted\n",
+                    b"old\n",
+                    b"tail\n",
+                ],
+                baseline_reference=edge_reference,
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1-3"], deletion_indices=[0]),
+        ],
+        baseline_references={2: edge_reference},
+    )
+
+    assert (
+        merge_batch(
+            b"head\nadopted\ntail\nhead\nadopted\nold\ntail\n",
+            ownership,
+            b"head\nold\ntail\n",
+        )
+        == b"head\nadopted\ntail\n"
+    )
+
+
 def test_merge_rejects_nonadjacent_source_alternative():
     """An explicit old side must match the span immediately after its unit."""
     ownership = BatchOwnership.from_presence_lines(

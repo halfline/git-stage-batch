@@ -1219,6 +1219,89 @@ def test_nested_source_alternative_projection_avoids_line_scale_python_heap() ->
     assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
+def test_source_scoped_alternative_replays_between_duplicate_siblings() -> None:
+    """Durable old-side evidence can replace one row inside owned source context."""
+    prefix = [b"head\n", b"clean\n", b"first row\n"]
+    saved = [b"clean\n", b"final row\n", b"extra check\n"]
+    live = [b"clean\n", b"predecessor row\n"]
+    suffix = [b"clean\n", b"third row\n", b"tail\n"]
+    source = prefix + saved + live + suffix
+    reference = BaselineReference(
+        after_line=3,
+        after_content=prefix[-1],
+        before_line=9,
+        before_content=suffix[0],
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-6", "9-11"],
+        [
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=live,
+                baseline_reference=reference,
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["4-6"], [0])],
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        prefix + live + suffix,
+    ) as result:
+        assert list(result) == prefix + saved + suffix
+
+
+def test_source_scoped_alternatives_replace_every_unambiguous_predecessor() -> None:
+    """Durable old sides govern coordinates even without structural ambiguity."""
+    source = [b"head\n"]
+    predecessor = [b"head\n"]
+    final = [b"head\n"]
+    deletions = []
+    replacement_units = []
+    for alternative_index in range(3):
+        saved_start = len(source) + 1
+        common = f"common {alternative_index}\n".encode()
+        saved = [
+            common,
+            f"final {alternative_index}\n".encode(),
+            f"extra {alternative_index}\n".encode(),
+        ]
+        live = [common, f"predecessor {alternative_index}\n".encode()]
+        separator = f"separator {alternative_index}\n".encode()
+        source.extend((*saved, *live, separator))
+        predecessor.extend((*live, separator))
+        final.extend((*saved, separator))
+        deletions.append(
+            AbsenceClaim(
+                anchor_line=saved_start - 1,
+                content_lines=live,
+                source_alternative=True,
+            )
+        )
+        replacement_units.append(
+            ReplacementUnit(
+                [f"{saved_start}-{saved_start + len(saved) - 1}"],
+                [alternative_index],
+            )
+        )
+
+    ownership = BatchOwnership.from_presence_lines(
+        [f"1-{len(source)}"],
+        deletions,
+        replacement_units=replacement_units,
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        predecessor,
+    ) as result:
+        assert list(result) == final
+
+
 def test_source_alternative_replay_ignores_selected_duplicate_outside_old_side(
     monkeypatch,
 ) -> None:
@@ -1266,41 +1349,6 @@ def test_source_alternative_replay_ignores_selected_duplicate_outside_old_side(
     for mapping in acquired_mappings:
         with pytest.raises(ValueError, match="line mapping is closed"):
             list(mapping.mapped_line_pairs())
-
-
-def test_source_scoped_alternative_replays_between_duplicate_siblings() -> None:
-    """Durable old-side evidence can replace one row inside owned source context."""
-    prefix = [b"head\n", b"clean\n", b"first row\n"]
-    saved = [b"clean\n", b"final row\n", b"extra check\n"]
-    live = [b"clean\n", b"predecessor row\n"]
-    suffix = [b"clean\n", b"third row\n", b"tail\n"]
-    source = prefix + saved + live + suffix
-    reference = BaselineReference(
-        after_line=3,
-        after_content=prefix[-1],
-        before_line=9,
-        before_content=suffix[0],
-        has_before_line=True,
-    )
-    ownership = BatchOwnership.from_presence_lines(
-        ["1-6", "9-11"],
-        [
-            AbsenceClaim(
-                anchor_line=3,
-                content_lines=live,
-                baseline_reference=reference,
-                source_alternative=True,
-            )
-        ],
-        replacement_units=[ReplacementUnit(["4-6"], [0])],
-    )
-
-    with merge_batch_from_line_sequences_as_buffer(
-        source,
-        ownership,
-        prefix + live + suffix,
-    ) as result:
-        assert list(result) == prefix + saved + suffix
 
 
 def test_strict_absence_index_preserves_provenance_initialization_error(
@@ -2113,6 +2161,8 @@ def test_presence_resolution_does_not_waive_unrelated_structural_refusal(
             ownership.deletions,
             controlled_source_lines=ownership.presence_line_set(),
             source_alternative_lines=LineRanges.empty(),
+            source_alternative_presence_lines=LineRanges.empty(),
+            replacement_alternatives=(),
             source_to_working_mapping=mapping,
             resolution=MergeResolution({"presence:reviewed": 1}),
             spool_dir=None,
@@ -2154,6 +2204,8 @@ def test_presence_resolution_may_waive_only_placement_ambiguity(monkeypatch):
             ownership.deletions,
             controlled_source_lines=ownership.presence_line_set(),
             source_alternative_lines=LineRanges.empty(),
+            source_alternative_presence_lines=LineRanges.empty(),
+            replacement_alternatives=(),
             source_to_working_mapping=mapping,
             resolution=MergeResolution({"presence:reviewed": 1}),
             spool_dir=None,
@@ -2266,6 +2318,8 @@ def test_structural_result_closes_when_mapping_cleanup_fails(monkeypatch):
             (),
             controlled_source_lines=LineRanges.empty(),
             source_alternative_lines=LineRanges.empty(),
+            source_alternative_presence_lines=LineRanges.empty(),
+            replacement_alternatives=(),
             source_to_working_mapping=mapping,
             resolution=None,
             spool_dir=None,

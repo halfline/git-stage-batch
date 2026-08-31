@@ -37,6 +37,54 @@ from ..utils.session_lock import (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class PromptStatusSnapshot:
+    """Prompt values plus whether an exact refresh still needs starting."""
+
+    summary: PromptStatusSummary | None
+    needs_refresh: bool
+
+
+def read_prompt_status_from_cache(
+    git_dir: Path,
+) -> PromptStatusSnapshot:
+    """Return a cached prompt snapshot, seeding one without a full scan."""
+    session_marker = read_session_marker_identity(git_dir)
+    if session_marker is None:
+        return PromptStatusSnapshot(None, False)
+    if not mark_prompt_status_cache_requested(git_dir):
+        return PromptStatusSnapshot(None, False)
+
+    cached = read_cached_prompt_status(
+        git_dir,
+        session_marker=session_marker,
+    )
+    if cached is not None:
+        current_generation = read_session_lock_generation_if_available()
+        needs_refresh = (
+            not cached.exact
+            or current_generation != cached.lock_generation
+        )
+        return PromptStatusSnapshot(cached.summary, needs_refresh)
+
+    generation_before = read_session_lock_generation_if_available()
+    if generation_before is None:
+        return PromptStatusSnapshot(None, False)
+    summary = read_prompt_status_cache_seed()
+    generation_after = read_session_lock_generation_if_available()
+    marker_after = read_session_marker_identity(git_dir)
+    if generation_after != generation_before or marker_after != session_marker:
+        return PromptStatusSnapshot(None, False)
+    write_cached_prompt_status(
+        summary,
+        lock_generation=generation_after,
+        exact=False,
+        session_marker=session_marker,
+        git_dir=git_dir,
+    )
+    return PromptStatusSnapshot(summary, True)
+
+
 def request_status_summary_cache_refresh() -> None:
     """Start one detached refresh when an active prompt cache is stale."""
     try:
@@ -84,6 +132,26 @@ def refresh_status_summary_cache() -> None:
             exact=True,
             session_marker=session_marker,
         )
+
+def cache_exact_prompt_status_if_requested(
+    summary: PromptStatusSummary,
+) -> None:
+    """Keep a regular status result for later prompt reads."""
+    if not prompt_status_cache_requested():
+        return
+    session_marker = read_session_marker_identity()
+    generation = current_session_lock_generation()
+    if generation is None:
+        generation = read_session_lock_generation_if_available()
+    if session_marker is None or generation is None:
+        return
+    write_cached_prompt_status(
+        summary,
+        lock_generation=generation,
+        exact=True,
+        session_marker=session_marker,
+    )
+
 
 def _cache_is_current(
     cached: CachedPromptStatus | None,

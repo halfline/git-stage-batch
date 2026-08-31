@@ -33,7 +33,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from git_stage_batch import __version__
 from git_stage_batch.commands.status import command_status
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.data.status_summary import read_prompt_status_summary
 import git_stage_batch.data.remaining_hunks as remaining_hunks_module
+from git_stage_batch.output.status_prompt import render_prompt_status
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 from git_stage_batch.utils.session_lock import acquire_session_lock
 import git_stage_batch.utils.file_jobs as file_jobs_module
@@ -384,7 +386,8 @@ def _worker_command(
     try:
         with redirect_stdout(stdout), redirect_stderr(stderr):
             if mode == "prompt":
-                command_status(prompt_format="{remaining}")
+                summary = read_prompt_status_summary()
+                print(render_prompt_status("{remaining}", summary), end="")
             else:
                 with acquire_session_lock():
                     command_status(porcelain=True)

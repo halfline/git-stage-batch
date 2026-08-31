@@ -27,7 +27,8 @@ def require_git_repository() -> None:
         CommandError: If not in a git repository
     """
     try:
-        run_git_command(["rev-parse", "--git-dir"], requires_index_lock=False)
+        # Keep the resolved path for state readers used later in this process.
+        get_git_directory_path()
     except subprocess.CalledProcessError as error:
         # Print git's actual error message which contains helpful context
         if error.stderr:

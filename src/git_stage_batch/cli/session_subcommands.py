@@ -205,5 +205,6 @@ def add_status_subcommand(subparsers: Subparsers) -> None:
             porcelain=args.porcelain,
             prompt_format=args.prompt_format,
             refresh_cache=args.refresh_cache,
+            schedule_prompt_cache_refresh=True,
         )
     )

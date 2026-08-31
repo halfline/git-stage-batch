@@ -6,7 +6,7 @@ from string import Formatter
 from typing import TypedDict
 
 from ..data.progress import format_id_range
-from ..data.status_types import StatusSummary
+from ..data.status_types import PromptStatusSummary
 from ..exceptions import CommandError
 from ..i18n import _
 
@@ -97,7 +97,7 @@ def _prompt_field_names(prompt_format: str) -> set[str]:
 
 
 def _prompt_values(
-    summary: StatusSummary | None = None,
+    summary: PromptStatusSummary | None = None,
 ) -> _PromptValues:
     """Return values available to `status --for-prompt` format strings."""
     if summary is None:
@@ -172,7 +172,7 @@ def _prompt_values(
 
 def render_prompt_status(
     prompt_format: str,
-    summary: StatusSummary | None = None,
+    summary: PromptStatusSummary | None = None,
 ) -> str:
     """Render a prompt status segment for an active session."""
     fields = _prompt_field_names(prompt_format)

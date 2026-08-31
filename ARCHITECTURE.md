@@ -163,7 +163,12 @@ directory:
 3. `read_status_summary()` in
    [`data/status_summary.py`](src/git_stage_batch/data/status_summary.py) reads
    persisted state and returns one dictionary.
-4. `print_status_summary()` in
+4. Rich shell prompts use
+   [`data/status_summary_cache.py`](src/git_stage_batch/data/status_summary_cache.py)
+   to read one bounded, worktree-local snapshot. A background refresh samples
+   the session-lock generation before and after the normal remaining-change
+   calculation and publishes only a complete result.
+5. `print_status_summary()` in
    [`output/status.py`](src/git_stage_batch/output/status.py) prints the
    human-readable form. [`output/status_prompt.py`](src/git_stage_batch/output/status_prompt.py)
    renders the shell prompt form.

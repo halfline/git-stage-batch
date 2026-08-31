@@ -13,23 +13,21 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status import print_status_summary as _print_status_summary
 from ..output.status_prompt import prompt_needs_status_summary, render_prompt_status
-from ..utils.git_command import run_git_command
-from ..utils.git_repository import require_git_repository
+from ..utils.git_repository import get_git_directory_path, require_git_repository
 from .status_cache import (
+    cache_exact_prompt_status_if_requested,
+    read_prompt_status_from_cache,
     refresh_status_summary_cache,
+    request_status_summary_cache_refresh,
 )
 
 
 def _git_directory_for_prompt() -> Path | None:
     """Return the git directory for prompt rendering, or None outside a repo."""
     try:
-        result = run_git_command(["rev-parse", "--absolute-git-dir"], check=False, requires_index_lock=False)
+        return get_git_directory_path()
     except (FileNotFoundError, OSError, subprocess.SubprocessError):
         return None
-    if result.returncode != 0:
-        return None
-    git_dir = result.stdout.removesuffix("\n")
-    return Path(git_dir) if git_dir else None
 
 
 def command_status(
@@ -37,6 +35,7 @@ def command_status(
     porcelain: bool = False,
     prompt_format: str | None = None,
     refresh_cache: bool = False,
+    schedule_prompt_cache_refresh: bool = False,
 ) -> None:
     """Show session progress and selected state.
 
@@ -44,6 +43,7 @@ def command_status(
         porcelain: If True, output JSON for scripting instead of human-readable text
         prompt_format: If set, render this format string only for active sessions
         refresh_cache: Rebuild the prompt cache without producing output
+        schedule_prompt_cache_refresh: Start a worker after a provisional prompt read
     """
     if refresh_cache and (porcelain or prompt_format is not None):
         raise CommandError(_("Cache refresh cannot be combined with status output."))
@@ -74,15 +74,24 @@ def command_status(
         return
 
     if prompt_format is not None:
-        output = (
-            _read_status_summary()
-            if prompt_needs_status_summary(prompt_format)
+        assert git_dir is not None
+        needs_summary = prompt_needs_status_summary(prompt_format)
+        snapshot = (
+            read_prompt_status_from_cache(git_dir)
+            if needs_summary
             else None
         )
+        if snapshot is not None and snapshot.needs_refresh:
+            if schedule_prompt_cache_refresh:
+                request_status_summary_cache_refresh()
+        output = snapshot.summary if snapshot is not None else None
+        if needs_summary and output is None:
+            return
         print(render_prompt_status(prompt_format, output), end="")
         return
 
     output = _read_status_summary()
+    cache_exact_prompt_status_if_requested(output)
 
     if porcelain:
         print(json.dumps(output, indent=2))

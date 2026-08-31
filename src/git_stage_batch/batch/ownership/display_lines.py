@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Literal, TypeVar, TypedDict
 
+from ...core.line_selection import LineRanges
 from ...i18n import ngettext
 
 if TYPE_CHECKING:
@@ -55,6 +56,13 @@ def _build_display_lines_from_batch_source_lines(
     if context_lines is None:
         context_lines = 0
     claimed_set = ownership.presence_line_set()
+    retained_replacement_lines = LineRanges.empty()
+    if any(claim.source_alternative for claim in ownership.deletions):
+        resolved = ownership.resolve()
+        retained_replacement_lines = resolved.retained_replacement_lines()
+        claimed_set = resolved.presence_line_set.difference(
+            retained_replacement_lines
+        )
 
     display_lines: list[OwnershipDisplayLine] = []
     display_id = 1
@@ -131,7 +139,11 @@ def _build_display_lines_from_batch_source_lines(
                 })
 
         for batch_line_num in range(range_start, range_end + 1):
-            source_line = _source_line_or_none(source_lines, batch_line_num)
+            source_line = (
+                None
+                if batch_line_num in retained_replacement_lines
+                else _source_line_or_none(source_lines, batch_line_num)
+            )
             if source_line is not None:
                 if batch_line_num in claimed_set:
                     display_lines.append({

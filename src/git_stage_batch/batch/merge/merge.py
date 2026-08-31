@@ -67,6 +67,9 @@ from ..line_matching.line_mapping import (
     copy_line_mapping_excluding as _copy_mapping_excluding,
 )
 from ..line_matching.match import match_lines
+from ..ownership.resolved_presence_alternatives import (
+    resolve_presence_source_alternatives,
+)
 from ..realization.entry_storage import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
@@ -562,6 +565,8 @@ def _build_structural_realized_entries(
     *,
     controlled_source_lines: "LineRanges",
     source_alternative_lines: "LineRanges",
+    source_alternative_presence_lines: "LineRanges",
+    replacement_alternatives: Sequence["ResolvedReplacementAlternative"],
     source_to_working_mapping: LineMapping | None,
     resolution: _MergeResolution | None,
     spool_dir: str | Path | None,
@@ -587,30 +592,38 @@ def _build_structural_realized_entries(
                     spool_dir=spool_dir,
                 )
                 mapping = owned_ordinary_mapping
-
-        if mapping is None:
-            raise _MergeError(
-                _("Batch was created from a different version of the file")
-            )
-        if owned_ordinary_mapping is not None or source_to_working_mapping is None:
-            mapping_result = _match_presence_lines(
-                source_lines,
-                working_lines,
-                controlled_source_lines,
-                ownership=ownership,
-                presence_lines=presence_line_set,
-                preferred_context_lines=source_alternative_lines,
-                ordinary_mapping=mapping,
-                spool_dir=spool_dir,
-                matcher=match_lines,
-            )
-            mapping = mapping_result.mapping
-            if mapping_result.owned:
-                owned_mapping = mapping
-            if mapping_result.ambiguous and not _has_presence_resolution(resolution):
+            if mapping is None:
                 raise _MergeError(
                     _("Batch was created from a different version of the file")
                 )
+            if owned_ordinary_mapping is not None or source_to_working_mapping is None:
+                mapping_result = _match_presence_lines(
+                    source_lines,
+                    working_lines,
+                    controlled_source_lines,
+                    ownership=ownership,
+                    presence_lines=presence_line_set,
+                    preferred_context_lines=source_alternative_lines,
+                    ordinary_mapping=mapping,
+                    anchor_pairs=deletion_anchor_pairs,
+                    anchor_authorized_source_lines=(
+                        controlled_source_lines.difference(
+                            source_alternative_presence_lines
+                        )
+                    ),
+                    replacement_alternatives=replacement_alternatives,
+                    spool_dir=spool_dir,
+                    matcher=match_lines,
+                )
+                mapping = mapping_result.mapping
+                if mapping_result.owned:
+                    owned_mapping = mapping
+                if mapping_result.ambiguous and not _has_presence_resolution(
+                    resolution
+                ):
+                    raise _MergeError(
+                        _("Batch was created from a different version of the file")
+                    )
 
         replacement_exclusions = _replacement_mapping_exclusions(
             ownership,
@@ -699,7 +712,6 @@ def _build_structural_realized_entries(
                 working_lines,
                 distinctive_presence_context_lines=(distinctive_presence_context_lines),
                 recorded_presence_context_lines=(recorded_presence_context_lines),
-                replacement_units=ownership.replacement_units,
                 spool_dir=spool_dir,
             )
         except PresencePlacementAmbiguityError:
@@ -715,6 +727,11 @@ def _build_structural_realized_entries(
             resolution=resolution,
             distinctive_context_lines=distinctive_presence_context_lines,
             contextual_placements=contextual_placements,
+            source_alternatives=resolve_presence_source_alternatives(
+                presence_line_set,
+                source_lines,
+            ),
+            ownership=ownership,
             spool_dir=spool_dir,
         )
     except BaseException:
@@ -1248,6 +1265,10 @@ def _merge_batch_acquired_line_chunks(
                     deletion_claims,
                     controlled_source_lines=controlled_source_lines,
                     source_alternative_lines=source_alternative_lines,
+                    source_alternative_presence_lines=(
+                        effective_constraints.source_alternative_presence_lines
+                    ),
+                    replacement_alternatives=resolved.replacement_alternatives,
                     source_to_working_mapping=replay_mappings.structural,
                     resolution=effective_resolution,
                     spool_dir=spool_dir,

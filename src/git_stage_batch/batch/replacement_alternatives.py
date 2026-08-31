@@ -6,20 +6,49 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from ..core.coordinates import (
+    BaselineSpace,
     LineBoundary,
     LineSpan,
     RewrittenWorktreeSpace,
     SnapshotSpan,
+    WorktreeSpace,
     require_same_snapshot,
     require_snapshot_role,
 )
 from ..core.edit_plan import AppliedReplacementEdit
+from .ownership.replacement_line_runs import ReplacementLineRun
+
 
 class ReplacementAlternativeOwnership(Enum):
     """How much source text the replacement owns."""
 
     TRANSLATED_SELECTION = auto()
     EXACT_SAVED_SPAN = auto()
+
+
+@dataclass(frozen=True, slots=True)
+class ExplicitReplacementParent:
+    """The old and new locations of a replacement in a tracked file."""
+
+    baseline: SnapshotSpan[BaselineSpace]
+    worktree: SnapshotSpan[WorktreeSpace]
+
+    def __post_init__(self) -> None:
+        require_snapshot_role(self.baseline.snapshot, BaselineSpace)
+        require_snapshot_role(self.worktree.snapshot, WorktreeSpace)
+        if self.baseline.snapshot.path != self.worktree.snapshot.path:
+            raise ValueError("replacement parent spans have different paths")
+        if len(self.baseline.span) == 0 or len(self.worktree.span) == 0:
+            raise ValueError("replacement parent spans must be non-empty")
+
+    def as_line_run(self) -> ReplacementLineRun:
+        """Convert the parent to one-based line ranges."""
+        return ReplacementLineRun(
+            old_start=self.baseline.span.start.offset + 1,
+            old_end=self.baseline.span.end.offset,
+            new_start=self.worktree.span.start.offset + 1,
+            new_end=self.worktree.span.end.offset,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +63,7 @@ class ExplicitReplacementAlternatives:
     edit: AppliedReplacementEdit
     saved: SnapshotSpan[RewrittenWorktreeSpace]
     live: SnapshotSpan[RewrittenWorktreeSpace] | None
+    parent: ExplicitReplacementParent | None
     ownership_scope: ReplacementAlternativeOwnership
 
     def __post_init__(self) -> None:
@@ -52,6 +82,35 @@ class ExplicitReplacementAlternatives:
                 raise ValueError("live replacement span must be non-empty")
             if self.live.span.start != self.saved.span.end:
                 raise ValueError("saved and live replacement spans are not adjacent")
+        if self.parent is not None:
+            require_same_snapshot(
+                self.parent.baseline.snapshot,
+                self.edit.plan.baseline_snapshot,
+            )
+            require_same_snapshot(
+                self.parent.worktree.snapshot,
+                self.edit.plan.worktree_snapshot,
+            )
+            baseline_extension = (
+                self.parent.baseline.span.end.offset
+                - self.edit.plan.baseline_span.end.offset
+            )
+            worktree_extension = (
+                self.parent.worktree.span.end.offset
+                - self.edit.plan.worktree_span.end.offset
+            )
+            if (
+                self.parent.baseline.span.start != self.edit.plan.baseline_span.start
+                or self.parent.worktree.span.start != self.edit.plan.worktree_span.start
+                or baseline_extension < 0
+                or baseline_extension != worktree_extension
+            ):
+                raise ValueError("replacement parent does not extend the edit equally")
+        if (
+            self.ownership_scope is ReplacementAlternativeOwnership.EXACT_SAVED_SPAN
+            and self.parent is not None
+        ):
+            raise ValueError("presence-scoped replacement cannot have a tracked parent")
 
     @property
     def requires_exact_saved_presence(self) -> bool:

@@ -215,3 +215,202 @@ def record_baseline_references_for_additions(
         baseline_lines=baseline_lines,
         source_lines=source_lines,
     )
+
+
+def _selected_line_index(
+    selected_records: Sequence[tuple[int, ...]],
+    line_id: int,
+) -> int | None:
+    """Find a selected line in the sorted ID records."""
+    low = 0
+    high = len(selected_records)
+    while low < high:
+        middle = (low + high) // 2
+        if selected_records[middle][0] < line_id:
+            low = middle + 1
+        else:
+            high = middle
+    if low >= len(selected_records) or selected_records[low][0] != line_id:
+        return None
+    return selected_records[low][1]
+
+
+def _relocated_variant_opener_index(
+    hunk_lines: Sequence[LineEntry],
+    run_start: int,
+    run_end: int,
+    boundary: bytes,
+) -> int | None:
+    """Find changed new text paired with an older boundary in this run."""
+    if len(boundary) < 3 or not any(
+        hunk_lines[index].kind == "-"
+        and len(hunk_lines[index].text_bytes) > len(boundary)
+        and hunk_lines[index].text_bytes.startswith(boundary)
+        for index in range(run_start, run_end)
+    ):
+        return None
+    return next(
+        (
+            index
+            for index in range(run_start, run_end)
+            if hunk_lines[index].kind == "+"
+            and len(hunk_lines[index].text_bytes) > len(boundary)
+            and hunk_lines[index].text_bytes.startswith(boundary)
+        ),
+        None,
+    )
+
+
+def reanchor_selected_additions_after_relocated_context_boundary(
+    hunk_lines: Sequence[LineEntry],
+    selected_lines: Sequence[LineEntry],
+    source_lines: Sequence[bytes],
+) -> list[LineEntry]:
+    """Keep additions to new text outside the old text's context.
+
+    Git can display a boundary shared by the old and new text as unchanged.
+    It then places all earlier additions before that boundary. Additions that
+    belong to the new text must instead follow the complete old block.
+    """
+    refreshed_selection = list(selected_lines)
+    with MappedRecordVector(len(selected_lines), "QQ") as selected_records:
+        for selected_index, line in enumerate(selected_lines):
+            if line.id is not None:
+                selected_records.append((line.id, selected_index))
+        if not selected_records:
+            return refreshed_selection
+        sort_mapped_records(selected_records)
+
+        _reanchor_selected_additions_after_relocated_context_boundary(
+            hunk_lines,
+            refreshed_selection,
+            selected_records,
+            source_lines,
+        )
+    return refreshed_selection
+
+
+def _reanchor_selected_additions_after_relocated_context_boundary(
+    hunk_lines: Sequence[LineEntry],
+    refreshed_selection: list[LineEntry],
+    selected_records: Sequence[tuple[int, ...]],
+    source_lines: Sequence[bytes],
+) -> None:
+    """Correct selected lines placed against the wrong changed boundary."""
+    if not selected_records:
+        return
+    index = 0
+    while index < len(hunk_lines):
+        if hunk_lines[index].kind not in {"+", "-"}:
+            index += 1
+            continue
+        run_start = index
+        while index < len(hunk_lines) and hunk_lines[index].kind in {"+", "-"}:
+            index += 1
+        run_end = index
+        if index >= len(hunk_lines):
+            continue
+        closing = hunk_lines[index]
+        if closing.kind != " " or closing.old_line_number is None:
+            continue
+        opener_index = _relocated_variant_opener_index(
+            hunk_lines,
+            run_start,
+            run_end,
+            closing.text_bytes,
+        )
+        if opener_index is None:
+            continue
+
+        tail_end = index + 1
+        while tail_end < len(hunk_lines):
+            tail_line = hunk_lines[tail_end]
+            if (
+                tail_line.kind != " "
+                or tail_line.old_line_number is None
+                or tail_line.text_bytes
+            ):
+                break
+            tail_end += 1
+        after = hunk_lines[tail_end - 1]
+        before = next(
+            (
+                hunk_lines[before_index]
+                for before_index in range(tail_end, len(hunk_lines))
+                if hunk_lines[before_index].old_line_number is not None
+            ),
+            None,
+        )
+        last_relocated_index: int | None = None
+        for candidate_index in range(run_start, opener_index):
+            candidate = hunk_lines[candidate_index]
+            selected_index = (
+                _selected_line_index(selected_records, candidate.id)
+                if candidate.id is not None
+                else None
+            )
+            if (
+                candidate.kind != "+"
+                or selected_index is None
+                or not candidate.has_baseline_reference_before
+                or candidate.baseline_reference_before_line != closing.old_line_number
+            ):
+                continue
+            refreshed_selection[selected_index] = refreshed_selection[
+                selected_index
+            ].with_baseline_reference(
+                after_line=after.old_line_number,
+                after_content=after.text_bytes,
+                has_after=True,
+                before_line=(before.old_line_number if before is not None else None),
+                before_content=(before.text_bytes if before is not None else None),
+                has_before=True,
+            )
+            last_relocated_index = candidate_index
+
+        if last_relocated_index is not None:
+            separator_index = last_relocated_index + 1
+            if (
+                separator_index + 1 < opener_index
+                and hunk_lines[separator_index].kind == "+"
+                and not hunk_lines[separator_index].text_bytes
+                and hunk_lines[separator_index + 1].kind == "+"
+                and not hunk_lines[separator_index + 1].text_bytes
+            ):
+                separator = hunk_lines[separator_index]
+                preceding_id = hunk_lines[last_relocated_index].id
+                assert preceding_id is not None
+                preceding_selected_index = _selected_line_index(
+                    selected_records,
+                    preceding_id,
+                )
+                assert preceding_selected_index is not None
+                preceding = refreshed_selection[preceding_selected_index]
+                separator_source_line = (
+                    preceding.source_line + 1
+                    if preceding.source_line is not None
+                    else None
+                )
+                if (
+                    separator_source_line is not None
+                    and separator_source_line <= len(source_lines)
+                    and source_lines[separator_source_line - 1]
+                    == separator.text_bytes
+                    + (b"\n" if separator.has_trailing_newline else b"")
+                ):
+                    refreshed_selection.append(
+                        separator.with_source_line(
+                            separator_source_line
+                        ).with_baseline_reference(
+                            after_line=after.old_line_number,
+                            after_content=after.text_bytes,
+                            has_after=True,
+                            before_line=(
+                                before.old_line_number if before is not None else None
+                            ),
+                            before_content=(
+                                before.text_bytes if before is not None else None
+                            ),
+                            has_before=True,
+                        )
+                    )

@@ -80,7 +80,9 @@ def temp_git_repo(tmp_path, monkeypatch):
     # Create initial commit
     (tmp_path / "README").write_text("initial\n")
     subprocess.run(["git", "add", "README"], check=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"], check=True, capture_output=True
+    )
 
     # Create a file for testing
     (tmp_path / "file.txt").write_text("line1\nline2\nline3\n")
@@ -123,9 +125,7 @@ def test_add_file_to_batch_preserves_legacy_intent_marker(temp_git_repo):
     ownership = BatchOwnership.from_presence_lines(["1"], [])
     add_file_to_batch("test-batch", "file.txt", ownership)
     metadata = read_batch_metadata("test-batch")
-    metadata["files"]["file.txt"][
-        "legacy_unmarked_source_alternatives"
-    ] = True
+    metadata["files"]["file.txt"]["legacy_unmarked_source_alternatives"] = True
     model = write_file_backed_batch_metadata("test-batch", metadata)
     sync_batch_state_refs("test-batch", model)
 
@@ -143,9 +143,12 @@ def test_source_bound_storage_rejects_ownership_for_different_content(
     ownership = BatchOwnership.from_presence_lines(["1"], [])
     wrong_source = LineBuffer.from_bytes(b"other content\n")
 
-    with wrong_source, pytest.raises(
-        ValueError,
-        match="coordinate snapshots do not match",
+    with (
+        wrong_source,
+        pytest.raises(
+            ValueError,
+            match="coordinate snapshots do not match",
+        ),
     ):
         add_source_bound_file_to_batch(
             "test-batch",
@@ -183,9 +186,12 @@ def test_source_bound_storage_rejects_stale_metadata_revision(
         batch_source_commit=source_commit,
     )
 
-    with source, pytest.raises(
-        ValueError,
-        match="metadata changed after ownership was prepared",
+    with (
+        source,
+        pytest.raises(
+            ValueError,
+            match="metadata changed after ownership was prepared",
+        ),
     ):
         add_source_bound_file_to_batch(
             "test-batch",
@@ -213,9 +219,7 @@ def test_bulk_source_bound_storage_rejects_duplicate_paths_before_mutation(
 ):
     """A bulk update may not silently replace an earlier same-path update."""
     create_batch("test-batch", "Test")
-    revision = BatchMetadataRevision.from_metadata(
-        read_batch_metadata("test-batch")
-    )
+    revision = BatchMetadataRevision.from_metadata(read_batch_metadata("test-batch"))
     source_commit = create_batch_source_commit("file.txt")
     source = LineBuffer.from_bytes(b"line1\nline2\nline3\n")
 
@@ -320,6 +324,13 @@ def test_source_alternative_absence_claim_round_trips(temp_git_repo):
             AbsenceClaim(
                 anchor_line=None,
                 content_lines=[b"live alternative\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    after_content=b"before\n",
+                    before_line=2,
+                    before_content=b"after\n",
+                    has_before_line=True,
+                ),
                 source_alternative=True,
             ),
         ],
@@ -331,11 +342,42 @@ def test_source_alternative_absence_claim_round_trips(temp_git_repo):
     metadata = ownership.to_metadata_dict()
 
     assert metadata["deletions"][0]["source_alternative"] is True
-    assert "source_alternative" not in (
-        ownership.to_attribution_metadata_dict()["deletions"][0]
+    assert (
+        "source_alternative"
+        not in (ownership.to_attribution_metadata_dict()["deletions"][0])
     )
+    applied_metadata = ownership.to_applied_metadata_dict()
+    assert applied_metadata["deletions"][0]["source_alternative"] is True
+    assert "baseline_reference" in applied_metadata["deletions"][0]
+    assert applied_metadata["replacement_units"] == [
+        {"presence_lines": ["1"], "deletion_indices": [0]}
+    ]
     with acquire_ownership_for_metadata(metadata) as round_tripped:
         assert round_tripped.deletions[0].source_alternative is True
+
+
+def test_complete_file_pair_absence_claim_round_trips(temp_git_repo):
+    """The marker for two complete file versions should survive storage."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=[b"live version\n"],
+                source_alternative=True,
+                complete_file_pair=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+
+    metadata = ownership.to_metadata_dict()
+
+    assert metadata["deletions"][0]["complete_file_pair"] is True
+    with acquire_ownership_for_metadata(metadata) as round_tripped:
+        assert round_tripped.deletions[0].complete_file_pair is True
 
 
 def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_repo):
@@ -403,6 +445,7 @@ def test_acquire_detached_batch_ownership_keeps_copied_content(temp_git_repo):
 
 def test_acquire_detached_batch_ownership_streams_buffer_content(monkeypatch):
     """Detached absence content should copy buffer bytes without line indexing."""
+
     def fail_getitem(self, index):
         raise AssertionError("detach should stream byte chunks")
 
@@ -506,6 +549,7 @@ def test_realized_entries_retries_owned_resource_close_failure():
 
 def test_absence_signature_streams_line_buffer_chunks(monkeypatch):
     """Absence signatures should hash buffer chunks without line indexing."""
+
     def fail_getitem(self, index):
         raise AssertionError("absence signature should stream byte chunks")
 
@@ -573,11 +617,12 @@ def test_absence_content_builder_closes_editor_on_exception(monkeypatch):
 
 def test_legacy_claimed_lines_metadata_loads_as_presence_claims(temp_git_repo):
     """Old claimed_lines metadata should retain presence ownership."""
-    with acquire_ownership_for_metadata({
-        "claimed_lines": ["2"],
-        "deletions": [],
-    }) as ownership:
-
+    with acquire_ownership_for_metadata(
+        {
+            "claimed_lines": ["2"],
+            "deletions": [],
+        }
+    ) as ownership:
         assert ownership.presence_line_set() == {2}
         assert ownership.presence_claims[0].source_lines == ["2"]
 
@@ -593,21 +638,23 @@ def test_legacy_replacement_units_metadata_loads_presence_lines(temp_git_repo):
     """Old replacement-unit keys should stay readable after upgrade."""
     old_blob = create_git_blob([b"old\n"])
 
-    with acquire_ownership_for_metadata({
-        "claimed_lines": ["2"],
-        "deletions": [
-            {
-                "after_source_line": 1,
-                "blob": old_blob,
-            }
-        ],
-        "replacement_units": [
-            {
-                "claimed_lines": ["2"],
-                "deletion_indices": [0],
-            }
-        ],
-    }) as ownership:
+    with acquire_ownership_for_metadata(
+        {
+            "claimed_lines": ["2"],
+            "deletions": [
+                {
+                    "after_source_line": 1,
+                    "blob": old_blob,
+                }
+            ],
+            "replacement_units": [
+                {
+                    "claimed_lines": ["2"],
+                    "deletion_indices": [0],
+                }
+            ],
+        }
+    ) as ownership:
         assert ownership.presence_line_set() == {2}
         assert list(ownership.deletions[0].content_lines) == [b"old\n"]
         assert ownership.replacement_units == [
@@ -648,9 +695,9 @@ def test_add_file_to_batch_persists_baseline_references(temp_git_repo):
     add_file_to_batch("test-batch", "file.txt", ownership)
 
     file_meta = read_batch_metadata("test-batch")["files"]["file.txt"]
-    assert file_meta["presence_claims"][0]["baseline_references"]["2"][
-        "after_line"
-    ] == 1
+    assert (
+        file_meta["presence_claims"][0]["baseline_references"]["2"]["after_line"] == 1
+    )
     assert file_meta["deletions"][0]["baseline_reference"] == {
         "after_line": 1,
     }
@@ -678,22 +725,24 @@ def test_replacement_unit_origin_round_trips_metadata(temp_git_repo):
     )
     old_blob = create_git_blob([b"old\n"])
 
-    with acquire_ownership_for_metadata({
-        "presence_claims": [{"source_lines": ["2"]}],
-        "deletions": [
-            {
-                "after_source_line": 1,
-                "blob": old_blob,
-            }
-        ],
-        "replacement_units": [
-            ReplacementUnit(
-                presence_lines=["2"],
-                deletion_indices=[0],
-                origin=origin,
-            ).to_dict()
-        ],
-    }) as ownership:
+    with acquire_ownership_for_metadata(
+        {
+            "presence_claims": [{"source_lines": ["2"]}],
+            "deletions": [
+                {
+                    "after_source_line": 1,
+                    "blob": old_blob,
+                }
+            ],
+            "replacement_units": [
+                ReplacementUnit(
+                    presence_lines=["2"],
+                    deletion_indices=[0],
+                    origin=origin,
+                ).to_dict()
+            ],
+        }
+    ) as ownership:
         round_tripped_origin = ownership.replacement_units[0].origin
         assert round_tripped_origin == origin
         assert round_tripped_origin.baseline_reference.after_content == b"before"
@@ -742,7 +791,9 @@ def test_add_file_to_batch_marks_whole_added_empty_text_file(temp_git_repo):
     assert read_file_from_batch("test-batch", "empty.txt") == ""
 
 
-def test_add_file_to_batch_does_not_mark_partial_added_text_file_as_lifecycle(temp_git_repo):
+def test_add_file_to_batch_does_not_mark_partial_added_text_file_as_lifecycle(
+    temp_git_repo,
+):
     """Partial line batches from a new file should stay content-scoped."""
     partial_file = temp_git_repo / "partial.txt"
     partial_file.write_text("one\ntwo\n")

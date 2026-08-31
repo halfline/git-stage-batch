@@ -292,6 +292,33 @@ def test_current_schema_accepts_boolean_source_alternative_deletion_flag():
     assert model.files[0].values["deletions"][0]["source_alternative"] is True
 
 
+def test_current_schema_accepts_complete_file_pair_marker():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["deletions"][0]["complete_file_pair"] = True
+
+    model = decode_batch_metadata(data, expected_batch="feature")
+
+    assert model.files[0].values["deletions"][0]["complete_file_pair"] is True
+
+
+def test_current_schema_rejects_non_boolean_complete_file_pair_marker():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["deletions"][0]["complete_file_pair"] = 1
+
+    with pytest.raises(BatchMetadataError, match="complete-file-pair flag"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_complete_file_pair_without_source_alternative():
+    data = _current_source_alternative_metadata()
+    deletion = data["files"]["src/example.py"]["deletions"][0]
+    deletion["complete_file_pair"] = True
+    del deletion["source_alternative"]
+
+    with pytest.raises(BatchMetadataError, match="without a source alternative"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
 def test_current_schema_rejects_non_boolean_source_alternative_deletion_flag():
     data = _current_source_alternative_metadata()
     data["files"]["src/example.py"]["deletions"][0][

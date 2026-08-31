@@ -38,6 +38,30 @@ def test_translates_presence_gap_from_shifted_selection_baseline():
     assert reference.before_line == 4
 
 
+def test_identical_baseline_keeps_exact_presence_gap_between_repeated_lines():
+    """Identity projection must not fuzz an exact gap around repeated blanks."""
+    baseline = [b"```\n", b"\n", b"Useful commands:\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        baseline_references={
+            1: BaselineReference(
+                after_line=2,
+                after_content=b"",
+                has_after_line=True,
+                before_line=3,
+                before_content=b"Useful commands:",
+                has_before_line=True,
+            )
+        },
+    )
+
+    translate_ownership_baseline_references(ownership, baseline, baseline)
+
+    reference = ownership.presence_baseline_references()[1]
+    assert reference.after_line == 2
+    assert reference.before_line == 3
+
+
 def test_translates_presence_references_from_mapped_record_order():
     """Reference projection sorts mapped records without relying on dict order."""
     source = [b"staged\n", b"a\n", b"b\n", b"c\n", b"d\n"]

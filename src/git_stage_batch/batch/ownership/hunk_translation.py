@@ -7,7 +7,7 @@ from types import TracebackType
 from typing import TypeVar
 
 from ...core.line_selection import LineRangeBuilder, LineRanges
-from ...core.mapped_storage import MappedRecordVector
+from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...core.models import LineEntry
 from . import hunk_replacement_translation as _hunk_replacement_translation
 from .absence_content import (
@@ -23,7 +23,7 @@ from .line_entries import (
     baseline_reference_for_presence_line as _baseline_reference_for_presence_line,
 )
 from .references import BaselineReference
-from .replacement_units import normalize_replacement_units
+from .replacement_units import ReplacementUnit, normalize_replacement_units
 from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
 from .replacement_origins import (
     NoReplacementOrigin,
@@ -34,6 +34,100 @@ from ..source.projection import SourceCoordinateProjection
 
 
 OriginSourceSpace = TypeVar("OriginSourceSpace")
+
+
+def _reference_boundary(
+    reference: BaselineReference,
+    baseline_line_count: int,
+) -> int | None:
+    """Return the zero-based boundary when both sides identify one place."""
+    if not reference.has_after_line or not reference.has_before_line:
+        return None
+    after = reference.after_line or 0
+    before = (
+        baseline_line_count
+        if reference.before_line is None
+        else reference.before_line - 1
+    )
+    return after if after == before else None
+
+
+def _pair_deletions_with_additions_at_their_end(
+    absence_claims: list[AbsenceClaim],
+    presence_references: Mapping[int, BaselineReference],
+    replacement_units: list[ReplacementUnit],
+    *,
+    baseline_line_count: int,
+) -> None:
+    """Couple selected old text to selected additions at its old boundary."""
+    if not absence_claims or not presence_references:
+        return
+
+    coupled_deletions = bytearray(len(absence_claims))
+    existing_presence = LineRanges.from_specs(
+        line_range
+        for unit in replacement_units
+        for line_range in unit.presence_lines
+    )
+    for unit in replacement_units:
+        for deletion_index in unit.deletion_indices:
+            if (
+                type(deletion_index) is int
+                and 0 <= deletion_index < len(coupled_deletions)
+            ):
+                coupled_deletions[deletion_index] = 1
+
+    with MappedRecordVector(len(presence_references), "QQ") as additions:
+        for source_line, reference in presence_references.items():
+            boundary = _reference_boundary(reference, baseline_line_count)
+            if boundary is not None:
+                additions.append((boundary, source_line))
+        sort_mapped_records(additions)
+
+        for deletion_index, claim in enumerate(absence_claims):
+            if coupled_deletions[deletion_index] or claim.baseline_reference is None:
+                continue
+            after = claim.baseline_reference.after_line or 0
+            before = (
+                baseline_line_count
+                if claim.baseline_reference.before_line is None
+                else claim.baseline_reference.before_line - 1
+            )
+            if (
+                not claim.baseline_reference.has_after_line
+                or not claim.baseline_reference.has_before_line
+                or before - after != len(claim.content_lines)
+            ):
+                continue
+
+            lower = 0
+            upper = len(additions)
+            while lower < upper:
+                middle = (lower + upper) // 2
+                if additions[middle][0] < before:
+                    lower = middle + 1
+                else:
+                    upper = middle
+            addition_index = lower
+            group_end = addition_index
+            while group_end < len(additions) and additions[group_end][0] == before:
+                group_end += 1
+            if group_end == addition_index:
+                continue
+            selected_lines = LineRanges.from_lines(
+                additions[index][1]
+                for index in range(addition_index, group_end)
+            )
+            if len(selected_lines.ranges()) != 1 or selected_lines.intersection(
+                existing_presence
+            ):
+                continue
+            replacement_units.append(
+                ReplacementUnit(
+                    presence_lines=selected_lines.to_range_strings(),
+                    deletion_indices=[deletion_index],
+                )
+            )
 
 
 class _HunkOldLineContent(Mapping[int, bytes]):
@@ -315,6 +409,13 @@ def _translate_hunk_selection_with_old_content(
 
     flush_absence_run()
     finish_replacement_unit(active_replacement_unit)
+
+    _pair_deletions_with_additions_at_their_end(
+        absence_claims,
+        presence_baseline_references,
+        replacement_units,
+        baseline_line_count=len(old_line_content),
+    )
 
     return BatchOwnership(
         presence_claims=presence_claims_from_source_lines(

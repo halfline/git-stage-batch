@@ -27,7 +27,7 @@ from ..core.replacement import (
 from ..core.buffer import (
     LineBuffer,
 )
-from ..core.mapped_storage import MappedIntVector
+from ..core.mapped_storage import MappedIntVector, MappedRecordVector
 from ..editor.line_endings import detect_line_ending
 from ..editor.line_export import ensure_line_chunk_boundaries
 from ..i18n import _
@@ -539,6 +539,14 @@ def replacement_baseline_span_indices(
         replace_ids,
         allow_incomplete_addition_span=allow_incomplete_addition_span,
     )
+    addition_parent_span = _complete_selected_addition_parent_span(
+        line_changes,
+        replace_ids,
+        span_start_index=span_start_index,
+        span_end_index=span_end_index,
+    )
+    if addition_parent_span is not None:
+        return addition_parent_span
     working_start, working_end = _replacement_working_tree_span_from_display_span(
         line_changes,
         span_start_index,
@@ -556,6 +564,51 @@ def replacement_baseline_span_indices(
         span_end_index + 1,
     )
     return baseline_start, max(baseline_start, baseline_end)
+
+
+def _complete_selected_addition_parent_span(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    *,
+    span_start_index: int,
+    span_end_index: int,
+) -> tuple[int, int] | None:
+    """Return the old lines when every new line in the run is selected."""
+    run_start = span_start_index
+    while run_start > 0 and line_changes.lines[run_start - 1].kind in ("+", "-"):
+        run_start -= 1
+    run_end = span_end_index + 1
+    while run_end < len(line_changes.lines) and line_changes.lines[run_end].kind in (
+        "+",
+        "-",
+    ):
+        run_end += 1
+
+    selected_count = 0
+    first_old_line: int | None = None
+    last_old_line: int | None = None
+    for line_index in range(run_start, run_end):
+        line = line_changes.lines[line_index]
+        selected = line.id is not None and line.id in replace_ids
+        if selected:
+            selected_count += 1
+        if line.kind == "+":
+            if not selected:
+                return None
+            continue
+        if selected or line.id is None or line.old_line_number is None:
+            return None
+        if first_old_line is None:
+            first_old_line = line.old_line_number
+        last_old_line = line.old_line_number
+
+    if (
+        selected_count != len(replace_ids)
+        or first_old_line is None
+        or last_old_line is None
+    ):
+        return None
+    return first_old_line - 1, last_old_line
 
 
 def resolve_replacement_edit_plan(
@@ -976,6 +1029,137 @@ def _build_target_index_buffer_with_replacement_span(
     )
 
 
+def _selected_boundary_replacement_records(
+    line_changes: LineLevelChange,
+    discard_ids: Collection[int],
+) -> MappedRecordVector:
+    """Find selected old and new runs joined by one baseline boundary."""
+    line_count = len(line_changes.lines)
+    deletions = MappedRecordVector(line_count, "QQQ")
+    additions: MappedRecordVector | None = None
+    replacements: MappedRecordVector | None = None
+    try:
+        additions = MappedRecordVector(line_count, "QQQ")
+        replacements = MappedRecordVector(line_count, "QQQQ")
+
+        index = 0
+        while index < line_count:
+            line = line_changes.lines[index]
+            if (
+                line.kind == "-"
+                and line.id in discard_ids
+                and line.old_line_number is not None
+            ):
+                run_start = index
+                old_end = line.old_line_number
+                index += 1
+                while index < line_count:
+                    candidate = line_changes.lines[index]
+                    if (
+                        candidate.kind != "-"
+                        or candidate.id not in discard_ids
+                        or candidate.old_line_number != old_end + 1
+                    ):
+                        break
+                    old_end = candidate.old_line_number
+                    index += 1
+                deletions.append((old_end, run_start, index))
+                continue
+
+            boundary = line.baseline_reference_after_line
+            if (
+                line.kind == "+"
+                and line.id in discard_ids
+                and boundary is not None
+                and line.has_baseline_reference_after
+                and line.has_baseline_reference_before
+            ):
+                run_start = index
+                previous_new_line = line.new_line_number
+                index += 1
+                while index < line_count:
+                    candidate = line_changes.lines[index]
+                    if (
+                        candidate.kind != "+"
+                        or candidate.id not in discard_ids
+                        or candidate.baseline_reference_after_line != boundary
+                        or candidate.baseline_reference_before_line
+                        != line.baseline_reference_before_line
+                        or previous_new_line is None
+                        or candidate.new_line_number != previous_new_line + 1
+                    ):
+                        break
+                    previous_new_line = candidate.new_line_number
+                    index += 1
+                additions.append((boundary, run_start, index))
+                continue
+
+            index += 1
+
+        deletion_index = 0
+        addition_index = 0
+        while deletion_index < len(deletions) and addition_index < len(additions):
+            deletion_boundary = deletions[deletion_index][0]
+            addition_boundary = additions[addition_index][0]
+            if deletion_boundary < addition_boundary:
+                deletion_index += 1
+                continue
+            if addition_boundary < deletion_boundary:
+                addition_index += 1
+                continue
+
+            deletion_group_end = deletion_index + 1
+            while (
+                deletion_group_end < len(deletions)
+                and deletions[deletion_group_end][0] == deletion_boundary
+            ):
+                deletion_group_end += 1
+            addition_group_end = addition_index + 1
+            while (
+                addition_group_end < len(additions)
+                and additions[addition_group_end][0] == addition_boundary
+            ):
+                addition_group_end += 1
+
+            if (
+                deletion_group_end == deletion_index + 1
+                and addition_group_end == addition_index + 1
+            ):
+                _boundary, deletion_start, deletion_end = deletions[deletion_index]
+                _boundary, addition_start, addition_end = additions[addition_index]
+                last_old = line_changes.lines[deletion_end - 1]
+                first_new = line_changes.lines[addition_start]
+                if (
+                    deletion_end - deletion_start != addition_end - addition_start
+                    and first_new.baseline_reference_after_text_bytes is not None
+                    and first_new.baseline_reference_after_text_bytes
+                    == last_old.text_bytes
+                ):
+                    replacements.append(
+                        (
+                            deletion_start,
+                            deletion_end,
+                            addition_start,
+                            addition_end,
+                        )
+                    )
+
+            deletion_index = deletion_group_end
+            addition_index = addition_group_end
+
+        additions.close()
+        additions = None
+        deletions.close()
+        return replacements
+    except BaseException:
+        if replacements is not None:
+            replacements.close()
+        if additions is not None:
+            additions.close()
+        deletions.close()
+        raise
+
+
 def _target_working_tree_line_contents(
     line_changes: LineLevelChange,
     discard_ids: Collection[int],
@@ -983,13 +1167,41 @@ def _target_working_tree_line_contents(
     working_line_count: int,
 ) -> Iterator[bytes]:
     working_pointer = line_changes.header.new_prefix_line_count()
+    boundary_replacements = _selected_boundary_replacement_records(
+        line_changes,
+        discard_ids,
+    )
+    deletion_pair_index = 0
+    addition_pair_index = 0
+
+    def replacement_for_deletion(line_index: int) -> tuple[int, ...] | None:
+        nonlocal deletion_pair_index
+        while (
+            deletion_pair_index < len(boundary_replacements)
+            and boundary_replacements[deletion_pair_index][1] <= line_index
+        ):
+            deletion_pair_index += 1
+        if deletion_pair_index >= len(boundary_replacements):
+            return None
+        record = boundary_replacements[deletion_pair_index]
+        return record if record[0] <= line_index < record[1] else None
+
+    def replacement_for_addition(line_index: int) -> tuple[int, ...] | None:
+        nonlocal addition_pair_index
+        while (
+            addition_pair_index < len(boundary_replacements)
+            and boundary_replacements[addition_pair_index][3] <= line_index
+        ):
+            addition_pair_index += 1
+        if addition_pair_index >= len(boundary_replacements):
+            return None
+        record = boundary_replacements[addition_pair_index]
+        return record if record[2] <= line_index < record[3] else None
 
     def working_line_matches(line_entry: LineEntry) -> bool:
-        return (
-            working_pointer < working_line_count
-            and _line_payload_at(working_lines, working_pointer)
-            == _line_entry_payload(line_entry)
-        )
+        return working_pointer < working_line_count and _line_payload_at(
+            working_lines, working_pointer
+        ) == _line_entry_payload(line_entry)
 
     def copy_unchanged_lines_before(new_line_number: int | None) -> Iterator[bytes]:
         nonlocal working_pointer
@@ -1029,24 +1241,26 @@ def _target_working_tree_line_contents(
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if not working_line_matches(line_entry):
                 raise ValueError(
-                    _(
-                        "Working tree content no longer matches the selected line view"
-                    )
+                    _("Working tree content no longer matches the selected line view")
                 )
             yield _working_tree_line_content_at(working_lines, working_pointer)
             working_pointer += 1
         elif line_entry.kind == "-":
             if line_entry.id in discard_ids:
+                if replacement_for_deletion(index) is not None:
+                    return
                 yield from copy_remaining_lines_before_deletion(index)
                 yield _line_entry_content(line_entry)
         elif line_entry.kind == "+":
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if not working_line_matches(line_entry):
                 raise ValueError(
-                    _(
-                        "Working tree content no longer matches the selected line view"
-                    )
+                    _("Working tree content no longer matches the selected line view")
                 )
+            replacement = replacement_for_addition(index)
+            if replacement is not None and replacement[2] == index:
+                for deletion_index in range(replacement[0], replacement[1]):
+                    yield _line_entry_content(line_changes.lines[deletion_index])
             if line_entry.id in discard_ids:
                 working_pointer += 1
             else:
@@ -1056,51 +1270,56 @@ def _target_working_tree_line_contents(
     for index in range(0, min(working_pointer, working_line_count)):
         yield _working_tree_line_content_at(working_lines, index)
 
-    index = 0
-    while index < len(line_changes.lines):
-        line_entry = line_changes.lines[index]
-        if _is_synthetic_gap_line(line_entry):
-            index += 1
-            continue
+    try:
+        index = 0
+        while index < len(line_changes.lines):
+            line_entry = line_changes.lines[index]
+            if _is_synthetic_gap_line(line_entry):
+                index += 1
+                continue
 
-        if line_entry.kind not in ("+", "-"):
-            yield from process_line(index, line_entry)
-            index += 1
-            continue
+            if line_entry.kind not in ("+", "-"):
+                yield from process_line(index, line_entry)
+                index += 1
+                continue
 
-        run_start = index
-        while (
-            index < len(line_changes.lines)
-            and line_changes.lines[index].kind in ("+", "-")
-        ):
-            index += 1
-        run_end = index
-        replacement = find_repeated_context_suffix_replacement(
-            line_changes.lines,
-            discard_ids,
-            run_start,
-            run_end,
-        )
-        if replacement is None:
-            for run_index in range(run_start, run_end):
+            run_start = index
+            while index < len(line_changes.lines) and line_changes.lines[
+                index
+            ].kind in (
+                "+",
+                "-",
+            ):
+                index += 1
+            run_end = index
+            replacement = find_repeated_context_suffix_replacement(
+                line_changes.lines,
+                discard_ids,
+                run_start,
+                run_end,
+            )
+            if replacement is None:
+                for run_index in range(run_start, run_end):
+                    yield from process_line(
+                        run_index,
+                        line_changes.lines[run_index],
+                    )
+                continue
+
+            first_addition = replacement.first_addition
+            for run_index in range(first_addition, run_end):
                 yield from process_line(
                     run_index,
                     line_changes.lines[run_index],
                 )
-            continue
+            for run_index in range(run_start, first_addition):
+                yield _line_entry_content(line_changes.lines[run_index])
 
-        first_addition = replacement.first_addition
-        for run_index in range(first_addition, run_end):
-            yield from process_line(
-                run_index,
-                line_changes.lines[run_index],
-            )
-        for run_index in range(run_start, first_addition):
-            yield _line_entry_content(line_changes.lines[run_index])
-
-    while 0 <= working_pointer < working_line_count:
-        yield _working_tree_line_content_at(working_lines, working_pointer)
-        working_pointer += 1
+        while 0 <= working_pointer < working_line_count:
+            yield _working_tree_line_content_at(working_lines, working_pointer)
+            working_pointer += 1
+    finally:
+        boundary_replacements.close()
 
 
 def build_target_working_tree_buffer_from_lines(

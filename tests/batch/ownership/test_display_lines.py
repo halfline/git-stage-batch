@@ -10,6 +10,7 @@ from git_stage_batch.batch.ownership.display_lines import (
 )
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 
 
 class _NoLenByteLines(Sequence[bytes]):
@@ -179,3 +180,44 @@ def test_display_builder_uses_ranges_without_expanding_claims():
         "context",
     ]
     assert source_lines.accessed_indexes == [48, 49, 50, 51, 52, 58, 59, 60]
+
+
+def test_display_builder_omits_old_replacement_copy_from_context():
+    """Stored old text appears as a deletion, not again as source context."""
+    old_line = b"                DRIVER_SYNCOBJ | DRIVER_SYNCOBJ_TIMELINE,\n"
+    source_lines = [
+        b"static const struct driver driver = {\n",
+        b"    .features = DRIVER_MODESET |\n",
+        b"                DRIVER_SYNCOBJ | DRIVER_SYNCOBJ_TIMELINE |\n",
+        b"                DRIVER_CURSOR_HOTSPOT,\n",
+        old_line,
+        b"    .ioctls = ioctls,\n",
+        b"};\n",
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-4,6-7"],
+        [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[old_line],
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3-4"],
+                deletion_indices=[0],
+            )
+        ],
+    )
+
+    display_lines = build_display_lines_from_batch_source_lines(
+        source_lines,
+        ownership,
+        context_lines=3,
+    )
+
+    matching_lines = [
+        line for line in display_lines if line["content"].encode() == old_line
+    ]
+    assert [line["type"] for line in matching_lines] == ["deletion"]

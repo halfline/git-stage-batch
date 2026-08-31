@@ -14,6 +14,8 @@ from git_stage_batch.batch.line_matching.line_mapping import (
 from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.batch.merge.presence_mapping import (
+    PresenceMappingAmbiguity,
+    PresenceMappingCorrection,
     match_lines_preserving_unowned_context,
 )
 from git_stage_batch.batch.ownership.model import BatchOwnership
@@ -86,6 +88,8 @@ def test_distinctive_unowned_run_displaces_claimed_duplicate() -> None:
         LineRanges.from_ranges([(2, 3)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.CORRECTED
+        assert result.ambiguity is PresenceMappingAmbiguity.NONE
         assert result.corrected
         assert not result.ambiguous
         assert list(result.mapping.mapped_line_pairs()) == [
@@ -162,6 +166,8 @@ def test_repeated_unanchored_context_does_not_displace_claimed_line() -> None:
         LineRanges.from_ranges([(2, 2), (4, 4)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
         assert not result.corrected
         assert result.ambiguous
         assert list(result.mapping.mapped_line_pairs()) == [
@@ -185,6 +191,8 @@ def test_unmapped_repeated_context_remains_ambiguous() -> None:
         LineRanges.from_ranges([(1, 1)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.UNRESOLVED
         assert not result.corrected
         assert result.ambiguous
         assert not result.competing_context
@@ -192,6 +200,45 @@ def test_unmapped_repeated_context_remains_ambiguous() -> None:
     finally:
         if result.owned:
             result.mapping.close()
+
+
+def test_mapping_anchor_alone_does_not_authorize_controlled_duplicate() -> None:
+    """An alignment constraint is not automatically presence authority."""
+    source = [b"shared\n", b"shared\n"]
+    target = [b"shared\n"]
+    anchor_pairs = ((1, 1),)
+    with match_lines(source, target, anchor_pairs=anchor_pairs) as ordinary_mapping:
+        result = match_lines_preserving_unowned_context(
+            source,
+            target,
+            LineRanges.from_lines([1]),
+            ordinary_mapping=ordinary_mapping,
+            anchor_pairs=anchor_pairs,
+        )
+        assert not result.owned
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
+        assert list(result.mapping.mapped_line_pairs()) == [(1, 1)]
+
+
+def test_validated_presence_anchor_authorizes_controlled_duplicate() -> None:
+    """Independent anchor evidence decides which repeated line owns its target."""
+    source = [b"shared\n", b"shared\n"]
+    target = [b"shared\n"]
+    anchor_pairs = ((1, 1),)
+    with match_lines(source, target, anchor_pairs=anchor_pairs) as ordinary_mapping:
+        result = match_lines_preserving_unowned_context(
+            source,
+            target,
+            LineRanges.from_lines([1]),
+            ordinary_mapping=ordinary_mapping,
+            anchor_pairs=anchor_pairs,
+            anchor_authorized_source_lines=LineRanges.from_lines([1]),
+        )
+        assert not result.owned
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.NONE
+        assert list(result.mapping.mapped_line_pairs()) == [(1, 1)]
 
 
 def test_two_distinctive_spans_competing_for_one_line_are_ambiguous() -> None:
@@ -210,6 +257,8 @@ def test_two_distinctive_spans_competing_for_one_line_are_ambiguous() -> None:
         LineRanges.from_ranges([(1, 2)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
         assert not result.corrected
         assert result.ambiguous
         assert result.competing_context
@@ -585,6 +634,28 @@ def test_no_collision_uses_only_the_ordinary_matcher() -> None:
     finally:
         if result.owned:
             result.mapping.close()
+
+
+@pytest.mark.parametrize(
+    "corrections",
+    (
+        ((2, 1), (2, 3)),
+        ((1, 2), (3, 2)),
+    ),
+)
+def test_conflicting_correction_proofs_are_rejected(corrections) -> None:
+    """Correction evidence must remain a bijective source/target mapping."""
+    with MatcherWorkspace() as workspace:
+        records = workspace.record_vector(len(corrections), "QQ")
+        for correction in corrections:
+            records.append(correction)
+        presence_mapping_module.sort_mapped_records(records)
+
+        assert presence_mapping_module._corrections_have_conflicting_assignments(
+            workspace,
+            records,
+            3,
+        )
 
 
 def test_mapping_cleanup_catches_cancellation(monkeypatch) -> None:

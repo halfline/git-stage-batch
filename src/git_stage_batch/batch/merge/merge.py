@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING
@@ -105,6 +107,9 @@ if TYPE_CHECKING:
     from ...core.line_selection import LineRanges
     from ..ownership.absence_claims import AbsenceClaim
     from ..ownership.model import BatchOwnership
+    from ..ownership.resolved_replacement_alternatives import (
+        ResolvedReplacementAlternative,
+    )
     from ..realization.entry_storage import RealizedEntries
 
 
@@ -195,6 +200,57 @@ def _close_owned_mappings(
     close_resources_preserving_first(mappings, suppress_errors=suppress_errors)
 
 
+class _CoordinateMappingAuthority(Enum):
+    """Why a line map is safe to use."""
+
+    SHARED_ALIGNMENT = auto()
+    TRUSTED_TARGET = auto()
+    SOURCE_ALTERNATIVE_CONTEXT = auto()
+
+
+def _source_alternative_context_is_authoritative(
+    working_lines: Sequence[bytes],
+    deletion_claims: Sequence["AbsenceClaim"],
+    source_alternative_lines: "LineRanges",
+    replacement_alternatives: Sequence["ResolvedReplacementAlternative"],
+    projected_root_deletion_indices: Sequence[int],
+    mapping: LineMapping,
+) -> bool:
+    """Check whether the surrounding saved versions verify this line map."""
+    if not projected_root_deletion_indices:
+        return False
+    matched_root = False
+    for alternative in replacement_alternatives:
+        if alternative.parent_deletion_index is not None:
+            continue
+        deletion_index = alternative.deletion_index
+        if deletion_index >= len(deletion_claims):
+            return False
+        target_span = _baseline_anchor_matching.baseline_removal_edit(
+            deletion_claims[deletion_index],
+            working_lines,
+        )
+        if target_span is None:
+            return False
+        target_start, target_end = target_span
+        if any(
+            (source_line := mapping.get_source_line_from_target_line(target_line))
+            is None
+            or source_line not in source_alternative_lines
+            for target_line in range(target_start + 1, target_end + 1)
+        ):
+            return False
+        projected_position = bisect_left(
+            projected_root_deletion_indices,
+            deletion_index,
+        )
+        matched_root = matched_root or (
+            projected_position < len(projected_root_deletion_indices)
+            and projected_root_deletion_indices[projected_position] == deletion_index
+        )
+    return matched_root
+
+
 @dataclass(slots=True)
 class _ReplayMappingEvidence:
     """The line maps used for replay and the resources they hold."""
@@ -204,6 +260,7 @@ class _ReplayMappingEvidence:
     coordinate: LineMapping | None
     trusted_source: LineMapping | None
     trusted_working: LineMapping | None
+    coordinate_authority: _CoordinateMappingAuthority
     correction: PresenceMappingCorrection
     ambiguity: PresenceMappingAmbiguity
     _owned: tuple[LineMapping, ...]
@@ -248,6 +305,9 @@ def _acquire_replay_mapping_evidence(
     presence_lines: "LineRanges",
     deletion_claims: Sequence["AbsenceClaim"],
     source_alternative_lines: "LineRanges",
+    source_alternative_presence_lines: "LineRanges",
+    replacement_alternatives: Sequence["ResolvedReplacementAlternative"],
+    projected_root_deletion_indices: Sequence[int],
     needs_origin_resolution_preflight: bool,
     has_presence_resolution: bool,
     source_to_working_mapping: LineMapping | None,
@@ -339,6 +399,44 @@ def _acquire_replay_mapping_evidence(
                 )
 
         coordinate = ordinary if trusted_target_lines is not None else structural
+        coordinate_authority = (
+            _CoordinateMappingAuthority.TRUSTED_TARGET
+            if trusted_target_lines is not None
+            else (
+                _CoordinateMappingAuthority.SOURCE_ALTERNATIVE_CONTEXT
+                if has_exact_presence_context
+                else _CoordinateMappingAuthority.SHARED_ALIGNMENT
+            )
+        )
+        if (
+            trusted_target_lines is None
+            and source_alternative_lines
+            and not has_presence_resolution
+        ):
+            coordinate = acquire(
+                _match_uncontrolled_context_lines(
+                    source_lines,
+                    working_lines,
+                    source_alternative_presence_lines,
+                    spool_dir=spool_dir,
+                    matcher=match_lines,
+                )
+            )
+            coordinate_authority = (
+                _CoordinateMappingAuthority.SOURCE_ALTERNATIVE_CONTEXT
+            )
+            if _source_alternative_context_is_authoritative(
+                working_lines,
+                deletion_claims,
+                source_alternative_lines,
+                replacement_alternatives,
+                projected_root_deletion_indices,
+                coordinate,
+            ):
+                structural = coordinate
+                correction = PresenceMappingCorrection.CORRECTED
+                ambiguity = PresenceMappingAmbiguity.NONE
+
         if trusted_target_lines is not None and ownership.replacement_units:
             if trusted_source is None:
                 trusted_source = acquire(
@@ -365,6 +463,7 @@ def _acquire_replay_mapping_evidence(
             coordinate=coordinate,
             trusted_source=trusted_source,
             trusted_working=trusted_working,
+            coordinate_authority=coordinate_authority,
             correction=correction,
             ambiguity=ambiguity,
             _owned=tuple(owned),
@@ -935,6 +1034,13 @@ def _merge_batch_acquired_line_chunks(
         presence_lines=presence_line_set,
         deletion_claims=deletion_claims,
         source_alternative_lines=source_alternative_lines,
+        source_alternative_presence_lines=(
+            effective_constraints.source_alternative_presence_lines
+        ),
+        replacement_alternatives=resolved.replacement_alternatives,
+        projected_root_deletion_indices=(
+            effective_constraints.projected_root_deletion_indices
+        ),
         needs_origin_resolution_preflight=needs_origin_resolution_preflight,
         has_presence_resolution=has_presence_resolution,
         source_to_working_mapping=source_to_working_mapping,
@@ -1075,7 +1181,11 @@ def _merge_batch_acquired_line_chunks(
                 spool_dir=spool_dir,
             )
             if fallback_chunks is not None:
-                if not replay_mappings.competing_context:
+                if (
+                    not replay_mappings.competing_context
+                    or replay_mappings.coordinate_authority
+                    is _CoordinateMappingAuthority.SOURCE_ALTERNATIVE_CONTEXT
+                ):
                     with _close_candidates_on_exit(fallback_chunks):
                         yield from fallback_chunks
                     return

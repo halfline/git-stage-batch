@@ -12,6 +12,7 @@ from ..core.coordinates import (
     FileSnapshot,
     WorktreeSpace,
     content_snapshot,
+    require_snapshot_role,
 )
 from ..core.models import LineEntry
 from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
@@ -30,6 +31,10 @@ from .ownership.replacement_origins import (
     ReplacementOrigin,
     ReplacementOriginSourceProjection,
 )
+from .ownership.resolved_presence_alternatives import (
+    ResolvedPresenceSourceAlternative,
+    resolve_presence_source_alternatives,
+)
 from .merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
 )
@@ -39,8 +44,110 @@ from .source.refresh import (
     prepare_initial_batch_source_for_selection,
 )
 from .line_matching.match import match_lines
+from .line_matching.occurrence_index import normalized_line_payload
 from .line_matching.transforms import SameContentSpanProjection, StructuralAlignment
 from ..utils.repository_buffers import read_git_object_buffer_or_empty
+
+
+@dataclass(frozen=True, slots=True)
+class SourceBoundLineSelection:
+    """Selected rows and the source lines they refer to."""
+
+    source_snapshot: FileSnapshot[BatchSourceSpace]
+    lines: Sequence[LineEntry]
+    source_alternatives: tuple[ResolvedPresenceSourceAlternative, ...] = ()
+    last_nonblank_source_line: int | None = None
+
+    def __post_init__(self) -> None:
+        require_snapshot_role(self.source_snapshot, BatchSourceSpace)
+        for line in self.lines:
+            source_line = line.source_line
+            if line.kind == "+" and source_line is None:
+                raise ValueError("selected addition has no source coordinate")
+            if (
+                source_line is not None
+                and source_line > self.source_snapshot.line_count
+            ):
+                raise ValueError("selected line is outside its source snapshot")
+        for alternative in self.source_alternatives:
+            if alternative.claimed_suffix.end.offset > self.source_snapshot.line_count:
+                raise ValueError("selection alternative is outside its source snapshot")
+        if (
+            self.last_nonblank_source_line is not None
+            and not 1
+            <= self.last_nonblank_source_line
+            <= self.source_snapshot.line_count
+        ):
+            raise ValueError("last nonblank line is outside the source snapshot")
+
+    def addition_run_uses_source_alternative(
+        self,
+        *,
+        first_new_line: int,
+        last_new_line: int,
+    ) -> bool:
+        """Return whether the rows join two matching source ranges."""
+        expected_new_line = first_new_line
+        source_lines = LineRangeBuilder()
+        for line in self.lines:
+            new_line = line.new_line_number
+            if line.kind != "+" or new_line is None or new_line < first_new_line:
+                continue
+            if new_line > last_new_line:
+                break
+            source_line = line.source_line
+            if new_line != expected_new_line or source_line is None:
+                return False
+            source_lines.add_line(source_line)
+            expected_new_line += 1
+        if expected_new_line != last_new_line + 1:
+            return False
+        selected_ranges = source_lines.finish().ranges()
+        return any(
+            alternative.claimed_ranges == selected_ranges
+            for alternative in self.source_alternatives
+        )
+
+    def addition_run_has_later_source_lines(
+        self,
+        *,
+        first_new_line: int,
+        last_new_line: int,
+    ) -> bool:
+        """Return whether a current tail came from inside the source file."""
+        expected_new_line = first_new_line
+        previous_source_line: int | None = None
+        for line in self.lines:
+            new_line = line.new_line_number
+            if line.kind != "+" or new_line is None or new_line < first_new_line:
+                continue
+            if new_line > last_new_line:
+                break
+            source_line = line.source_line
+            if (
+                new_line != expected_new_line
+                or source_line is None
+                or (
+                    previous_source_line is not None
+                    and source_line != previous_source_line + 1
+                )
+            ):
+                return False
+            expected_new_line += 1
+            previous_source_line = source_line
+        return (
+            expected_new_line == last_new_line + 1
+            and previous_source_line is not None
+            and self.last_nonblank_source_line is not None
+            and previous_source_line < self.last_nonblank_source_line
+        )
+
+
+def _last_nonblank_line(lines: Sequence[bytes]) -> int | None:
+    for line_number in range(len(lines), 0, -1):
+        if normalized_line_payload(lines[line_number - 1]):
+            return line_number
+    return None
 
 
 @dataclass(frozen=True, slots=True)

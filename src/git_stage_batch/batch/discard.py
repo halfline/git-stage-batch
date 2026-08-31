@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Container, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from .merge.baseline_correspondence import (
@@ -22,6 +23,10 @@ from .merge.baseline_reference_positions import (
 from .merge.presence_reference_index import EffectivePresenceReferenceIndex
 from .merge.presence_mapping import match_lines_preserving_unowned_context
 from .ownership.replacement_units import replacement_counts_cover_origin
+from .ownership.resolved_presence_alternatives import (
+    ResolvedPresenceSourceAlternative,
+    resolve_presence_source_alternatives,
+)
 from .discard_reversal import (
     reverse_presence_constraints as _reverse_batch_presence_constraints,
 )
@@ -30,6 +35,7 @@ from .line_matching.line_range_view import LineRangeView
 from .line_matching.match import match_lines
 from .line_matching.match_workspace import MatcherWorkspace
 from .line_matching.occurrence_index import LinePayloadOccurrenceIndex
+from .line_matching.sequence_equality import line_slice_equals
 from .realization.entries import RealizedEntry as _RealizedEntry
 from .realization.entry_storage import (
     RealizedEntries,
@@ -42,7 +48,10 @@ from ..core.buffer import (
     buffer_has_data,
 )
 from ..core.coordinates import (
+    BatchSourceSpace,
     FileSnapshot,
+    LineBoundary,
+    LineSpan,
     WorktreeSpace,
     content_snapshot,
     require_same_snapshot,
@@ -72,6 +81,44 @@ if TYPE_CHECKING:
     from .ownership.absence_claims import AbsenceClaim
 
 
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedPresenceAlternativeReversal:
+    """The anchors and lines needed to restore earlier text."""
+
+    anchor_pairs: Sequence[tuple[int, int]]
+    introduced_presence_lines: LineRanges
+    structural_lines: LineRanges
+
+    @classmethod
+    def empty(cls) -> _PreparedPresenceAlternativeReversal:
+        return cls((), LineRanges.empty(), LineRanges.empty())
+
+    def __bool__(self) -> bool:
+        return bool(self.introduced_presence_lines)
+
+
+@dataclass(frozen=True, slots=True)
+class _RealizedPresenceSourceAlternative:
+    """A saved section and where the same text appears in the worktree."""
+
+    source: ResolvedPresenceSourceAlternative
+    target_separator: LineSpan[WorktreeSpace]
+    target_prefix: LineSpan[WorktreeSpace]
+    target_suffix: LineSpan[WorktreeSpace]
+
+    def __post_init__(self) -> None:
+        if self.target_separator.end != self.target_prefix.start:
+            raise ValueError("realized presence separator is not adjacent")
+        if self.target_prefix.end != self.target_suffix.start:
+            raise ValueError("realized presence suffix is not adjacent")
+        if len(self.target_separator) != len(self.source.leading_separator):
+            raise ValueError("realized presence separator has the wrong length")
+        if len(self.target_prefix) != len(self.source.claimed_prefix):
+            raise ValueError("realized presence prefix has the wrong length")
+        if len(self.target_suffix) != len(self.source.claimed_suffix):
+            raise ValueError("realized presence suffix has the wrong length")
 def _discard_result_line_ending_from_lines(
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
@@ -84,6 +131,220 @@ def _discard_result_line_ending_from_lines(
     if buffer_has_data(baseline_lines):
         return choose_line_ending(baseline_lines)
     return choose_line_ending(source_lines)
+
+
+def _mapped_worktree_span(
+    mapping: LineMapping,
+    source_span: LineSpan[BatchSourceSpace],
+) -> LineSpan[WorktreeSpace] | None:
+    """Find where a consecutive source section appears in the worktree."""
+    first_source_line = source_span.start.offset + 1
+    first_target_line = mapping.get_target_line_from_source_line(first_source_line)
+    if first_target_line is None:
+        return None
+    for source_offset in range(source_span.start.offset, source_span.end.offset):
+        expected_target_line = (
+            first_target_line + source_offset - source_span.start.offset
+        )
+        if (
+            mapping.get_target_line_from_source_line(source_offset + 1)
+            != expected_target_line
+        ):
+            return None
+    target_start: LineBoundary[WorktreeSpace] = LineBoundary(first_target_line - 1)
+    return LineSpan(
+        target_start,
+        LineBoundary(target_start.offset + len(source_span)),
+    )
+
+
+def _realize_presence_source_alternative(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    mapping: LineMapping,
+    alternative: ResolvedPresenceSourceAlternative,
+) -> _RealizedPresenceSourceAlternative | None:
+    """Find the prefix, separator, and suffix in the worktree."""
+    target_prefix = _mapped_worktree_span(mapping, alternative.claimed_prefix)
+    if target_prefix is None or target_prefix.start.offset == 0:
+        return None
+
+    target_separator = LineSpan(
+        LineBoundary(target_prefix.start.offset - 1),
+        target_prefix.start,
+    )
+    if (
+        working_lines[target_separator.start.offset]
+        != source_lines[alternative.leading_separator.start.offset]
+    ):
+        return None
+
+    target_suffix = LineSpan(
+        target_prefix.end,
+        LineBoundary(target_prefix.end.offset + len(alternative.claimed_suffix)),
+    )
+    if target_suffix.end.offset > len(working_lines) or not line_slice_equals(
+        working_lines,
+        target_suffix.start.offset,
+        LineRangeView(
+            source_lines,
+            alternative.claimed_suffix.start.offset,
+            alternative.claimed_suffix.end.offset,
+        ),
+    ):
+        return None
+    return _RealizedPresenceSourceAlternative(
+        source=alternative,
+        target_separator=target_separator,
+        target_prefix=target_prefix,
+        target_suffix=target_suffix,
+    )
+
+
+def _source_line_is_inherited_through_trusted_target(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    trusted_target_lines: Sequence[bytes],
+    source_line: int,
+    source_to_working: LineMapping,
+    source_to_trusted_target: LineMapping,
+    trusted_target_to_working: LineMapping,
+) -> bool:
+    """Check that both maps place this source line at the same worktree line."""
+    trusted_line = source_to_trusted_target.get_target_line_from_source_line(
+        source_line
+    )
+    working_line = source_to_working.get_target_line_from_source_line(source_line)
+    return (
+        trusted_line is not None
+        and working_line is not None
+        and trusted_target_to_working.get_target_line_from_source_line(trusted_line)
+        == working_line
+        and source_lines[source_line - 1]
+        == trusted_target_lines[trusted_line - 1]
+        == working_lines[working_line - 1]
+    )
+
+
+def _prepare_presence_alternative_reversal(
+    workspace: MatcherWorkspace,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    alternatives: Sequence[ResolvedPresenceSourceAlternative],
+    trusted_anchor_pairs: Sequence[tuple[int, int]],
+    applied_presence_lines: LineRanges | None,
+    source_to_working: LineMapping,
+    source_to_trusted_target: LineMapping | None,
+    trusted_target_to_working: LineMapping | None,
+    trusted_target_lines: Sequence[bytes] | None,
+) -> _PreparedPresenceAlternativeReversal:
+    """Collect the anchors and lines needed to restore earlier text."""
+    if (
+        not alternatives
+        or not applied_presence_lines
+        or source_to_trusted_target is None
+        or trusted_target_to_working is None
+        or trusted_target_lines is None
+    ):
+        return _PreparedPresenceAlternativeReversal.empty()
+
+    anchors = workspace.record_vector(
+        len(trusted_anchor_pairs)
+        + sum(
+            len(alternative.leading_separator)
+            + len(alternative.claimed_prefix)
+            + len(alternative.claimed_suffix)
+            for alternative in alternatives
+        ),
+        "QQ",
+    )
+    for source_line, target_line in trusted_anchor_pairs:
+        anchors.append((source_line, target_line))
+    introduced_presence = LineRangeBuilder()
+    structural_lines = LineRangeBuilder()
+    has_realized_alternative = False
+
+    for alternative in alternatives:
+        if any(
+            not applied_presence_lines.contains_range(range_start, range_end)
+            for range_start, range_end in alternative.claimed_ranges
+        ):
+            continue
+        realized = _realize_presence_source_alternative(
+            source_lines,
+            working_lines,
+            source_to_working,
+            alternative,
+        )
+        if realized is None:
+            continue
+        if all(
+            _source_line_is_inherited_through_trusted_target(
+                source_lines,
+                working_lines,
+                trusted_target_lines,
+                source_offset + 1,
+                source_to_working,
+                source_to_trusted_target,
+                trusted_target_to_working,
+            )
+            for source_offset in range(
+                alternative.claimed_prefix.start.offset,
+                alternative.claimed_prefix.end.offset,
+            )
+        ):
+            continue
+
+        has_realized_alternative = True
+        for source_span, target_span in (
+            (alternative.leading_separator, realized.target_separator),
+            (alternative.claimed_prefix, realized.target_prefix),
+            (alternative.claimed_suffix, realized.target_suffix),
+        ):
+            for offset in range(len(source_span)):
+                anchors.append(
+                    (
+                        source_span.start.offset + offset + 1,
+                        target_span.start.offset + offset + 1,
+                    )
+                )
+        for range_start, range_end in alternative.claimed_ranges:
+            introduced_presence.add_range(range_start, range_end)
+
+        separator_line = alternative.leading_separator_line
+        if not _source_line_is_inherited_through_trusted_target(
+            source_lines,
+            working_lines,
+            trusted_target_lines,
+            separator_line,
+            source_to_working,
+            source_to_trusted_target,
+            trusted_target_to_working,
+        ):
+            structural_lines.add_line(separator_line)
+
+    if not has_realized_alternative:
+        return _PreparedPresenceAlternativeReversal.empty()
+
+    sort_mapped_records(anchors)
+    retained_count = 0
+    previous_source = 0
+    previous_target = 0
+    for source_line, target_line in anchors:
+        if (source_line, target_line) == (previous_source, previous_target):
+            continue
+        if source_line <= previous_source or target_line <= previous_target:
+            return _PreparedPresenceAlternativeReversal.empty()
+        anchors[retained_count] = (source_line, target_line)
+        retained_count += 1
+        previous_source = source_line
+        previous_target = target_line
+    anchors.truncate(retained_count)
+    return _PreparedPresenceAlternativeReversal(
+        cast(Sequence[tuple[int, int]], anchors),
+        introduced_presence.finish(),
+        structural_lines.finish(),
+    )
 
 
 @contextmanager
@@ -235,6 +496,14 @@ def _discard_batch_acquired_line_chunks(
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
+    presence_alternatives = (
+        resolve_presence_source_alternatives(
+            presence_line_set,
+            source_lines,
+        )
+        if applied_presence_lines and trusted_target_lines is not None
+        else ()
+    )
 
     with ExitStack() as stack:
         discard_workspace = stack.enter_context(MatcherWorkspace())
@@ -277,6 +546,26 @@ def _discard_batch_acquired_line_chunks(
                 anchor_lines=trusted_anchor_result[1],
             )
         )
+        alternative_reversal = _prepare_presence_alternative_reversal(
+            discard_workspace,
+            source_lines,
+            working_lines,
+            presence_alternatives,
+            trusted_anchor_result[0],
+            applied_presence_lines,
+            source_to_working,
+            source_to_trusted_target,
+            trusted_target_to_working,
+            trusted_target_lines,
+        )
+        if alternative_reversal:
+            source_to_working = stack.enter_context(
+                match_lines(
+                    source_lines,
+                    working_lines,
+                    anchor_pairs=alternative_reversal.anchor_pairs,
+                )
+            )
         independent_insertion_lines = _trusted_independent_insertion_lines(
             discard_workspace,
             ownership,
@@ -299,6 +588,7 @@ def _discard_batch_acquired_line_chunks(
             source_to_working,
             source_to_trusted_target,
             trusted_target_to_working,
+            introduced_presence_lines=(alternative_reversal.introduced_presence_lines),
         )
         with _acquire_discard_baseline_anchor_pairs(
             source_lines,
@@ -347,6 +637,7 @@ def _discard_batch_acquired_line_chunks(
                 trusted_insertion_lines=trusted_insertion_lines,
                 preserved_presence_lines=(preexisting_applied_presence),
                 separately_restored_ranges=(separately_restored_presence_ranges),
+                introduced_structural_lines=alternative_reversal.structural_lines,
                 independent_insertion_lines=independent_insertion_lines,
             )
             if updated_entries is not realized_entries:
@@ -595,6 +886,7 @@ class _TrustedPreexistingAppliedPresence(Container[int]):
         source_to_working: LineMapping,
         source_to_trusted_target: LineMapping,
         trusted_target_to_working: LineMapping,
+        introduced_presence_lines: LineRanges,
     ) -> None:
         self._source_lines = source_lines
         self._working_lines = working_lines
@@ -604,30 +896,24 @@ class _TrustedPreexistingAppliedPresence(Container[int]):
         self._source_to_working = source_to_working
         self._source_to_trusted_target = source_to_trusted_target
         self._trusted_target_to_working = trusted_target_to_working
+        self._introduced_presence_lines = introduced_presence_lines
 
     def __contains__(self, source_line: object) -> bool:
         if (
             type(source_line) is not int
             or source_line not in self._owned_presence_lines
             or source_line not in self._applied_presence_lines
+            or source_line in self._introduced_presence_lines
         ):
             return False
-        trusted_line = self._source_to_trusted_target.get_target_line_from_source_line(
-            source_line
-        )
-        working_line = self._source_to_working.get_target_line_from_source_line(
-            source_line
-        )
-        return (
-            trusted_line is not None
-            and working_line is not None
-            and self._trusted_target_to_working.get_target_line_from_source_line(
-                trusted_line
-            )
-            == working_line
-            and self._source_lines[source_line - 1]
-            == self._trusted_target_lines[trusted_line - 1]
-            == self._working_lines[working_line - 1]
+        return _source_line_is_inherited_through_trusted_target(
+            self._source_lines,
+            self._working_lines,
+            self._trusted_target_lines,
+            source_line,
+            self._source_to_working,
+            self._source_to_trusted_target,
+            self._trusted_target_to_working,
         )
 
 
@@ -640,6 +926,8 @@ def _trusted_preexisting_applied_presence(
     source_to_working: LineMapping,
     source_to_trusted_target: LineMapping | None,
     trusted_target_to_working: LineMapping | None,
+    *,
+    introduced_presence_lines: LineRanges,
 ) -> Container[int] | None:
     """Return a storage-bounded proof for presence inherited from the index."""
     if (
@@ -658,6 +946,7 @@ def _trusted_preexisting_applied_presence(
         source_to_working,
         source_to_trusted_target,
         trusted_target_to_working,
+        introduced_presence_lines,
     )
 
 

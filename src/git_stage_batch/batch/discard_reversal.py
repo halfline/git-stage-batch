@@ -44,10 +44,16 @@ def reverse_presence_constraints(
     trusted_insertion_lines: LineSelection | None = None,
     preserved_presence_lines: Container[int] | None = None,
     separately_restored_ranges: Sequence[tuple[int, ...]] = (),
+    introduced_structural_lines: LineSelection | None = None,
     independent_insertion_lines: LineSelection | None = None,
 ) -> RealizedEntries:
     """Replace or remove batch-owned claimed lines during discard."""
     processed_replace_regions: set[int] = set()
+    structural_lines = (
+        LineRanges.empty()
+        if introduced_structural_lines is None
+        else coerce_line_ranges(introduced_structural_lines)
+    )
     trusted_lines = (
         LineRanges.empty()
         if trusted_insertion_lines is None
@@ -184,6 +190,7 @@ def reverse_presence_constraints(
         copy_start: int | None = 0
 
         presence_lines = coerce_line_ranges(presence_line_set)
+        reversed_lines = presence_lines.union(structural_lines)
         if isinstance(entries, RealizedEntries):
             for run in entries.provenance_runs():
                 if run.source_start == 0:
@@ -191,10 +198,8 @@ def reverse_presence_constraints(
 
                 run_length = run.dest_end - run.dest_start
                 run_source_end = run.source_start + run_length - 1
-                selected_lines = presence_lines.intersection(
-                    LineRanges.from_ranges((
-                        (run.source_start, run_source_end),
-                    ))
+                selected_lines = reversed_lines.intersection(
+                    LineRanges.from_ranges(((run.source_start, run_source_end),))
                 )
                 if not selected_lines:
                     continue
@@ -216,7 +221,8 @@ def reverse_presence_constraints(
                         )
                         flush_copy(copy_start, index)
                         copy_start = None
-                        restore_source_line(source_line)
+                        if source_line not in structural_lines:
+                            restore_source_line(source_line)
                         copy_start = index + 1
 
             if copy_start is not None:
@@ -228,15 +234,17 @@ def reverse_presence_constraints(
             entry_source_line = realized_entry_source_line_at(entries, index)
             if (
                 entry_source_line is not None
-                and entry_source_line in presence_lines
+                and entry_source_line in reversed_lines
                 and (
-                    preserved_presence_lines is None
+                    entry_source_line in structural_lines
+                    or preserved_presence_lines is None
                     or entry_source_line not in preserved_presence_lines
                 )
             ):
                 flush_copy(copy_start, index)
                 copy_start = None
-                restore_source_line(entry_source_line)
+                if entry_source_line not in structural_lines:
+                    restore_source_line(entry_source_line)
                 copy_start = index + 1
             elif copy_start is None:
                 copy_start = index

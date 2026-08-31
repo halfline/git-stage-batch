@@ -8,6 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import AbstractSet, TYPE_CHECKING, cast, overload
 
+from ...core.coordinates import LineBoundary
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...core.mapped_storage import MappedRecordVector
 from ...core.text_lines import normalize_line_sequence_endings
@@ -25,7 +26,9 @@ from ..line_matching.sequence_equality import (
     line_slice_equals as _line_slice_matches,
 )
 from .presence_context import (
+    PresencePlacementAmbiguityError,
     PresenceRunPlacement,
+    ReplacementPlacement,
     contextual_presence_placements as _contextual_presence_placements,
     _iter_missing_presence_clusters,
 )
@@ -809,6 +812,8 @@ def check_structural_validity(
     require_distinctive_presence_context: bool = False,
     distinctive_presence_context_lines: LineSelection | None = None,
     recorded_presence_context_lines: LineSelection | None = None,
+    include_leading_blank_for_line: Callable[[int], bool] | None = None,
+    replacement_units: Sequence[ReplacementUnit] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[PresenceRunPlacement, ...] | None:
     """Validate that batch can be safely applied given structural alignment.
@@ -918,36 +923,139 @@ def check_structural_validity(
     if has_unmapped_deletion_anchor and not has_unmapped_claimed_deletion_anchor:
         return None
 
-    _missing_presence_lines, presence_placements = _contextual_presence_placements(
-        source_lines,
-        target_lines,
-        claimed_lines,
-        line_mapping,
-        trusted_source_lines={
-            deletion.anchor_line
-            for deletion in deletions
-            if deletion.anchor_line is not None and deletion.content_lines
-        },
-        require_distinctive_context=require_distinctive_presence_context,
-        distinctive_context_lines=distinctive_presence_context_lines,
-        recorded_context_lines=recorded_presence_context_lines,
-        spool_dir=spool_dir,
-    )
+    trusted_source_lines = {
+        deletion.anchor_line
+        for deletion in deletions
+        if deletion.anchor_line is not None and deletion.content_lines
+    }
+    replacement_placements: tuple[ReplacementPlacement, ...] = ()
+
+    def place_presence() -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
+        return _contextual_presence_placements(
+            source_lines,
+            target_lines,
+            claimed_lines,
+            line_mapping,
+            replacement_placements=replacement_placements,
+            trusted_source_lines=trusted_source_lines,
+            require_distinctive_context=require_distinctive_presence_context,
+            distinctive_context_lines=distinctive_presence_context_lines,
+            recorded_context_lines=recorded_presence_context_lines,
+            include_leading_blank_for_line=include_leading_blank_for_line,
+            spool_dir=spool_dir,
+        )
+
+    try:
+        _missing_presence_lines, presence_placements = place_presence()
+    except PresencePlacementAmbiguityError:
+        replacement_placements = _verified_replacement_placements(
+            replacement_units,
+            deletions,
+            claimed_lines,
+            target_lines,
+            line_mapping,
+            spool_dir=spool_dir,
+        )
+        if not replacement_placements:
+            raise
+        _missing_presence_lines, presence_placements = place_presence()
     # Let absence realization report its more precise missing-anchor error once
     # nearby mapped context has allowed an unmapped deletion anchor through.
     # Presence placement still has to run first: an unrelated missing anchor
     # must not disable ambiguity refusal for every claimed line in the file.
     if has_unmapped_deletion_anchor:
         return presence_placements
-    _check_unbounded_trailing_context(
-        line_mapping,
-        claimed_lines,
-        deletions,
-        source_lines,
-        target_lines,
-        presence_placements,
-    )
+    try:
+        _check_unbounded_trailing_context(
+            line_mapping,
+            claimed_lines,
+            deletions,
+            source_lines,
+            target_lines,
+            presence_placements,
+        )
+    except _MergeError:
+        if replacement_placements:
+            raise
+        replacement_placements = _verified_replacement_placements(
+            replacement_units,
+            deletions,
+            claimed_lines,
+            target_lines,
+            line_mapping,
+            spool_dir=spool_dir,
+        )
+        if not replacement_placements:
+            raise
+        _missing_presence_lines, presence_placements = place_presence()
+        _check_unbounded_trailing_context(
+            line_mapping,
+            claimed_lines,
+            deletions,
+            source_lines,
+            target_lines,
+            presence_placements,
+        )
     return presence_placements
+
+
+def _verified_replacement_placements(
+    replacement_units: Sequence[ReplacementUnit],
+    deletions: Sequence[AbsenceClaim],
+    selected_lines: LineSelection,
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+    *,
+    spool_dir: str | Path | None,
+) -> tuple[ReplacementPlacement, ...]:
+    """Return split replacements whose old text fixes their target gap."""
+    if not replacement_units:
+        return ()
+
+    selected = coerce_line_ranges(selected_lines)
+    placements: list[ReplacementPlacement] = []
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        mapped_source_lines = build_mapped_source_line_index(workspace, mapping)
+        for unit in replacement_units:
+            source_ranges = _collect_replacement_source_ranges(
+                workspace,
+                unit.presence_lines,
+            )
+            if source_ranges is None:
+                continue
+            try:
+                unit_lines = LineRanges.from_ranges(
+                    _selected_replacement_source_ranges(source_ranges, selected)
+                )
+            finally:
+                workspace.close_resource(source_ranges)
+            if not unit_lines:
+                continue
+
+            old_side = _replacement_old_side_realization(
+                unit.deletion_indices,
+                deletions,
+                target_lines,
+                mapping,
+                unit_lines,
+                spool_dir=spool_dir,
+                mapped_source_lines=mapped_source_lines,
+            )
+            if (
+                old_side is None
+                or old_side.state is not ReplacementOldSideState.FULL
+                or old_side.target_position is None
+            ):
+                continue
+            placements.append(
+                ReplacementPlacement(
+                    unit_lines,
+                    LineBoundary(old_side.target_position),
+                )
+            )
+
+    placements.sort(key=lambda placement: placement.source_lines.ranges()[0])
+    return tuple(placements)
 
 
 def _check_unbounded_trailing_context(
@@ -972,12 +1080,12 @@ def _check_unbounded_trailing_context(
     )
 
     missing_ranges = missing.ranges()
-    exact_context_runs = LineRanges.from_ranges(
+    verified_runs = LineRanges.from_ranges(
         (placement.run_start, placement.run_end)
         for placement in presence_placements
-        if placement.exact_context_gap
+        if placement.exact_context_gap or placement.verified_replacement_gap
     )
-    for cluster in _iter_missing_presence_clusters(missing, line_mapping):
+    for cluster in _iter_missing_presence_clusters(missing_ranges, line_mapping):
         if cluster.has_locally_collapsed_target_gap():
             continue
         before_source_line = None if cluster.before is None else cluster.before[0]
@@ -999,7 +1107,7 @@ def _check_unbounded_trailing_context(
             cluster.run_stop_index,
         ):
             run_start, run_end = missing_ranges[run_index]
-            if exact_context_runs.count(run_start, run_end) == (
+            if verified_runs.count(run_start, run_end) == (
                 run_end - run_start + 1
             ):
                 continue

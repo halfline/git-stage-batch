@@ -12,6 +12,7 @@ from .absence_constraints import (
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
 from ..line_matching.match_workspace import MatcherWorkspace
+from ..line_matching.occurrence_index import normalized_line_payload
 from .candidates import MergeResolution as _MergeResolution
 from .presence_context import (
     PresenceRunPlacement as _PresenceRunPlacement,
@@ -42,6 +43,9 @@ from ...i18n import _
 
 if TYPE_CHECKING:
     from ..ownership.absence_claims import AbsenceClaim
+    from ..ownership.resolved_presence_alternatives import (
+        ResolvedPresenceSourceAlternative,
+    )
 
 
 _PRESENCE_CANDIDATE_CAP = 50
@@ -58,6 +62,7 @@ def apply_presence_constraints(
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
+    source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
@@ -96,6 +101,7 @@ def apply_presence_constraints(
             require_distinctive_context=require_distinctive_context,
             distinctive_context_lines=distinctive_context_lines,
             contextual_placements=contextual_placements,
+            source_alternatives=source_alternatives,
             collapsing_target_spans=collapsing_target_spans,
             spool_dir=spool_dir,
         )
@@ -130,6 +136,7 @@ def _apply_presence_constraints_with_mapping(
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
+    source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
@@ -249,6 +256,7 @@ def _apply_presence_constraints_with_mapping(
                 presence_line_set,
                 mapping,
                 placements,
+                source_alternatives=source_alternatives,
                 spool_dir=spool_dir,
             )
 
@@ -318,11 +326,20 @@ def _realize_contextual_placements(
     mapping: LineMapping,
     placements: Sequence[_PresenceRunPlacement],
     *,
+    source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Insert missing runs at gaps chosen from distinctive context."""
     result = RealizedEntries(spool_dir=spool_dir)
     working_idx = 0
+    structural_prefixes = _structural_prefix_lines_for_placements(
+        source_lines,
+        working_lines,
+        mapping,
+        placements,
+        presence_line_set,
+        source_alternatives,
+    )
 
     for placement in placements:
         if working_idx < placement.gap_index:
@@ -336,6 +353,16 @@ def _realize_contextual_placements(
             )
             working_idx = placement.gap_index
 
+        structural_prefix_line = structural_prefixes.get(
+            (placement.run_start, placement.run_end)
+        )
+        if structural_prefix_line is not None:
+            result.append_line_from(
+                source_lines,
+                structural_prefix_line - 1,
+                source_line=structural_prefix_line,
+                is_claimed=False,
+            )
         result.append_line_range_from(
             source_lines,
             placement.run_start - 1,
@@ -355,6 +382,57 @@ def _realize_contextual_placements(
         )
 
     return result
+
+
+def _structural_prefix_lines_for_placements(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    mapping: LineMapping,
+    placements: Sequence[_PresenceRunPlacement],
+    presence_lines: LineSelection,
+    source_alternatives: Sequence["ResolvedPresenceSourceAlternative"],
+) -> dict[tuple[int, int], int]:
+    """Find missing blank lines that belong before inserted text."""
+    placement_by_run = {
+        (placement.run_start, placement.run_end): placement for placement in placements
+    }
+    prefixes: dict[tuple[int, int], int] = {}
+
+    for placement in placements:
+        separator_line = placement.run_start - 1
+        preceding_line = separator_line - 1
+        gap_index = placement.gap_index
+        if (
+            not placement.include_leading_blank
+            or preceding_line < 1
+            or separator_line in presence_lines
+            or normalized_line_payload(source_lines[separator_line - 1])
+            or mapping.get_target_line_from_source_line(separator_line) is not None
+            or mapping.get_target_line_from_source_line(preceding_line) != gap_index
+            or gap_index <= 0
+            or not normalized_line_payload(working_lines[gap_index - 1])
+        ):
+            continue
+        prefixes[(placement.run_start, placement.run_end)] = separator_line
+
+    for alternative in source_alternatives:
+        prefix_range, suffix_range = alternative.claimed_ranges
+        prefix_placement = placement_by_run.get(prefix_range)
+        suffix_placement = placement_by_run.get(suffix_range)
+        if (
+            prefix_placement is None
+            or suffix_placement is None
+            or prefix_placement.gap_index != suffix_placement.gap_index
+        ):
+            continue
+        separator_line = alternative.leading_separator_line
+        if mapping.get_target_line_from_source_line(separator_line) is not None:
+            continue
+        gap_index = prefix_placement.gap_index
+        if gap_index <= 0 or not normalized_line_payload(working_lines[gap_index - 1]):
+            continue
+        prefixes[prefix_range] = separator_line
+    return prefixes
 
 
 def _missing_claimed_lines(
@@ -393,6 +471,7 @@ def satisfy_constraints(
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
+    source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
@@ -440,6 +519,7 @@ def satisfy_constraints(
             require_distinctive_context=require_distinctive_context,
             distinctive_context_lines=distinctive_context_lines,
             contextual_placements=contextual_placements,
+            source_alternatives=source_alternatives,
             collapsing_target_spans=collapsing_target_spans,
             spool_dir=spool_dir,
         )

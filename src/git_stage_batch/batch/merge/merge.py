@@ -61,6 +61,9 @@ from .validation import (
 )
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
+from ..ownership.resolved_presence_alternatives import (
+    resolve_presence_source_alternatives,
+)
 from ..realization.entry_storage import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
@@ -572,6 +575,7 @@ def _build_structural_realized_entries(
                 working_lines,
                 distinctive_presence_context_lines=(distinctive_presence_context_lines),
                 recorded_presence_context_lines=(recorded_presence_context_lines),
+                replacement_units=ownership.replacement_units,
                 spool_dir=spool_dir,
             )
         except PresencePlacementAmbiguityError:
@@ -587,6 +591,10 @@ def _build_structural_realized_entries(
             resolution=resolution,
             distinctive_context_lines=distinctive_presence_context_lines,
             contextual_placements=contextual_placements,
+            source_alternatives=resolve_presence_source_alternatives(
+                presence_line_set,
+                source_lines,
+            ),
             spool_dir=spool_dir,
         )
     except BaseException:

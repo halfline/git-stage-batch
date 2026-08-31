@@ -429,6 +429,67 @@ def test_translate_hunk_selection_uses_file_derived_replacement_runs():
     )
 
 
+def test_translate_hunk_selection_pairs_additions_after_selected_old_text():
+    """A selected sub-edit should survive a wider replacement run."""
+    lines = [
+        LineEntry(1, "-", 4, None, text_bytes=b"old state", source_line=3),
+        LineEntry(2, "-", 5, None, text_bytes=b"old condition", source_line=3),
+        LineEntry(3, "-", 6, None, text_bytes=b"old count", source_line=3),
+        LineEntry(4, "+", None, 4, text_bytes=b"new state", source_line=4),
+        LineEntry(5, "+", None, 5, text_bytes=b"new condition", source_line=5),
+        LineEntry(6, "+", None, 6, text_bytes=b"continued", source_line=6),
+        LineEntry(
+            7,
+            "+",
+            None,
+            7,
+            text_bytes=b"time",
+            source_line=7,
+            has_baseline_reference_after=True,
+            baseline_reference_after_line=6,
+            baseline_reference_after_text_bytes=b"old count",
+            has_baseline_reference_before=True,
+            baseline_reference_before_line=7,
+            baseline_reference_before_text_bytes=b"tail",
+        ),
+        LineEntry(
+            8,
+            "+",
+            None,
+            8,
+            text_bytes=b"new count",
+            source_line=8,
+            has_baseline_reference_after=True,
+            baseline_reference_after_line=6,
+            baseline_reference_after_text_bytes=b"old count",
+            has_baseline_reference_before=True,
+            baseline_reference_before_line=7,
+            baseline_reference_before_text_bytes=b"tail",
+        ),
+        LineEntry(None, " ", 7, 9, text_bytes=b"tail", source_line=9),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {3, 7, 8},
+        replacement_line_runs=[ReplacementLineRun(4, 6, 4, 8)],
+        baseline_lines=[
+            b"one\n",
+            b"two\n",
+            b"three\n",
+            b"old state\n",
+            b"old condition\n",
+            b"old count\n",
+            b"tail\n",
+        ],
+    )
+
+    assert list(ownership.deletions[0].content_lines) == [b"old count\n"]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["7-8"], deletion_indices=[0]),
+    ]
+
+
 def test_translate_hunk_selection_records_parent_origin_for_split_replacement():
     """Split replacement sub-units should remember their full parent run."""
     lines = [

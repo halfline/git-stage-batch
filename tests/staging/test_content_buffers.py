@@ -795,6 +795,27 @@ class TestBuildTargetIndexContent:
 
         assert result == b"new-a\nnew-b\nold-b\nnew-c\nnew-d\n"
 
+    def test_complete_added_side_retains_its_old_parent_span(self):
+        """A selected full new side remains bound to its unselected old peer."""
+        line_changes = LineLevelChange(
+            path="Makefile",
+            header=HunkHeader(3, 1, 3, 4),
+            lines=[
+                LineEntry(1, "-", 3, None, text_bytes=b"old"),
+                LineEntry(2, "+", None, 3, text_bytes=b"new-a"),
+                LineEntry(3, "+", None, 4, text_bytes=b"new-b"),
+                LineEntry(4, "+", None, 5, text_bytes=b"new-c"),
+                LineEntry(5, "+", None, 6, text_bytes=b"new-d"),
+            ],
+        )
+
+        assert content_buffers_module.replacement_baseline_span_indices(
+            line_changes,
+            {2, 3, 4, 5},
+            6,
+            allow_incomplete_addition_span=True,
+        ) == (2, 3)
+
     def test_replace_selection_validation_avoids_line_scale_python_heap(self):
         """Position validation must scan changed rows without materializing them."""
         heap_peaks = []

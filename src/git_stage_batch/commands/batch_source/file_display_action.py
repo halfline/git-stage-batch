@@ -19,6 +19,9 @@ from ...data.batch_selected_changes import (
     compute_batch_binary_fingerprint,
     compute_batch_gitlink_fingerprint,
 )
+from ...data.applied_batch_overlays import (
+    fresh_applied_batch_overlay_for_path,
+)
 from ...data.file_review.pages import normalize_page_spec
 from ...data.file_review.records import ReviewSource
 from ...data.file_review.model import FileReviewModel
@@ -155,7 +158,12 @@ def show_batch_source_file_display(
         print_gitlink_change(gitlink_change)
         return
 
-    rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
+    rendered = render_batch_file_display(
+        batch_name,
+        file_path,
+        metadata=metadata,
+        applied_overlay=fresh_applied_batch_overlay_for_path(file_path),
+    )
     if rendered is None:
         print(
             _("No changes for file '{file}' in batch '{name}'.").format(

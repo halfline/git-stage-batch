@@ -13,6 +13,8 @@ from typing import cast
 
 from ...batch.complete_source_replacement import (
     materialize_untracked_source_replacement,
+    promote_untracked_presence_to_complete_source_replacement,
+    refresh_complete_source_replacement,
 )
 from ...batch.source.annotation import annotate_with_batch_source_working_lines
 from ...batch.replacement_alternatives import (
@@ -942,124 +944,162 @@ def _merge_replacement_with_batch(
             f"{batch_baseline_commit}:{selection.file_path}"
         )
     )
-    with (
-        old_source_buffer as old_source_lines,
-        advance_source_lines_preserving_existing_presence(
-            old_lines=old_source_lines,
-            working_lines=selection.rewritten_working_lines,
-            ownership=existing_ownership,
-            advancing_working_ranges=(
-                selection.rewritten_selected_ids
-                if selection.replacement_alternatives is not None
-                else None
+    with old_source_buffer as old_source_lines:
+        old_bound_ownership = SourceBoundOwnership(
+            content_snapshot(
+                selection.file_path,
+                old_source_lines,
+                space=BatchSourceSpace,
             ),
-            advancing_alternatives=selection.replacement_alternatives,
-        ) as source_with_provenance,
-    ):
-        remapped_existing_ownership = remap_batch_ownership_with_lineage(
-            ownership=existing_ownership,
-            lineage=source_with_provenance.lineage,
+            existing_ownership,
         )
-        with _acquire_rewritten_source_projection(
-            selection,
-            source_lines=source_with_provenance.source_buffer,
-            transform=ExactLineageSourceCoordinates(
-                source_with_provenance.lineage
-            ),
-        ) as source_projection:
-            origin_source_projection = (
-                BatchSourceExactTransform.from_rewritten_working_lineage(
-                    selection.transformed_projection.rewritten_snapshot,
-                    source_projection.source_snapshot,
-                    source_with_provenance.lineage,
+        refreshed_complete = refresh_complete_source_replacement(
+            old_source_lines,
+            old_bound_ownership,
+            rewritten_lines=selection.rewritten_working_lines,
+            alternatives=selection.replacement_alternatives,
+        )
+        if refreshed_complete is not None:
+            refreshed_complete = ownership_stack.enter_context(refreshed_complete)
+            batch_source_commit = create_batch_source_commit(
+                selection.file_path,
+                file_buffer_override=refreshed_complete.source_buffer,
+            )
+            _record_session_batch_source(selection.file_path, batch_source_commit)
+            return refreshed_complete.bound_ownership, batch_source_commit
+
+        promoted_complete = promote_untracked_presence_to_complete_source_replacement(
+            old_source_lines,
+            old_bound_ownership,
+            rewritten_lines=selection.rewritten_working_lines,
+            alternatives=selection.replacement_alternatives,
+        )
+        if promoted_complete is not None:
+            promoted_complete = ownership_stack.enter_context(promoted_complete)
+            batch_source_commit = create_batch_source_commit(
+                selection.file_path,
+                file_buffer_override=promoted_complete.source_buffer,
+            )
+            _record_session_batch_source(selection.file_path, batch_source_commit)
+            return promoted_complete.bound_ownership, batch_source_commit
+
+        with (
+            advance_source_lines_preserving_existing_presence(
+                old_lines=old_source_lines,
+                working_lines=selection.rewritten_working_lines,
+                ownership=existing_ownership,
+                advancing_working_ranges=(
+                    selection.rewritten_selected_ids
+                    if selection.replacement_alternatives is not None
+                    else None
+                ),
+                advancing_alternatives=selection.replacement_alternatives,
+            ) as source_with_provenance,
+        ):
+            remapped_existing_ownership = remap_batch_ownership_with_lineage(
+                ownership=existing_ownership,
+                lineage=source_with_provenance.lineage,
+            )
+            with _acquire_rewritten_source_projection(
+                selection,
+                source_lines=source_with_provenance.source_buffer,
+                transform=ExactLineageSourceCoordinates(
+                    source_with_provenance.lineage
+                ),
+            ) as source_projection:
+                origin_source_projection = (
+                    BatchSourceExactTransform.from_rewritten_working_lineage(
+                        selection.transformed_projection.rewritten_snapshot,
+                        source_projection.source_snapshot,
+                        source_with_provenance.lineage,
+                    )
                 )
-            )
-            exact_prefix_range = _exact_owned_prefix_source_range(
-                selection,
-                source_with_provenance.source_buffer,
-                translate_working_range=(
-                    source_with_provenance.lineage.translate_working_range
-                ),
-            )
-            exact_alternative_range = _exact_alternative_source_range(
-                selection,
-                source_with_provenance.source_buffer,
-                translate_working_range=(
-                    source_with_provenance.lineage.translate_working_range
-                ),
+                exact_prefix_range = _exact_owned_prefix_source_range(
+                    selection,
+                    source_with_provenance.source_buffer,
+                    translate_working_range=(
+                        source_with_provenance.lineage.translate_working_range
+                    ),
+                )
+                exact_alternative_range = _exact_alternative_source_range(
+                    selection,
+                    source_with_provenance.source_buffer,
+                    translate_working_range=(
+                        source_with_provenance.lineage.translate_working_range
+                    ),
+                )
+                if (
+                    selection.replacement_alternatives is not None
+                    and selection.replacement_alternatives.requires_exact_saved_presence
+                    and (
+                    exact_prefix_range is None
+                    or (
+                        _explicit_alternative_range(selection) is not None
+                        and exact_alternative_range is None
+                    )
+                    )
+                ):
+                    raise ValueError(
+                        "advanced batch source does not preserve the replacement "
+                        "alternatives as contiguous ranges"
+                    )
+                new_ownership = _translate_rewritten_selection_ownership(
+                    selection,
+                    baseline_lines=reference_source_lines,
+                    original_working_lines=original_working_lines,
+                    rewritten_lines=selection.rewritten_working_lines,
+                    exact_presence_range=exact_prefix_range,
+                    source_projection=source_projection,
+                    replacement_origin_source_projection=(
+                        origin_source_projection
+                    ),
+                )
+                new_ownership = _refine_and_preserve_explicit_presence_span_boundary(
+                    new_ownership,
+                    selection=selection,
+                    baseline_lines=reference_source_lines,
+                    source_content_lines=source_with_provenance.source_buffer,
+                    replacement_origin_source_projection=(
+                        origin_source_projection
+                    ),
+                )
+            translate_ownership_baseline_references(
+                new_ownership,
+                reference_source_lines,
+                reference_target_lines,
+                replacement_origin_source_lines=reference_source_lines,
             )
             if (
                 selection.replacement_alternatives is not None
                 and selection.replacement_alternatives.requires_exact_saved_presence
-                and (
-                exact_prefix_range is None
-                or (
-                    _explicit_alternative_range(selection) is not None
-                    and exact_alternative_range is None
-                )
-                )
+                and exact_prefix_range is not None
+                and exact_alternative_range is not None
             ):
-                raise ValueError(
-                    "advanced batch source does not preserve the replacement "
-                    "alternatives as contiguous ranges"
-                )
-            new_ownership = _translate_rewritten_selection_ownership(
-                selection,
-                baseline_lines=reference_source_lines,
-                original_working_lines=original_working_lines,
-                rewritten_lines=selection.rewritten_working_lines,
-                exact_presence_range=exact_prefix_range,
-                source_projection=source_projection,
-                replacement_origin_source_projection=(
-                    origin_source_projection
-                ),
-            )
-            new_ownership = _refine_and_preserve_explicit_presence_span_boundary(
-                new_ownership,
-                selection=selection,
-                baseline_lines=reference_source_lines,
-                source_content_lines=source_with_provenance.source_buffer,
-                replacement_origin_source_projection=(
-                    origin_source_projection
-                ),
-            )
-        translate_ownership_baseline_references(
-            new_ownership,
-            reference_source_lines,
-            reference_target_lines,
-            replacement_origin_source_lines=reference_source_lines,
-        )
-        if (
-            selection.replacement_alternatives is not None
-            and selection.replacement_alternatives.requires_exact_saved_presence
-            and exact_prefix_range is not None
-            and exact_alternative_range is not None
-        ):
-            new_ownership = _add_explicit_source_alternative_replacement(
-                new_ownership,
-                selection=selection,
-                presence_range=exact_prefix_range,
-                alternative_range=exact_alternative_range,
-            )
-        batch_source_commit = create_batch_source_commit(
-            selection.file_path,
-            file_buffer_override=source_with_provenance.source_buffer,
-        )
-        _record_session_batch_source(selection.file_path, batch_source_commit)
-        return (
-            SourceBoundOwnership(
-                content_snapshot(
-                    selection.file_path,
-                    source_with_provenance.source_buffer,
-                    space=BatchSourceSpace,
-                ),
-                merge_batch_ownership(
-                    remapped_existing_ownership,
+                new_ownership = _add_explicit_source_alternative_replacement(
                     new_ownership,
+                    selection=selection,
+                    presence_range=exact_prefix_range,
+                    alternative_range=exact_alternative_range,
+                )
+            batch_source_commit = create_batch_source_commit(
+                selection.file_path,
+                file_buffer_override=source_with_provenance.source_buffer,
+            )
+            _record_session_batch_source(selection.file_path, batch_source_commit)
+            return (
+                SourceBoundOwnership(
+                    content_snapshot(
+                        selection.file_path,
+                        source_with_provenance.source_buffer,
+                        space=BatchSourceSpace,
+                    ),
+                    merge_batch_ownership(
+                        remapped_existing_ownership,
+                        new_ownership,
+                    ),
                 ),
-            ),
-            batch_source_commit,
-        )
+                batch_source_commit,
+            )
 
 
 def _record_session_batch_source(file_path: str, batch_source_commit: str) -> None:

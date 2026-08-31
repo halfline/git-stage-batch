@@ -102,6 +102,9 @@ def selected_batch_review_matches_reset_state(review_state: _records.FileReviewS
     rendered = render_batch_file_display(
         review_state.batch_name,
         review_state.file_path,
+        applied_overlay=fresh_applied_batch_overlay_for_path(
+            review_state.file_path
+        ),
     )
     if rendered is None:
         return False

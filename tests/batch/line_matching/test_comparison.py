@@ -31,6 +31,7 @@ def test_derive_semantic_change_runs_accepts_non_list_sequences(line_sequence):
     assert runs[0].kind == SemanticChangeKind.REPLACEMENT
     assert (runs[0].source_start, runs[0].source_end) == (2, 2)
     assert (runs[0].target_start, runs[0].target_end) == (2, 2)
+    assert runs[0].source_anchor == 1
     assert runs[0].target_anchor == 1
 
 
@@ -59,6 +60,7 @@ def test_trusted_matching_skips_reciprocal_pass_for_disjoint_gaps(monkeypatch):
             source_end=2,
             target_start=2,
             target_end=2,
+            source_anchor=1,
             target_anchor=1,
         )
     ]
@@ -199,6 +201,7 @@ def test_derive_semantic_change_runs_uses_range_records():
             source_end=3,
             target_start=2,
             target_end=3,
+            source_anchor=1,
             target_anchor=1,
         )
     ]
@@ -241,6 +244,7 @@ def test_derive_semantic_change_runs_keeps_large_replacements_compact():
     assert runs[0].kind == SemanticChangeKind.REPLACEMENT
     assert (runs[0].source_start, runs[0].source_end) == (2, 1001)
     assert (runs[0].target_start, runs[0].target_end) == (2, 1001)
+    assert runs[0].source_anchor == 1
     assert runs[0].target_anchor == 1
 
 
@@ -260,6 +264,7 @@ def test_derive_semantic_change_runs_uses_ranges_for_one_sided_changes():
             kind=SemanticChangeKind.DELETION,
             source_start=2,
             source_end=3,
+            source_anchor=1,
             target_anchor=1,
         )
     ]
@@ -268,5 +273,7 @@ def test_derive_semantic_change_runs_uses_ranges_for_one_sided_changes():
             kind=SemanticChangeKind.PRESENCE,
             target_start=2,
             target_end=3,
+            source_anchor=1,
+            target_anchor=1,
         )
     ]

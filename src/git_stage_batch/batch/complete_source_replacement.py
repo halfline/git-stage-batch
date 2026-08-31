@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 from itertools import chain
@@ -19,8 +19,10 @@ from ..core.coordinates import (
     require_same_snapshot,
 )
 from ..core.text_lines import normalize_line_endings
+from ..core.line_selection import LineRanges
 from .file_state import SourceBoundOwnership
 from .line_matching.line_range_view import LineRangeView
+from .line_matching.sequence_equality import line_sequences_equal
 from .ownership.absence_claims import AbsenceClaim
 from .ownership.model import BatchOwnership
 from .ownership.references import BaselineReference
@@ -176,6 +178,75 @@ def materialize_untracked_source_replacement(
         )
 
 
+def promote_untracked_presence_to_complete_source_replacement(
+    source_lines: Sequence[bytes],
+    bound_ownership: SourceBoundOwnership,
+    *,
+    rewritten_lines: Sequence[bytes],
+    alternatives: ExplicitReplacementAlternatives | None,
+) -> MaterializedCompleteSourceReplacement | None:
+    """Store both versions before changing part of a newly added file.
+
+    First check that removing this batch recreates the current worktree. If it
+    does not, another batch may also have changed the file.
+    """
+    ownership = bound_ownership.value
+    if (
+        alternatives is None
+        or not alternatives.uses_untracked_source
+        or alternatives.live is None
+        or alternatives.parent is not None
+        or ownership.deletions
+        or ownership.replacement_units
+        or not ownership.presence_claims
+    ):
+        return None
+    require_same_snapshot(
+        bound_ownership.source_snapshot,
+        content_snapshot(
+            bound_ownership.source_snapshot.path,
+            source_lines,
+            space=BatchSourceSpace,
+        ),
+    )
+    require_same_snapshot(
+        alternatives.edit.rewritten_snapshot,
+        content_snapshot(
+            alternatives.edit.rewritten_snapshot.path,
+            rewritten_lines,
+            space=RewrittenWorktreeSpace,
+        ),
+    )
+    with ExitStack() as stack:
+        prior_worktree = stack.enter_context(
+            _buffer_without_span(rewritten_lines, alternatives.live.span)
+        )
+        require_same_snapshot(
+            alternatives.edit.source_snapshot,
+            content_snapshot(
+                alternatives.edit.source_snapshot.path,
+                prior_worktree,
+                space=WorktreeSpace,
+            ),
+        )
+        expected_predecessor = stack.enter_context(
+            _buffer_without_ranges(
+                source_lines,
+                ownership.presence_line_set(),
+            )
+        )
+        if not line_sequences_equal(expected_predecessor, prior_worktree):
+            return None
+        new_live = stack.enter_context(
+            _buffer_without_span(rewritten_lines, alternatives.saved.span)
+        )
+        return _materialize_complete_source_replacement(
+            bound_ownership.source_snapshot.path,
+            source_lines,
+            new_live,
+        )
+
+
 def _materialize_complete_source_replacement(
     path: str,
     saved_file: Sequence[bytes],
@@ -221,6 +292,24 @@ def _materialize_complete_source_replacement(
     except BaseException:
         new_source.close()
         raise
+
+
+def _buffer_without_ranges(
+    lines: Sequence[bytes],
+    excluded_lines: LineRanges,
+) -> LineBuffer:
+    """Return a buffer that omits the given one-based source ranges."""
+
+    def iter_chunks() -> Iterator[bytes]:
+        previous_end = 0
+        for start, end in excluded_lines.ranges():
+            if start <= previous_end or end > len(lines):
+                raise ValueError("excluded source range is outside its snapshot")
+            yield from LineRangeView(lines, previous_end, start - 1)
+            previous_end = end
+        yield from LineRangeView(lines, previous_end, len(lines))
+
+    return LineBuffer.from_chunks(iter_chunks())
 
 
 def _buffer_without_span(

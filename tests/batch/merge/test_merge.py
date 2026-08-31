@@ -1219,6 +1219,55 @@ def test_nested_source_alternative_projection_avoids_line_scale_python_heap() ->
     assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
+def test_source_alternative_replay_ignores_selected_duplicate_outside_old_side(
+    monkeypatch,
+) -> None:
+    """Coordinate replay uses the durable old side when new-side context collides."""
+    prefix = [b"# Guide\n", b"\n"]
+    final_region = [b"shared line\n", b"final tail\n", b"\n"]
+    predecessor_region = [b"shared line\n", b"predecessor tail\n", b"\n"]
+    suffix = [b"## Build\n", b"\n", b"build details\n"]
+    reference = BaselineReference(
+        after_line=None,
+        after_content=None,
+        before_line=None,
+        before_content=None,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-3"],
+        [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=predecessor_region,
+                baseline_reference=reference,
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["1-3"], [0])],
+    )
+    acquired_mappings = []
+    real_match_lines = merge_module.match_lines
+
+    def track_mapping(*args, **kwargs):
+        mapping = real_match_lines(*args, **kwargs)
+        acquired_mappings.append(mapping)
+        return mapping
+
+    monkeypatch.setattr(merge_module, "match_lines", track_mapping)
+
+    with merge_batch_from_line_sequences_as_buffer(
+        final_region + predecessor_region,
+        ownership,
+        prefix + predecessor_region + suffix,
+    ) as result:
+        assert list(result) == prefix + final_region + suffix
+    assert acquired_mappings
+    for mapping in acquired_mappings:
+        with pytest.raises(ValueError, match="line mapping is closed"):
+            list(mapping.mapped_line_pairs())
+
+
 def test_strict_absence_index_preserves_provenance_initialization_error(
     monkeypatch,
 ) -> None:

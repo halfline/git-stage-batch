@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from enum import Enum, auto
 from types import TracebackType
 from typing import cast
 
@@ -40,6 +41,8 @@ from ..line_matching.lineage import (
 )
 from ..line_matching.transforms import BatchSourceExactTransform
 from ..line_matching.match_workspace import MatcherWorkspace
+from ..line_matching.line_range_view import LineRangeView
+from ..line_matching.sequence_search import iter_exact_sequence_indexes
 from ..line_matching.sequence_equality import line_slice_equals
 from ..merge.baseline_replacement_ranges import collect_replacement_source_ranges
 from ..ownership.model import BatchOwnership
@@ -58,6 +61,14 @@ _SOURCE_RANGE_RECORD_FORMAT = "QQ"
 
 class BatchSourceAdvanceError(ValueError):
     """Expected refusal while reconciling a stale batch source."""
+
+
+class _PartialReplacementSlotState(Enum):
+    """Why new text cannot be inserted at one known position."""
+
+    NOT_FOUND = auto()
+    AMBIGUOUS = auto()
+    ALREADY_RETAINED = auto()
 
 
 @dataclass
@@ -319,6 +330,86 @@ def _required_ranges_in(
         yield max(required_start, source_start), min(required_end, source_end)
 
 
+def _partial_replacement_insertion_slot(
+    run: SemanticChangeRun,
+    old_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    required_ranges: Sequence[tuple[int, ...]],
+    workspace: MatcherWorkspace,
+) -> int | _PartialReplacementSlotState:
+    """Find the one gap where the new lines belong.
+
+    Repeated matches are safe when they all choose the same gap. Otherwise
+    report whether the text is already present, missing, or ambiguous.
+    """
+    assert run.source_start is not None
+    assert run.source_end is not None
+    assert run.target_start is not None
+    assert run.target_end is not None
+    target_lines = LineRangeView(
+        working_lines,
+        run.target_start - 1,
+        run.target_end,
+    )
+    target_count = len(target_lines)
+    candidate_slot: int | None = None
+    found_candidate = False
+    found_retained_candidate = False
+    for source_index in iter_exact_sequence_indexes(
+        old_lines,
+        target_lines,
+        workspace=workspace,
+        start_index=run.source_start - 1,
+        end_index=run.source_end,
+    ):
+        occurrence_start = source_index + 1
+        occurrence_end = occurrence_start + target_count - 1
+        low = 0
+        high = len(required_ranges)
+        while low < high:
+            middle = (low + high) // 2
+            if required_ranges[middle][1] < occurrence_start:
+                low = middle + 1
+            else:
+                high = middle
+        slot = low
+        if slot < len(required_ranges) and required_ranges[slot][0] <= occurrence_end:
+            required_start, required_end = required_ranges[slot]
+            if required_start <= occurrence_start and occurrence_end <= required_end:
+                found_retained_candidate = True
+            continue
+        if found_candidate and slot != candidate_slot:
+            return _PartialReplacementSlotState.AMBIGUOUS
+        candidate_slot = slot
+        found_candidate = True
+    if not found_candidate:
+        if found_retained_candidate:
+            return _PartialReplacementSlotState.ALREADY_RETAINED
+        return _PartialReplacementSlotState.NOT_FOUND
+    assert candidate_slot is not None
+    return candidate_slot
+
+
+def _unmatched_partial_replacement_boundary_slot(
+    run: SemanticChangeRun,
+    retained_ranges: Sequence[tuple[int, ...]],
+) -> int:
+    """Choose a gap beside saved lines at either edge of a change."""
+    assert run.source_start is not None
+    assert run.source_end is not None
+    if not retained_ranges:
+        return 0
+
+    last_start, last_end = retained_ranges[-1]
+    if last_end == run.source_end and last_start > run.source_start:
+        return len(retained_ranges) - 1
+
+    first_start, first_end = retained_ranges[0]
+    if first_start == run.source_start and first_end < run.source_end:
+        return 1
+    return len(retained_ranges)
+
+
 def _line_chunks(
     lines: Sequence[bytes],
     start: int,
@@ -490,15 +581,56 @@ def _advanced_source_chunks(
                         source_end=run.source_end,
                     )
                 else:
-                    for required_start, required_end in (
-                        _required_ranges_in(
+                    retained_ranges = workspace.record_vector(
+                        len(required_source_ranges),
+                        _SOURCE_RANGE_RECORD_FORMAT,
+                    )
+                    try:
+                        for retained_range in _required_ranges_in(
                             required_source_ranges,
                             run.source_start,
                             run.source_end,
+                        ):
+                            retained_ranges.append(retained_range)
+                        slot_result = _partial_replacement_insertion_slot(
+                            run,
+                            old_lines,
+                            working_lines,
+                            retained_ranges,
+                            workspace,
                         )
-                    ):
-                        yield from emit_source(required_start, required_end)
-                    yield from emit_working(run.target_start, run.target_end)
+                        if slot_result is _PartialReplacementSlotState.NOT_FOUND:
+                            insertion_slot = (
+                                _unmatched_partial_replacement_boundary_slot(
+                                    run,
+                                    retained_ranges,
+                                )
+                            )
+                        elif (
+                            slot_result is _PartialReplacementSlotState.ALREADY_RETAINED
+                        ):
+                            insertion_slot = None
+                        elif slot_result is _PartialReplacementSlotState.AMBIGUOUS:
+                            insertion_slot = len(retained_ranges)
+                        else:
+                            insertion_slot = slot_result
+                        for range_index, (
+                            required_start,
+                            required_end,
+                        ) in enumerate(retained_ranges):
+                            if range_index == insertion_slot:
+                                yield from emit_working(
+                                    run.target_start,
+                                    run.target_end,
+                                )
+                            yield from emit_source(required_start, required_end)
+                        if insertion_slot == len(retained_ranges):
+                            yield from emit_working(
+                                run.target_start,
+                                run.target_end,
+                            )
+                    finally:
+                        workspace.close_resource(retained_ranges)
             finally:
                 workspace.close_resource(saved_replacement_spans)
 

@@ -16,7 +16,10 @@ from ...batch.complete_source_replacement import (
     promote_untracked_presence_to_complete_source_replacement,
     refresh_complete_source_replacement,
 )
-from ...batch.source.annotation import annotate_with_batch_source_working_lines
+from ...batch.source.annotation import (
+    acquire_batch_source_mapping,
+    annotate_with_batch_source_working_lines,
+)
 from ...batch.replacement_alternatives import (
     ExplicitReplacementAlternatives,
     ExplicitReplacementParent,
@@ -128,6 +131,7 @@ from ...core.replacement import (
 )
 from ...batch.ownership.model import BatchOwnership
 from ...batch.source.cache import (
+    get_session_source_hint,
     load_session_batch_sources,
     save_session_batch_sources,
 )
@@ -211,6 +215,14 @@ class _ReplacementDestinationState:
     file_exists: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _ReplacementSpanRefinement:
+    """A narrower worktree span and the displayed rows left outside it."""
+
+    worktree_span: LineSpan[WorktreeSpace]
+    excluded_display_ids: LineRanges
+
+
 def _replacement_destination_state(
     batch_name: str,
     file_path: str,
@@ -221,6 +233,114 @@ def _replacement_destination_state(
         files = read_batch_metadata(batch_name).get("files", {})
         file_exists = file_path in files
     return _ReplacementDestinationState(batch_name, file_exists)
+
+
+def _line_through_last_identifier(content: bytes) -> bytes:
+    """Remove indentation and punctuation after the last name character."""
+    body = _line_body(content).strip()
+    for index in range(len(body) - 1, -1, -1):
+        byte = body[index]
+        if (
+            byte == ord("_")
+            or ord("0") <= byte <= ord("9")
+            or ord("A") <= byte <= ord("Z")
+            or ord("a") <= byte <= ord("z")
+            or byte >= 0x80
+        ):
+            return body[: index + 1]
+    return b""
+
+
+def _refine_restoration_after_hidden_prefix(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+    payload_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    *,
+    baseline_start: int,
+    baseline_end: int,
+    worktree_start: int,
+    worktree_end: int,
+) -> _ReplacementSpanRefinement | None:
+    """Leave earlier added lines alone when a prior peel separates them."""
+    baseline_count = baseline_end - baseline_start
+    if (
+        baseline_count <= 0
+        or len(payload_lines) != baseline_count
+        or worktree_end - worktree_start <= baseline_count
+        or any(
+            payload_lines[offset]
+            != _line_body(baseline_lines[baseline_start + offset])
+            for offset in range(baseline_count)
+        )
+    ):
+        return None
+
+    first_baseline_line = _line_body(baseline_lines[baseline_start])
+    first_line_key = _line_through_last_identifier(first_baseline_line)
+    if not first_line_key:
+        return None
+
+    candidate: int | None = None
+    for working_index in range(worktree_start, worktree_end):
+        if _line_through_last_identifier(working_lines[working_index]) != first_line_key:
+            continue
+        if candidate is not None:
+            return None
+        candidate = working_index
+    if (
+        candidate is None
+        or candidate == worktree_start
+        or _line_body(working_lines[candidate]) == first_baseline_line
+        or worktree_end - candidate <= baseline_count
+    ):
+        return None
+
+    excluded_ids = LineRangeBuilder()
+    excluded_count = 0
+    candidate_is_selected_addition = False
+    for line in line_changes.lines:
+        new_line = line.new_line
+        if new_line == candidate + 1 and line.old_line is None:
+            candidate_is_selected_addition = line.id in selected_ids
+        elif worktree_start < new_line <= candidate:
+            if line.id not in selected_ids:
+                return None
+            excluded_ids.add_line(line.id)
+            excluded_count += 1
+    if (
+        not candidate_is_selected_addition
+        or excluded_count != candidate - worktree_start
+    ):
+        return None
+
+    source_hint = get_session_source_hint(line_changes.path)
+    if source_hint is None:
+        return None
+    with acquire_batch_source_mapping(
+        line_changes.path,
+        batch_source_commit=source_hint.commit,
+        working_lines=working_lines,
+    ) as mapping:
+        if mapping is None:
+            return None
+        preceding_source_line = mapping.get_source_line_from_target_line(candidate)
+        candidate_source_line = mapping.get_source_line_from_target_line(candidate + 1)
+        if (
+            preceding_source_line is None
+            or candidate_source_line is None
+            or candidate_source_line <= preceding_source_line + 1
+        ):
+            return None
+
+    return _ReplacementSpanRefinement(
+        worktree_span=LineSpan(
+            LineBoundary(candidate),
+            LineBoundary(worktree_end),
+        ),
+        excluded_display_ids=excluded_ids.finish(),
+    )
 
 
 @contextmanager
@@ -338,6 +458,28 @@ def prepare_discard_line_replacement_selection(
                     original_working_line_count,
                     allow_incomplete_addition_span=uses_explicit_addition_span,
                 )
+                restores_after_hidden_prefix = False
+                if requested_run_has_deletion and not uses_explicit_addition_span:
+                    with replacement_line_bodies(
+                        replacement_payload
+                    ) as payload_lines:
+                        refinement = _refine_restoration_after_hidden_prefix(
+                            line_changes,
+                            effective_ids,
+                            payload_lines,
+                            baseline_lines,
+                            working_lines,
+                            baseline_start=baseline_start,
+                            baseline_end=baseline_end,
+                            worktree_start=replacement_start,
+                            worktree_end=replacement_end,
+                        )
+                    if refinement is not None:
+                        replacement_start = refinement.worktree_span.start.offset
+                        effective_ids.difference_update(
+                            refinement.excluded_display_ids
+                        )
+                        restores_after_hidden_prefix = True
                 selected_working_line_count = replacement_end - replacement_start
                 selects_exact_addition_span = (
                     selected_addition_count is not None
@@ -363,7 +505,10 @@ def prepare_discard_line_replacement_selection(
                         retains_explicit_addition_subspan = (
                             has_explicit_addition_subspan and bool(payload_lines)
                         )
-                        if (
+                        if restores_after_hidden_prefix:
+                            replacement_owned_prefix_count = selected_working_line_count
+                            materializes_saved_then_live = True
+                        elif (
                             not baseline_file_exists
                             and selected_additions_cover_working_span
                             and baseline_start == baseline_end

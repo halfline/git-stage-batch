@@ -17,6 +17,9 @@ from .line_matching.match import match_lines as _match_lines
 from .merge import baseline_anchor_matching as _baseline_anchor_matching
 from .merge import baseline_edits as _baseline_edits
 from .merge.presence_constraints import satisfy_constraints
+from .merge.source_alternative_constraints import (
+    resolve_effective_merge_constraints as _resolve_effective_constraints,
+)
 from .ownership.absence_claims import AbsenceClaim
 from .ownership.model import BatchOwnership
 from .ownership.replacement_units import ReplacementUnit
@@ -125,9 +128,17 @@ def _stream_realized_content_chunks_from_lines(
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes]:
     """Yield realized batch content chunks from normalized line sequences."""
+    persisted = ownership.resolve()
+    effective_constraints = _resolve_effective_constraints(
+        batch_source_lines,
+        persisted,
+        project_root_content=False,
+        spool_dir=spool_dir,
+    )
+    collapsed_source_lines = effective_constraints.source_alternative_lines
     realization_ownership = _ownership_for_realization(ownership)
     resolved = realization_ownership.resolve()
-    presence_line_set = resolved.presence_line_set
+    presence_line_set = effective_constraints.presence_lines
     deletion_claims = resolved.deletion_claims
     has_unequal_replacement_parent = _has_unequal_replacement_parent(
         realization_ownership
@@ -143,6 +154,7 @@ def _stream_realized_content_chunks_from_lines(
             presence_line_set,
             deletion_claims,
             trust_baseline_coordinates=True,
+            collapsed_source_lines=collapsed_source_lines,
             spool_dir=spool_dir,
         )
     )
@@ -168,7 +180,9 @@ def _stream_realized_content_chunks_from_lines(
         ):
             baseline_chunks = (
                 None
-                if not realization_ownership.replacement_units
+                if not (
+                    realization_ownership.replacement_units or collapsed_source_lines
+                )
                 else _baseline_edits.try_apply_baseline_coordinate_edits(
                     batch_source_lines,
                     base_lines,
@@ -181,6 +195,7 @@ def _stream_realized_content_chunks_from_lines(
                     prefer_source_mapping_for_presence=True,
                     trust_baseline_coordinates=True,
                     source_to_working_mapping=mapping,
+                    collapsed_source_lines=collapsed_source_lines,
                     spool_dir=spool_dir,
                 )
             )
@@ -201,6 +216,7 @@ def _stream_realized_content_chunks_from_lines(
                     presence_line_set,
                     deletion_claims,
                     trust_baseline_coordinates=True,
+                    collapsed_source_lines=collapsed_source_lines,
                     spool_dir=spool_dir,
                 )
             if baseline_chunks is not None:
@@ -223,6 +239,7 @@ def _stream_realized_content_chunks_from_lines(
             presence_line_set,
             deletion_claims,
             trust_baseline_coordinates=True,
+            collapsed_source_lines=collapsed_source_lines,
             spool_dir=spool_dir,
         )
         if baseline_chunks is None:

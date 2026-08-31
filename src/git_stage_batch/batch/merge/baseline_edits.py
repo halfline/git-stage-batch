@@ -6,7 +6,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...core.line_selection import LineSelection, coerce_line_ranges
+from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from .baseline_anchor_matching import (
     live_coordinate_edits_are_safe as _live_coordinate_edits_are_safe,
@@ -139,6 +139,7 @@ def try_apply_baseline_coordinate_edits(
     source_to_trusted_target_mapping: LineMapping | None = None,
     trusted_target_to_working_mapping: LineMapping | None = None,
     spool_dir: str | Path | None = None,
+    collapsed_source_lines: LineRanges = LineRanges.empty(),
 ) -> Iterator[bytes] | None:
     """Return content edited at recorded baseline coordinates, if safe.
 
@@ -215,6 +216,7 @@ def try_apply_baseline_coordinate_edits(
             source_to_trusted_target_mapping=(source_to_trusted_target_mapping),
             trusted_target_to_working_mapping=(trusted_target_to_working_mapping),
             spool_dir=spool_dir,
+            collapsed_source_lines=collapsed_source_lines,
         )
         if plan is None:
             workspace.close()
@@ -258,6 +260,7 @@ def _build_baseline_edit_plan(
     source_to_trusted_target_mapping: LineMapping | None,
     trusted_target_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
+    collapsed_source_lines: LineRanges,
 ) -> _BaselineEditPlan | None:
     """Build and validate one storage-backed exact-coordinate edit plan."""
     replacement_units = getattr(ownership, "replacement_units", [])
@@ -355,6 +358,7 @@ def _build_baseline_edit_plan(
         trust_baseline_coordinates=trust_baseline_coordinates,
         source_to_working_mapping=source_to_working_mapping,
         spool_dir=spool_dir,
+        collapsed_source_lines=collapsed_source_lines,
     )
     if presence_insertion_plan is None:
         return None

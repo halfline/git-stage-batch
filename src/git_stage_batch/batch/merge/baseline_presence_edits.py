@@ -288,6 +288,7 @@ def _mapping_preserves_unpositioned_presence(
     allow_unique_mapped_gap: bool,
     source_to_working_mapping: LineMapping | None,
     occurrence_index: LinePayloadOccurrenceIndex | None,
+    collapsed_source_lines: LineRanges,
 ) -> bool:
     """Resolve unpositioned lines through mapping and adjacent mapped anchors."""
     if not unmapped_lines:
@@ -330,6 +331,21 @@ def _mapping_preserves_unpositioned_presence(
                 previous_missing_source is not None
                 and claimed_line == previous_missing_source + 1
             )
+            if (
+                not continues_missing_run
+                and previous_missing_source is not None
+                and current_insertion_position is not None
+                and previous_missing_source + 1 < claimed_line
+                and collapsed_source_lines.contains_range(
+                    previous_missing_source + 1,
+                    claimed_line - 1,
+                )
+                and (
+                    latest_mapped_source is None
+                    or latest_mapped_source <= previous_missing_source
+                )
+            ):
+                continues_missing_run = True
             if continues_missing_run and current_saved_boundary is not None:
                 continues_missing_run = (
                     presence_references.reference_for(claimed_line)
@@ -568,6 +584,7 @@ def plan_presence_insertions(
     trust_baseline_coordinates: bool,
     source_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
+    collapsed_source_lines: LineRanges = LineRanges.empty(),
 ) -> tuple[MappedRecordVector, LineMapping | None] | None:
     """Plan explicit insertions and validate presence resolved by matching."""
     position_records = _collect_presence_position_records(
@@ -613,6 +630,7 @@ def plan_presence_insertions(
             allow_unique_mapped_gap=not trust_baseline_coordinates,
             source_to_working_mapping=mapping,
             occurrence_index=occurrence_index,
+            collapsed_source_lines=collapsed_source_lines,
         ):
             return None
 

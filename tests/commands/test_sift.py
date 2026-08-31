@@ -114,6 +114,15 @@ def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
     assert len(resolved.deletion_claims) == 1
     assert isinstance(resolved.deletion_claims[0].content_lines, LineBuffer)
     assert list(resolved.deletion_claims[0].content_lines) == [b"old\n"]
+    assert ownership.presence_baseline_references()[2].after_line == 1
+    assert resolved.deletion_claims[0].baseline_reference is not None
+    assert resolved.deletion_claims[0].baseline_reference.after_line == 1
+    assert len(ownership.replacement_units) == 1
+    assert ownership.replacement_units[0].presence_lines == ["2"]
+    assert ownership.replacement_units[0].deletion_indices == [0]
+    assert ownership.replacement_units[0].origin is not None
+    assert ownership.replacement_units[0].origin.old_start == 2
+    assert ownership.replacement_units[0].origin.new_start == 2
 
 
 def test_build_sift_ownership_consumes_target_ranges(monkeypatch):
@@ -125,6 +134,7 @@ def test_build_sift_ownership_consumes_target_ranges(monkeypatch):
         source_end = None
         target_start = 2
         target_end = 1001
+        source_anchor = None
         target_anchor = None
 
         def target_line_numbers(self):
@@ -132,8 +142,8 @@ def test_build_sift_ownership_consumes_target_ranges(monkeypatch):
 
     monkeypatch.setattr(
         sift_results,
-        "derive_semantic_change_runs",
-        lambda source_lines, target_lines: [TargetRangeOnlyRun()],
+        "stream_semantic_change_runs",
+        lambda source_lines, target_lines: iter((TargetRangeOnlyRun(),)),
     )
 
     ownership = sift_results.build_ownership_from_working_and_target_lines([], [])
@@ -178,6 +188,7 @@ def test_add_sifted_text_file_to_batch_persists_target_buffer(temp_git_repo):
 
     assert read_file_from_batch("sifted-batch", "README.md") == "# Test\nadded\n"
     metadata = read_batch_metadata("sifted-batch")
+    assert metadata["files"]["README.md"]["batch_source_is_target"] is True
     assert "batch_source_commit" in metadata["files"]["README.md"]
 
 

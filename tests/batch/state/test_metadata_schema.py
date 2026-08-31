@@ -158,6 +158,26 @@ def test_application_mapping_serializes_only_current_schema():
     assert "baseline_commit" not in stored
 
 
+def test_current_schema_accepts_complete_target_batch_source_marker():
+    """Text metadata may say that its source is already the full target."""
+    metadata = _v1_metadata()
+    metadata["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    metadata["files"]["src/example.py"]["batch_source_is_target"] = True
+
+    model = decode_batch_metadata(metadata, expected_batch="feature")
+
+    assert model.files[0].values["batch_source_is_target"] is True
+
+
+def test_complete_target_batch_source_marker_must_be_boolean():
+    metadata = _v1_metadata()
+    metadata["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    metadata["files"]["src/example.py"]["batch_source_is_target"] = "yes"
+
+    with pytest.raises(BatchMetadataError, match="batch-source target flag"):
+        decode_batch_metadata(metadata, expected_batch="feature")
+
+
 def test_file_backed_v0_migration_keeps_recovery_copy(tmp_path, monkeypatch):
     metadata_path = tmp_path / "metadata.json"
     legacy = {

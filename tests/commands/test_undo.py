@@ -29,6 +29,8 @@ from git_stage_batch.utils.paths import (
     get_batches_directory_path,
     get_processed_include_ids_file_path,
     get_session_directory_path,
+    get_status_summary_cache_file_path,
+    get_status_summary_prompt_marker_file_path,
 )
 
 
@@ -204,6 +206,41 @@ def test_undo_refuses_tracked_metadata_drift(
 
     with pytest.raises(CommandError, match=expected_label):
         undo_last_checkpoint()
+
+
+def test_undo_ignores_disposable_prompt_cache_changes(temp_git_repo):
+    """Prompt refreshes must not enter checkpoints or cause undo conflicts."""
+    session_directory = get_session_directory_path()
+    session_directory.mkdir(parents=True, exist_ok=True)
+    tracked = session_directory / "tracked.txt"
+    tracked.write_text("before\n")
+    cache = get_status_summary_cache_file_path()
+    marker = get_status_summary_prompt_marker_file_path()
+    cache.write_text("old cache\n")
+    marker.write_text("")
+
+    with undo_checkpoint("change metadata", worktree_paths=[]):
+        tracked.write_text("after\n")
+        cache.write_text("new cache\n")
+
+    checkpoint = current_undo_commit()
+    assert checkpoint is not None
+    tree_paths = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", checkpoint],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert "session/tracked.txt" in tree_paths
+    assert "session/status-summary.json" not in tree_paths
+    assert "session/status-summary-prompt" not in tree_paths
+
+    cache.write_text("newer cache\n")
+    undo_last_checkpoint()
+
+    assert tracked.read_text() == "before\n"
+    assert cache.read_text() == "newer cache\n"
 
 
 def test_undo_treats_empty_processed_ids_as_absent(temp_git_repo):

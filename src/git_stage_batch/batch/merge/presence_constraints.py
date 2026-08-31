@@ -43,7 +43,6 @@ from ...i18n import _
 
 if TYPE_CHECKING:
     from ..ownership.absence_claims import AbsenceClaim
-    from ..ownership.model import BatchOwnership
     from ..ownership.resolved_presence_alternatives import (
         ResolvedPresenceSourceAlternative,
     )
@@ -473,7 +472,6 @@ def satisfy_constraints(
     distinctive_context_lines: LineSelection | None = None,
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
     source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
-    ownership: BatchOwnership | None = None,
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
@@ -533,7 +531,6 @@ def satisfy_constraints(
             realization_fallback_target_positions=(
                 realization_fallback_target_positions
             ),
-            ownership=ownership,
             spool_dir=spool_dir,
         )
     except BaseException:

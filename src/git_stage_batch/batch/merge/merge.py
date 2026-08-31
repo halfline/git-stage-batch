@@ -67,9 +67,6 @@ from ..line_matching.line_mapping import (
     copy_line_mapping_excluding as _copy_mapping_excluding,
 )
 from ..line_matching.match import match_lines
-from ..ownership.resolved_presence_alternatives import (
-    resolve_presence_source_alternatives,
-)
 from ..realization.entry_storage import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
@@ -376,6 +373,7 @@ def _acquire_replay_mapping_evidence(
                 ownership=ownership,
                 presence_lines=presence_lines,
                 preferred_context_lines=source_alternative_lines,
+                replacement_alternatives=replacement_alternatives,
                 ordinary_mapping=ordinary,
                 spool_dir=spool_dir,
                 matcher=match_lines,
@@ -717,11 +715,6 @@ def _build_structural_realized_entries(
             resolution=resolution,
             distinctive_context_lines=distinctive_presence_context_lines,
             contextual_placements=contextual_placements,
-            source_alternatives=resolve_presence_source_alternatives(
-                presence_line_set,
-                source_lines,
-            ),
-            ownership=ownership,
             spool_dir=spool_dir,
         )
     except BaseException:

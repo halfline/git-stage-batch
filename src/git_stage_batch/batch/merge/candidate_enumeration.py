@@ -1,4 +1,4 @@
-"""Merge candidate enumeration for reviewed ambiguity resolution."""
+"""Build the possible merge results shown for review."""
 
 from __future__ import annotations
 
@@ -61,6 +61,9 @@ if TYPE_CHECKING:
     from ..line_matching.line_mapping import LineMapping
     from ..ownership.model import BatchOwnership
     from ..ownership.absence_claims import AbsenceClaim
+    from ..ownership.resolved_replacement_alternatives import (
+        ResolvedReplacementAlternative,
+    )
 
 
 _MergeResolutionValidator = Callable[[_MergeResolution], bool]
@@ -318,6 +321,7 @@ def _presence_candidate_set(
     deletion_claims: Sequence["AbsenceClaim"],
     controlled_source_lines: LineRanges,
     source_alternative_lines: LineRanges,
+    replacement_alternatives: Sequence["ResolvedReplacementAlternative"],
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
@@ -337,6 +341,7 @@ def _presence_candidate_set(
         ownership=ownership,
         presence_lines=presence_line_set,
         preferred_context_lines=source_alternative_lines,
+        replacement_alternatives=replacement_alternatives,
         spool_dir=spool_dir,
         matcher=match_lines,
     )
@@ -443,6 +448,7 @@ def _absence_candidate_set(
     deletion_claims: Sequence["AbsenceClaim"],
     controlled_source_lines: LineRanges,
     source_alternative_lines: LineRanges,
+    replacement_alternatives: Sequence["ResolvedReplacementAlternative"],
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
@@ -480,6 +486,7 @@ def _absence_candidate_set(
         ownership=ownership,
         presence_lines=presence_line_set,
         preferred_context_lines=source_alternative_lines,
+        replacement_alternatives=replacement_alternatives,
         spool_dir=spool_dir,
         matcher=match_lines,
     )
@@ -651,6 +658,7 @@ def enumerate_merge_batch_candidates_for_lines(
                 ownership=ownership,
                 presence_lines=presence_line_set,
                 preferred_context_lines=source_alternative_lines,
+                replacement_alternatives=resolved.replacement_alternatives,
                 spool_dir=spool_dir,
                 matcher=match_lines,
             )
@@ -698,6 +706,9 @@ def enumerate_merge_batch_candidates_for_lines(
                                     discovery_controlled_source_lines.difference(
                                         effective_constraints.source_alternative_presence_lines
                                     )
+                                ),
+                                replacement_alternatives=(
+                                    resolved.replacement_alternatives
                                 ),
                                 spool_dir=spool_dir,
                                 matcher=match_lines,
@@ -764,6 +775,7 @@ def enumerate_merge_batch_candidates_for_lines(
         deletion_claims,
         controlled_source_lines,
         source_alternative_lines,
+        resolved.replacement_alternatives,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
         spool_dir=spool_dir,
@@ -779,6 +791,7 @@ def enumerate_merge_batch_candidates_for_lines(
         deletion_claims,
         controlled_source_lines,
         source_alternative_lines,
+        resolved.replacement_alternatives,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
         spool_dir=spool_dir,

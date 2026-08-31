@@ -37,10 +37,16 @@ if TYPE_CHECKING:
     from ..ownership.absence_claims import AbsenceClaim
     from ..ownership.model import BatchOwnership
     from ..ownership.references import BaselineReference
+    from ..ownership.resolved_replacement_alternatives import (
+        ResolvedReplacementAlternative,
+    )
 
 
 _CONTROLLED_SOURCE_LINE = object()
 _RECORDED_PRESENCE_BOUNDARY_FORMAT = "QQQ"
+_REPLACEMENT_ALTERNATIVE_LIVE_RUN_FORMAT = "QQQ"
+
+
 class PresenceMappingCorrection(Enum):
     """Whether the usual line mapping had to be changed."""
 
@@ -376,6 +382,67 @@ def _recorded_presence_starting_after(
     return None
 
 
+def _replacement_alternative_live_runs(
+    workspace: MatcherWorkspace,
+    alternatives: Sequence["ResolvedReplacementAlternative"],
+) -> MappedRecordVector:
+    """Record where each live version appears in the source."""
+    live_runs = workspace.record_vector(
+        sum(len(alternative.live_payload) for alternative in alternatives),
+        _REPLACEMENT_ALTERNATIVE_LIVE_RUN_FORMAT,
+    )
+    for alternative_index, alternative in enumerate(alternatives):
+        for payload_span in alternative.live_payload:
+            live_runs.append(
+                (
+                    payload_span.start.offset,
+                    payload_span.end.offset,
+                    alternative_index,
+                )
+            )
+    sort_mapped_records(live_runs)
+    previous_end = 0
+    for run_start, run_end, _alternative_index in live_runs:
+        if run_start < previous_end:
+            raise ValueError("replacement alternative live payloads overlap")
+        previous_end = run_end
+    return live_runs
+
+
+def _complete_live_alternative_replaces_saved_line(
+    alternatives: Sequence["ResolvedReplacementAlternative"],
+    live_runs: Sequence[tuple[int, ...]],
+    *,
+    live_source_line: int,
+    saved_source_line: int,
+    live_run_start: int,
+    live_run_end: int,
+) -> bool:
+    """Check whether this line belongs to the live version paired with it."""
+    live_offset = live_source_line - 1
+    lower = 0
+    upper = len(live_runs)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if live_runs[middle][0] <= live_offset:
+            lower = middle + 1
+        else:
+            upper = middle
+    live_run_index = lower - 1
+    if live_run_index < 0:
+        return False
+    live_start, live_end, alternative_index = live_runs[live_run_index]
+    if not live_start <= live_offset < live_end:
+        return False
+    alternative = alternatives[alternative_index]
+    saved_offset = saved_source_line - 1
+    return (
+        alternative.saved.start.offset <= saved_offset < alternative.saved.end.offset
+        and live_run_start - 1 <= alternative.live_envelope.start.offset
+        and alternative.live_envelope.end.offset <= live_run_end
+    )
+
+
 def _authorized_context_corrections(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
@@ -384,6 +451,8 @@ def _authorized_context_corrections(
     boundary_evidence: _PresenceBoundaryEvidence,
     ordinary_mapping: LineMapping,
     context_mapping: LineMapping,
+    replacement_alternatives: Sequence["ResolvedReplacementAlternative"],
+    replacement_alternative_live_runs: Sequence[tuple[int, ...]],
     source_occurrences: LinePayloadOccurrenceIndex,
     target_occurrences: LinePayloadOccurrenceIndex,
     corrections: MappedRecordVector,
@@ -430,6 +499,17 @@ def _authorized_context_corrections(
                     source_start,
                     source_end,
                     source_line,
+                )
+            )
+            paired_replacement_alternative = (
+                ordinary_source is not None
+                and _complete_live_alternative_replaces_saved_line(
+                    replacement_alternatives,
+                    replacement_alternative_live_runs,
+                    live_source_line=source_line,
+                    saved_source_line=ordinary_source,
+                    live_run_start=source_start,
+                    live_run_end=source_end,
                 )
             )
             if ordinary_source is None and has_complete_preferred_context:
@@ -484,11 +564,15 @@ def _authorized_context_corrections(
                     ordinary_authorized_targets[target_line - 1]
                     and ordinary_source_has_recorded_coordinate
                     and not context_line_is_distinctive
+                    and not paired_replacement_alternative
                 )
             ):
                 continue
             context_authorized_targets[target_line - 1] = 1
-            if not ordinary_authorized_targets[target_line - 1]:
+            if (
+                paired_replacement_alternative
+                or not ordinary_authorized_targets[target_line - 1]
+            ):
                 corrections.append((source_line, target_line))
 
     run_source_start: int | None = None
@@ -967,6 +1051,7 @@ def match_lines_preserving_unowned_context(
     ordinary_mapping: LineMapping | None = None,
     anchor_pairs: Sequence[tuple[int, int]] = (),
     anchor_authorized_source_lines: LineRanges | None = None,
+    replacement_alternatives: Sequence["ResolvedReplacementAlternative"] = (),
     spool_dir: str | Path | None = None,
     matcher: Callable[..., LineMapping] = match_lines,
 ) -> PresenceMappingResult:
@@ -1149,6 +1234,10 @@ def match_lines_preserving_unowned_context(
                     spool_dir=spool_dir,
                     matcher=matcher,
                 )
+                replacement_alternative_live_runs = _replacement_alternative_live_runs(
+                    workspace,
+                    replacement_alternatives,
+                )
                 _append_context_for_incomplete_controlled_runs(
                     source_lines,
                     target_lines,
@@ -1169,6 +1258,8 @@ def match_lines_preserving_unowned_context(
                     boundary_evidence,
                     ordinary_mapping,
                     context_mapping,
+                    replacement_alternatives,
+                    replacement_alternative_live_runs,
                     source_occurrences,
                     target_occurrences,
                     corrections,

@@ -1338,6 +1338,76 @@ def test_discard_trusted_anchor_ranges_do_not_expand_contiguous_lines(
         assert trusted_lines.ranges() == ((1, line_count),)
 
 
+def test_discard_independent_insertion_requires_exact_empty_baseline_span() -> None:
+    """Only an exact adjacent baseline boundary authorizes hunk-local removal."""
+    baseline = [b"head\n", b"old\n", b"boundary\n", b"tail\n"]
+    source = [b"head\n", b"old\n", b"boundary\n", b"inserted\n", b"changed\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["4-5"],
+        baseline_references={
+            4: BaselineReference(
+                after_line=3,
+                after_content=b"boundary\n",
+                before_line=4,
+                before_content=b"tail\n",
+                has_before_line=True,
+            ),
+            5: BaselineReference(
+                after_line=1,
+                after_content=b"head\n",
+                before_line=4,
+                before_content=b"tail\n",
+                has_before_line=True,
+            ),
+        },
+    )
+
+    with MatcherWorkspace() as workspace, match_lines(source, source) as mapping:
+        independent = discard_module._trusted_independent_insertion_lines(
+            workspace,
+            ownership,
+            source,
+            source,
+            baseline,
+            mapping,
+            LineRanges.from_specs(["4-5"]),
+            LineRanges.from_specs(["4-5"]),
+        )
+
+    assert independent == LineRanges.from_specs(["4"])
+
+
+def test_discard_independent_insertion_uses_anchor_from_same_baseline_gap() -> None:
+    """One exact applied line can locate its repeated sibling in the same gap."""
+    baseline = [b"head\n", b"old\n", b"tail\n"]
+    source = [b"head\n", b"open\n", b"renamed\n", b"close\n", b"tail\n"]
+    reference = BaselineReference(
+        after_line=2,
+        after_content=b"old\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "4"],
+        baseline_references={2: reference, 4: reference},
+    )
+
+    with MatcherWorkspace() as workspace, match_lines(source, source) as mapping:
+        independent = discard_module._trusted_independent_insertion_lines(
+            workspace,
+            ownership,
+            source,
+            source,
+            baseline,
+            mapping,
+            LineRanges.from_specs(["2", "4"]),
+            LineRanges.from_specs(["2"]),
+        )
+
+    assert independent == LineRanges.from_specs(["2", "4"])
+
+
 def test_replacement_old_side_boundary_scans_mapping_once() -> None:
     """Split validation must not rescan a long unmapped suffix per child."""
     child_count = 256
@@ -4351,6 +4421,50 @@ class TestMergeLineSequences:
                 )
         finally:
             entries.close()
+
+    def test_reverse_presence_drops_independent_insertion_inside_mixed_hunk(self):
+        """An empty baseline span must not restore its unowned hunk siblings."""
+        baseline = [b"head\n", b"old-a\n", b"old-b\n", b"tail\n"]
+        source = [
+            b"head\n",
+            b"new-a\n",
+            b"inserted\n",
+            b"new-b\n",
+            b"tail\n",
+        ]
+        correspondence = build_baseline_correspondence(baseline, source)
+        assert correspondence.get_region_for_source_line(3).kind == (
+            RegionKind.REPLACE_BY_HUNK
+        )
+        entries = RealizedEntries()
+        entries.append_line_range_from(
+            source,
+            0,
+            len(source),
+            source_line_start=1,
+            target_line_start=1,
+        )
+
+        try:
+            result = reverse_presence_constraints(
+                entries,
+                {3},
+                correspondence,
+                trusted_insertion_lines={3},
+                independent_insertion_lines={3},
+            )
+        finally:
+            entries.close()
+
+        try:
+            assert list(result.content_chunks()) == [
+                b"head\n",
+                b"new-a\n",
+                b"new-b\n",
+                b"tail\n",
+            ]
+        finally:
+            result.close()
 
     def test_reverse_presence_closes_partial_result_on_failure(
         self,

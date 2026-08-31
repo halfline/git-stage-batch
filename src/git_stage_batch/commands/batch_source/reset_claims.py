@@ -81,19 +81,20 @@ def move_claims_between_batches(
         return
 
     for file_path, file_meta in files.items():
-        if file_meta.get("file_type") in {"binary", "mode"} or is_batch_submodule_pointer(
-            file_meta
-        ):
-            dest_file_meta = (
-                read_batch_metadata(dest_batch).get("files", {}).get(file_path)
-            )
-            if dest_file_meta is not None:
-                exit_with_error(
-                    _("Destination batch already has file '{file}'").format(
-                        file=display_path(file_path),
-                    )
-                )
+        dest_file_meta = read_batch_metadata(dest_batch).get("files", {}).get(
+            file_path
+        )
+        if dest_file_meta is None:
             copy_file_from_batch_to_batch(source_batch, dest_batch, file_path)
+        elif (
+            file_meta.get("file_type") in {"binary", "mode"}
+            or is_batch_submodule_pointer(file_meta)
+        ):
+            exit_with_error(
+                _("Destination batch already has file '{file}'").format(
+                    file=display_path(file_path),
+                )
+            )
         else:
             with acquire_ownership_for_metadata_dict(file_meta) as ownership:
                 _add_ownership_to_destination(

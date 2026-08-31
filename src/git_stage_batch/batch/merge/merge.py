@@ -67,6 +67,10 @@ from ..line_matching.line_mapping import (
     copy_line_mapping_excluding as _copy_mapping_excluding,
 )
 from ..line_matching.match import match_lines
+from ..line_matching.sequence_equality import line_sequences_equal
+from ..complete_source_replacement import (
+    changes_from_complete_source_replacement,
+)
 from ..ownership.resolved_presence_alternatives import (
     resolve_presence_source_alternatives,
 )
@@ -712,6 +716,7 @@ def _build_structural_realized_entries(
                 working_lines,
                 distinctive_presence_context_lines=(distinctive_presence_context_lines),
                 recorded_presence_context_lines=(recorded_presence_context_lines),
+                replacement_units=ownership.replacement_units,
                 spool_dir=spool_dir,
             )
         except PresencePlacementAmbiguityError:
@@ -977,6 +982,25 @@ def _merge_batch_acquired_line_chunks(
 ) -> Iterator[bytes]:
     """Merge acquired normalized line sequences and yield normalized chunks."""
     _validate_resolution_shape(resolution)
+    complete_changes = changes_from_complete_source_replacement(
+        source_lines,
+        ownership,
+        spool_dir=spool_dir,
+    )
+    if complete_changes is not None:
+        if line_sequences_equal(working_lines, complete_changes.live_lines):
+            yield from complete_changes.source_lines
+            return
+        yield from _merge_batch_acquired_line_chunks(
+            complete_changes.source_lines,
+            complete_changes.ownership,
+            working_lines,
+            trusted_target_lines=trusted_target_lines,
+            trusted_target_to_working_mapping=trusted_target_to_working_mapping,
+            resolution=resolution,
+            spool_dir=spool_dir,
+        )
+        return
     resolved = ownership.resolve()
     effective_constraints = _resolve_effective_constraints(
         source_lines,

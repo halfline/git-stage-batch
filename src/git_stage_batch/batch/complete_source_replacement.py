@@ -6,6 +6,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from itertools import chain
+from pathlib import Path
 from types import TracebackType
 
 from ..core.buffer import LineBuffer
@@ -19,12 +20,17 @@ from ..core.coordinates import (
     require_same_snapshot,
 )
 from ..core.text_lines import normalize_line_endings
-from ..core.line_selection import LineRanges
+from ..core.line_selection import LineRangeBuilder, LineRanges
 from .file_state import SourceBoundOwnership
+from .line_matching.comparison import (
+    SemanticChangeKind,
+    stream_semantic_change_runs,
+)
 from .line_matching.line_range_view import LineRangeView
 from .line_matching.match import match_lines
 from .line_matching.sequence_equality import line_sequences_equal
 from .ownership.absence_claims import AbsenceClaim
+from .ownership.claims import presence_claims_from_source_lines
 from .ownership.model import BatchOwnership
 from .ownership.references import BaselineReference
 from .ownership.replacement_units import ReplacementUnit
@@ -46,6 +52,16 @@ class CompleteSourceReplacementAlternative:
             raise ValueError("complete replacement alternatives are not adjacent")
         if self.live.span.end.offset != self.live.snapshot.line_count:
             raise ValueError("complete live replacement does not end at EOF")
+
+
+@dataclass(frozen=True, slots=True)
+class CompleteSourceReplacementChanges:
+    """The changed lines between the two stored versions."""
+
+    source_lines: Sequence[bytes]
+    live_lines: Sequence[bytes]
+    ownership: BatchOwnership
+    original_deletion_index: int
 
 
 @dataclass(slots=True)
@@ -134,6 +150,91 @@ def resolve_complete_source_replacement(
     return CompleteSourceReplacementAlternative(
         saved=SnapshotSpan(source_snapshot, saved_span),
         live=SnapshotSpan(source_snapshot, live_span),
+    )
+
+
+def changes_from_complete_source_replacement(
+    source_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    *,
+    spool_dir: str | Path | None = None,
+) -> CompleteSourceReplacementChanges | None:
+    """Return only the lines that differ between the saved and live files."""
+    spans = _complete_source_replacement_spans(source_lines, ownership)
+    if spans is None:
+        return None
+    saved_span, live_span = spans
+    saved_lines = LineRangeView(
+        source_lines,
+        saved_span.start.offset,
+        saved_span.end.offset,
+    )
+    live_lines = LineRangeView(
+        source_lines,
+        live_span.start.offset,
+        live_span.end.offset,
+    )
+    presence_builder = LineRangeBuilder()
+    deletions: list[AbsenceClaim] = []
+    replacement_units: list[ReplacementUnit] = []
+    original_deletion = ownership.deletions[0]
+    semantic_runs = stream_semantic_change_runs(
+        live_lines,
+        saved_lines,
+        spool_dir=spool_dir,
+    )
+    try:
+        for run in semantic_runs:
+            presence_range: LineRanges | None = None
+            if run.target_start is not None and run.target_end is not None:
+                presence_builder.add_range(run.target_start, run.target_end)
+                presence_range = LineRanges.from_ranges(
+                    ((run.target_start, run.target_end),)
+                )
+            deletion_index: int | None = None
+            if run.source_start is not None and run.source_end is not None:
+                deletion_index = len(deletions)
+                deletions.append(
+                    AbsenceClaim(
+                        anchor_line=run.target_anchor,
+                        content_lines=LineRangeView(
+                            live_lines,
+                            run.source_start - 1,
+                            run.source_end,
+                        ),
+                        baseline_reference=original_deletion.baseline_reference,
+                    )
+                )
+            if (
+                run.kind is SemanticChangeKind.REPLACEMENT
+                and presence_range is not None
+                and deletion_index is not None
+            ):
+                replacement_units.append(
+                    ReplacementUnit(
+                        presence_range.to_range_strings(),
+                        [deletion_index],
+                    )
+                )
+    finally:
+        close_runs = getattr(semantic_runs, "close", None)
+        if close_runs is not None:
+            close_runs()
+
+    presence_lines = presence_builder.finish()
+    changed_ownership = BatchOwnership(
+        presence_claims=presence_claims_from_source_lines(
+            presence_lines,
+            ownership.presence_baseline_references(),
+        ),
+        deletions=deletions,
+        replacement_units=replacement_units,
+    )
+    return CompleteSourceReplacementChanges(
+        saved_lines,
+        live_lines,
+        changed_ownership,
+        original_deletion_index=0,
     )
 
 

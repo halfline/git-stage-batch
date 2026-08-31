@@ -6,6 +6,10 @@ from bisect import bisect_right
 from collections.abc import Sequence
 from typing import Literal, TypedDict, overload
 
+from ..complete_source_replacement import (
+    CompleteSourceReplacementChanges,
+    changes_from_complete_source_replacement,
+)
 from ...core.line_selection import LineRangeBuilder, LineRanges, LineSelection
 from .display_lines import (
     OwnershipDisplayLine,
@@ -480,17 +484,70 @@ def _build_deletion_only_unit(
 def build_ownership_units_from_batch_source_lines(
     ownership: BatchOwnership,
     batch_source_lines: Sequence[bytes],
+    *,
+    display_lines: list[OwnershipDisplayLine] | None = None,
+    complete_changes: CompleteSourceReplacementChanges | None = None,
 ) -> list[_UnitRecord]:
-    """Build semantic ownership units from indexed batch-source lines.
+    """Group batch lines for display.
 
-    Persisted replacement metadata is honored first, so captured replacements
-    remain whole atomic units even if their lines are no longer display-adjacent.
-    Remaining lines fall back to display-adjacency grouping in reconstructed
-    display order, not source-line proximity. This reflects what the user
-    actually sees in the batch display.
+    Keep each recorded replacement together even when its lines are separated
+    in the diff. Group the other lines when they are adjacent in display order.
     """
-    display_lines = build_display_lines_from_batch_source_lines(
-        batch_source_lines,
+    if complete_changes is None:
+        complete_changes = changes_from_complete_source_replacement(
+            batch_source_lines,
+            ownership,
+        )
+    if complete_changes is not None:
+        if display_lines is None:
+            display_lines = build_display_lines_from_batch_source_lines(
+                complete_changes.source_lines,
+                complete_changes.ownership,
+            )
+            for display_line in display_lines:
+                if display_line["type"] == "deletion":
+                    display_line["deletion_index"] = (
+                        complete_changes.original_deletion_index
+                    )
+        display_ids = LineRanges.from_lines(
+            display_id
+            for display_line in display_lines
+            if (display_id := display_line.get("id")) is not None
+        )
+        if not display_ids:
+            return []
+        replacement_unit = normalize_replacement_units(
+            ownership.replacement_units,
+            deletion_count=len(ownership.deletions),
+        )[0]
+        claimed_source_lines = parse_ownership_line_ranges(
+            replacement_unit.presence_lines
+        )
+        return [
+            _UnitRecord(
+                kind=_UnitKind.REPLACEMENT,
+                claimed_source_lines=claimed_source_lines,
+                deletion_claims=[
+                    ownership.deletions[deletion_index]
+                    for deletion_index in replacement_unit.deletion_indices
+                ],
+                display_line_ids=display_ids,
+                baseline_references=_presence_references_for_lines(
+                    ownership.presence_baseline_references(),
+                    claimed_source_lines,
+                ),
+                is_atomic=True,
+                preserves_replacement_unit=True,
+                replacement_origin_evidence=(replacement_unit.origin_evidence),
+            )
+        ]
+
+    if display_lines is None:
+        display_lines = build_display_lines_from_batch_source_lines(
+            batch_source_lines,
+            ownership,
+        )
+    return build_ownership_units_from_display_lines(
         ownership,
+        display_lines,
     )
-    return build_ownership_units_from_display_lines(ownership, display_lines)

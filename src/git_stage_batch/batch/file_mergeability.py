@@ -24,7 +24,14 @@ from .ownership.replacement_units import (
 from .ownership.unit_rebuild import rebuild_ownership_from_units
 from .ownership.unit_types import OwnershipUnit, OwnershipUnitKind
 from .ownership.unit_validation import validate_ownership_units
-from .ownership.units import build_ownership_units_from_display_lines
+from .complete_source_replacement import (
+    CompleteSourceReplacementChanges,
+    changes_from_complete_source_replacement,
+)
+from .ownership.units import (
+    build_ownership_units_from_batch_source_lines,
+    build_ownership_units_from_display_lines,
+)
 
 
 @dataclass
@@ -120,6 +127,7 @@ def probe_batch_file_mergeability(
     ownership: BatchOwnership,
     display_lines: list[OwnershipDisplayLine],
     batch_source_lines: Sequence[bytes],
+    complete_changes: CompleteSourceReplacementChanges | None = None,
 ) -> BatchFileMergeability:
     """Return mergeable display IDs and ownership units for batch display lines."""
     if not display_lines:
@@ -169,9 +177,23 @@ def probe_batch_file_mergeability(
             )
         )
 
-        units = build_ownership_units_from_display_lines(
-            ownership,
-            display_lines,
+        if complete_changes is None:
+            complete_changes = changes_from_complete_source_replacement(
+                batch_source_lines,
+                ownership,
+            )
+        units = (
+            build_ownership_units_from_display_lines(
+                ownership,
+                display_lines,
+            )
+            if complete_changes is None
+            else build_ownership_units_from_batch_source_lines(
+                ownership,
+                batch_source_lines,
+                display_lines=display_lines,
+                complete_changes=complete_changes,
+            )
         )
 
         def units_are_mergeable(

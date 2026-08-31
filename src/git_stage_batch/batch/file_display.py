@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Optional
 
+from .complete_source_replacement import (
+    changes_from_complete_source_replacement,
+)
 from .ownership import display_lines as batch_display
 from . import file_display_model as _file_display_model
 from . import file_mergeability as _file_mergeability
@@ -123,11 +126,27 @@ def build_batch_file_display_from_inputs(
     probe_mergeability: bool,
 ) -> Optional[RenderedBatchDisplay]:
     """Build a batch display from caller-owned source and ownership inputs."""
-    display_lines = batch_display.build_display_lines_from_batch_source_lines(
+    display_source_lines = batch_source_lines
+    display_ownership = ownership
+    complete_changes = changes_from_complete_source_replacement(
         batch_source_lines,
         ownership,
+    )
+    if complete_changes is not None:
+        display_source_lines = complete_changes.source_lines
+        display_ownership = complete_changes.ownership
+
+    display_lines = batch_display.build_display_lines_from_batch_source_lines(
+        display_source_lines,
+        display_ownership,
         context_lines=get_context_lines(),
     )
+    if complete_changes is not None:
+        for display_line in display_lines:
+            if display_line["type"] == "deletion":
+                display_line["deletion_index"] = (
+                    complete_changes.original_deletion_index
+                )
 
     mergeable_id_ranges = LineRanges.empty()
     mergeable_selection_groups: tuple[LineRanges, ...] = ()
@@ -138,6 +157,7 @@ def build_batch_file_display_from_inputs(
             ownership=ownership,
             display_lines=display_lines,
             batch_source_lines=batch_source_lines,
+            complete_changes=complete_changes,
         )
         mergeable_id_ranges = mergeability.mergeable_id_ranges
         mergeable_selection_groups = (

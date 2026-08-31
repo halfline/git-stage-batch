@@ -19,6 +19,7 @@ from git_stage_batch.batch.realization.boundaries import find_boundary_after_sou
 from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.exceptions import (
@@ -509,6 +510,62 @@ A test project for git-stage-batch.
 
 """
     )
+
+
+def test_split_replacement_ranges_share_their_verified_old_side() -> None:
+    """Disjoint saved ranges from one replacement must use the same gap."""
+    batch_source = b"""static int init(void)
+{
+    int err;
+
+    setup();
+    err = add_action();
+    if (err)
+        return err;
+    err = old_init();
+    if (err)
+        return err;
+    new_init();
+
+    return 0;
+}
+"""
+    working = b"""static int init(void)
+{
+    return baseline_init();
+}
+"""
+    ownership = BatchOwnership.from_presence_lines(
+        ["3-8", "12-14"],
+        [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"    return baseline_init();\n"],
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3-8", "12-14"],
+                deletion_indices=[0],
+            )
+        ],
+    )
+
+    result = merge_batch(batch_source, ownership, working)
+
+    assert result == b"""static int init(void)
+{
+    int err;
+
+    setup();
+    err = add_action();
+    if (err)
+        return err;
+    new_init();
+
+    return 0;
+}
+"""
 
 
 def test_crlf_normalization_in_discard_restoration():

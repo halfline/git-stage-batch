@@ -1,9 +1,4 @@
-"""Shared comparison logic for deriving semantic change ranges from alignment.
-
-This module provides the common comparison pattern used by include and sift:
-compare two line spaces using match_lines, walk gaps between trusted matched
-pairs, and emit semantic change units as inclusive ranges.
-"""
+"""Find changed sections between two versions of a file."""
 
 from __future__ import annotations
 
@@ -24,26 +19,25 @@ _SMALL_UNMAPPED_LINE_COUNT = 64
 
 
 class SemanticChangeKind(Enum):
-    """Type of semantic change between source and target."""
+    """How one changed section differs between the two files."""
 
     PRESENCE = auto()
-    """Pure addition in target (no coupled deletion from source)."""
+    """Lines added to the target."""
 
     DELETION = auto()
-    """Pure deletion from source (no coupled addition in target)."""
+    """Lines removed from the source."""
 
     REPLACEMENT = auto()
-    """Deletion from source coupled with addition in target."""
+    """Old source lines replaced by new target lines."""
 
 
 @dataclass(frozen=True, slots=True)
 class SemanticChangeRun:
-    """A semantic change unit derived from source ↔ target comparison.
+    """One changed section found while comparing two files.
 
-    Represents one of three patterns:
-    - PRESENCE: target lines that have no corresponding source lines
-    - DELETION: source lines that have no corresponding target lines
-    - REPLACEMENT: paired source deletion and target addition runs
+    ``source_anchor`` is the source line immediately before the change.
+    ``target_anchor`` is the target line immediately before it. Both are
+    ``None`` when the change starts the file.
 
     All line numbers are 1-indexed.
     """
@@ -53,6 +47,7 @@ class SemanticChangeRun:
     source_end: int | None = None
     target_start: int | None = None
     target_end: int | None = None
+    source_anchor: int | None = None
     target_anchor: int | None = None
 
     def __post_init__(self) -> None:
@@ -95,7 +90,7 @@ def _trusted_matched_pairs(
     *,
     spool_dir: str | Path | None = None,
 ) -> Iterator[tuple[int, int]]:
-    """Yield bidirectionally trusted source/target line pairs."""
+    """Yield line pairs accepted by matching in both directions."""
     with match_lines(
         source_lines=source_lines,
         target_lines=target_lines,
@@ -135,12 +130,9 @@ def _unmapped_lines_share_content(
     target_lines: Sequence[bytes],
     spool_dir: str | Path | None,
 ) -> bool:
-    """Return whether the two unmapped sides contain an equal line.
+    """Return whether an unmatched line occurs in both files.
 
-    A direction-dependent alternative alignment necessarily leaves equal
-    content unmapped on both sides of the forward alignment.  When no such
-    content exists, every forward pair is already reciprocal and the reverse
-    matcher cannot reject one.
+    If none do, matching in reverse cannot reject a forward pair.
     """
     source_unmapped_count, bounded_source_indexes = (
         _bounded_unmapped_indexes(alignment.source_to_target)
@@ -259,27 +251,10 @@ def derive_semantic_change_runs(
     *,
     spool_dir: str | Path | None = None,
 ) -> list[SemanticChangeRun]:
-    """Derive semantic change runs from source ↔ target comparison.
+    """Return the changed sections between source and target.
 
-    Uses match_lines for structural alignment, then walks the gaps between
-    trusted matched pairs. Unmatched source and target intervals sharing the
-    same predecessor become replacements; one-sided intervals become deletions
-    or presences.
-
-    Algorithm:
-    1. Align source and target using match_lines
-    2. Keep only pairs that match in both directions
-    3. Walk unmatched gaps between those pairs
-    4. Emit source+target gaps as REPLACEMENT
-    5. Emit source-only gaps as DELETION
-    6. Emit target-only gaps as PRESENCE
-
-    Args:
-        source_lines: Source file lines (bytes with newlines)
-        target_lines: Target file lines (bytes with newlines)
-
-    Returns:
-        List of semantic change runs describing the delta
+    Matching lines divide the files into gaps. A gap on both sides is a
+    replacement; a one-sided gap is an addition or deletion.
     """
     return list(
         stream_semantic_change_runs(
@@ -296,7 +271,7 @@ def stream_semantic_change_runs(
     *,
     spool_dir: str | Path | None = None,
 ) -> Iterator[SemanticChangeRun]:
-    """Yield semantic change runs without retaining one object per run."""
+    """Yield one changed section at a time."""
     previous_source = 0
     previous_target = 0
 
@@ -315,6 +290,7 @@ def stream_semantic_change_runs(
             target_gap_end = target_line - 1
             has_source_gap = source_gap_start <= source_gap_end
             has_target_gap = target_gap_start <= target_gap_end
+            source_anchor = previous_source if previous_source != 0 else None
             target_anchor = previous_target if previous_target != 0 else None
 
             if has_source_gap and has_target_gap:
@@ -324,6 +300,7 @@ def stream_semantic_change_runs(
                     source_end=source_gap_end,
                     target_start=target_gap_start,
                     target_end=target_gap_end,
+                    source_anchor=source_anchor,
                     target_anchor=target_anchor,
                 )
             elif has_source_gap:
@@ -331,6 +308,7 @@ def stream_semantic_change_runs(
                     kind=SemanticChangeKind.DELETION,
                     source_start=source_gap_start,
                     source_end=source_gap_end,
+                    source_anchor=source_anchor,
                     target_anchor=target_anchor,
                 )
             elif has_target_gap:
@@ -338,6 +316,8 @@ def stream_semantic_change_runs(
                     kind=SemanticChangeKind.PRESENCE,
                     target_start=target_gap_start,
                     target_end=target_gap_end,
+                    source_anchor=source_anchor,
+                    target_anchor=target_anchor,
                 )
 
             previous_source = source_line
@@ -354,7 +334,7 @@ def derive_display_id_run_sets_from_lines(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
 ) -> list[set[int]]:
-    """Map semantic change runs from byte-line sequences onto display IDs."""
+    """Map each changed section to its selectable display IDs."""
     semantic_runs = derive_semantic_change_runs(
         source_lines,
         target_lines,

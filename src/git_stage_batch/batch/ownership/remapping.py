@@ -135,12 +135,15 @@ def _remap_batch_ownership(
     new_deletions = []
     for deletion in ownership.deletions:
         if deletion.anchor_line is None:
-            new_deletions.append(AbsenceClaim(
-                anchor_line=None,
-                content_lines=deletion.content_lines,
-                baseline_reference=deletion.baseline_reference,
-                source_alternative=deletion.source_alternative,
-            ))
+            new_deletions.append(
+                AbsenceClaim(
+                    anchor_line=None,
+                    content_lines=deletion.content_lines,
+                    baseline_reference=deletion.baseline_reference,
+                    source_alternative=deletion.source_alternative,
+                    complete_file_pair=deletion.complete_file_pair,
+                )
+            )
             continue
 
         new_anchor = lineage.translate_source_line(deletion.anchor_line)
@@ -149,12 +152,15 @@ def _remap_batch_ownership(
                 f"Cannot remap deletion anchor line {deletion.anchor_line} from old source "
                 f"to new source: no preserved source lineage found."
             )
-        new_deletions.append(AbsenceClaim(
-            anchor_line=new_anchor,
-            content_lines=deletion.content_lines,
-            baseline_reference=deletion.baseline_reference,
-            source_alternative=deletion.source_alternative,
-        ))
+        new_deletions.append(
+            AbsenceClaim(
+                anchor_line=new_anchor,
+                content_lines=deletion.content_lines,
+                baseline_reference=deletion.baseline_reference,
+                source_alternative=deletion.source_alternative,
+                complete_file_pair=deletion.complete_file_pair,
+            )
+        )
 
     new_replacement_units = _remap_replacement_units_with_lineage(
         ownership.replacement_units,

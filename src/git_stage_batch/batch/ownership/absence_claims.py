@@ -31,12 +31,15 @@ class AbsenceClaim:
                             post-change source anchors.
         source_alternative: The old side came from an explicit live replacement
                             payload rather than from the batch baseline.
+        complete_file_pair: Whether the source contains two complete versions
+            and these lines are the second one.
     """
 
     anchor: LineBoundary[BatchSourceSpace]
     content_lines: Sequence[bytes]
     baseline_reference: BaselineReference | None = None
     source_alternative: bool = False
+    complete_file_pair: bool = False
 
     def __init__(
         self,
@@ -46,6 +49,7 @@ class AbsenceClaim:
         *,
         anchor: LineBoundary[BatchSourceSpace] | None = None,
         source_alternative: bool = False,
+        complete_file_pair: bool = False,
     ) -> None:
         if anchor is not None and not isinstance(anchor, LineBoundary):
             raise TypeError("absence anchor must be a line boundary")
@@ -55,6 +59,8 @@ class AbsenceClaim:
             raise ValueError("legacy absence anchor line must be positive")
         if anchor is not None and anchor_line is not None:
             raise ValueError("provide an anchor boundary or legacy anchor line")
+        if complete_file_pair and not source_alternative:
+            raise ValueError("a complete file pair must be a source alternative")
         if anchor is not None:
             resolved = anchor
         else:
@@ -63,6 +69,7 @@ class AbsenceClaim:
         object.__setattr__(self, "content_lines", content_lines)
         object.__setattr__(self, "baseline_reference", baseline_reference)
         object.__setattr__(self, "source_alternative", source_alternative)
+        object.__setattr__(self, "complete_file_pair", complete_file_pair)
 
     @property
     def anchor_line(self) -> int | None:
@@ -80,6 +87,8 @@ class AbsenceClaim:
             data["baseline_reference"] = self.baseline_reference.to_dict()
         if self.source_alternative:
             data["source_alternative"] = True
+        if self.complete_file_pair:
+            data["complete_file_pair"] = True
         return data
 
     def to_attribution_dict(self) -> AbsenceClaimMetadata:
@@ -113,4 +122,5 @@ class AbsenceClaim:
             content_lines=content_lines,
             baseline_reference=baseline_reference,
             source_alternative=data.get("source_alternative") is True,
+            complete_file_pair=data.get("complete_file_pair") is True,
         )

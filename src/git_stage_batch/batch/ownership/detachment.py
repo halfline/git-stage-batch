@@ -27,6 +27,7 @@ def acquire_detached_batch_ownership(
                     content_lines=content_lines,
                     baseline_reference=deletion.baseline_reference,
                     source_alternative=deletion.source_alternative,
+                    complete_file_pair=deletion.complete_file_pair,
                 )
             )
     except BaseException:

@@ -630,6 +630,7 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                 "blob",
                 "baseline_reference",
                 "source_alternative",
+                "complete_file_pair",
             },
             batch_name,
             f"files[{path!r}].deletions",
@@ -652,6 +653,27 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                 _("files[{path!r}] has an invalid source-alternative flag").format(
                     path=path
                 ),
+            )
+        if (
+            "complete_file_pair" in deletion
+            and type(deletion["complete_file_pair"]) is not bool
+        ):
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has an invalid complete-file-pair flag").format(
+                    path=path
+                ),
+            )
+        if (
+            deletion.get("complete_file_pair") is True
+            and deletion.get("source_alternative") is not True
+        ):
+            _invalid(
+                batch_name,
+                _(
+                    "files[{path!r}] has a complete file pair without a "
+                    "source alternative"
+                ).format(path=path),
             )
         if "baseline_reference" in deletion:
             _validate_baseline_reference(

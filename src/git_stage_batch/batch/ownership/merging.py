@@ -20,6 +20,7 @@ class _AbsenceSignature:
     byte_count: int
     line_count: int
     source_alternative: bool
+    complete_file_pair: bool
 
 
 def _absence_signature(claim: AbsenceClaim) -> _AbsenceSignature:
@@ -36,6 +37,7 @@ def _absence_signature(claim: AbsenceClaim) -> _AbsenceSignature:
         byte_count=byte_count,
         line_count=len(claim.content_lines),
         source_alternative=claim.source_alternative,
+        complete_file_pair=claim.complete_file_pair,
     )
 
 
@@ -101,6 +103,7 @@ def _merge_deletion_claim_metadata(
             new.baseline_reference,
         ),
         source_alternative=existing.source_alternative,
+        complete_file_pair=existing.complete_file_pair,
     )
 
 

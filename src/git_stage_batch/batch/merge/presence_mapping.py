@@ -407,6 +407,14 @@ def _authorized_context_corrections(
             ordinary_source = ordinary_mapping.get_source_line_from_target_line(
                 target_line
             )
+            has_complete_preferred_context = (
+                _run_contains_complete_preferred_context_range(
+                    preferred_context_ranges,
+                    source_start,
+                    source_end,
+                    source_line,
+                )
+            )
             ordinary_source_has_recorded_boundary = (
                 ordinary_source is not None
                 and sorted_line_ranges_contain(
@@ -415,12 +423,7 @@ def _authorized_context_corrections(
                 )
             )
             explicitly_authorized = ordinary_source is not None and (
-                _run_contains_complete_preferred_context_range(
-                    preferred_context_ranges,
-                    source_start,
-                    source_end,
-                    source_line,
-                )
+                has_complete_preferred_context
                 or (
                     preceding_presence is not None
                     and preceding_presence[0]

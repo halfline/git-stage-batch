@@ -73,6 +73,72 @@ def test_resolved_alternatives_are_ordered_by_live_source_span() -> None:
     ]
 
 
+def test_batch_ownership_resolves_nested_live_alternative_payload() -> None:
+    """A later live alternative can split an enclosing predecessor payload."""
+    outer_claim = AbsenceClaim(
+        content_lines=[b"outer one\n", b"inner saved\n", b"outer two\n"],
+        source_alternative=True,
+    )
+    inner_claim = AbsenceClaim(
+        content_lines=[b"inner live\n"],
+        source_alternative=True,
+    )
+    alternatives = (
+        BatchOwnership.from_presence_lines(
+            ["1-2", "4"],
+            [outer_claim, inner_claim],
+            replacement_units=[
+                ReplacementUnit(["1-2"], [0]),
+                ReplacementUnit(["4"], [1]),
+            ],
+        )
+        .resolve()
+        .replacement_alternatives
+    )
+
+    assert alternatives[0].live_payload == (
+        LineSpan(LineBoundary(2), LineBoundary(4)),
+        LineSpan(LineBoundary(5), LineBoundary(6)),
+    )
+    assert alternatives[0].live_envelope == LineSpan(
+        LineBoundary(2),
+        LineBoundary(6),
+    )
+    assert alternatives[1].live_payload == (LineSpan(LineBoundary(4), LineBoundary(5)),)
+
+
+def test_nested_alternative_at_payload_end_extends_parent_envelope() -> None:
+    """A child at the last parent line still extends its stored live region."""
+    outer_claim = AbsenceClaim(
+        content_lines=[b"outer\n", b"inner saved\n"],
+        source_alternative=True,
+    )
+    inner_claim = AbsenceClaim(
+        content_lines=[b"inner live\n"],
+        source_alternative=True,
+    )
+    alternatives = (
+        BatchOwnership.from_presence_lines(
+            ["1-2", "4"],
+            [outer_claim, inner_claim],
+            replacement_units=[
+                ReplacementUnit(["1-2"], [0]),
+                ReplacementUnit(["4"], [1]),
+            ],
+        )
+        .resolve()
+        .replacement_alternatives
+    )
+
+    assert alternatives[0].live_payload == (
+        LineSpan(LineBoundary(2), LineBoundary(4)),
+    )
+    assert alternatives[0].live_envelope == LineSpan(
+        LineBoundary(2),
+        LineBoundary(5),
+    )
+
+
 def test_batch_ownership_rejects_uncoupled_persisted_alternative() -> None:
     """Every explicit old side belongs to exactly one replacement unit."""
     with pytest.raises(InvalidReplacementAlternatives, match="not coupled"):

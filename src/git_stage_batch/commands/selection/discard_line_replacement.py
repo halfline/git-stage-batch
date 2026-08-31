@@ -11,6 +11,9 @@ import os
 from pathlib import Path
 from typing import cast
 
+from ...batch.complete_source_replacement import (
+    materialize_untracked_source_replacement,
+)
 from ...batch.source.annotation import annotate_with_batch_source_working_lines
 from ...batch.replacement_alternatives import (
     ExplicitReplacementAlternatives,
@@ -123,6 +126,7 @@ from ...batch.source.cache import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from ...batch.source.buffers import load_saved_session_file_as_buffer
 from ...batch.source.snapshots import create_batch_source_commit
 from ...data.file_modes import detect_file_mode
 from ...data.file_hunk_display import build_file_hunk_from_buffer
@@ -245,18 +249,31 @@ def prepare_discard_line_replacement_selection(
     replacement_owned_prefix_count: int | None = None
     replacement_discard_prefix_context_count = 0
     retains_explicit_addition_subspan = False
+    materializes_saved_then_live = False
+    replacement_ownership_scope = ReplacementAlternativeOwnership.TRANSLATED_SELECTION
     try:
-        with (
-            load_working_tree_file_as_buffer(line_changes.path) as working_lines,
-            read_git_object_buffer_or_empty(
+        with ExitStack() as source_stack:
+            working_lines = source_stack.enter_context(
+                load_working_tree_file_as_buffer(line_changes.path)
+            )
+            baseline_buffer = read_git_object_buffer_or_none(
                 f"HEAD:{line_changes.path}"
-            ) as baseline_lines,
-        ):
+            )
+            baseline_file_exists = baseline_buffer is not None
+            baseline_lines = source_stack.enter_context(
+                baseline_buffer
+                if baseline_buffer is not None
+                else LineBuffer.from_bytes(b"")
+            )
             original_working_line_count = len(working_lines)
             while True:
                 replacement_owned_prefix_count = None
                 replacement_discard_prefix_context_count = 0
                 retains_explicit_addition_subspan = False
+                materializes_saved_then_live = False
+                replacement_ownership_scope = (
+                    ReplacementAlternativeOwnership.TRANSLATED_SELECTION
+                )
                 selects_partial_new_prefix = (
                     _selects_complete_old_partial_new_prefix(
                         line_changes,
@@ -304,7 +321,39 @@ def prepare_discard_line_replacement_selection(
                         retains_explicit_addition_subspan = (
                             has_explicit_addition_subspan and bool(payload_lines)
                         )
-                        if len(payload_lines) > selected_working_line_count and all(
+                        if (
+                            not baseline_file_exists
+                            and selected_additions_cover_working_span
+                            and baseline_start == baseline_end
+                            and payload_lines
+                            and (
+                                len(payload_lines) != selected_working_line_count
+                                or any(
+                                    payload_lines[index]
+                                    != _line_body(
+                                        working_lines[replacement_start + index]
+                                    )
+                                    for index in range(selected_working_line_count)
+                                )
+                            )
+                        ):
+                            snapshot_file_if_untracked(line_changes.path)
+                            session_start_lines = source_stack.enter_context(
+                                load_saved_session_file_as_buffer(line_changes.path)
+                            )
+                            if len(session_start_lines) == len(working_lines) and all(
+                                _line_body(session_start_lines[index])
+                                == _line_body(working_lines[index])
+                                for index in range(len(working_lines))
+                            ):
+                                replacement_owned_prefix_count = (
+                                    selected_working_line_count
+                                )
+                                materializes_saved_then_live = True
+                                replacement_ownership_scope = (
+                                    ReplacementAlternativeOwnership.UNTRACKED_SOURCE
+                                )
+                        elif len(payload_lines) > selected_working_line_count and all(
                             payload_lines[index]
                             == _line_body(
                                 working_lines[replacement_start + index]
@@ -404,7 +453,34 @@ def prepare_discard_line_replacement_selection(
                 (DisplayLineId(line_id) for line_id in effective_ids),
                 view=original_view,
             )
-            if (
+            if materializes_saved_then_live:
+                with build_target_working_tree_buffer_with_edit_plan(
+                    edit_plan,
+                    replacement_payload,
+                    working_lines,
+                    working_has_trailing_newline=buffer_ends_with_lf(working_lines),
+                    trim_unchanged_edge_anchors=not no_edge_overlap,
+                ) as live_replacement_buffer:
+                    rewritten_working_buffer = LineBuffer.from_chunks(
+                        chain(
+                            LineRangeView(
+                                live_replacement_buffer,
+                                0,
+                                replacement_start,
+                            ),
+                            LineRangeView(
+                                working_lines,
+                                replacement_start,
+                                replacement_end,
+                            ),
+                            LineRangeView(
+                                live_replacement_buffer,
+                                replacement_start,
+                                len(live_replacement_buffer),
+                            ),
+                        )
+                    )
+            elif (
                 retains_explicit_addition_subspan
                 and replacement_owned_prefix_count is None
             ):
@@ -466,14 +542,17 @@ def prepare_discard_line_replacement_selection(
             replacement_owned_prefix_count is not None
             and owned_replacement_new_end < replacement_new_end
         ):
-            with replacement_line_bodies(replacement_payload) as payload_lines:
-                explicit_alternative_end = _verified_explicit_alternative_end(
-                    selection_lines=rewritten_working_lines,
-                    payload_lines=payload_lines,
-                    owned_prefix_count=replacement_owned_prefix_count,
-                    alternative_start=owned_replacement_new_end + 1,
-                    fallback_end=replacement_new_end,
-                )
+            if materializes_saved_then_live:
+                explicit_alternative_end = replacement_new_end
+            else:
+                with replacement_line_bodies(replacement_payload) as payload_lines:
+                    explicit_alternative_end = _verified_explicit_alternative_end(
+                        selection_lines=rewritten_working_lines,
+                        payload_lines=payload_lines,
+                        owned_prefix_count=replacement_owned_prefix_count,
+                        alternative_start=owned_replacement_new_end + 1,
+                        fallback_end=replacement_new_end,
+                    )
         rewritten_cached_lines = _build_rewritten_line_changes(
             line_changes.path,
             rewritten_working_lines,
@@ -614,9 +693,13 @@ def prepare_discard_line_replacement_selection(
                 parent=replacement_parent,
                 ownership_scope=(
                     ReplacementAlternativeOwnership.EXACT_SAVED_SPAN
-                    if replacement_parent is None
-                    and selects_exact_addition_span
-                    else ReplacementAlternativeOwnership.TRANSLATED_SELECTION
+                    if (
+                        replacement_ownership_scope
+                        is ReplacementAlternativeOwnership.TRANSLATED_SELECTION
+                        and replacement_parent is None
+                        and selects_exact_addition_span
+                    )
+                    else replacement_ownership_scope
                 ),
             )
         yield DiscardLineReplacementSelection(
@@ -688,7 +771,28 @@ def add_discard_line_replacement_to_batch(
         batch_source_commit: str
         bound_ownership: SourceBoundOwnership
         try:
-            if file_metadata is None:
+            alternatives = selection.replacement_alternatives
+            if (
+                file_metadata is None
+                and alternatives is not None
+                and alternatives.uses_untracked_source
+            ):
+                materialized = ownership_stack.enter_context(
+                    materialize_untracked_source_replacement(
+                        selection.rewritten_working_lines,
+                        alternatives,
+                    )
+                )
+                batch_source_commit = create_batch_source_commit(
+                    selection.file_path,
+                    file_buffer_override=materialized.source_buffer,
+                )
+                _record_session_batch_source(
+                    selection.file_path,
+                    batch_source_commit,
+                )
+                bound_ownership = materialized.bound_ownership
+            elif file_metadata is None:
                 batch_source_commit = create_batch_source_commit(
                     selection.file_path,
                     file_buffer_override=selection.rewritten_working_lines,

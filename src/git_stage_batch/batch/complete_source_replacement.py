@@ -3,18 +3,29 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
+from itertools import chain
+from types import TracebackType
 
+from ..core.buffer import LineBuffer
 from ..core.coordinates import (
     BatchSourceSpace,
     LineSpan,
+    RewrittenWorktreeSpace,
     SnapshotSpan,
+    WorktreeSpace,
     content_snapshot,
     require_same_snapshot,
 )
 from ..core.text_lines import normalize_line_endings
 from .file_state import SourceBoundOwnership
+from .line_matching.line_range_view import LineRangeView
+from .ownership.absence_claims import AbsenceClaim
 from .ownership.model import BatchOwnership
+from .ownership.references import BaselineReference
+from .ownership.replacement_units import ReplacementUnit
+from .replacement_alternatives import ExplicitReplacementAlternatives
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +43,29 @@ class CompleteSourceReplacementAlternative:
             raise ValueError("complete replacement alternatives are not adjacent")
         if self.live.span.end.offset != self.live.snapshot.line_count:
             raise ValueError("complete live replacement does not end at EOF")
+
+
+@dataclass(slots=True)
+class MaterializedCompleteSourceReplacement:
+    """A temporary source file and the batch claims for both versions."""
+
+    source_buffer: LineBuffer
+    bound_ownership: SourceBoundOwnership
+
+    def close(self) -> None:
+        """Release the temporary source buffer."""
+        self.source_buffer.close()
+
+    def __enter__(self) -> MaterializedCompleteSourceReplacement:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
 
 def _complete_source_replacement_spans(
@@ -97,4 +131,110 @@ def resolve_complete_source_replacement(
     return CompleteSourceReplacementAlternative(
         saved=SnapshotSpan(source_snapshot, saved_span),
         live=SnapshotSpan(source_snapshot, live_span),
+    )
+
+
+def materialize_untracked_source_replacement(
+    rewritten_lines: Sequence[bytes],
+    alternatives: ExplicitReplacementAlternatives,
+) -> MaterializedCompleteSourceReplacement:
+    """Store both versions when an untracked file is first changed."""
+    if (
+        not alternatives.uses_untracked_source
+        or alternatives.live is None
+        or alternatives.parent is not None
+        or alternatives.edit.plan.baseline_snapshot.line_count != 0
+    ):
+        raise ValueError("replacement is not an untracked source alternative")
+    require_same_snapshot(
+        alternatives.edit.rewritten_snapshot,
+        content_snapshot(
+            alternatives.edit.rewritten_snapshot.path,
+            rewritten_lines,
+            space=RewrittenWorktreeSpace,
+        ),
+    )
+    with ExitStack() as stack:
+        saved_file = stack.enter_context(
+            _buffer_without_span(rewritten_lines, alternatives.live.span)
+        )
+        require_same_snapshot(
+            alternatives.edit.source_snapshot,
+            content_snapshot(
+                alternatives.edit.source_snapshot.path,
+                saved_file,
+                space=WorktreeSpace,
+            ),
+        )
+        live_file = stack.enter_context(
+            _buffer_without_span(rewritten_lines, alternatives.saved.span)
+        )
+        return _materialize_complete_source_replacement(
+            alternatives.edit.source_snapshot.path,
+            saved_file,
+            live_file,
+        )
+
+
+def _materialize_complete_source_replacement(
+    path: str,
+    saved_file: Sequence[bytes],
+    live_file: Sequence[bytes],
+) -> MaterializedCompleteSourceReplacement:
+    """Store both complete versions and build their batch claims."""
+    if not saved_file or not live_file:
+        raise ValueError("complete replacement snapshots must be non-empty")
+    new_source = LineBuffer.from_chunks(chain(saved_file, live_file))
+    try:
+        saved_line_count = len(saved_file)
+        live_view = LineRangeView(
+            new_source,
+            saved_line_count,
+            len(new_source),
+        )
+        deletion = AbsenceClaim(
+            content_lines=live_view,
+            baseline_reference=BaselineReference(
+                after_line=None,
+                before_line=None,
+                has_before_line=True,
+            ),
+            source_alternative=True,
+            complete_file_pair=True,
+        )
+        source_range = f"1-{saved_line_count}"
+        ownership = BatchOwnership.from_presence_lines(
+            [source_range],
+            [deletion],
+            replacement_units=[ReplacementUnit([source_range], [0])],
+        )
+        bound_ownership = SourceBoundOwnership(
+            content_snapshot(path, new_source, space=BatchSourceSpace),
+            ownership,
+        )
+        if resolve_complete_source_replacement(new_source, bound_ownership) is None:
+            raise ValueError("materialized complete replacement lost its shape")
+        return MaterializedCompleteSourceReplacement(
+            new_source,
+            bound_ownership,
+        )
+    except BaseException:
+        new_source.close()
+        raise
+
+
+def _buffer_without_span(
+    lines: Sequence[bytes],
+    span: LineSpan[RewrittenWorktreeSpace],
+) -> LineBuffer:
+    """Return a buffer with one line span removed."""
+    start = span.start.offset
+    end = span.end.offset
+    if end > len(lines):
+        raise ValueError("removed replacement span is outside its snapshot")
+    return LineBuffer.from_chunks(
+        chain(
+            LineRangeView(lines, 0, start),
+            LineRangeView(lines, end, len(lines)),
+        )
     )

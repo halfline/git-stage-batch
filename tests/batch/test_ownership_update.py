@@ -15,6 +15,7 @@ from git_stage_batch.batch.file_state import (
 )
 from git_stage_batch.batch.ownership_update import (
     PreparedBatchUpdate,
+    SourceBoundLineSelection,
     acquire_batch_ownership_update_for_selection,
 )
 from git_stage_batch.commands.selection import (
@@ -30,22 +31,29 @@ def test_prepared_batch_update_dataclass():
     """Test PreparedBatchUpdate dataclass construction."""
     ownership = BatchOwnership.from_presence_lines(["1-3"], [])
     source = [b"one\n", b"two\n", b"three\n"]
+    source_snapshot = content_snapshot(
+        "test.py",
+        source,
+        space=BatchSourceSpace,
+    )
+    selected_lines = [LineEntry(1, "+", None, 1, text_bytes=b"one", source_line=1)]
 
     update = PreparedBatchUpdate(
         batch_source_commit="def456",
         bound_ownership=SourceBoundOwnership(
-            content_snapshot(
-                "test.py",
-                source,
-                space=BatchSourceSpace,
-            ),
+            source_snapshot,
             ownership,
+        ),
+        source_bound_selection=SourceBoundLineSelection(
+            source_snapshot,
+            selected_lines,
         ),
         expected_metadata_revision=BatchMetadataRevision("metadata-1"),
     )
 
     assert update.batch_source_commit == "def456"
     assert update.bound_ownership.value == ownership
+    assert update.source_bound_selection.lines is selected_lines
 
 
 def test_refreshed_selected_overlay_does_not_copy_unselected_hunk() -> None:
@@ -76,6 +84,34 @@ def test_refreshed_selected_overlay_does_not_copy_unselected_hunk() -> None:
 
     assert retained < 64 * 1024
     assert peak < 128 * 1024
+
+
+def test_owned_blank_after_selected_block_is_included_in_ownership() -> None:
+    """Removing a complete block records its following blank when already owned."""
+    hunk_lines = [
+        LineEntry(1, "+", None, 1, text_bytes=b"heading", source_line=1),
+        LineEntry(2, "+", None, 2, text_bytes=b"first", source_line=2),
+        LineEntry(3, "+", None, 3, text_bytes=b"second", source_line=3),
+        LineEntry(4, "+", None, 4, text_bytes=b"", source_line=4),
+        LineEntry(5, "+", None, 5, text_bytes=b"next", source_line=5),
+    ]
+    selected_lines = hunk_lines[1:3]
+
+    prepared = ownership_update_module._include_owned_following_blank(
+        selected_lines,
+        hunk_lines=hunk_lines,
+        source_lines=[
+            b"heading\n",
+            b"first\n",
+            b"second\n",
+            b"\n",
+            b"next\n",
+        ],
+        existing_ownership=BatchOwnership.from_presence_lines(["1-4"], []),
+    )
+
+    assert [line.id for line in prepared] == [2, 3, 4]
+    assert prepared[-1].source_line == 4
 
 
 def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
@@ -112,6 +148,11 @@ def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
         source_refresh,
         "load_working_tree_file_as_buffer",
         lambda _file_path: LineBuffer.from_bytes(b"line1\nline2\n"),
+    )
+    monkeypatch.setattr(
+        ownership_update_module,
+        "read_git_object_buffer_or_empty",
+        lambda _object_name: LineBuffer.from_bytes(b"line1\nline2\n"),
     )
     cached_sources = {}
     monkeypatch.setattr(

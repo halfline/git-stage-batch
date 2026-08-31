@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from .applied_text_replay import AppliedTextApplication
 from .ownership.attribution_metadata import (
     compact_ownership_metadata_for_attribution,
 )
@@ -30,6 +31,7 @@ class AppliedBatchOverlayView:
         str,
         tuple[tuple[int, int], ...],
     ]
+    text_applications: tuple[AppliedTextApplication, ...] = ()
 
     @classmethod
     def empty(cls) -> AppliedBatchOverlayView:

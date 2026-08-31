@@ -728,6 +728,10 @@ def build_discard_text_file_action_plan(
                 )
                 if applied_presence_lines:
                     discard_options["applied_presence_lines"] = applied_presence_lines
+                if added_separator_lines:
+                    discard_options["added_separator_lines"] = (
+                        added_separator_lines
+                    )
                 discarded_buffer = discard_batch_from_line_sequences_as_buffer(
                     batch_source_lines,
                     ownership,

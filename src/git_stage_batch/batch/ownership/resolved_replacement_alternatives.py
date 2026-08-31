@@ -18,7 +18,12 @@ class InvalidReplacementAlternatives(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class ResolvedReplacementAlternative:
-    """One saved version and the live version stored after it."""
+    """One saved version and the live version stored after it.
+
+    A deletion record points to the live text. Other saved/live pairs may be
+    nested there. ``live_envelope`` includes nested pairs, while
+    ``live_payload`` includes only this pair's live text.
+    """
 
     unit_index: int
     deletion_index: int
@@ -38,13 +43,32 @@ class ResolvedReplacementAlternative:
             raise ValueError("replacement alternative live envelope must be non-empty")
         if self.live_envelope.start != self.saved.end:
             raise ValueError("replacement alternative spans are not adjacent")
-        if len(self.live_payload) != 1 or self.live_payload[0] != self.live_envelope:
-            raise ValueError("replacement alternative live payload is invalid")
+        if not self.live_payload:
+            raise ValueError("replacement alternative live payload is empty")
+        previous_end = self.live_envelope.start.offset
+        payload_line_count = 0
+        for payload_span in self.live_payload:
+            if len(payload_span) == 0:
+                raise ValueError("replacement alternative payload span is empty")
+            if (
+                payload_span.start.offset < previous_end
+                or payload_span.start.offset < self.live_envelope.start.offset
+                or payload_span.end.offset > self.live_envelope.end.offset
+            ):
+                raise ValueError(
+                    "replacement alternative payload spans are outside live order"
+                )
+            previous_end = payload_span.end.offset
+            payload_line_count += len(payload_span)
+        if self.live_payload[0].start != self.live_envelope.start:
+            raise ValueError(
+                "replacement alternative payload does not start at its live edge"
+            )
         if not self.absence_claim.source_alternative:
             raise ValueError(
                 "replacement alternative claim is not an explicit old side"
             )
-        if len(self.absence_claim.content_lines) != len(self.live_envelope):
+        if len(self.absence_claim.content_lines) != payload_line_count:
             raise ValueError(
                 "replacement alternative live payload has the wrong length"
             )
@@ -58,10 +82,82 @@ class ResolvedReplacementAlternative:
 
     def iter_live_source_offsets(self) -> Iterator[int]:
         """Yield the source offsets that hold this pair's live text."""
-        yield from range(
-            self.live_envelope.start.offset,
-            self.live_envelope.end.offset,
+        for payload_span in self.live_payload:
+            yield from range(payload_span.start.offset, payload_span.end.offset)
+
+
+@dataclass(frozen=True, slots=True)
+class _UnresolvedReplacementAlternative:
+    """A saved version whose live text has not yet been found."""
+
+    unit_index: int
+    deletion_index: int
+    saved: LineSpan[BatchSourceSpace]
+    absence_claim: AbsenceClaim
+
+
+def _current_payload_contains(
+    current_start: int,
+    current_end: int,
+    contained: LineSpan[BatchSourceSpace],
+) -> bool:
+    """Return whether one saved span is inside the current live text."""
+    return (
+        current_start <= contained.start.offset and contained.end.offset <= current_end
+    )
+
+
+def _resolve_live_geometry(
+    unresolved: _UnresolvedReplacementAlternative,
+    resolved_by_live_start: dict[int, ResolvedReplacementAlternative],
+) -> ResolvedReplacementAlternative:
+    """Find this pair's live lines, excluding any nested pairs."""
+    live_start = unresolved.saved.end.offset
+    source_offset = live_start
+    payload_start = live_start
+    remaining_payload_lines = len(unresolved.absence_claim.content_lines)
+    payload_spans: list[LineSpan[BatchSourceSpace]] = []
+
+    while True:
+        nested = resolved_by_live_start.get(source_offset)
+        if nested is not None and _current_payload_contains(
+            payload_start,
+            source_offset,
+            nested.saved,
+        ):
+            if payload_start < source_offset:
+                payload_spans.append(
+                    LineSpan(
+                        LineBoundary(payload_start),
+                        LineBoundary(source_offset),
+                    )
+                )
+            source_offset = nested.live_envelope.end.offset
+            payload_start = source_offset
+            continue
+        if not remaining_payload_lines:
+            break
+        source_offset += 1
+        remaining_payload_lines -= 1
+
+    if payload_start < source_offset:
+        payload_spans.append(
+            LineSpan(
+                LineBoundary(payload_start),
+                LineBoundary(source_offset),
+            )
         )
+    return ResolvedReplacementAlternative(
+        unit_index=unresolved.unit_index,
+        deletion_index=unresolved.deletion_index,
+        saved=unresolved.saved,
+        live_payload=tuple(payload_spans),
+        live_envelope=LineSpan(
+            LineBoundary(live_start),
+            LineBoundary(source_offset),
+        ),
+        absence_claim=unresolved.absence_claim,
+    )
 
 
 def resolve_replacement_alternatives(
@@ -72,7 +168,7 @@ def resolve_replacement_alternatives(
     """Read each saved/live pair and order the pairs by live position."""
     if not any(claim.source_alternative for claim in deletion_claims):
         return ()
-    coupled: dict[int, ResolvedReplacementAlternative] = {}
+    coupled: dict[int, _UnresolvedReplacementAlternative] = {}
     for unit_index, unit in enumerate(replacement_units):
         saved_lines = parse_ownership_line_ranges(unit.presence_lines)
         alternative_indices: list[int] = []
@@ -117,16 +213,10 @@ def resolve_replacement_alternatives(
             LineBoundary(saved_start - 1),
             LineBoundary(saved_end),
         )
-        live_span: LineSpan[BatchSourceSpace] = LineSpan(
-            saved_span.end,
-            LineBoundary(saved_span.end.offset + len(claim.content_lines)),
-        )
-        coupled[deletion_index] = ResolvedReplacementAlternative(
+        coupled[deletion_index] = _UnresolvedReplacementAlternative(
             unit_index=unit_index,
             deletion_index=deletion_index,
             saved=saved_span,
-            live_payload=(live_span,),
-            live_envelope=live_span,
             absence_claim=claim,
         )
 
@@ -143,19 +233,53 @@ def resolve_replacement_alternatives(
         raise InvalidReplacementAlternatives(
             "replacement unit couples an unknown explicit old side"
         )
-    resolved = sorted(
+    resolved_by_live_start: dict[int, ResolvedReplacementAlternative] = {}
+    resolved: list[ResolvedReplacementAlternative] = []
+    for unresolved in sorted(
         coupled.values(),
+        key=lambda alternative: (
+            alternative.saved.end.offset,
+            alternative.saved.start.offset,
+            alternative.deletion_index,
+        ),
+        reverse=True,
+    ):
+        live_start = unresolved.saved.end.offset
+        if live_start in resolved_by_live_start:
+            raise InvalidReplacementAlternatives(
+                "replacement alternatives share one live boundary"
+            )
+        try:
+            alternative = _resolve_live_geometry(
+                unresolved,
+                resolved_by_live_start,
+            )
+        except ValueError as error:
+            raise InvalidReplacementAlternatives(str(error)) from error
+        resolved_by_live_start[live_start] = alternative
+        resolved.append(alternative)
+
+    resolved.sort(
         key=lambda alternative: (
             alternative.live_envelope.start.offset,
             alternative.live_envelope.end.offset,
             alternative.deletion_index,
-        ),
+        )
+    )
+    payload_spans = sorted(
+        (
+            payload_span.start.offset,
+            payload_span.end.offset,
+            alternative.deletion_index,
+        )
+        for alternative in resolved
+        for payload_span in alternative.live_payload
     )
     previous_end = 0
-    for alternative in resolved:
-        if alternative.live_envelope.start.offset < previous_end:
+    for payload_start, payload_end, _deletion_index in payload_spans:
+        if payload_start < previous_end:
             raise InvalidReplacementAlternatives(
                 "replacement alternative live payloads overlap"
             )
-        previous_end = alternative.live_envelope.end.offset
+        previous_end = payload_end
     return tuple(resolved)

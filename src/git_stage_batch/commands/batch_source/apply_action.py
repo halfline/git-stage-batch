@@ -28,10 +28,12 @@ from ...batch.state.metadata_types import (
 )
 from ...batch.state.metadata_types import add_ownership_metadata
 from ...batch.state.references import get_batch_state_ref_name
+from ...batch.state.query import read_batch_metadata_for_batches
 from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...core.models import RenderedBatchDisplay
 from ...core.text_lifecycle import TextFileChangeType
 from ...batch.binary_file_content import read_binary_file_from_batch
+from ...batch.applied_overlay_view import AppliedBatchOverlayView
 from ...batch.submodule_pointer import (
     apply_submodule_pointer_from_batch,
     is_batch_submodule_pointer,
@@ -39,8 +41,8 @@ from ...batch.submodule_pointer import (
 from ...data.session import snapshot_file_if_untracked
 from ...data.session_marker import session_is_active
 from ...data.applied_batch_overlays import (
-    AppliedBatchOverlayView,
-    applied_batch_overlays_repository_path,
+    AppliedTextPreimageInput,
+    applied_batch_overlay_repository_paths,
     build_applied_file_provenances,
     fresh_applied_batch_overlay_for_path,
     load_applied_batch_overlay_snapshot,
@@ -231,6 +233,15 @@ def execute_apply_action(
                         _action_plans.ApplyTextFileActionPlan,
                     )
                 },
+                text_preimages_by_path={
+                    plan.file_path: AppliedTextPreimageInput(
+                        expected_worktree_identities[plan.file_path],
+                        plan.preimage_artifact_path,
+                    )
+                    for plan in apply_plans
+                    if isinstance(plan, _action_plans.ApplyTextFileActionPlan)
+                    and plan.preimage_artifact_path is not None
+                },
             )
             _require_unchanged_apply_targets(
                 expected_index_identities,
@@ -250,7 +261,9 @@ def execute_apply_action(
                     terminal_safe_shell_join(operation_parts),
                     worktree_paths=publication_worktree_paths,
                     index_paths=index_mutation_paths,
-                    repository_paths=[applied_batch_overlays_repository_path()],
+                    repository_paths=applied_batch_overlay_repository_paths(
+                        applied_file_provenance
+                    ),
                 ) as checkpoint_status:
                     _require_unchanged_apply_targets(
                         expected_index_identities,
@@ -438,6 +451,17 @@ def _capture_apply_plan_inputs(
     )
     index_identities = read_index_identities(index_paths)
     applied_overlay_snapshot = load_applied_batch_overlay_snapshot()
+    overlay_batch_names = {
+        application["batch"]
+        for file_path in files
+        for application in applied_overlay_snapshot.state["files"].get(
+            file_path, {"applications": []}
+        )["applications"]
+    }
+    overlay_batch_metadata = read_batch_metadata_for_batches(
+        sorted(overlay_batch_names)
+    )
+    overlay_batch_metadata[batch_name] = batch_metadata
 
     for ordinal, (file_path, file_meta) in enumerate(files.items()):
         try:
@@ -501,7 +525,7 @@ def _capture_apply_plan_inputs(
                     ),
                     applied_overlay=fresh_applied_batch_overlay_for_path(
                         file_path,
-                        batch_metadata_by_name={batch_name: batch_metadata},
+                        batch_metadata_by_name=overlay_batch_metadata,
                         snapshot=applied_overlay_snapshot,
                         worktree_identity=identity,
                     ),
@@ -631,6 +655,9 @@ def _reduce_apply_action_plans(
     failed_by_ordinal = {}
     candidate_counts = {}
     plans_by_ordinal = capture.plans_by_ordinal
+    text_inputs_by_ordinal = {
+        text_input.ordinal: text_input for text_input in capture.text_inputs
+    }
     for ordinal, (file_path, _file_meta) in enumerate(files.items()):
         command_error = capture.command_errors_by_ordinal.get(ordinal)
         if command_error is not None:
@@ -715,14 +742,17 @@ def _reduce_apply_action_plans(
                 )
             )
             plans_by_ordinal[result.ordinal] = _action_plans.ApplyTextFileActionPlan(
-                result.file_path,
-                buffer,
-                result.file_mode,
-                TextFileChangeType(result.change_type),
-                selected_metadata,
-                result.introduced_selected_presence,
-                result.index_preimage_source_ranges,
-                result.expected_index_identity,
+                file_path=result.file_path,
+                buffer=buffer,
+                file_mode=result.file_mode,
+                change_type=TextFileChangeType(result.change_type),
+                selected_file_metadata=selected_metadata,
+                introduced_selected_presence=(result.introduced_selected_presence),
+                index_preimage_source_ranges=(result.index_preimage_source_ranges),
+                expected_index_identity=result.expected_index_identity,
+                preimage_artifact_path=(
+                    text_inputs_by_ordinal[result.ordinal].worktree_artifact
+                ),
             )
         elif result.outcome == "noop":
             continue

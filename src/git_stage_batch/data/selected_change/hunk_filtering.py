@@ -20,13 +20,13 @@ from ...core.models import LineLevelChange
 from ...utils.file_io import write_text_file_contents
 from ...utils.journal import log_journal
 from ...utils.paths import get_line_changes_json_file_path
+from ...batch.applied_overlay_view import AppliedBatchOverlayView
 from .. import change_freshness as _change_freshness
 from ..text_lifecycle_detection import detect_empty_text_lifecycle_change
 from .. import consumed_replacement_masks as _consumed_replacement_masks
 from .. import line_state as _line_state
 from ..consumed_selections import read_consumed_file_metadata
 from ..applied_batch_overlays import (
-    AppliedBatchOverlayView,
     fresh_applied_batch_overlay_for_path,
     is_applied_batch_overlay_owner,
 )

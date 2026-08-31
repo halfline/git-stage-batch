@@ -15,7 +15,8 @@ from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
 from ...data.session_marker import session_is_active
 from ...data.applied_batch_overlays import (
-    applied_batch_overlays_repository_path,
+    AppliedTextPreimageInput,
+    applied_batch_overlay_repository_paths,
     build_applied_file_provenance,
     record_applied_batch_overlays,
 )
@@ -152,6 +153,10 @@ def execute_apply_candidate(
             selected_file_metadata=materialized.selected_file_metadata,
             before_lines=target.before_buffer,
             after_lines=target.after_buffer,
+            text_preimage=AppliedTextPreimageInput(
+                before_identity,
+                target.before_buffer,
+            ),
         )
         report_progress("checkpoint", "not-started")
         checkpoint_status: UndoCheckpointStatus | None = None
@@ -160,7 +165,9 @@ def execute_apply_candidate(
             with transaction_checkpoint(
                 terminal_safe_shell_join(operation_parts),
                 worktree_paths=[file_path],
-                repository_paths=[applied_batch_overlays_repository_path()],
+                repository_paths=applied_batch_overlay_repository_paths(
+                    {file_path: file_provenance}
+                ),
             ) as checkpoint_status:
                 _require_unchanged_apply_candidate_targets(
                     file_path,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from ...batch.state.metadata_types import BatchFileMetadataDict
@@ -72,6 +73,7 @@ class ApplyTextFileActionPlan:
     introduced_selected_presence: bool = False
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
     expected_index_identity: IndexIdentity | None = None
+    preimage_artifact_path: Path | None = None
 
     def close(self) -> None:
         if self.buffer is not None:

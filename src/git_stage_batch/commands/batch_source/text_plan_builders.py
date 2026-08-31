@@ -40,9 +40,9 @@ from ...core.text_lifecycle import (
     selected_text_target_change_type,
 )
 from ...core.text_lines import normalize_line_sequence_endings
+from ...batch.applied_overlay_view import AppliedBatchOverlayView
 from ...data.file_target_identity import IndexIdentity
 from ...data.applied_batch_overlays import (
-    AppliedBatchOverlayView,
     selected_presence_was_introduced,
 )
 from ...data.file_modes import detect_file_mode_in_commit
@@ -228,7 +228,7 @@ def build_apply_text_file_action_plan(
                 ),
                 spool_dir=spool_dir,
             )
-            selected_ownership_metadata = ownership.to_attribution_metadata_dict()
+            selected_ownership_metadata = ownership.to_applied_metadata_dict()
             if applied_overlay is not None and applied_overlay.revealed_owner_names:
                 selected_metadata = cast(
                     BatchFileMetadataDict,

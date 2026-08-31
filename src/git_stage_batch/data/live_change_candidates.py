@@ -43,10 +43,10 @@ from ..utils.paths import (
     get_blocked_files_file_path,
 )
 from ..utils.context_lines import get_context_lines
+from ..batch.applied_overlay_view import AppliedBatchOverlayView
 from .change_freshness import text_deletion_change_is_batched
 from .applied_batch_overlays import (
     AppliedBatchOverlaySnapshot,
-    AppliedBatchOverlayView,
     fresh_applied_batch_overlay_for_path,
     load_applied_batch_overlay_snapshot,
 )

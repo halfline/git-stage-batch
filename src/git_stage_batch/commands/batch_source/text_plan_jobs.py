@@ -10,6 +10,7 @@ from typing import Literal, TypedDict, cast
 from . import candidate_preview_counts as _candidate_preview_counts
 from . import text_plan_builders as _text_plan_builders
 from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.applied_overlay_view import AppliedBatchOverlayView
 from ...core.replacement import ReplacementPayload
 from ...core.buffer import LineBuffer
 from ...core.line_selection import LineRanges
@@ -18,7 +19,6 @@ from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
 )
-from ...data.applied_batch_overlays import AppliedBatchOverlayView
 from ...exceptions import AtomicUnitError, CommandError, MergeError
 from ...git_paths import display_path
 from ...utils.buffer_io import write_buffer_to_path

@@ -417,6 +417,11 @@ def get_applied_batch_overlays_file_path() -> Path:
     return get_state_directory_path() / "applied-batch-overlays.json"
 
 
+def get_applied_batch_preimages_directory_path() -> Path:
+    """Get the directory containing text saved before a batch is applied."""
+    return get_state_directory_path() / "applied-batch-preimages"
+
+
 def get_session_applied_batch_overlay_paths_file_path() -> Path:
     """Get paths whose applied overlays were written in this session."""
     return get_session_directory_path() / "applied-batch-overlay-paths.txt"

@@ -11,30 +11,32 @@ its start, after which ``stop`` binds the record to the final index identity.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass
+import hashlib
 from itertools import chain
 import json
 import os
 from pathlib import Path
+import stat
 from typing import TypedDict, cast
 
+from ..batch.applied_overlay_view import (
+    AppliedBatchOverlayView as AppliedBatchOverlayView,
+    applied_file_identity_metadata as _compact_attribution_file_metadata,
+)
 from ..batch.state.metadata_schema import metadata_from_application_dict
 from ..batch.line_matching.match import match_lines
 from ..batch.line_matching.match_workspace import MatcherWorkspace
 from ..batch.line_matching.occurrence_index import LinePayloadOccurrenceIndex
-from ..core.buffer import LineBuffer
+from ..core.buffer import BufferInput, LineBuffer, buffer_byte_chunks
 from ..core.line_selection import LineRanges
 from ..core.text_lines import normalize_line_sequence_endings
 from ..batch.state.metadata_types import (
     BatchFileMetadataDict,
     BatchMetadataDict,
 )
-from ..batch.ownership.attribution_metadata import (
-    compact_ownership_metadata_for_attribution,
-)
-from ..batch.ownership.metadata_types import BatchOwnershipMetadata
 from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
 from ..batch.state.batch_names import validate_batch_name_constraints
 from ..exceptions import BatchMetadataError, CommandError
@@ -44,12 +46,14 @@ from ..utils.file_io import (
     read_file_paths_file,
     read_required_text_file_contents,
     write_file_paths_file,
+    write_file_byte_chunks_atomically,
     write_text_file_contents,
 )
 from ..utils.paths import (
     get_abort_applied_batch_overlay_fresh_index_file_path,
     get_abort_applied_batch_overlays_absent_file_path,
     get_abort_applied_batch_overlays_file_path,
+    get_applied_batch_preimages_directory_path,
     get_applied_batch_overlays_file_path,
     get_session_applied_batch_overlay_paths_file_path,
 )
@@ -78,6 +82,13 @@ class _AppliedApplication(TypedDict, total=False):
     introduced_selected_presence: bool
     index_target_is_original: bool
     index_preimage_source_lines: list[str]
+    supports_text_replay: bool
+    text_preimage: _StoredTextPreimage
+
+
+class _StoredTextPreimage(TypedDict):
+    sha256: str
+    size: int
 
 
 class _AppliedFileEntry(TypedDict):
@@ -93,6 +104,14 @@ class _AppliedOverlayState(TypedDict):
 
 
 @dataclass(frozen=True, slots=True)
+class AppliedTextPreimageInput:
+    """The text and file identity captured before an apply."""
+
+    identity: WorktreeIdentity
+    source: Path | BufferInput
+
+
+@dataclass(frozen=True, slots=True)
 class AppliedFileProvenance:
     """Compact selected ownership and its exact source blob."""
 
@@ -100,54 +119,8 @@ class AppliedFileProvenance:
     source_object_id: str | None
     introduced_selected_presence: bool = False
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class AppliedBatchOverlayView:
-    """Fresh supplemental ownership used by one attribution pass."""
-
-    metadata_by_owner: dict[str, BatchMetadataDict]
-    source_object_by_owner: dict[str, str]
-    revealed_owner_names: frozenset[str]
-    batch_names: frozenset[str]
-    lifecycle_change_types: frozenset[str]
-    applied_source_line_ranges_by_batch: dict[
-        str,
-        tuple[tuple[int, int], ...],
-    ]
-    source_line_ranges_by_batch: dict[str, tuple[tuple[int, int], ...]]
-    index_preimage_source_line_ranges_by_batch: dict[
-        str,
-        tuple[tuple[int, int], ...],
-    ]
-
-    @classmethod
-    def empty(cls) -> AppliedBatchOverlayView:
-        """Return an empty immutable view."""
-        return cls({}, {}, frozenset(), frozenset(), frozenset(), {}, {}, {})
-
-    def contains_equivalent_file_provenance(
-        self,
-        file_path: str,
-        file_metadata: BatchFileMetadataDict,
-        source_object_id: str | None,
-    ) -> bool:
-        """Return whether exact fresh state proves this ownership is applied.
-
-        Content matching cannot distinguish a selected duplicate from live
-        unowned context.  This predicate is intentionally stronger: the view
-        is already bound to exact HEAD, index, worktree, and batch revisions,
-        and the application must also name the same source blob and compact
-        selected ownership.
-        """
-        if source_object_id is None:
-            return False
-        compact_metadata = _compact_applied_file_metadata(file_metadata)
-        return any(
-            self.source_object_by_owner.get(owner_name) == source_object_id
-            and owner_metadata.get("files", {}).get(file_path) == compact_metadata
-            for owner_name, owner_metadata in self.metadata_by_owner.items()
-        )
+    supports_text_replay: bool = False
+    text_preimage: AppliedTextPreimageInput | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +146,21 @@ def applied_batch_overlays_repository_path() -> str:
     return "git-stage-batch/applied-batch-overlays.json"
 
 
+def applied_batch_overlay_repository_paths(
+    files: dict[str, AppliedFileProvenance],
+) -> list[str]:
+    """Return every file this update may write under the Git directory."""
+    paths = [applied_batch_overlays_repository_path()]
+    paths.extend(
+        _preimage_repository_path(preimage.identity.digest)
+        for provenance in files.values()
+        if provenance.supports_text_replay
+        and (preimage := provenance.text_preimage) is not None
+        and _can_store_text_preimage(preimage.identity)
+    )
+    return list(dict.fromkeys(paths))
+
+
 def is_applied_batch_overlay_owner(owner_name: str) -> bool:
     """Return whether an attribution owner is an internal applied overlay."""
     return owner_name.startswith(_OWNER_PREFIX)
@@ -187,6 +175,7 @@ def build_applied_file_provenance(
     selected_file_metadata: BatchFileMetadataDict | None = None,
     before_lines: LineBuffer | None = None,
     after_lines: LineBuffer | None = None,
+    text_preimage: AppliedTextPreimageInput | None = None,
 ) -> AppliedFileProvenance:
     """Freeze the exact text ownership selected by one successful apply."""
     source_commit = file_metadata.get("batch_source_commit")
@@ -220,6 +209,11 @@ def build_applied_file_provenance(
             before_lines,
             after_lines,
         ),
+        supports_text_replay=(
+            source_object_id is not None
+            and selected_file_metadata.get("change_type") == "modified"
+        ),
+        text_preimage=text_preimage,
     )
 
 
@@ -235,6 +229,7 @@ def build_applied_file_provenances(
         tuple[tuple[int, int], ...],
     ]
     | None = None,
+    text_preimages_by_path: dict[str, AppliedTextPreimageInput] | None = None,
 ) -> dict[str, AppliedFileProvenance]:
     """Freeze applied ownership while resolving each source tree only once."""
     source_paths = {
@@ -293,6 +288,15 @@ def build_applied_file_provenances(
                     file_path,
                     (),
                 )
+            ),
+            supports_text_replay=(
+                source_object_by_path.get(file_path) is not None
+                and selected_metadata.get("change_type") == "modified"
+            ),
+            text_preimage=(
+                None
+                if text_preimages_by_path is None
+                else text_preimages_by_path.get(file_path)
             ),
         )
     return provenances
@@ -514,10 +518,24 @@ def record_applied_batch_overlays(
         application: _AppliedApplication = {
             "batch": batch_name,
             "revision": batch_revision,
-            "file_metadata": _compact_applied_file_metadata(provenance.file_metadata),
+            "file_metadata": (
+                _compact_applied_file_metadata(provenance.file_metadata)
+                if provenance.supports_text_replay
+                else _compact_attribution_file_metadata(provenance.file_metadata)
+            ),
         }
         if provenance.source_object_id is not None:
             application["source_object_id"] = provenance.source_object_id
+        if provenance.supports_text_replay:
+            application["supports_text_replay"] = True
+            if provenance.text_preimage is not None:
+                if before_identity != provenance.text_preimage.identity:
+                    raise ValueError(
+                        "applied text predecessor does not match its target identity"
+                    )
+                stored_preimage = _store_text_preimage(provenance.text_preimage)
+                if stored_preimage is not None:
+                    application["text_preimage"] = stored_preimage
         if provenance.introduced_selected_presence:
             application["introduced_selected_presence"] = True
         index_preimage_lines = LineRanges.from_ranges(
@@ -541,7 +559,7 @@ def record_applied_batch_overlays(
             if _same_applied_ownership(
                 carried_application,
                 application,
-            ):
+            ) and "text_preimage" not in application:
                 _merge_application_authority(
                     carried_application,
                     application,
@@ -739,6 +757,8 @@ def _validate_application(
         "introduced_selected_presence",
         "index_target_is_original",
         "index_preimage_source_lines",
+        "supports_text_replay",
+        "text_preimage",
     }:
         raise _state_error(state_path)
     batch_name = application["batch"]
@@ -748,6 +768,8 @@ def _validate_application(
     introduced_selected_presence = application.get("introduced_selected_presence")
     index_target_is_original = application.get("index_target_is_original")
     index_preimage_source_lines = application.get("index_preimage_source_lines")
+    supports_text_replay = application.get("supports_text_replay")
+    text_preimage = application.get("text_preimage")
     if (
         type(batch_name) is not str
         or not batch_name
@@ -755,6 +777,7 @@ def _validate_application(
         or not revision
         or type(file_metadata) is not dict
         or (source_object_id is not None and not _valid_object_id(source_object_id))
+        or (supports_text_replay is not None and type(supports_text_replay) is not bool)
         or (
             introduced_selected_presence is not None
             and type(introduced_selected_presence) is not bool
@@ -773,7 +796,14 @@ def _validate_application(
                 )
             )
         )
+        or not _valid_stored_text_preimage(text_preimage)
     ):
+        raise _state_error(state_path)
+    if supports_text_replay is True and (
+        source_object_id is None or file_metadata.get("change_type") != "modified"
+    ):
+        raise _state_error(state_path)
+    if text_preimage is not None and supports_text_replay is not True:
         raise _state_error(state_path)
     if index_preimage_source_lines is not None:
         if index_target_is_original is False:
@@ -831,21 +861,23 @@ def _compact_applied_file_metadata(
     file_metadata: BatchFileMetadataDict,
 ) -> BatchFileMetadataDict:
     """Project a text batch entry onto the fields used by attribution."""
-    compact = cast(
-        BatchFileMetadataDict,
-        compact_ownership_metadata_for_attribution(
-            cast(BatchOwnershipMetadata, file_metadata)
-        ),
-    )
-    source_commit = file_metadata.get("batch_source_commit")
-    if source_commit is not None:
-        compact["batch_source_commit"] = source_commit
-    change_type = file_metadata.get("change_type")
-    if change_type is not None:
-        compact["change_type"] = change_type
-    mode = file_metadata.get("mode")
-    if mode is not None:
-        compact["mode"] = mode
+    compact = _compact_attribution_file_metadata(file_metadata)
+    compact_deletions = compact.get("deletions", [])
+    for compact_deletion, deletion in zip(
+        compact_deletions,
+        file_metadata.get("deletions", []),
+        strict=True,
+    ):
+        baseline_reference = deletion.get("baseline_reference")
+        if baseline_reference is not None:
+            compact_deletion["baseline_reference"] = deepcopy(baseline_reference)
+        if deletion.get("source_alternative") is True:
+            compact_deletion["source_alternative"] = True
+        if deletion.get("complete_file_pair") is True:
+            compact_deletion["complete_file_pair"] = True
+    replacement_units = file_metadata.get("replacement_units", [])
+    if replacement_units:
+        compact["replacement_units"] = deepcopy(replacement_units)
     return compact
 
 
@@ -854,14 +886,12 @@ def _same_applied_ownership(
     right: _AppliedApplication,
 ) -> bool:
     """Return whether two applications describe the same selected ownership."""
-    return all(
-        left.get(field) == right.get(field)
-        for field in (
-            "batch",
-            "revision",
-            "file_metadata",
-            "source_object_id",
-        )
+    return (
+        left.get("batch") == right.get("batch")
+        and left.get("revision") == right.get("revision")
+        and left.get("source_object_id") == right.get("source_object_id")
+        and _compact_attribution_file_metadata(left["file_metadata"])
+        == _compact_attribution_file_metadata(right["file_metadata"])
     )
 
 
@@ -874,6 +904,9 @@ def _merge_application_authority(
         target["introduced_selected_presence"] = True
     if source.get("index_target_is_original") is True:
         target["index_target_is_original"] = True
+    if source.get("supports_text_replay") is True:
+        target["supports_text_replay"] = True
+        target["file_metadata"] = deepcopy(source["file_metadata"])
 
     source_preimage = source.get("index_preimage_source_lines", [])
     if source_preimage:
@@ -1023,6 +1056,89 @@ def _load_fresh_index_paths(path: Path) -> frozenset[str]:
     ):
         raise _state_error(path)
     return frozenset(value["paths"])
+
+
+def _can_store_text_preimage(identity: WorktreeIdentity) -> bool:
+    return (
+        identity.exists
+        and identity.kind == "regular"
+        and identity.size is not None
+        and identity.digest is not None
+    )
+
+
+def _preimage_repository_path(digest: str | None) -> str:
+    if digest is None or not _valid_digest(digest):
+        raise ValueError("applied text predecessor requires a SHA-256 digest")
+    return f"git-stage-batch/applied-batch-preimages/{digest}"
+
+
+def _preimage_path(digest: str) -> Path:
+    if not _valid_digest(digest):
+        raise ValueError("invalid applied text predecessor digest")
+    return get_applied_batch_preimages_directory_path() / digest
+
+
+def _preimage_source_chunks(source: Path | BufferInput) -> Iterator[bytes]:
+    if isinstance(source, Path):
+        with source.open("rb") as input_file:
+            while chunk := input_file.read(1024 * 1024):
+                yield chunk
+        return
+    yield from buffer_byte_chunks(source)
+
+
+def _source_size_and_digest(source: Path | BufferInput) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    size = 0
+    for chunk in _preimage_source_chunks(source):
+        size += len(chunk)
+        digest.update(chunk)
+    return size, digest.hexdigest()
+
+
+def _store_text_preimage(
+    preimage: AppliedTextPreimageInput,
+) -> _StoredTextPreimage | None:
+    identity = preimage.identity
+    if not _can_store_text_preimage(identity):
+        return None
+    assert identity.size is not None
+    assert identity.digest is not None
+    source_size, source_digest = _source_size_and_digest(preimage.source)
+    if source_size != identity.size or source_digest != identity.digest:
+        raise ValueError("applied text predecessor changed after it was captured")
+
+    target = _preimage_path(identity.digest)
+    try:
+        target_metadata = target.lstat()
+    except FileNotFoundError:
+        target_metadata = None
+    if target_metadata is not None:
+        if not stat.S_ISREG(target_metadata.st_mode):
+            raise ValueError("stored applied text predecessor is not a regular file")
+        target_size, target_digest = _source_size_and_digest(target)
+        if target_size != identity.size or target_digest != identity.digest:
+            raise ValueError("stored applied text predecessor has invalid content")
+    else:
+        write_file_byte_chunks_atomically(
+            target,
+            _preimage_source_chunks(preimage.source),
+        )
+
+    return {"sha256": identity.digest, "size": identity.size}
+
+
+def _valid_stored_text_preimage(value: object) -> bool:
+    if value is None:
+        return True
+    return (
+        type(value) is dict
+        and set(value) == {"sha256", "size"}
+        and _valid_digest(value["sha256"])
+        and type(value["size"]) is int
+        and value["size"] >= 0
+    )
 
 
 def _write_state(state: _AppliedOverlayState) -> None:

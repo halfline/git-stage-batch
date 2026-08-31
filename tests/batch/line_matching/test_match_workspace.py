@@ -66,6 +66,19 @@ def test_occurrence_index_sizes_and_releases_scoped_storage():
     workspace.close()
 
 
+def test_occurrence_index_can_ignore_indentation():
+    """Callers may match the same line after it moves into another block."""
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(
+            workspace,
+            [b"\tfirst\n", b"    second\r\n"],
+            ignore_indentation=True,
+        )
+
+        assert occurrence_index.occurrence_count(b"first\n") == 1
+        assert occurrence_index.occurrence_count(b"\t\tsecond\n") == 1
+
+
 def test_occurrence_index_releases_partial_constructor_allocations(monkeypatch):
     """Cancellation between index allocations must release earlier storage."""
     workspace = MatcherWorkspace()

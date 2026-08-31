@@ -16,6 +16,7 @@ from git_stage_batch.commands.selection.replacement_selection import (
 from git_stage_batch.commands.selection.discard_line_replacement import (
     _contiguous_selected_addition_count,
     _expand_parent_through_relocated_prefix_context,
+    _requires_explicit_added_side_alternative,
     _matching_discard_prefix_context_count,
     _verified_explicit_alternative_end,
     _selected_additions_cover_working_span,
@@ -343,6 +344,52 @@ def test_exact_addition_prefix_counts_one_contiguous_working_span():
     )
 
     assert _contiguous_selected_addition_count(line_changes, {1, 2}) == 2
+
+
+@pytest.mark.parametrize(
+    (
+        "replacement_lines",
+        "baseline_file_exists",
+        "has_deletion_peer",
+        "destination_has_file",
+        "no_edge_overlap",
+        "expected",
+    ),
+    [
+        ([b"one"], True, True, False, False, True),
+        ([b"changed", b"two"], False, False, False, False, True),
+        ([b"changed", b"two"], True, False, True, False, True),
+        ([b"on", b"two"], True, False, True, False, False),
+        ([b"on", b"two"], True, False, False, True, True),
+        ([b"changed", b"two"], False, True, True, False, False),
+        ([b"one", b"two"], False, False, True, False, False),
+        ([b"changed", b"two", b"three"], False, False, False, False, True),
+        ([b"one", b"two", b"three"], False, False, False, False, False),
+        ([], False, False, False, False, True),
+    ],
+)
+def test_explicit_added_side_alternative_geometry(
+    replacement_lines,
+    baseline_file_exists,
+    has_deletion_peer,
+    destination_has_file,
+    no_edge_overlap,
+    expected,
+):
+    """Only unambiguous added-side transforms become explicit alternatives."""
+    assert (
+        _requires_explicit_added_side_alternative(
+            replacement_lines,
+            [b"one\n", b"two\r\n"],
+            working_start=0,
+            working_end=2,
+            baseline_file_exists=baseline_file_exists,
+            has_deletion_peer=has_deletion_peer,
+            destination_has_file=destination_has_file,
+            no_edge_overlap=no_edge_overlap,
+        )
+        is expected
+    )
 
 
 def test_replacement_additions_cover_nested_working_span():

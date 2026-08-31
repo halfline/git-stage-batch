@@ -7,6 +7,7 @@ import pytest
 from git_stage_batch.batch.source.refresh import (
     RefreshedBatchSelection,
     ensure_batch_source_current_for_selection,
+    map_selection_to_source,
     prepare_initial_batch_source_for_selection,
 )
 from git_stage_batch.batch.source.selected_line_refresh import (
@@ -277,6 +278,50 @@ def test_prepare_initial_batch_source_maps_selection(monkeypatch):
     assert prepared_lines[0].source_line == 3
 
 
+def test_map_selection_prefers_unique_embedded_worktree_coordinates():
+    """An exact live source alternative must outrank duplicate payloads."""
+    source_lines = (
+        b"base one\n"
+        b"request one\n"
+        b"base two\n"
+        b"request two\n"
+        b"completion\n"
+        b"tail\n"
+        b"base one\n"
+        b"request one\n"
+        b"base two\n"
+        b"request two\n"
+        b"tail\n"
+    ).splitlines(keepends=True)
+    working_lines = source_lines[6:]
+    selected_lines = [
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"request one",
+        ),
+        LineEntry(
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=4,
+            text_bytes=b"request two",
+        ),
+    ]
+
+    mapped = map_selection_to_source(
+        selected_lines,
+        file_path="tool.c",
+        source_lines=source_lines,
+        working_lines=working_lines,
+    )
+
+    assert mapped is not None
+    assert [line.source_line for line in mapped] == [8, 10]
+
+
 def test_prepare_initial_cached_source_remaps_deletion_anchor(monkeypatch):
     """Deletion-only selections are mapped instead of range-validated."""
     monkeypatch.setattr(
@@ -325,6 +370,57 @@ def test_prepare_initial_cached_source_remaps_deletion_anchor(monkeypatch):
 
     assert batch_source_commit == "cached_source"
     assert prepared_lines[0].source_line == 3
+
+
+def test_prepare_initial_cached_source_rebuilds_nonembedded_additions(monkeypatch):
+    """A new batch must not borrow additions from a historical source variant."""
+    cached_sources = _capture_session_sources(
+        monkeypatch,
+        {"test.py": "cached-source"},
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(
+            b"older snapshot\nheader\nremoved earlier\nselected\n"
+        ),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_saved_session_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(
+            b"header\nremoved earlier\nselected\n"
+        ),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(b"header\nselected\n"),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "create_batch_source_commit",
+        lambda *_args, **_kwargs: "current-source",
+    )
+    selected_lines = [
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"selected",
+            source_line=4,
+        ),
+    ]
+
+    batch_source_commit, prepared_lines = prepare_initial_batch_source_for_selection(
+        "test.py",
+        selected_lines,
+    )
+
+    assert batch_source_commit == "current-source"
+    assert prepared_lines[0].source_line == 2
+    assert cached_sources == {"test.py": "current-source"}
 
 
 def test_missing_session_source_cache_is_rebuilt(monkeypatch):
@@ -575,6 +671,56 @@ def test_refresh_selected_lines_accepts_non_list_source_sequences(line_sequence)
     )
 
     assert refreshed[0].source_line == 3
+
+
+def test_refresh_keeps_a_selected_function_in_one_source_span() -> None:
+    """A repeated closing brace does not split an otherwise unique function."""
+    source_lines = (
+        b"int attach_monitor(void)\n",
+        b"{\n",
+        b"\treturn 0;\n",
+        b"}\n",
+        b"\n",
+        b"int detach_monitor(void)\n",
+        b"{\n",
+        b"\treturn 0;\n",
+        b"}\n",
+        b"\n",
+        b"bool authority_is_attached(void)\n",
+        b"{\n",
+        b"\treturn true;\n",
+        b"}\n",
+        b"\n",
+        b"bool detach_authority(void)\n",
+        b"{\n",
+        b"\treturn true;\n",
+        b"}\n",
+        b"\n",
+        b"void set_capture_active(void)\n",
+        b"{\n",
+        b"\tnotify();\n",
+        b"}\n",
+    )
+    working_lines = (*source_lines[:5], *source_lines[10:19])
+    selected_lines = [
+        LineEntry(
+            id=line_number,
+            kind="+",
+            old_line_number=None,
+            new_line_number=line_number,
+            text_bytes=working_lines[line_number - 1].removesuffix(b"\n"),
+            source_line=None,
+        )
+        for line_number in range(10, 15)
+    ]
+
+    refreshed = refresh_selected_lines_against_source_lines(
+        selected_lines,
+        source_lines=source_lines,
+        working_lines=working_lines,
+    )
+
+    assert [line.source_line for line in refreshed] == [15, 16, 17, 18, 19]
 
 
 def test_refresh_selected_lines_accepts_non_list_line_sequences(line_sequence):

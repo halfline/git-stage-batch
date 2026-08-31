@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import cast
 
 from ...batch.source.annotation import annotate_with_batch_source_working_lines
+from ...batch.replacement_alternatives import (
+    ExplicitReplacementAlternatives,
+    ReplacementAlternativeOwnership,
+)
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership.hunk_translation import (
@@ -150,11 +154,7 @@ class DiscardLineReplacementSelection:
     rewritten_worktree_discard_ids: LineRanges
     rewritten_working_lines: LineBuffer
     explicit_replacement_parent: ReplacementLineRun | None = None
-    explicit_rewritten_prefix_start: int | None = None
-    explicit_rewritten_prefix_end: int | None = None
-    explicit_rewritten_alternative_end: int | None = None
-    explicit_rewritten_discard_prefix_end: int | None = None
-    discard_exact_rewritten_prefix: bool = False
+    replacement_alternatives: ExplicitReplacementAlternatives | None = None
 
     def __post_init__(self) -> None:
         ownership_ids = (
@@ -169,15 +169,17 @@ class DiscardLineReplacementSelection:
             )
         if rollback_ids != self.rewritten_worktree_discard_ids:
             raise ValueError("rollback IDs differ from transformed projection")
+        if (
+            self.replacement_alternatives is not None
+            and self.replacement_alternatives.edit
+            != self.transformed_projection.explicit_edit
+        ):
+            raise ValueError("replacement alternatives differ from explicit edit")
 
     @property
     def explicit_rewritten_prefix(self) -> LineSpan[RewrittenWorktreeSpace] | None:
-        if self.explicit_rewritten_prefix_start is None:
-            return None
-        return LineSpan(
-            LineBoundary(self.explicit_rewritten_prefix_start - 1),
-            LineBoundary(self.explicit_rewritten_prefix_end or self.explicit_rewritten_prefix_start),
-        )
+        alternatives = self.replacement_alternatives
+        return alternatives.saved.span if alternatives is not None else None
 
 
 @dataclass(frozen=True)
@@ -459,6 +461,19 @@ def prepare_discard_line_replacement_selection(
                 replacement_new_end,
                 replacement_new_start + replacement_owned_prefix_count - 1,
             )
+        explicit_alternative_end: int | None = None
+        if (
+            replacement_owned_prefix_count is not None
+            and owned_replacement_new_end < replacement_new_end
+        ):
+            with replacement_line_bodies(replacement_payload) as payload_lines:
+                explicit_alternative_end = _verified_explicit_alternative_end(
+                    selection_lines=rewritten_working_lines,
+                    payload_lines=payload_lines,
+                    owned_prefix_count=replacement_owned_prefix_count,
+                    alternative_start=owned_replacement_new_end + 1,
+                    fallback_end=replacement_new_end,
+                )
         rewritten_cached_lines = _build_rewritten_line_changes(
             line_changes.path,
             rewritten_working_lines,
@@ -558,16 +573,46 @@ def prepare_discard_line_replacement_selection(
                 new_start=replacement_start + 1,
                 new_end=replacement_end,
             )
+        applied_edit = edit_plan.bind_result(
+            rewritten_snapshot,
+            replacement_line_count=(replacement_new_end - replacement_new_start + 1),
+        )
+        replacement_alternatives = None
+        if replacement_owned_prefix_count is not None:
+            saved_span = SnapshotSpan(
+                rewritten_snapshot,
+                LineSpan(
+                    LineBoundary(replacement_new_start - 1),
+                    LineBoundary(owned_replacement_new_end),
+                ),
+            )
+            live_span = (
+                SnapshotSpan(
+                    rewritten_snapshot,
+                    LineSpan(
+                        saved_span.span.end,
+                        LineBoundary(explicit_alternative_end),
+                    ),
+                )
+                if explicit_alternative_end is not None
+                else None
+            )
+            replacement_alternatives = ExplicitReplacementAlternatives(
+                edit=applied_edit,
+                saved=saved_span,
+                live=live_span,
+                ownership_scope=(
+                    ReplacementAlternativeOwnership.EXACT_SAVED_SPAN
+                    if explicit_replacement_parent is None
+                    and selects_exact_addition_span
+                    else ReplacementAlternativeOwnership.TRANSLATED_SELECTION
+                ),
+            )
         yield DiscardLineReplacementSelection(
             line_changes=line_changes,
             transformed_projection=TransformedSelectionProjection(
                 original_selection=original_selection,
-                explicit_edit=edit_plan.bind_result(
-                    rewritten_snapshot,
-                    replacement_line_count=(
-                        replacement_new_end - replacement_new_start + 1
-                    ),
-                ),
+                explicit_edit=applied_edit,
                 rewritten_snapshot=rewritten_snapshot,
                 ownership_selection=ownership_selection,
                 rollback=rollback,
@@ -580,33 +625,7 @@ def prepare_discard_line_replacement_selection(
             rewritten_worktree_discard_ids=rewritten_worktree_discard_ids,
             rewritten_working_lines=rewritten_working_lines,
             explicit_replacement_parent=explicit_replacement_parent,
-            explicit_rewritten_prefix_start=(
-                replacement_new_start
-                if replacement_owned_prefix_count is not None
-                else None
-            ),
-            explicit_rewritten_prefix_end=(
-                owned_replacement_new_end
-                if replacement_owned_prefix_count is not None
-                else None
-            ),
-            explicit_rewritten_alternative_end=(
-                replacement_new_end
-                if (
-                    replacement_owned_prefix_count is not None
-                    and owned_replacement_new_end < replacement_new_end
-                )
-                else None
-            ),
-            explicit_rewritten_discard_prefix_end=(
-                owned_replacement_new_end
-                if replacement_discard_prefix_context_count > 0
-                else None
-            ),
-            discard_exact_rewritten_prefix=(
-                selects_exact_addition_span
-                and replacement_owned_prefix_count is not None
-            ),
+            replacement_alternatives=replacement_alternatives,
         )
 
 
@@ -614,23 +633,11 @@ def build_discard_line_replacement_target_buffer(
     selection: DiscardLineReplacementSelection,
 ) -> LineBuffer:
     """Return the worktree buffer after removing rewritten replacement lines."""
-    prefix_start = selection.explicit_rewritten_prefix_start
-    prefix_end = selection.explicit_rewritten_prefix_end
-    discard_prefix_end = selection.explicit_rewritten_discard_prefix_end
-    if prefix_start is not None and discard_prefix_end is not None:
-        return LineBuffer.from_chunks(
-            chain(
-                LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
-                LineRangeView(
-                    selection.rewritten_working_lines,
-                    discard_prefix_end,
-                    len(selection.rewritten_working_lines),
-                ),
-            )
-        )
-    if selection.discard_exact_rewritten_prefix:
-        if prefix_start is None or prefix_end is None:
-            raise ValueError("exact replacement prefix has no rewritten range")
+    alternatives = selection.replacement_alternatives
+    if alternatives is not None and (
+        alternatives.requires_exact_saved_presence or alternatives.live is not None
+    ):
+        prefix_start, prefix_end = alternatives.saved_range
         return LineBuffer.from_chunks(
             chain(
                 LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
@@ -728,7 +735,8 @@ def add_discard_line_replacement_to_batch(
                 )
                 explicit_alternative_range = _explicit_alternative_range(selection)
                 if (
-                    selection.discard_exact_rewritten_prefix
+                    selection.replacement_alternatives is not None
+                    and selection.replacement_alternatives.requires_exact_saved_presence
                     and explicit_alternative_range is not None
                 ):
                     explicit_presence_range = _explicit_owned_prefix_range(selection)
@@ -822,6 +830,12 @@ def _merge_replacement_with_batch(
             old_lines=old_source_lines,
             working_lines=selection.rewritten_working_lines,
             ownership=existing_ownership,
+            advancing_working_ranges=(
+                selection.rewritten_selected_ids
+                if selection.replacement_alternatives is not None
+                else None
+            ),
+            advancing_alternatives=selection.replacement_alternatives,
         ) as source_with_provenance,
     ):
         remapped_existing_ownership = remap_batch_ownership_with_lineage(
@@ -856,11 +870,15 @@ def _merge_replacement_with_batch(
                     source_with_provenance.lineage.translate_working_range
                 ),
             )
-            if selection.discard_exact_rewritten_prefix and (
+            if (
+                selection.replacement_alternatives is not None
+                and selection.replacement_alternatives.requires_exact_saved_presence
+                and (
                 exact_prefix_range is None
                 or (
                     _explicit_alternative_range(selection) is not None
                     and exact_alternative_range is None
+                )
                 )
             ):
                 raise ValueError(
@@ -890,7 +908,8 @@ def _merge_replacement_with_batch(
             replacement_origin_source_lines=reference_source_lines,
         )
         if (
-            selection.discard_exact_rewritten_prefix
+            selection.replacement_alternatives is not None
+            and selection.replacement_alternatives.requires_exact_saved_presence
             and exact_prefix_range is not None
             and exact_alternative_range is not None
         ):
@@ -1080,16 +1099,23 @@ def _translate_rewritten_selection_ownership(
             replacement_origin_source_projection
         ),
     )
-    if selection.discard_exact_rewritten_prefix and (
+    if (
+        selection.replacement_alternatives is not None
+        and selection.replacement_alternatives.requires_exact_saved_presence
+        and (
         exact_presence_range is None
         or ownership.deletions
         or ownership.replacement_units
+        )
     ):
         raise ValueError(
             "exact addition prefix did not translate to presence-only ownership"
         )
     if exact_presence_range is not None and (
-        selection.discard_exact_rewritten_prefix
+        (
+            selection.replacement_alternatives is not None
+            and selection.replacement_alternatives.requires_exact_saved_presence
+        )
         or (not ownership.deletions and not ownership.replacement_units)
     ):
         exact_presence_lines = LineRanges.from_ranges((exact_presence_range,))
@@ -1164,22 +1190,16 @@ def _explicit_owned_prefix_range(
     selection: DiscardLineReplacementSelection,
 ) -> tuple[int, int] | None:
     """Return the preserved prefix's one-based rewritten source range."""
-    prefix_start = selection.explicit_rewritten_prefix_start
-    prefix_end = selection.explicit_rewritten_prefix_end
-    if prefix_start is None or prefix_end is None or prefix_end < prefix_start:
-        return None
-    return prefix_start, prefix_end
+    alternatives = selection.replacement_alternatives
+    return alternatives.saved_range if alternatives is not None else None
 
 
 def _explicit_alternative_range(
     selection: DiscardLineReplacementSelection,
 ) -> tuple[int, int] | None:
     """Return the rewritten range retained as the live alternative."""
-    prefix_end = selection.explicit_rewritten_prefix_end
-    alternative_end = selection.explicit_rewritten_alternative_end
-    if prefix_end is None or alternative_end is None or alternative_end <= prefix_end:
-        return None
-    return prefix_end + 1, alternative_end
+    alternatives = selection.replacement_alternatives
+    return alternatives.live_range if alternatives is not None else None
 
 
 def _explicit_source_alternative_reference(
@@ -1494,6 +1514,30 @@ def _matching_discard_prefix_context_count(
         payload_index += 1
         working_index += 1
     return matched
+
+
+def _verified_explicit_alternative_end(
+    *,
+    selection_lines: Sequence[bytes],
+    payload_lines: Sequence[bytes],
+    owned_prefix_count: int,
+    alternative_start: int,
+    fallback_end: int,
+) -> int:
+    """Extend the live version across following text when it matches."""
+    alternative_count = len(payload_lines) - owned_prefix_count
+    if alternative_count <= 0:
+        return fallback_end
+    candidate_end = alternative_start + alternative_count - 1
+    if candidate_end > len(selection_lines):
+        return fallback_end
+    if all(
+        _line_body(selection_lines[alternative_start + offset - 1])
+        == payload_lines[owned_prefix_count + offset]
+        for offset in range(alternative_count)
+    ):
+        return candidate_end
+    return fallback_end
 
 
 def _selects_complete_old_partial_new_prefix(
@@ -2265,14 +2309,13 @@ def _expand_explicit_parent_relocated_context(
     original_working_lines: LineBuffer,
 ) -> _ExpandedReplacementParent:
     """Expand an explicit parent when its owned prefix shadows later context."""
-    prefix_start = selection.explicit_rewritten_prefix_start
-    prefix_end = selection.explicit_rewritten_prefix_end
-    if prefix_start is None or prefix_end is None:
+    prefix = selection.explicit_rewritten_prefix
+    if prefix is None:
         return expanded_parent
     prefix_lines = LineRangeView(
         selection.rewritten_working_lines,
-        prefix_start - 1,
-        prefix_end,
+        prefix.start.offset,
+        prefix.end.offset,
     )
     parent = _expand_parent_through_relocated_prefix_context(
         expanded_parent.parent,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from types import TracebackType
@@ -46,6 +46,10 @@ from ..line_matching.sequence_search import iter_exact_sequence_indexes
 from ..line_matching.sequence_equality import line_slice_equals
 from ..merge.baseline_replacement_ranges import collect_replacement_source_ranges
 from ..ownership.model import BatchOwnership
+from ..ownership.resolved_replacement_alternatives import (
+    ResolvedReplacementAlternative,
+)
+from ..replacement_alternatives import ExplicitReplacementAlternatives
 from ..file_state import (
     BatchFileState,
     BatchMetadataRevision,
@@ -238,6 +242,9 @@ def advance_source_lines_preserving_existing_presence(
     old_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
+    *,
+    advancing_working_ranges: LineRanges | None = None,
+    advancing_alternatives: ExplicitReplacementAlternatives | None = None,
 ) -> SourceContentWithLineProvenance:
     """Reconcile source content with the worktree and retain owned provenance.
 
@@ -260,6 +267,8 @@ def advance_source_lines_preserving_existing_presence(
                     presence_lines,
                     ownership,
                     lineage,
+                    advancing_working_ranges=advancing_working_ranges,
+                    advancing_alternatives=advancing_alternatives,
                 )
             ),
             lineage=lineage,
@@ -275,8 +284,11 @@ def _required_source_ranges(
     presence_lines: LineRanges,
 ) -> MappedRecordVector:
     """Return storage-backed ranges whose old-source lineage is required."""
+    replacement_alternatives = ownership.resolve().replacement_alternatives
     required = workspace.record_vector(
-        len(presence_lines.ranges()) + len(ownership.deletions),
+        len(presence_lines.ranges())
+        + len(ownership.deletions)
+        + len(replacement_alternatives),
         _SOURCE_RANGE_RECORD_FORMAT,
     )
     for source_start, source_end in presence_lines.ranges():
@@ -284,6 +296,13 @@ def _required_source_ranges(
     for deletion in ownership.deletions:
         if deletion.anchor_line is not None:
             required.append((deletion.anchor_line, deletion.anchor_line))
+    for alternative in replacement_alternatives:
+        required.append(
+            (
+                alternative.live_envelope.start.offset + 1,
+                alternative.live_envelope.end.offset,
+            )
+        )
 
     if len(required) > 1:
         sort_mapped_records(required)
@@ -426,6 +445,9 @@ def _advanced_source_chunks(
     presence_lines: LineRanges,
     ownership: BatchOwnership,
     lineage: BatchSourceLineage,
+    *,
+    advancing_working_ranges: LineRanges | None = None,
+    advancing_alternatives: ExplicitReplacementAlternatives | None = None,
 ) -> Iterator[bytes]:
     """Yield reconciled source chunks while recording source and live lineage."""
     source_cursor = 1
@@ -502,6 +524,11 @@ def _advanced_source_chunks(
             ownership,
             presence_lines,
         )
+        resolved_alternatives = (
+            ownership.resolve().replacement_alternatives
+            if advancing_alternatives is not None
+            else ()
+        )
         semantic_runs = stream_semantic_change_runs(old_lines, working_lines)
         for run in semantic_runs:
             unchanged_count = _unchanged_line_count_before_run(
@@ -565,7 +592,19 @@ def _advanced_source_chunks(
                             target_cursor,
                             run.target_end,
                         )
-                elif fully_owned:
+                elif fully_owned and _run_is_explicit_live_alternative(
+                    run,
+                    advancing_alternatives,
+                ):
+                    yield from emit_working(run.target_start, run.target_end)
+                    yield from emit_source(run.source_start, run.source_end)
+                elif fully_owned and (
+                    advancing_working_ranges is None
+                    or advancing_working_ranges.contains_range(
+                        run.target_start,
+                        run.target_end,
+                    )
+                ):
                     if source_count > target_count:
                         raise BatchSourceAdvanceError(
                             _(
@@ -580,6 +619,8 @@ def _advanced_source_chunks(
                         source_start=run.source_start,
                         source_end=run.source_end,
                     )
+                elif fully_owned:
+                    yield from emit_source(run.source_start, run.source_end)
                 else:
                     retained_ranges = workspace.record_vector(
                         len(required_source_ranges),
@@ -592,6 +633,25 @@ def _advanced_source_chunks(
                             run.source_end,
                         ):
                             retained_ranges.append(retained_range)
+                        explicit_insertion = _explicit_alternative_insertion(
+                            run,
+                            old_lines=old_lines,
+                            working_lines=working_lines,
+                            retained_ranges=retained_ranges,
+                            persisted_alternatives=resolved_alternatives,
+                            advancing_alternatives=advancing_alternatives,
+                            workspace=workspace,
+                        )
+                        if explicit_insertion is not None:
+                            yield from _emit_retained_ranges_with_insertion(
+                                retained_ranges,
+                                explicit_insertion,
+                                emit_source=emit_source,
+                                emit_working=emit_working,
+                            )
+                            source_cursor = run.source_end + 1
+                            working_cursor = run.target_end + 1
+                            continue
                         slot_result = _partial_replacement_insertion_slot(
                             run,
                             old_lines,
@@ -650,6 +710,173 @@ def _advanced_source_chunks(
                     close()
         finally:
             workspace.close()
+
+
+def _run_is_explicit_live_alternative(
+    run: SemanticChangeRun,
+    alternatives: ExplicitReplacementAlternatives | None,
+) -> bool:
+    """Check whether this run is the version left in the worktree.
+
+    Ordinary matching can attach the same text to a nearby selected block. The
+    saved locations show that this run follows its saved version and therefore
+    belongs before that block in the source.
+    """
+    if alternatives is None or alternatives.live is None:
+        return False
+    assert run.target_start is not None
+    assert run.target_end is not None
+    live_range = alternatives.live_range
+    assert live_range is not None
+    live_start, live_end = live_range
+    return run.target_start == live_start and run.target_end == live_end
+
+
+@dataclass(frozen=True, slots=True)
+class _ExplicitAlternativeInsertion:
+    """Where to put new wording in the batch source."""
+
+    source_boundary: int
+    working_start: int
+    working_end: int
+
+
+def _retained_ranges_cover_run(
+    retained_ranges: Sequence[tuple[int, ...]],
+    run: SemanticChangeRun,
+) -> bool:
+    """Return True when saved ranges cover every source line in the change."""
+    assert run.source_start is not None
+    assert run.source_end is not None
+    cursor = run.source_start
+    for retained_start, retained_end in retained_ranges:
+        if retained_end < cursor:
+            continue
+        if retained_start > cursor:
+            return False
+        cursor = retained_end + 1
+        if cursor > run.source_end:
+            return True
+    return False
+
+
+def _explicit_alternative_insertion(
+    run: SemanticChangeRun,
+    *,
+    old_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    retained_ranges: Sequence[tuple[int, ...]],
+    persisted_alternatives: Sequence[ResolvedReplacementAlternative],
+    advancing_alternatives: ExplicitReplacementAlternatives | None,
+    workspace: MatcherWorkspace,
+) -> _ExplicitAlternativeInsertion | None:
+    """Find where a later edit belongs in the stored worktree version.
+
+    An earlier operation may have stored two file versions. If the old text has
+    one exact match in the worktree version, put the new text directly after it.
+    Return ``None`` when there is no match or more than one.
+    """
+    if (
+        advancing_alternatives is None
+        or advancing_alternatives.live is None
+        or not persisted_alternatives
+        or not _retained_ranges_cover_run(retained_ranges, run)
+    ):
+        return None
+    assert run.source_start is not None
+    assert run.source_end is not None
+    assert run.target_start is not None
+    assert run.target_end is not None
+
+    live_span = advancing_alternatives.live.span
+    live_start = live_span.start.offset + 1
+    live_end = live_span.end.offset
+    if live_start < run.target_start or live_end > run.target_end:
+        return None
+
+    saved_span = advancing_alternatives.saved.span
+    saved_lines = LineRangeView(
+        working_lines,
+        saved_span.start.offset,
+        saved_span.end.offset,
+    )
+    if not saved_lines:
+        return None
+
+    candidate_boundary: int | None = None
+    for alternative in persisted_alternatives:
+        for payload_span in alternative.live_payload:
+            search_start = max(
+                payload_span.start.offset,
+                run.source_start - 1,
+            )
+            search_end = min(
+                payload_span.end.offset,
+                run.source_end,
+            )
+            if search_end - search_start < len(saved_lines):
+                continue
+            for source_index in iter_exact_sequence_indexes(
+                old_lines,
+                saved_lines,
+                workspace=workspace,
+                start_index=search_start,
+                end_index=search_end,
+            ):
+                occurrence_boundary = source_index + len(saved_lines)
+                if occurrence_boundary > search_end:
+                    continue
+                if (
+                    candidate_boundary is not None
+                    and occurrence_boundary != candidate_boundary
+                ):
+                    return None
+                candidate_boundary = occurrence_boundary
+
+    if candidate_boundary is None:
+        return None
+    return _ExplicitAlternativeInsertion(
+        source_boundary=candidate_boundary,
+        working_start=live_start,
+        working_end=live_end,
+    )
+
+
+def _emit_retained_ranges_with_insertion(
+    retained_ranges: Sequence[tuple[int, ...]],
+    insertion: _ExplicitAlternativeInsertion,
+    *,
+    emit_source: Callable[[int, int], Iterator[bytes]],
+    emit_working: Callable[..., Iterator[bytes]],
+) -> Iterator[bytes]:
+    """Write saved ranges and insert the new wording at the chosen point."""
+    inserted = False
+    for retained_start, retained_end in retained_ranges:
+        if not inserted and insertion.source_boundary < retained_start:
+            yield from emit_working(
+                insertion.working_start,
+                insertion.working_end,
+            )
+            inserted = True
+        if not inserted and retained_start <= insertion.source_boundary <= retained_end:
+            yield from emit_source(retained_start, insertion.source_boundary)
+            yield from emit_working(
+                insertion.working_start,
+                insertion.working_end,
+            )
+            if insertion.source_boundary < retained_end:
+                yield from emit_source(
+                    insertion.source_boundary + 1,
+                    retained_end,
+                )
+            inserted = True
+            continue
+        yield from emit_source(retained_start, retained_end)
+    if not inserted:
+        yield from emit_working(
+            insertion.working_start,
+            insertion.working_end,
+        )
 
 
 def _unchanged_line_count_before_run(

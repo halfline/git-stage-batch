@@ -73,6 +73,7 @@ class ApplyTextFileActionPlan:
     introduced_selected_presence: bool = False
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
     expected_index_identity: IndexIdentity | None = None
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = ()
     preimage_artifact_path: Path | None = None
 
     def close(self) -> None:

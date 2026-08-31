@@ -24,6 +24,7 @@ class AppliedTextApplication:
     trusted_presence_ranges: tuple[tuple[int, int], ...] = ()
     applied_presence_ranges: tuple[tuple[int, int], ...] = ()
     index_preimage_ranges: tuple[tuple[int, int], ...] = ()
+    added_separator_ranges: tuple[tuple[int, int], ...] = ()
     preimage: AppliedTextPreimage | None = None
 
 

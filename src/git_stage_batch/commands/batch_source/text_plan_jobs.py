@@ -110,6 +110,7 @@ class ApplyTextPlanJobResult:
     introduced_selected_presence: bool = False
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
     expected_index_identity: IndexIdentity | None = None
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +222,9 @@ def compute_apply_text_plan_job(
                 ),
                 index_preimage_source_ranges=(
                     build_result.index_preimage_source_ranges
+                ),
+                added_separator_source_ranges=(
+                    build_result.added_separator_source_ranges
                 ),
                 expected_index_identity=captured_index_identity,
             )
@@ -480,27 +484,38 @@ def validate_apply_text_plan_job_result(
         raise TypeError(
             "apply text-plan expected index identity must be an index identity"
         )
+    if type(result.index_preimage_source_ranges) is not tuple or any(
+        type(item) is not tuple
+        or len(item) != 2
+        or type(item[0]) is not int
+        or type(item[1]) is not int
+        or item[0] < 1
+        or item[1] < item[0]
+        for item in result.index_preimage_source_ranges
+    ):
+        raise TypeError("apply text-plan index-preimage ranges must be positive ranges")
     if (
-        type(result.index_preimage_source_ranges) is not tuple
-        or any(
-            type(item) is not tuple
-            or len(item) != 2
-            or type(item[0]) is not int
-            or type(item[1]) is not int
-            or item[0] < 1
-            or item[1] < item[0]
-            for item in result.index_preimage_source_ranges
-        )
+        LineRanges.from_ranges(result.index_preimage_source_ranges).ranges()
+        != result.index_preimage_source_ranges
+    ):
+        raise ValueError("apply text-plan index-preimage ranges must be normalized")
+    if type(result.added_separator_source_ranges) is not tuple or any(
+        type(item) is not tuple
+        or len(item) != 2
+        or type(item[0]) is not int
+        or type(item[1]) is not int
+        or item[0] < 1
+        or item[1] < item[0]
+        for item in result.added_separator_source_ranges
     ):
         raise TypeError(
-            "apply text-plan index-preimage ranges must be positive ranges"
+            "apply text-plan added-separator ranges must be positive ranges"
         )
-    if LineRanges.from_ranges(
-        result.index_preimage_source_ranges
-    ).ranges() != result.index_preimage_source_ranges:
-        raise ValueError(
-            "apply text-plan index-preimage ranges must be normalized"
-        )
+    if (
+        LineRanges.from_ranges(result.added_separator_source_ranges).ranges()
+        != result.added_separator_source_ranges
+    ):
+        raise ValueError("apply text-plan added-separator ranges must be normalized")
 
     if result.outcome == "plan":
         if result.details_artifact_path is not None:
@@ -566,6 +581,7 @@ def validate_apply_text_plan_job_result(
         or result.selected_ownership_artifact_path is not None
         or result.introduced_selected_presence
         or result.index_preimage_source_ranges
+        or result.added_separator_source_ranges
         or result.expected_index_identity is not None
     ):
         raise ValueError(
@@ -674,6 +690,7 @@ def _result(
     introduced_selected_presence: bool = False,
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = (),
     expected_index_identity: IndexIdentity | None = None,
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = (),
 ) -> ApplyTextPlanJobResult:
     return ApplyTextPlanJobResult(
         ordinal=job.ordinal,
@@ -689,6 +706,7 @@ def _result(
         introduced_selected_presence=introduced_selected_presence,
         index_preimage_source_ranges=index_preimage_source_ranges,
         expected_index_identity=expected_index_identity,
+        added_separator_source_ranges=added_separator_source_ranges,
     )
 
 

@@ -233,6 +233,14 @@ def execute_apply_action(
                         _action_plans.ApplyTextFileActionPlan,
                     )
                 },
+                added_separator_source_ranges_by_path={
+                    plan.file_path: plan.added_separator_source_ranges
+                    for plan in apply_plans
+                    if isinstance(
+                        plan,
+                        _action_plans.ApplyTextFileActionPlan,
+                    )
+                },
                 text_preimages_by_path={
                     plan.file_path: AppliedTextPreimageInput(
                         expected_worktree_identities[plan.file_path],
@@ -750,6 +758,7 @@ def _reduce_apply_action_plans(
                 introduced_selected_presence=(result.introduced_selected_presence),
                 index_preimage_source_ranges=(result.index_preimage_source_ranges),
                 expected_index_identity=result.expected_index_identity,
+                added_separator_source_ranges=(result.added_separator_source_ranges),
                 preimage_artifact_path=(
                     text_inputs_by_ordinal[result.ordinal].worktree_artifact
                 ),

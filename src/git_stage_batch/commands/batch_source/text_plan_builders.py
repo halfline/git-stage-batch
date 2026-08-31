@@ -40,6 +40,7 @@ from ...core.text_lifecycle import (
     selected_text_target_change_type,
 )
 from ...core.text_lines import normalize_line_sequence_endings
+from ...batch.merge.presence_separators import find_added_presence_separators
 from ...batch.applied_overlay_view import AppliedBatchOverlayView
 from ...data.file_target_identity import IndexIdentity
 from ...data.applied_batch_overlays import (
@@ -75,6 +76,7 @@ class ApplyTextPlanBuildResult:
     selected_ownership_metadata: BatchOwnershipMetadata | None = None
     introduced_selected_presence: bool = False
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -211,6 +213,7 @@ def build_apply_text_file_action_plan(
         spool_options = _spool_dir_options(spool_dir)
         introduced_selected_presence = False
         index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
+        added_separator_source_ranges: tuple[tuple[int, int], ...] = ()
         with acquire_batch_ownership_for_display_ids_from_lines(
             file_meta,
             batch_source_lines,
@@ -363,6 +366,13 @@ def build_apply_text_file_action_plan(
                     working_lines,
                     merged_buffer,
                 )
+                added_separator_source_ranges = find_added_presence_separators(
+                    batch_source_lines,
+                    ownership.presence_line_set(),
+                    working_lines,
+                    merged_buffer,
+                    spool_dir=spool_dir,
+                ).ranges()
                 effective_change_type = selected_text_target_change_type(
                     text_change_type,
                     selected_ids,
@@ -375,10 +385,12 @@ def build_apply_text_file_action_plan(
                         file_mode,
                         effective_change_type,
                         expected_index_identity=captured_index_identity,
+                        added_separator_source_ranges=(added_separator_source_ranges),
                     ),
                     selected_ownership_metadata=selected_ownership_metadata,
                     introduced_selected_presence=introduced_selected_presence,
                     index_preimage_source_ranges=index_preimage_source_ranges,
+                    added_separator_source_ranges=(added_separator_source_ranges),
                 )
             except BaseException:
                 if merged_buffer is not None:
@@ -620,6 +632,7 @@ def build_discard_text_file_action_plan(
     trusted_presence_lines: LineRanges | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
     captured_index_identity: IndexIdentity | None = None,
     working_tree_artifact_path: str | Path | None = None,
     captured_working_tree_exists: bool | None = None,

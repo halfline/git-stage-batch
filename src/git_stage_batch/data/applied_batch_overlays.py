@@ -84,6 +84,7 @@ class _AppliedApplication(TypedDict, total=False):
     introduced_selected_presence: bool
     index_target_is_original: bool
     index_preimage_source_lines: list[str]
+    added_separator_source_lines: list[str]
     supports_text_replay: bool
     text_preimage: _StoredTextPreimage
 
@@ -121,6 +122,7 @@ class AppliedFileProvenance:
     source_object_id: str | None
     introduced_selected_presence: bool = False
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = ()
     supports_text_replay: bool = False
     text_preimage: AppliedTextPreimageInput | None = None
 
@@ -231,6 +233,11 @@ def build_applied_file_provenances(
         tuple[tuple[int, int], ...],
     ]
     | None = None,
+    added_separator_source_ranges_by_path: dict[
+        str,
+        tuple[tuple[int, int], ...],
+    ]
+    | None = None,
     text_preimages_by_path: dict[str, AppliedTextPreimageInput] | None = None,
 ) -> dict[str, AppliedFileProvenance]:
     """Record applied claims while reading each source tree only once."""
@@ -291,6 +298,14 @@ def build_applied_file_provenances(
                     (),
                 )
             ),
+            added_separator_source_ranges=(
+                ()
+                if added_separator_source_ranges_by_path is None
+                else added_separator_source_ranges_by_path.get(
+                    file_path,
+                    (),
+                )
+            ),
             supports_text_replay=(
                 source_object_by_path.get(file_path) is not None
                 and selected_metadata.get("change_type") == "modified"
@@ -347,6 +362,7 @@ def fresh_applied_batch_overlay_for_path(
     applied_ranges_by_batch: dict[str, list[tuple[int, int]]] = {}
     source_line_ranges_by_batch: dict[str, list[tuple[int, int]]] = {}
     index_preimage_ranges_by_batch: dict[str, list[tuple[int, int]]] = {}
+    added_separator_ranges_by_batch: dict[str, list[tuple[int, int]]] = {}
     text_applications: list[AppliedTextApplication] = []
     text_replay_is_complete = True
     for ordinal, application in enumerate(raw_entry["applications"]):
@@ -403,6 +419,14 @@ def fresh_applied_batch_overlay_for_path(
                 batch_name,
                 [],
             ).extend(preimage_ranges)
+        separator_specs = application.get("added_separator_source_lines", [])
+        separator_ranges = LineRanges.from_specs(separator_specs).ranges()
+        if separator_specs:
+            added_separator_ranges_by_batch.setdefault(
+                batch_name,
+                [],
+            ).extend(separator_ranges)
+
         baseline_commit = current_metadata.get("baseline")
         can_replay_text = (
             application.get("supports_text_replay") is True
@@ -441,6 +465,7 @@ def fresh_applied_batch_overlay_for_path(
                         selected_ranges if application_has_index_proof else ()
                     ),
                     index_preimage_ranges=preimage_ranges,
+                    added_separator_ranges=separator_ranges,
                     preimage=text_preimage,
                 )
             )
@@ -467,6 +492,10 @@ def fresh_applied_batch_overlay_for_path(
         index_preimage_source_line_ranges_by_batch={
             batch_name: LineRanges.from_ranges(ranges).ranges()
             for batch_name, ranges in index_preimage_ranges_by_batch.items()
+        },
+        added_separator_source_line_ranges_by_batch={
+            batch_name: LineRanges.from_ranges(ranges).ranges()
+            for batch_name, ranges in added_separator_ranges_by_batch.items()
         },
         text_applications=(tuple(text_applications) if text_replay_is_complete else ()),
     )
@@ -586,6 +615,11 @@ def record_applied_batch_overlays(
                     application["text_preimage"] = stored_preimage
         if provenance.introduced_selected_presence:
             application["introduced_selected_presence"] = True
+        added_separator_lines = LineRanges.from_ranges(
+            provenance.added_separator_source_ranges
+        ).to_range_strings()
+        if added_separator_lines:
+            application["added_separator_source_lines"] = added_separator_lines
         index_preimage_lines = LineRanges.from_ranges(
             provenance.index_preimage_source_ranges
         ).to_range_strings()
@@ -805,6 +839,7 @@ def _validate_application(
         "introduced_selected_presence",
         "index_target_is_original",
         "index_preimage_source_lines",
+        "added_separator_source_lines",
         "supports_text_replay",
         "text_preimage",
     }:
@@ -816,6 +851,7 @@ def _validate_application(
     introduced_selected_presence = application.get("introduced_selected_presence")
     index_target_is_original = application.get("index_target_is_original")
     index_preimage_source_lines = application.get("index_preimage_source_lines")
+    added_separator_source_lines = application.get("added_separator_source_lines")
     supports_text_replay = application.get("supports_text_replay")
     text_preimage = application.get("text_preimage")
     if (
@@ -844,6 +880,16 @@ def _validate_application(
                 )
             )
         )
+        or (
+            added_separator_source_lines is not None
+            and (
+                type(added_separator_source_lines) is not list
+                or any(
+                    type(specification) is not str
+                    for specification in added_separator_source_lines
+                )
+            )
+        )
         or not _valid_stored_text_preimage(text_preimage)
     ):
         raise _state_error(state_path)
@@ -863,6 +909,15 @@ def _validate_application(
         except ValueError as error:
             raise _state_error(state_path) from error
         if canonical_preimage_lines != index_preimage_source_lines:
+            raise _state_error(state_path)
+    if added_separator_source_lines is not None:
+        try:
+            canonical_separator_lines = LineRanges.from_specs(
+                added_separator_source_lines
+            ).to_range_strings()
+        except ValueError as error:
+            raise _state_error(state_path) from error
+        if canonical_separator_lines != added_separator_source_lines:
             raise _state_error(state_path)
     try:
         validate_batch_name_constraints(batch_name)
@@ -962,6 +1017,15 @@ def _merge_application_authority(
             chain(
                 target.get("index_preimage_source_lines", []),
                 source_preimage,
+            )
+        ).to_range_strings()
+
+    source_separators = source.get("added_separator_source_lines", [])
+    if source_separators:
+        target["added_separator_source_lines"] = LineRanges.from_specs(
+            chain(
+                target.get("added_separator_source_lines", []),
+                source_separators,
             )
         ).to_range_strings()
 

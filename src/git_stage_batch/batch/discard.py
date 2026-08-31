@@ -35,7 +35,10 @@ from .line_matching.line_mapping import LineMapping
 from .line_matching.line_range_view import LineRangeView
 from .line_matching.match import match_lines
 from .line_matching.match_workspace import MatcherWorkspace
-from .line_matching.occurrence_index import LinePayloadOccurrenceIndex
+from .line_matching.occurrence_index import (
+    LinePayloadOccurrenceIndex,
+    normalized_line_payload,
+)
 from .line_matching.sequence_equality import line_slice_equals
 from .realization.entries import RealizedEntry as _RealizedEntry
 from .realization.entry_storage import (
@@ -86,24 +89,6 @@ if TYPE_CHECKING:
     from .ownership.absence_claims import AbsenceClaim
 
 
-
-
-@dataclass(frozen=True, slots=True)
-class _PreparedPresenceAlternativeReversal:
-    """The anchors and lines needed to restore earlier text."""
-
-    anchor_pairs: Sequence[tuple[int, int]]
-    introduced_presence_lines: LineRanges
-    structural_lines: LineRanges
-
-    @classmethod
-    def empty(cls) -> _PreparedPresenceAlternativeReversal:
-        return cls((), LineRanges.empty(), LineRanges.empty())
-
-    def __bool__(self) -> bool:
-        return bool(self.introduced_presence_lines)
-
-
 @dataclass(frozen=True, slots=True)
 class _RealizedPresenceSourceAlternative:
     """A saved section and where the same text appears in the worktree."""
@@ -124,6 +109,24 @@ class _RealizedPresenceSourceAlternative:
             raise ValueError("realized presence prefix has the wrong length")
         if len(self.target_suffix) != len(self.source.claimed_suffix):
             raise ValueError("realized presence suffix has the wrong length")
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedPresenceAlternativeReversal:
+    """The anchors and lines needed to restore earlier text."""
+
+    anchor_pairs: Sequence[tuple[int, int]]
+    introduced_presence_lines: LineRanges
+    structural_lines: LineRanges
+
+    @classmethod
+    def empty(cls) -> _PreparedPresenceAlternativeReversal:
+        return cls((), LineRanges.empty(), LineRanges.empty())
+
+    def __bool__(self) -> bool:
+        return bool(self.introduced_presence_lines)
+
+
 def _discard_result_line_ending_from_lines(
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
@@ -379,6 +382,27 @@ def _acquire_discard_presence_mapping(
             result.mapping.close()
 
 
+def _validated_added_presence_separators(
+    source_lines: Sequence[bytes],
+    presence_lines: LineRanges,
+    added_separator_lines: LineRanges | None,
+) -> LineRanges:
+    """Check that each recorded blank directly precedes selected text."""
+    if not added_separator_lines:
+        return LineRanges.empty()
+
+    separators = LineRangeBuilder()
+    for separator_line in added_separator_lines:
+        if (
+            separator_line >= len(source_lines)
+            or normalized_line_payload(source_lines[separator_line - 1])
+            or separator_line + 1 not in presence_lines
+        ):
+            raise ValueError("recorded replay separator does not precede selected text")
+        separators.add_line(separator_line)
+    return separators.finish()
+
+
 def discard_batch_file_state_as_buffer(
     batch_file: BatchFileState,
     target_snapshot: FileSnapshot[WorktreeSpace],
@@ -388,6 +412,7 @@ def discard_batch_file_state_as_buffer(
     trusted_target_lines: Sequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> LineBuffer:
     """Discard a source-bound batch state from one exact target snapshot."""
     if batch_file.path != target_snapshot.path:
@@ -408,6 +433,7 @@ def discard_batch_file_state_as_buffer(
         trusted_target_lines=trusted_target_lines,
         applied_presence_lines=applied_presence_lines,
         index_preimage_presence_lines=index_preimage_presence_lines,
+        added_separator_lines=added_separator_lines,
     )
 
 
@@ -421,6 +447,7 @@ def discard_batch_from_line_sequences_as_buffer(
     trusted_target_lines: Sequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> LineBuffer:
     """Discard ownership and return a buffer with destination line endings."""
     result_line_ending = _discard_result_line_ending_from_lines(
@@ -447,6 +474,7 @@ def discard_batch_from_line_sequences_as_buffer(
                 trusted_target_lines=normalized_trusted_target_lines,
                 applied_presence_lines=applied_presence_lines,
                 index_preimage_presence_lines=(index_preimage_presence_lines),
+                added_separator_lines=added_separator_lines,
             ),
             result_line_ending,
         ),
@@ -463,6 +491,7 @@ def _discard_batch_line_chunks(
     trusted_target_lines: AcquirableLineSequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> Iterator[bytes]:
     """Discard ownership from normalized byte-line sequences."""
     with ExitStack() as stack:
@@ -483,6 +512,7 @@ def _discard_batch_line_chunks(
             trusted_target_lines=acquired_trusted_target_lines,
             applied_presence_lines=applied_presence_lines,
             index_preimage_presence_lines=(index_preimage_presence_lines),
+            added_separator_lines=added_separator_lines,
         )
 
 
@@ -496,6 +526,7 @@ def _discard_batch_acquired_line_chunks(
     trusted_target_lines: Sequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> Iterator[bytes]:
     """Discard ownership from acquired normalized byte-line sequences."""
     resolved = ownership.resolve()
@@ -584,6 +615,11 @@ def _discard_batch_acquired_line_chunks(
         trusted_insertion_lines = trusted_anchor_result[1].union(
             independent_insertion_lines
         )
+        introduced_separators = _validated_added_presence_separators(
+            source_lines,
+            presence_line_set,
+            added_separator_lines,
+        )
         preexisting_applied_presence = _trusted_preexisting_applied_presence(
             source_lines,
             working_lines,
@@ -642,7 +678,9 @@ def _discard_batch_acquired_line_chunks(
                 trusted_insertion_lines=trusted_insertion_lines,
                 preserved_presence_lines=(preexisting_applied_presence),
                 separately_restored_ranges=(separately_restored_presence_ranges),
-                introduced_structural_lines=alternative_reversal.structural_lines,
+                introduced_structural_lines=(
+                    alternative_reversal.structural_lines.union(introduced_separators)
+                ),
                 independent_insertion_lines=independent_insertion_lines,
             )
             if updated_entries is not realized_entries:

@@ -31,12 +31,16 @@ class AppliedBatchOverlayView:
         str,
         tuple[tuple[int, int], ...],
     ]
+    added_separator_source_line_ranges_by_batch: dict[
+        str,
+        tuple[tuple[int, int], ...],
+    ]
     text_applications: tuple[AppliedTextApplication, ...] = ()
 
     @classmethod
     def empty(cls) -> AppliedBatchOverlayView:
         """Return a view with no applied batches."""
-        return cls({}, {}, frozenset(), frozenset(), frozenset(), {}, {}, {})
+        return cls({}, {}, frozenset(), frozenset(), frozenset(), {}, {}, {}, {})
 
     def contains_equivalent_file_provenance(
         self,

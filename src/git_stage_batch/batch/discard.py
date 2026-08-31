@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Container, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+import hashlib
 from typing import TYPE_CHECKING, cast
 
 from .merge.baseline_correspondence import (
@@ -57,7 +58,11 @@ from ..core.coordinates import (
     require_same_snapshot,
 )
 from ..core.line_selection import LineRangeBuilder, LineRanges
-from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
+from ..core.mapped_storage import (
+    MappedIntVector,
+    MappedRecordVector,
+    sort_mapped_records,
+)
 from ..core.resource_cleanup import close_resources_preserving_first
 from ..core.text_lines import (
     AcquirableLineSequence,
@@ -1222,11 +1227,15 @@ def _replacement_deletion_restore_records(
     index_preimage_presence_lines: LineRanges | None,
     preserved_presence_lines: Container[int] | None,
 ) -> tuple[Sequence[tuple[int, ...]], Sequence[tuple[int, ...]]]:
-    """Mark replacement old sides whose selected new side is realized.
+    """Record what undo should do with each deleted version.
 
-    Zero denotes a non-replacement claim, one a replacement that is not live,
-    two a replacement whose historical old side should be restored, and three
-    a freshly applied replacement whose exact index preimage should be restored.
+    The first field has these values:
+
+    * ``0``: not a replacement;
+    * ``1``: the new version is absent;
+    * ``2``: restore an older version between the source lines in the other
+      fields, where zero marks a file edge;
+    * ``3``: restore the index text saved by the latest apply.
     """
     records = workspace.record_vector(
         deletion_count,
@@ -1245,6 +1254,19 @@ def _replacement_deletion_restore_records(
         len(ownership.replacement_units),
         "B",
         length=len(ownership.replacement_units),
+    )
+    owned_presence_lines = ownership.presence_line_set()
+    surviving_before, surviving_after = _surviving_source_neighbor_lines(
+        workspace,
+        len(source_lines),
+        source_to_working,
+        owned_presence_lines,
+        preserved_presence_lines,
+    )
+    superseded_deletions = _superseded_replacement_deletions(
+        workspace,
+        ownership,
+        deletion_count,
     )
     unit_index = 0
     while unit_index < len(ownership.replacement_units):
@@ -1333,6 +1355,8 @@ def _replacement_deletion_restore_records(
         )
         has_mapped_presence = False
         has_exact_preimage_authorization = False
+        restore_after_source_line = 0
+        restore_before_source_line = 0
         try:
             if claimed_ranges is not None:
                 has_mapped_presence = any(
@@ -1345,6 +1369,10 @@ def _replacement_deletion_restore_records(
                     for source_start, source_end in claimed_ranges
                     for source_line in range(source_start, source_end + 1)
                 )
+                if has_mapped_presence and len(claimed_ranges) == 1:
+                    source_start, source_end = claimed_ranges[0]
+                    restore_after_source_line = surviving_before[source_start - 1]
+                    restore_before_source_line = surviving_after[source_end - 1]
                 if (
                     index_preimage_presence_lines
                     and len(claimed_ranges) == 1
@@ -1409,10 +1437,21 @@ def _replacement_deletion_restore_records(
                         )
                     )
                 ):
+                    effective_flag = flag
+                    if flag == 2 and superseded_deletions[deletion_index][0]:
+                        effective_flag = 1
                     records[deletion_index] = (
-                        flag,
-                        restore_start,
-                        restore_end,
+                        effective_flag,
+                        (
+                            restore_start
+                            if effective_flag == 3
+                            else restore_after_source_line
+                        ),
+                        (
+                            restore_end
+                            if effective_flag == 3
+                            else restore_before_source_line
+                        ),
                     )
 
             has_restored_deletion = any(
@@ -1441,11 +1480,227 @@ def _replacement_deletion_restore_records(
         separately_restored_ranges,
     )
     _normalize_mapped_line_ranges(separately_restored_ranges)
+    workspace.close_resource(superseded_deletions)
+    workspace.close_resource(surviving_after)
+    workspace.close_resource(surviving_before)
     workspace.close_resource(handled_units)
     return (
         cast(Sequence[tuple[int, ...]], records),
         cast(Sequence[tuple[int, ...]], separately_restored_ranges),
     )
+
+
+def _surviving_source_neighbor_lines(
+    workspace: MatcherWorkspace,
+    source_line_count: int,
+    source_to_working: LineMapping,
+    owned_presence_lines: Container[int],
+    preserved_presence_lines: Container[int] | None,
+) -> tuple[MappedIntVector, MappedIntVector]:
+    """Record the nearest retained source line on each side."""
+    before_lines = workspace.int_vector(
+        source_line_count,
+        width=8,
+        fill=0,
+    )
+    after_lines: MappedIntVector | None = None
+    try:
+        after_lines = workspace.int_vector(
+            source_line_count,
+            width=8,
+            fill=0,
+        )
+
+        def survives(source_line: int) -> bool:
+            return (
+                source_line not in owned_presence_lines
+                or (
+                    preserved_presence_lines is not None
+                    and source_line in preserved_presence_lines
+                )
+            ) and source_to_working.get_target_line_from_source_line(
+                source_line
+            ) is not None
+
+        nearest_line = 0
+        for source_line in range(1, source_line_count + 1):
+            before_lines[source_line - 1] = nearest_line
+            if survives(source_line):
+                nearest_line = source_line
+
+        nearest_line = 0
+        for source_line in range(source_line_count, 0, -1):
+            after_lines[source_line - 1] = nearest_line
+            if survives(source_line):
+                nearest_line = source_line
+    except BaseException:
+        workspace.close_resource(before_lines)
+        raise
+    return before_lines, after_lines
+
+
+def _deletion_content_fingerprint(claim: AbsenceClaim) -> bytes:
+    """Hash a deletion one normalized line at a time."""
+    digest = hashlib.blake2b(digest_size=16)
+    for content in claim.content_lines:
+        normalized = normalize_line_endings(bytes(content))
+        digest.update(len(normalized).to_bytes(8, "big"))
+        digest.update(normalized)
+    return digest.digest()
+
+
+def _cached_deletion_content_fingerprint(
+    fingerprints: MappedRecordVector,
+    ownership: BatchOwnership,
+    deletion_index: int,
+) -> tuple[int, int]:
+    """Return a deletion hash, computing and caching it when needed."""
+    high, low, initialized = fingerprints[deletion_index]
+    if initialized:
+        return high, low
+    digest = _deletion_content_fingerprint(ownership.deletions[deletion_index])
+    high = int.from_bytes(digest[:8], "big")
+    low = int.from_bytes(digest[8:], "big")
+    fingerprints[deletion_index] = (high, low, 1)
+    return high, low
+
+
+def _deletion_contents_equal(left: AbsenceClaim, right: AbsenceClaim) -> bool:
+    """Compare normalized deletion content line by line."""
+    return len(left.content_lines) == len(right.content_lines) and all(
+        normalize_line_endings(bytes(left.content_lines[offset]))
+        == normalize_line_endings(bytes(right.content_lines[offset]))
+        for offset in range(len(left.content_lines))
+    )
+
+
+def _first_alternative_identity_record(
+    alternatives: Sequence[tuple[int, ...]],
+    unit_index: int,
+    reference_hash: int,
+    fingerprint_high: int,
+    fingerprint_low: int,
+) -> int:
+    """Find the first sorted entry for this deletion."""
+    identity = (unit_index, reference_hash, fingerprint_high, fingerprint_low)
+    low = 0
+    high = len(alternatives)
+    while low < high:
+        middle = (low + high) // 2
+        if alternatives[middle][:4] < identity:
+            low = middle + 1
+        else:
+            high = middle
+    return low
+
+
+def _superseded_replacement_deletions(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    deletion_count: int,
+) -> MappedRecordVector:
+    """Mark old deletions that duplicate a stored live version."""
+    superseded = workspace.record_vector(
+        deletion_count,
+        "B",
+        length=deletion_count,
+    )
+    fingerprints = workspace.record_vector(
+        deletion_count,
+        "QQQ",
+        length=deletion_count,
+    )
+    alternative_capacity = sum(
+        len(unit.deletion_indices) for unit in ownership.replacement_units
+    )
+    alternatives = workspace.record_vector(alternative_capacity, "QQQQQ")
+    try:
+        for unit_index, unit in enumerate(ownership.replacement_units):
+            for deletion_index in unit.deletion_indices:
+                if not (
+                    type(deletion_index) is int and 0 <= deletion_index < deletion_count
+                ):
+                    continue
+                claim = ownership.deletions[deletion_index]
+                if not claim.source_alternative:
+                    continue
+                fingerprint_high, fingerprint_low = (
+                    _cached_deletion_content_fingerprint(
+                        fingerprints,
+                        ownership,
+                        deletion_index,
+                    )
+                )
+                alternatives.append(
+                    (
+                        unit_index,
+                        hash(claim.baseline_reference) & ((1 << 64) - 1),
+                        fingerprint_high,
+                        fingerprint_low,
+                        deletion_index,
+                    )
+                )
+
+        if not alternatives:
+            return superseded
+        sort_mapped_records(alternatives)
+
+        for unit_index, unit in enumerate(ownership.replacement_units):
+            for deletion_index in unit.deletion_indices:
+                if not (
+                    type(deletion_index) is int and 0 <= deletion_index < deletion_count
+                ):
+                    continue
+                claim = ownership.deletions[deletion_index]
+                if claim.source_alternative:
+                    continue
+                fingerprint_high, fingerprint_low = (
+                    _cached_deletion_content_fingerprint(
+                        fingerprints,
+                        ownership,
+                        deletion_index,
+                    )
+                )
+                reference_hash = hash(claim.baseline_reference) & ((1 << 64) - 1)
+                record_index = _first_alternative_identity_record(
+                    alternatives,
+                    unit_index,
+                    reference_hash,
+                    fingerprint_high,
+                    fingerprint_low,
+                )
+                while record_index < len(alternatives):
+                    (
+                        candidate_unit,
+                        candidate_reference_hash,
+                        candidate_high,
+                        candidate_low,
+                        candidate_index,
+                    ) = alternatives[record_index]
+                    if (
+                        candidate_unit,
+                        candidate_reference_hash,
+                        candidate_high,
+                        candidate_low,
+                    ) != (
+                        unit_index,
+                        reference_hash,
+                        fingerprint_high,
+                        fingerprint_low,
+                    ):
+                        break
+                    candidate = ownership.deletions[candidate_index]
+                    if (
+                        claim.baseline_reference == candidate.baseline_reference
+                        and _deletion_contents_equal(claim, candidate)
+                    ):
+                        superseded[deletion_index] = (1,)
+                        break
+                    record_index += 1
+    finally:
+        workspace.close_resource(alternatives)
+        workspace.close_resource(fingerprints)
+    return superseded
 
 
 def _append_live_legacy_replacement_restore_records(
@@ -1708,6 +1963,50 @@ def _restore_absence_constraints(
             )
         return normalize_line_sequence_endings(claim.content_lines)
 
+    def replacement_restore_boundary(
+        source_boundaries: Sequence[tuple[int, ...]],
+        claim_index: int,
+    ) -> int | None:
+        if replacement_restore_records is None:
+            return None
+        record = replacement_restore_records[claim_index]
+        if record[0] != 2 or (record[1] == 0 and record[2] == 0):
+            return None
+        candidate_boundaries: list[int] = []
+        if record[1] != 0:
+            try:
+                candidate_boundaries.append(
+                    _indexed_boundary_after_source_line(
+                        source_boundaries,
+                        record[1],
+                    )
+                )
+            except _MissingAnchorError:
+                pass
+        if record[2] != 0:
+            try:
+                candidate_boundaries.append(
+                    _indexed_boundary_after_source_line(
+                        source_boundaries,
+                        record[2],
+                    )
+                    - 1
+                )
+            except _MissingAnchorError:
+                pass
+        if not candidate_boundaries:
+            return None
+        if any(
+            boundary != candidate_boundaries[0] for boundary in candidate_boundaries[1:]
+        ):
+            raise _AmbiguousAnchorError(
+                _(
+                    "Cannot discard an exact applied replacement "
+                    "because its live occurrence is ambiguous"
+                )
+            )
+        return candidate_boundaries[0]
+
     indexed_result_lines: LineBuffer | None = None
     restored_claim_lines: LineBuffer | None = None
     restored: RealizedEntries | None = None
@@ -1729,13 +2028,18 @@ def _restore_absence_constraints(
             ):
                 continue
             content_lines = restored_content_lines(claim_index)
-            try:
-                boundary = _indexed_boundary_after_source_line(
-                    source_boundaries,
-                    claim.anchor_line,
-                )
-            except _MissingAnchorError:
-                continue
+            boundary = replacement_restore_boundary(
+                source_boundaries,
+                claim_index,
+            )
+            if boundary is None:
+                try:
+                    boundary = _indexed_boundary_after_source_line(
+                        source_boundaries,
+                        claim.anchor_line,
+                    )
+                except _MissingAnchorError:
+                    continue
 
             # Split children can share the source line before their old
             # content. Existing children advance within the target;

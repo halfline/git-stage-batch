@@ -29,7 +29,7 @@ from ...data.file_modes import detect_file_mode_from_root
 from ...core.text_lifecycle import (
     TextFileChangeType,
     normalized_text_change_type,
-    sifted_empty_text_path_change_type,
+    sifted_text_path_change_type,
 )
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.repository_buffers import load_git_blob_as_buffer
@@ -242,19 +242,14 @@ def compute_sifted_text_file(
                 target_lines=target_lines,
                 spool_dir=spool_dir,
             )
+            result_change_type = sifted_text_path_change_type(
+                target_exists=target_exists,
+                working_exists=captured_working_tree_exists,
+            )
             if new_ownership is None or new_ownership.is_empty():
-                result_change_type = sifted_empty_text_path_change_type(
-                    change_type,
-                    target_exists=target_exists,
-                    working_exists=captured_working_tree_exists,
-                    target_content=target_buffer,
-                    ownership_is_empty=True,
-                )
                 if result_change_type == TextFileChangeType.MODIFIED:
                     return None
                 new_ownership = BatchOwnership([], [])
-            else:
-                result_change_type = change_type
 
             validate_sifted_text_file_result_from_lines(
                 target_lines=target_lines,

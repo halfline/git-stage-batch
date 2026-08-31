@@ -132,20 +132,14 @@ def mode_for_text_materialization(
     return None
 
 
-def sifted_empty_text_path_change_type(
-    change_type: str | TextFileChangeType,
+def sifted_text_path_change_type(
     *,
     target_exists: bool,
     working_exists: bool,
-    target_content: BufferData,
-    ownership_is_empty: bool,
 ) -> TextFileChangeType:
-    """Preserve path-presence-only empty text changes after sift."""
-    change_type = normalized_text_change_type(change_type)
-    if not ownership_is_empty or not _buffer_is_empty(target_content):
-        return change_type
+    """Classify the change from the current path to a sift target."""
     if target_exists and not working_exists:
         return TextFileChangeType.ADDED
     if not target_exists and working_exists:
         return TextFileChangeType.DELETED
-    return change_type
+    return TextFileChangeType.MODIFIED

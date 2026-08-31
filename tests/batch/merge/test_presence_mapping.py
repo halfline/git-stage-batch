@@ -297,6 +297,120 @@ def test_unique_selected_span_beats_unanchored_repeated_context() -> None:
             result.mapping.close()
 
 
+def test_distinctive_controlled_run_recovers_tail_from_stale_sibling() -> None:
+    """An adjacent owned tail beats an unowned duplicate from a removed sibling."""
+    source = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tbefore\n",
+        b"\tmissing adoption\n",
+        b"\tafter\n",
+        b"}\n",
+        b"\n",
+        b"helper()\n",
+        b"{\n",
+        b"\tunique helper body\n",
+        b"}\n",
+        b"\n",
+        b"stale sibling()\n",
+        b"{\n",
+        b"\tstale body\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    target = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tbefore\n",
+        b"\tafter\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    controlled = LineRanges.from_ranges(((2, 13),))
+
+    result = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+    )
+    try:
+        assert result.corrected
+        assert result.mapping.get_target_line_from_source_line(7) == 6
+        assert result.mapping.get_target_line_from_source_line(8) == 7
+        assert result.mapping.get_target_line_from_source_line(17) is None
+        assert result.mapping.get_target_line_from_source_line(18) is None
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
+def test_nondistinctive_stale_tail_does_not_compete_with_owned_run() -> None:
+    """Recorded adjacency cannot challenge a distinctive owned mapping."""
+    source = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tunique outer body\n",
+        b"}\n",
+        b"\n",
+        b"helper()\n",
+        b"{\n",
+        b"\tunique helper body\n",
+        b"}\n",
+        b"\n",
+        b"stale sibling()\n",
+        b"{\n",
+        b"\tstale body\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    target = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tunique outer body\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    controlled = LineRanges.from_ranges(((2, 11),))
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"\n",
+        has_after_line=True,
+        before_line=2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-11"],
+        baseline_references={line: reference for line in range(2, 12)},
+    )
+
+    result = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+        ownership=ownership,
+        presence_lines=controlled,
+    )
+    try:
+        assert not result.ambiguous
+        assert not result.competing_context
+        assert result.mapping.get_target_line_from_source_line(5) == 5
+        assert result.mapping.get_target_line_from_source_line(6) == 6
+        assert result.mapping.get_target_line_from_source_line(15) is None
+        assert result.mapping.get_target_line_from_source_line(16) is None
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
 def test_explicit_alternative_authorizes_repeated_context() -> None:
     """Verified adjacent old-side metadata may anchor repeated context."""
     source = [

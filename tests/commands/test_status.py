@@ -279,6 +279,58 @@ class TestCommandStatus:
         assert captured.out == " STAGING"
         assert captured.err == ""
 
+    def test_status_for_prompt_seeds_cache_without_remaining_scan(
+        self,
+        temp_git_repo,
+        capsys,
+        monkeypatch,
+    ):
+        """The first rich prompt should return before repository-wide counting."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+        command_start()
+        capsys.readouterr()
+
+        def fail_remaining_scan():
+            raise AssertionError("unexpected full scan")
+
+        monkeypatch.setattr(
+            "git_stage_batch.data.status_summary._estimate_remaining_hunks",
+            fail_remaining_scan,
+        )
+        command_status(prompt_format=" {processed}/{total}:{selected_file}")
+
+        captured = capsys.readouterr()
+        assert captured.out == " 0/1:README.md"
+        assert captured.err == ""
+
+    def test_status_for_prompt_reuses_cache_without_session_state_reads(
+        self,
+        temp_git_repo,
+        capsys,
+        monkeypatch,
+    ):
+        """Later rich prompts should decode one small file and render it."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+        command_start()
+        capsys.readouterr()
+        command_status(prompt_format=" {processed}/{total}:{selected_file}")
+        assert capsys.readouterr().out == " 0/1:README.md"
+
+        def fail_state_read():
+            raise AssertionError("unexpected state read")
+
+        monkeypatch.setattr(
+            "git_stage_batch.commands.status_cache.read_prompt_status_cache_seed",
+            fail_state_read,
+        )
+        command_status(prompt_format=" {processed}/{total}:{selected_file}")
+
+        captured = capsys.readouterr()
+        assert captured.out == " 0/1:README.md"
+        assert captured.err == ""
+
     def test_status_cache_refresh_is_silent(
         self,
         temp_git_repo,

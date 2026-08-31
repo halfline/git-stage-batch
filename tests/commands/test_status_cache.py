@@ -38,6 +38,8 @@ def _summary(*, remaining: int = 2) -> PromptStatusSummary:
 def _enable_cache() -> None:
     assert mark_prompt_status_cache_requested()
     assert read_session_marker_identity() is not None
+
+
 def test_refresh_publishes_exact_summary(temp_git_repo_with_session, monkeypatch):
     """A stable background read should replace the provisional snapshot."""
     _enable_cache()
@@ -125,6 +127,30 @@ def test_request_skips_current_exact_cache(
     monkeypatch.setattr(status_cache, "_spawn_status_refresh", fail_spawn)
 
     status_cache.request_status_summary_cache_refresh()
+
+
+def test_prompt_requests_refresh_after_completed_command(
+    temp_git_repo_with_session,
+):
+    """The next prompt should notice an exact cache from an older command."""
+    _enable_cache()
+    marker = read_session_marker_identity()
+    assert marker is not None
+    assert write_cached_prompt_status(
+        _summary(),
+        lock_generation=0,
+        exact=True,
+        session_marker=marker,
+    )
+    with acquire_session_lock():
+        pass
+
+    snapshot = status_cache.read_prompt_status_from_cache(
+        temp_git_repo_with_session / ".git"
+    )
+
+    assert snapshot.summary == _summary()
+    assert snapshot.needs_refresh is True
 
 
 def test_request_never_waits_for_session_lock(

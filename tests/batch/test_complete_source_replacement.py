@@ -2,6 +2,7 @@
 
 from git_stage_batch.batch.complete_source_replacement import (
     materialize_untracked_source_replacement,
+    promote_untracked_presence_to_complete_source_replacement,
     resolve_complete_source_replacement,
 )
 from git_stage_batch.batch.file_state import SourceBoundOwnership
@@ -123,4 +124,103 @@ def test_materialize_untracked_replacement_stores_complete_file_snapshots() -> N
                 materialized.bound_ownership,
             )
             is not None
+        )
+
+
+def test_promote_untracked_presence_requires_exact_batch_predecessor() -> None:
+    """Promotion succeeds before, but not after, an independent peel."""
+    path = "file.txt"
+    saved_file = (b"owned\n", b"keep\n", b"new\n")
+    prior_worktree = (b"keep\n", b"new\n")
+    rewritten = (b"keep\n", b"new\n", b"old\n")
+    baseline_snapshot = content_snapshot(path, (), space=BaselineSpace)
+    worktree_snapshot = content_snapshot(
+        path,
+        prior_worktree,
+        space=WorktreeSpace,
+    )
+    rewritten_snapshot = content_snapshot(
+        path,
+        rewritten,
+        space=RewrittenWorktreeSpace,
+    )
+    edit = ReplacementEditPlan(
+        path=path,
+        baseline_snapshot=baseline_snapshot,
+        worktree_snapshot=worktree_snapshot,
+        baseline_span=LineSpan(LineBoundary(0), LineBoundary(0)),
+        worktree_span=LineSpan(LineBoundary(1), LineBoundary(2)),
+    ).bind_result(rewritten_snapshot, replacement_line_count=2)
+    alternatives = ExplicitReplacementAlternatives(
+        edit=edit,
+        saved=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(1), LineBoundary(2)),
+        ),
+        live=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(2), LineBoundary(3)),
+        ),
+        parent=None,
+        ownership_scope=ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+    )
+
+    with LineBuffer.from_chunks(saved_file) as source_lines:
+        existing = SourceBoundOwnership(
+            content_snapshot(path, source_lines, space=BatchSourceSpace),
+            BatchOwnership.from_presence_lines(["1"]),
+        )
+        promoted = promote_untracked_presence_to_complete_source_replacement(
+            source_lines,
+            existing,
+            rewritten_lines=rewritten,
+            alternatives=alternatives,
+        )
+        assert promoted is not None
+        with promoted:
+            assert tuple(promoted.source_buffer) == (
+                *saved_file,
+                b"keep\n",
+                b"old\n",
+            )
+
+        independently_peeled = (b"new\n", b"old\n")
+        peeled_worktree = content_snapshot(
+            path,
+            (b"new\n",),
+            space=WorktreeSpace,
+        )
+        peeled_rewritten = content_snapshot(
+            path,
+            independently_peeled,
+            space=RewrittenWorktreeSpace,
+        )
+        peeled_edit = ReplacementEditPlan(
+            path=path,
+            baseline_snapshot=baseline_snapshot,
+            worktree_snapshot=peeled_worktree,
+            baseline_span=LineSpan(LineBoundary(0), LineBoundary(0)),
+            worktree_span=LineSpan(LineBoundary(0), LineBoundary(1)),
+        ).bind_result(peeled_rewritten, replacement_line_count=2)
+        peeled_alternatives = ExplicitReplacementAlternatives(
+            edit=peeled_edit,
+            saved=SnapshotSpan(
+                peeled_rewritten,
+                LineSpan(LineBoundary(0), LineBoundary(1)),
+            ),
+            live=SnapshotSpan(
+                peeled_rewritten,
+                LineSpan(LineBoundary(1), LineBoundary(2)),
+            ),
+            parent=None,
+            ownership_scope=ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+        )
+        assert (
+            promote_untracked_presence_to_complete_source_replacement(
+                source_lines,
+                existing,
+                rewritten_lines=independently_peeled,
+                alternatives=peeled_alternatives,
+            )
+            is None
         )

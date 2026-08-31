@@ -10,7 +10,10 @@ from ...batch.ownership.replacement_line_runs import (
 )
 from ...batch.file_state import BatchMetadataRevision
 from ...batch.state.lifecycle import create_batch
-from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
+from ...batch.ownership_update import (
+    SourceBoundLineSelection,
+    acquire_batch_ownership_update_for_selection,
+)
 from ...batch.state.query import read_batch_metadata
 from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.text_file_storage import add_source_bound_file_to_batch
@@ -39,7 +42,7 @@ def add_selected_lines_to_batch(
     hunk_lines: Sequence[LineEntry] | None = None,
     snapshot_untracked: bool = False,
     before_add: Callable[[], None] | None = None,
-) -> None:
+) -> SourceBoundLineSelection:
     """Persist selected lines into batch ownership for one file."""
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
@@ -64,9 +67,7 @@ def add_selected_lines_to_batch(
             else None
         )
         working_source_lines = (
-            ownership_stack.enter_context(
-                load_working_tree_file_as_buffer(file_path)
-            )
+            ownership_stack.enter_context(load_working_tree_file_as_buffer(file_path))
             if has_replacement_rows
             else None
         )
@@ -102,14 +103,10 @@ def add_selected_lines_to_batch(
                     selected_lines=list(selected_lines),
                     hunk_lines=hunk_lines,
                     replacement_line_runs=replacement_line_runs,
-                    replacement_origin_line_runs=(
-                        replacement_origin_line_runs
-                    ),
+                    replacement_origin_line_runs=(replacement_origin_line_runs),
                     reference_source_lines=reference_source_lines,
                     batch_baseline_commit=baseline_commit,
-                    replacement_origin_source_lines=(
-                        replacement_origin_source_lines
-                    ),
+                    replacement_origin_source_lines=(replacement_origin_source_lines),
                     replacement_origin_target_lines=working_source_lines,
                 )
             )
@@ -140,3 +137,4 @@ def add_selected_lines_to_batch(
             batch_source_commit=update.batch_source_commit,
             expected_metadata_revision=update.expected_metadata_revision,
         )
+        return update.source_bound_selection

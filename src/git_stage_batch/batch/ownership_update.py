@@ -305,6 +305,86 @@ def _translate_selection_to_batch_ownership(
     return translate_lines_to_batch_ownership(selected_lines)
 
 
+def _include_owned_following_blank(
+    selected_lines: list[LineEntry],
+    *,
+    hunk_lines: Sequence[LineEntry] | None,
+    source_lines: Sequence[bytes],
+    existing_ownership: BatchOwnership | None,
+) -> list[LineEntry]:
+    """Include the following selected blank when the block needs it.
+
+    The selection may match an older copy of the block in the source. Without
+    its following blank, the batch and worktree would disagree about the space
+    before the next block.
+    """
+    if hunk_lines is None or existing_ownership is None or not selected_lines:
+        return selected_lines
+    ordered = sorted(
+        selected_lines,
+        key=lambda line: line.new_line_number or 0,
+    )
+    if any(
+        line.kind != "+"
+        or line.id is None
+        or line.new_line_number is None
+        or line.source_line is None
+        for line in ordered
+    ):
+        return selected_lines
+    for previous, current in zip(ordered, ordered[1:]):
+        assert previous.new_line_number is not None
+        assert previous.source_line is not None
+        assert current.new_line_number is not None
+        assert current.source_line is not None
+        if (
+            current.new_line_number != previous.new_line_number + 1
+            or current.source_line != previous.source_line + 1
+        ):
+            return selected_lines
+
+    last = ordered[-1]
+    assert last.new_line_number is not None
+    assert last.source_line is not None
+    blank_new_line = last.new_line_number + 1
+    blank_source_line = last.source_line + 1
+    if (
+        blank_source_line > len(source_lines)
+        or blank_source_line not in existing_ownership.presence_line_set()
+        or normalized_line_payload(source_lines[blank_source_line - 1])
+    ):
+        return selected_lines
+
+    selected_ids = {line.id for line in selected_lines}
+    blank = next(
+        (
+            line
+            for line in hunk_lines
+            if line.kind == "+"
+            and line.id is not None
+            and line.id not in selected_ids
+            and line.new_line_number == blank_new_line
+            and not normalized_line_payload(line.text_bytes)
+        ),
+        None,
+    )
+    following = next(
+        (
+            line
+            for line in hunk_lines
+            if line.kind in {" ", "+"} and line.new_line_number == blank_new_line + 1
+        ),
+        None,
+    )
+    if (
+        blank is None
+        or following is None
+        or not normalized_line_payload(following.text_bytes)
+    ):
+        return selected_lines
+    return [*selected_lines, blank.with_source_line(blank_source_line)]
+
+
 def _ownership_has_baseline_references(ownership: BatchOwnership) -> bool:
     """Return whether newly translated ownership carries baseline coordinates."""
     if any(

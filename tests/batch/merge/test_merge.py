@@ -247,6 +247,38 @@ def test_recorded_presence_uses_exact_repeated_context_inside_mapped_edges() -> 
     ] == [(3, True)]
 
 
+def test_recorded_presence_uses_gap_collapsed_across_peeled_siblings() -> None:
+    """Recorded content keeps its sole gap after adjacent siblings are peeled."""
+    source = [
+        b"head\n",
+        b"```sh\n",
+        b"peeled before one\n",
+        b"peeled before two\n",
+        b"claimed\n",
+        b"peeled after one\n",
+        b"peeled after two\n",
+        b"```\n",
+        b"tail\n",
+    ]
+    target = [b"head\n", b"```sh\n", b"```\n", b"tail\n"]
+    selected = LineRanges.from_specs(["5"])
+
+    with match_lines(source, target) as mapping:
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            selected,
+            mapping,
+            require_distinctive_context=True,
+            distinctive_context_lines=selected,
+            recorded_context_lines=selected,
+        )
+
+    assert [
+        (placement.gap_index, placement.exact_context_gap) for placement in placements
+    ] == [(2, True)]
+
+
 def test_recorded_split_presence_omits_unselected_source_between_exact_edges() -> None:
     """Recorded sibling insertions can share one exact predecessor gap."""
     source = b"head\nsame\nfirst\nomitted\nsecond\nsame\ntail\n"

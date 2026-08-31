@@ -279,6 +279,51 @@ def test_recorded_presence_uses_gap_collapsed_across_peeled_siblings() -> None:
     ] == [(2, True)]
 
 
+def test_context_roles_split_adjacent_missing_replacement_run() -> None:
+    """An independent claim cannot lend its context policy to a replacement."""
+    source = [
+        b"unique head\n",
+        b"unique keep\n",
+        b"same\n",
+        b"independent claim\n",
+        b"replacement one\n",
+        b"replacement two\n",
+        b"replacement one\n",
+        b"replacement two\n",
+        b"unique live\n",
+        b"same\n",
+        b"unique tail\n",
+    ]
+    target = [
+        b"unique head\n",
+        b"unique keep\n",
+        b"same\n",
+        b"replacement one\n",
+        b"replacement two\n",
+        b"unique live\n",
+        b"same\n",
+        b"unique tail\n",
+    ]
+    selected = LineRanges.from_specs(["4-6"])
+    independent = LineRanges.from_specs(["4"])
+
+    with match_lines(source, target) as mapping:
+        missing, placements = contextual_presence_placements(
+            source,
+            target,
+            selected,
+            mapping,
+            distinctive_context_lines=independent,
+            recorded_context_lines=independent,
+        )
+
+    assert missing == selected
+    assert [
+        (placement.run_start, placement.run_end, placement.gap_index)
+        for placement in placements
+    ] == [(4, 4, 3), (5, 6, 3)]
+
+
 def test_recorded_split_presence_omits_unselected_source_between_exact_edges() -> None:
     """Recorded sibling insertions can share one exact predecessor gap."""
     source = b"head\nsame\nfirst\nomitted\nsecond\nsame\ntail\n"

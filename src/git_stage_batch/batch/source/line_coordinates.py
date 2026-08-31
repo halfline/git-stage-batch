@@ -11,6 +11,7 @@ from ...core.coordinates import BatchSourceSpace, WorktreeSpace
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.lineage import BatchSourceLineage
 from ..line_matching.transforms import BatchSourceExactTransform
+from ..line_matching.transforms import EmbeddedContentSpanProjection
 
 
 class SourceCoordinateTransform(Protocol):
@@ -78,6 +79,25 @@ class ExactTransformSourceCoordinates:
 
     def translate_existing_source_line(self, line_number: int) -> int | None:
         return self.source_transform.translate_line_number(line_number)
+
+
+@dataclass(frozen=True, slots=True)
+class ExactEmbeddedSourceCoordinates:
+    """Line positions for an exact worktree copy stored in the batch."""
+
+    projection: EmbeddedContentSpanProjection[
+        WorktreeSpace,
+        BatchSourceSpace,
+    ]
+
+    def translate_working_line(self, line_number: int) -> int | None:
+        return self.projection.translate_line_number(line_number)
+
+    def translate_existing_source_line(self, line_number: int) -> None:
+        # This copy verifies current worktree lines only. A deletion can still
+        # refer to an older position recorded when the batch was saved.
+        del line_number
+        return None
 
 
 def translate_display_source_coordinates(

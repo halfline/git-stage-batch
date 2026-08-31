@@ -11,6 +11,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...core.models import LineEntry
+from ...core.coordinates import (
+    BatchSourceSpace,
+    LineBoundary,
+    LineSpan,
+    SnapshotSpan,
+    WorktreeSpace,
+    content_snapshot,
+)
 from ...git_paths import display_path
 from ...i18n import _
 from .cache import (
@@ -18,6 +26,7 @@ from .cache import (
     save_session_batch_sources,
 )
 from .snapshots import create_batch_source_commit
+from .buffers import load_saved_session_file_as_buffer
 from ...utils.repository_buffers import (
     read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
@@ -29,11 +38,16 @@ from ..ownership.translation import (
     detect_stale_batch_source_for_selection,
 )
 from .selected_line_refresh import (
+    refresh_selected_lines_against_embedded_source as _refresh_lines_against_embedding,
     refresh_selected_lines_against_new_source as _refresh_lines_against_new_source,
     refresh_selected_lines_against_source_lines as _refresh_lines_against_source,
     selected_lines_fit_source as _selection_matches_source,
 )
 from .advancement import advance_batch_source_for_file_with_provenance
+from ..line_matching.match_workspace import MatcherWorkspace
+from ..line_matching.sequence_search import iter_exact_sequence_indexes
+from ..line_matching.transforms import EmbeddedContentSpanProjection
+from ..line_matching.sequence_equality import line_sequences_equal
 
 
 @dataclass
@@ -246,25 +260,47 @@ def _selection_mapped_to_source(
     source_lines: Sequence[bytes],
     *,
     coordinate_lines: Sequence[LineEntry] | None = None,
+    require_exact_worktree_embedding: bool = False,
 ) -> list[LineEntry] | None:
     """Return selection coordinates verified against one saved source."""
     with load_working_tree_file_as_buffer(file_path) as working_lines:
         return map_selection_to_source(
             selected_lines,
+            file_path=file_path,
             source_lines=source_lines,
             working_lines=working_lines,
             coordinate_lines=coordinate_lines,
+            require_exact_worktree_embedding=require_exact_worktree_embedding,
         )
 
 
 def map_selection_to_source(
     selected_lines: list[LineEntry],
     *,
+    file_path: str,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     coordinate_lines: Sequence[LineEntry] | None = None,
+    require_exact_worktree_embedding: bool = False,
 ) -> list[LineEntry] | None:
     """Return selection coordinates proven against explicit source content."""
+    if selected_lines and all(line.kind != "-" for line in selected_lines):
+        embedded_projection = _resolve_unique_worktree_embedding(
+            file_path,
+            source_lines,
+            working_lines,
+        )
+        if embedded_projection is not None:
+            prepared_selected_lines = _refresh_lines_against_embedding(
+                selected_lines,
+                projection=embedded_projection,
+                coordinate_lines=coordinate_lines,
+            )
+            if _selection_matches_source(prepared_selected_lines, source_lines):
+                return prepared_selected_lines
+        if require_exact_worktree_embedding:
+            return None
+
     prepared_selected_lines = _refresh_lines_against_source(
         selected_lines,
         source_lines=source_lines,
@@ -274,6 +310,52 @@ def map_selection_to_source(
     if _selection_matches_source(prepared_selected_lines, source_lines):
         return prepared_selected_lines
     return None
+
+
+def _resolve_unique_worktree_embedding(
+    file_path: str,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+) -> EmbeddedContentSpanProjection[WorktreeSpace, BatchSourceSpace] | None:
+    """Find the one exact copy of the worktree in the batch source."""
+    if not working_lines or len(working_lines) > len(source_lines):
+        return None
+
+    with MatcherWorkspace() as workspace:
+        match_indexes = iter_exact_sequence_indexes(
+            source_lines,
+            working_lines,
+            workspace=workspace,
+        )
+        try:
+            first_index = next(match_indexes, None)
+            if first_index is None or next(match_indexes, None) is not None:
+                return None
+        finally:
+            close_matches = getattr(match_indexes, "close", None)
+            if close_matches is not None:
+                close_matches()
+
+    source_snapshot = content_snapshot(
+        file_path,
+        source_lines,
+        space=BatchSourceSpace,
+    )
+    working_snapshot = content_snapshot(
+        file_path,
+        working_lines,
+        space=WorktreeSpace,
+    )
+    return EmbeddedContentSpanProjection(
+        working_snapshot,
+        SnapshotSpan(
+            source_snapshot,
+            LineSpan(
+                LineBoundary(first_index),
+                LineBoundary(first_index + len(working_lines)),
+            ),
+        ),
+    )
 
 
 def _prepare_initial_cached_source_for_selection(
@@ -298,11 +380,19 @@ def _prepare_initial_cached_source_for_selection(
         return new_batch_source_commit, reannotated_lines, True
 
     with source_buffer as source_lines:
+        require_exact_worktree_embedding = False
+        if selected_lines and all(line.kind != "-" for line in selected_lines):
+            with load_saved_session_file_as_buffer(file_path) as session_start_lines:
+                require_exact_worktree_embedding = not line_sequences_equal(
+                    source_lines,
+                    session_start_lines,
+                )
         mapped_selected_lines = _selection_mapped_to_source(
             file_path,
             selected_lines,
             source_lines,
             coordinate_lines=coordinate_lines,
+            require_exact_worktree_embedding=require_exact_worktree_embedding,
         )
         if mapped_selected_lines is not None:
             return batch_source_commit, mapped_selected_lines, False

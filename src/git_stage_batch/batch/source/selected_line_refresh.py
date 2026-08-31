@@ -4,16 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from typing import overload
 
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...core.models import LineEntry
 from ...core.coordinates import BatchSourceSpace, WorktreeSpace
 from ..line_matching.lineage import BatchSourceLineage
+from ..line_matching.match_workspace import MatcherWorkspace
+from ..line_matching.occurrence_index import LinePayloadOccurrenceIndex
+from ..line_matching.sequence_equality import line_slice_equals
 from ..line_matching.transforms import BatchSourceExactTransform
+from ..line_matching.transforms import EmbeddedContentSpanProjection
 from ..line_matching.match import match_lines
 from ..ownership.translation import detect_stale_batch_source_for_selection
 from .line_coordinates import (
     ExactLineageSourceCoordinates,
+    ExactEmbeddedSourceCoordinates,
     ExactTransformSourceCoordinates,
     IdentitySourceCoordinates,
     SourceCoordinateTransform,
@@ -211,6 +217,195 @@ def _refresh_selected_line_coordinates(
     return reannotated_lines
 
 
+def _addition_run_end(
+    selected_lines: Sequence[LineEntry],
+    start_index: int,
+) -> int:
+    """Return the first index after consecutive added worktree lines."""
+    first_new_line = selected_lines[start_index].new_line_number
+    if selected_lines[start_index].kind != "+" or first_new_line is None:
+        return start_index + 1
+    end_index = start_index + 1
+    expected_new_line = first_new_line + 1
+    while end_index < len(selected_lines):
+        line = selected_lines[end_index]
+        if line.kind != "+" or line.new_line_number != expected_new_line:
+            break
+        end_index += 1
+        expected_new_line += 1
+    return end_index
+
+
+def _addition_run_matches_worktree(
+    selected_lines: Sequence[LineEntry],
+    start_index: int,
+    end_index: int,
+    working_lines: Sequence[bytes],
+) -> bool:
+    """Return whether a selected run still names its exact worktree text."""
+    for line_index in range(start_index, end_index):
+        line = selected_lines[line_index]
+        new_line = line.new_line_number
+        if (
+            new_line is None
+            or new_line > len(working_lines)
+            or _line_entry_content(line) != working_lines[new_line - 1]
+        ):
+            return False
+    return True
+
+
+def _addition_run_has_contiguous_source(
+    selected_lines: Sequence[LineEntry],
+    start_index: int,
+    end_index: int,
+) -> bool:
+    """Check whether a selected run already uses consecutive source lines."""
+    first_source_line = selected_lines[start_index].source_line
+    if first_source_line is None:
+        return False
+    return all(
+        selected_lines[line_index].source_line
+        == first_source_line + line_index - start_index
+        for line_index in range(start_index, end_index)
+    )
+
+
+def _validated_addition_run_start(
+    selected_lines: Sequence[LineEntry],
+    start_index: int,
+    end_index: int,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    occurrences: LinePayloadOccurrenceIndex,
+) -> int | None:
+    """Find the one exact source copy of a consecutive selected run."""
+    first_new_line = selected_lines[start_index].new_line_number
+    assert first_new_line is not None
+    run_count = end_index - start_index
+
+    candidate_start: int | None = None
+    for run_offset in range(run_count):
+        content = working_lines[first_new_line - 1 + run_offset]
+        if occurrences.occurrence_count(content) != 1:
+            continue
+        source_index = next(occurrences.matching_line_indexes(content))
+        candidate_start = source_index - run_offset
+        break
+
+    if candidate_start is None:
+        for run_offset in range(run_count - 1):
+            boundary = occurrences.unique_adjacent_boundary_position(
+                working_lines[first_new_line - 1 + run_offset],
+                working_lines[first_new_line + run_offset],
+            )
+            if boundary is None:
+                continue
+            candidate_start = boundary - run_offset - 1
+            break
+
+    if (
+        candidate_start is None
+        or candidate_start < 0
+        or candidate_start + run_count > len(source_lines)
+        or not line_slice_equals(
+            source_lines,
+            candidate_start,
+            _WorkingLineRun(working_lines, first_new_line - 1, run_count),
+        )
+    ):
+        return None
+    return candidate_start
+
+
+class _WorkingLineRun(Sequence[bytes]):
+    """A view of consecutive worktree lines that does not copy them."""
+
+    def __init__(
+        self,
+        lines: Sequence[bytes],
+        start_index: int,
+        line_count: int,
+    ) -> None:
+        self._lines = lines
+        self._indexes = range(start_index, start_index + line_count)
+
+    def __len__(self) -> int:
+        return len(self._indexes)
+
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        if isinstance(index, slice):
+            indexes = self._indexes[index]
+            return _WorkingLineRun(
+                self._lines,
+                indexes.start,
+                len(indexes),
+            )
+        try:
+            return self._lines[self._indexes[index]]
+        except IndexError as error:
+            raise IndexError(index) from error
+
+
+def _bind_addition_runs_to_unique_source_spans(
+    selected_lines: list[LineEntry],
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+) -> list[LineEntry]:
+    """Use the one complete source copy when a selected run is split."""
+    workspace: MatcherWorkspace | None = None
+    occurrences: LinePayloadOccurrenceIndex | None = None
+    try:
+        start_index = 0
+        while start_index < len(selected_lines):
+            end_index = _addition_run_end(selected_lines, start_index)
+            if not _addition_run_has_contiguous_source(
+                selected_lines,
+                start_index,
+                end_index,
+            ) and _addition_run_matches_worktree(
+                selected_lines,
+                start_index,
+                end_index,
+                working_lines,
+            ):
+                if workspace is None:
+                    workspace = MatcherWorkspace()
+                    occurrences = LinePayloadOccurrenceIndex(
+                        workspace,
+                        source_lines,
+                        normalize_payloads=False,
+                    )
+                assert occurrences is not None
+                source_start = _validated_addition_run_start(
+                    selected_lines,
+                    start_index,
+                    end_index,
+                    source_lines,
+                    working_lines,
+                    occurrences,
+                )
+                if source_start is not None:
+                    for run_offset in range(end_index - start_index):
+                        line_index = start_index + run_offset
+                        selected_lines[line_index] = selected_lines[
+                            line_index
+                        ].with_source_line(source_start + run_offset + 1)
+            start_index = end_index
+    finally:
+        if occurrences is not None:
+            occurrences.close()
+        if workspace is not None:
+            workspace.close()
+    return selected_lines
+
+
 def refresh_selected_lines_against_new_source(
     selected_lines: list[LineEntry],
     *,
@@ -252,6 +447,28 @@ def refresh_selected_lines_against_new_source(
         )
 
 
+def refresh_selected_lines_against_embedded_source(
+    selected_lines: list[LineEntry],
+    *,
+    projection: EmbeddedContentSpanProjection[
+        WorktreeSpace,
+        BatchSourceSpace,
+    ],
+    coordinate_lines: Sequence[LineEntry] | None = None,
+) -> list[LineEntry]:
+    """Update row positions from an exact worktree copy in the source."""
+    with _acquire_coordinate_selected_line_records(
+        selected_lines,
+        coordinate_lines,
+    ) as selected_line_records:
+        return _refresh_selected_line_coordinates(
+            selected_lines,
+            coordinate_lines,
+            selected_line_records,
+            ExactEmbeddedSourceCoordinates(projection),
+        )
+
+
 def refresh_selected_lines_against_source_lines(
     selected_lines: list[LineEntry],
     *,
@@ -261,7 +478,8 @@ def refresh_selected_lines_against_source_lines(
     exact_transforms: tuple[
         BatchSourceExactTransform[BatchSourceSpace, BatchSourceSpace],
         BatchSourceExactTransform[WorktreeSpace, BatchSourceSpace],
-    ] | None = None,
+    ]
+    | None = None,
     coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> list[LineEntry]:
     """Re-annotate selected lines against source and working-tree line sequences."""
@@ -283,12 +501,19 @@ def refresh_selected_lines_against_source_lines(
             selected_lines,
             coordinate_lines,
         ) as selected_line_records:
-            return _refresh_selected_line_coordinates(
+            refreshed_lines = _refresh_selected_line_coordinates(
                 selected_lines,
                 coordinate_lines,
                 selected_line_records,
                 transform,
             )
+            if lineage is None and exact_transforms is None:
+                return _bind_addition_runs_to_unique_source_spans(
+                    refreshed_lines,
+                    source_lines,
+                    working_lines,
+                )
+            return refreshed_lines
     finally:
         if mapping is not None:
             mapping.close()

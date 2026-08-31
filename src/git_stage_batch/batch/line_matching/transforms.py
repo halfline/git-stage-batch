@@ -169,6 +169,60 @@ class SameContentSpanProjection(Generic[SourceSpace, TargetSpace]):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class EmbeddedContentSpanProjection(Generic[SourceSpace, TargetSpace]):
+    """Map lines between two equal sections of a file.
+
+    An exact search finds the sections. A line at a given offset in one section
+    maps to the line at the same offset in the other, even when nearby text is
+    repeated.
+    """
+
+    source_snapshot: FileSnapshot[SourceSpace]
+    target_span: SnapshotSpan[TargetSpace]
+
+    def __post_init__(self) -> None:
+        if self.source_snapshot.path != self.target_span.snapshot.path:
+            raise ValueError("embedded projection endpoints have different paths")
+        if self.source_snapshot.line_count != len(self.target_span.span):
+            raise ValueError("embedded projection endpoints have different lengths")
+
+    @property
+    def target_snapshot(self) -> FileSnapshot[TargetSpace]:
+        return self.target_span.snapshot
+
+    def translate_line_number(self, line_number: int) -> int | None:
+        """Translate a one-based source line."""
+        if line_number <= 0 or line_number > self.source_snapshot.line_count:
+            return None
+        return self.target_span.span.start.offset + line_number
+
+    def translate_boundary(
+        self,
+        boundary: SnapshotBoundary[SourceSpace],
+    ) -> SnapshotBoundary[TargetSpace]:
+        require_same_snapshot(boundary.snapshot, self.source_snapshot)
+        return SnapshotBoundary(
+            self.target_snapshot,
+            LineBoundary(self.target_span.span.start.offset + boundary.boundary.offset),
+        )
+
+    def translate_span(
+        self,
+        span: SnapshotSpan[SourceSpace],
+    ) -> SnapshotSpan[TargetSpace]:
+        require_same_snapshot(span.snapshot, self.source_snapshot)
+        return SnapshotSpan(
+            self.target_snapshot,
+            LineSpan(
+                LineBoundary(
+                    self.target_span.span.start.offset + span.span.start.offset
+                ),
+                LineBoundary(self.target_span.span.start.offset + span.span.end.offset),
+            ),
+        )
+
+
 @dataclass(slots=True)
 class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
     """Content-derived correspondence that cannot silently become provenance."""

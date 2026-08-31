@@ -936,6 +936,45 @@ def _replacement_baseline_edit(
     return reviewed_edit, True
 
 
+def _mapped_source_alternative_edit(
+    claim: AbsenceClaim,
+    claimed_ranges: Sequence[tuple[int, ...]],
+    source_lines: Sequence[bytes] | None,
+    mapping: LineMapping | None,
+) -> _BaselineRemovalEdit | None:
+    """Find the target span for the neighboring live version."""
+    if (
+        not claim.source_alternative
+        or source_lines is None
+        or mapping is None
+        or len(claimed_ranges) != 1
+    ):
+        return None
+    alternative_lines = normalize_line_sequence_endings(claim.content_lines)
+    if not alternative_lines:
+        return None
+    alternative_source_start = claimed_ranges[0][1] + 1
+    alternative_source_end = alternative_source_start + len(alternative_lines) - 1
+    if alternative_source_end > len(source_lines):
+        return None
+
+    target_start: int | None = None
+    for offset, expected_line in enumerate(alternative_lines):
+        source_line = alternative_source_start + offset
+        target_line = mapping.get_target_line_from_source_line(source_line)
+        if (
+            source_lines[source_line - 1] != expected_line
+            or target_line is None
+            or mapping.get_source_line_from_target_line(target_line) != source_line
+            or (target_start is not None and target_line != target_start + offset + 1)
+        ):
+            return None
+        if target_start is None:
+            target_start = target_line - 1
+    assert target_start is not None
+    return target_start, target_start + len(alternative_lines)
+
+
 def _replacement_edit_fits_mapped_source_neighbors(
     edit: _BaselineRemovalEdit,
     claim: AbsenceClaim,
@@ -1726,12 +1765,20 @@ def plan_replacement_unit_edits(
                 )
                 if (
                     old_side is None
-                    or old_side.state is _ReplacementOldSideState.PARTIAL
+                    or old_side.state
+                    not in (
+                        _ReplacementOldSideState.FULL,
+                        _ReplacementOldSideState.FULLY_CLAIMED,
+                        _ReplacementOldSideState.ABSENT,
+                    )
                 ):
                     return False
 
                 target_position = old_side.target_position
-                if old_side.state is _ReplacementOldSideState.ABSENT:
+                if old_side.state in (
+                    _ReplacementOldSideState.FULLY_CLAIMED,
+                    _ReplacementOldSideState.ABSENT,
+                ):
                     target_position = _deletion_target_position(
                         claim,
                         source_to_working_mapping,
@@ -1823,21 +1870,31 @@ def plan_replacement_unit_edits(
                 )
                 continue
 
-            replacement_edit = _replacement_baseline_edit(
+            mapped_alternative_edit = _mapped_source_alternative_edit(
                 claim,
-                unit_index,
-                unit,
                 claimed_ranges,
-                source_line_count,
                 source_sequence,
-                working_lines,
-                trusted_target_lines,
                 source_to_working_mapping,
-                source_to_trusted_target_mapping,
-                trusted_target_to_working_mapping,
-                resolution,
-                max_resolution_choices=max_resolution_choices,
-                allow_mapped_source_predecessor=(len(replacement_units) == 1),
+            )
+            replacement_edit = (
+                (mapped_alternative_edit, True)
+                if mapped_alternative_edit is not None
+                else _replacement_baseline_edit(
+                    claim,
+                    unit_index,
+                    unit,
+                    claimed_ranges,
+                    source_line_count,
+                    source_sequence,
+                    working_lines,
+                    trusted_target_lines,
+                    source_to_working_mapping,
+                    source_to_trusted_target_mapping,
+                    trusted_target_to_working_mapping,
+                    resolution,
+                    max_resolution_choices=max_resolution_choices,
+                    allow_mapped_source_predecessor=(len(replacement_units) == 1),
+                )
             )
             if (
                 replacement_edit is None

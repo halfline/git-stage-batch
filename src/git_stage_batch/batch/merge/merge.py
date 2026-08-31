@@ -58,8 +58,12 @@ from .validation import (
     has_mixed_origin_replacement_claims as _has_mixed_origin_replacement_claims,
     has_missing_origin_replacement_claims as _has_missing_origin_replacement_claims,
     has_unsafe_mapped_origin_old_side_claims as _has_unsafe_mapped_old_side,
+    replacement_mapping_exclusions_for_old_side as _replacement_mapping_exclusions,
 )
-from ..line_matching.line_mapping import LineMapping
+from ..line_matching.line_mapping import (
+    LineMapping,
+    copy_line_mapping_excluding as _copy_mapping_excluding,
+)
 from ..line_matching.match import match_lines
 from ..ownership.resolved_presence_alternatives import (
     resolve_presence_source_alternatives,
@@ -468,6 +472,7 @@ def _build_structural_realized_entries(
     """Build the structural candidate while owning any derived mapping."""
     owned_mapping: LineMapping | None = None
     owned_ordinary_mapping: LineMapping | None = None
+    owned_replacement_mapping: LineMapping | None = None
     contextual_placements = None
     mapping = source_to_working_mapping
     try:
@@ -509,6 +514,28 @@ def _build_structural_realized_entries(
                 raise _MergeError(
                     _("Batch was created from a different version of the file")
                 )
+
+        replacement_exclusions = _replacement_mapping_exclusions(
+            ownership,
+            presence_line_set,
+            source_lines,
+            working_lines,
+            mapping,
+            spool_dir=spool_dir,
+            max_classifications=_MAPPED_OLD_SIDE_PREFLIGHT_LIMIT,
+        )
+        if replacement_exclusions is None:
+            raise _MergeError(
+                _("Batch was created from a different version of the file")
+            )
+        if replacement_exclusions:
+            owned_replacement_mapping = _copy_mapping_excluding(
+                mapping,
+                replacement_exclusions.source_lines,
+                excluded_target_spans=replacement_exclusions.target_spans,
+                spool_dir=spool_dir,
+            )
+            mapping = owned_replacement_mapping
 
         if _has_fragmented_replacement_crossing_mapped_source_lines(
             ownership,
@@ -599,6 +626,7 @@ def _build_structural_realized_entries(
         )
     except BaseException:
         _close_owned_mappings(
+            owned_replacement_mapping,
             owned_mapping,
             owned_ordinary_mapping,
             suppress_errors=True,
@@ -607,6 +635,7 @@ def _build_structural_realized_entries(
 
     try:
         _close_owned_mappings(
+            owned_replacement_mapping,
             owned_mapping,
             owned_ordinary_mapping,
         )

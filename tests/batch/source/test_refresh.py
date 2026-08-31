@@ -556,7 +556,7 @@ def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
             lineage=source_with_provenance.lineage,
         )
 
-    assert [line.source_line for line in refreshed] == [3, 4]
+    assert [line.source_line for line in refreshed] == [2, 3]
 
 
 def test_refresh_selected_lines_accepts_non_list_source_sequences(line_sequence):

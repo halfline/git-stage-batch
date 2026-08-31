@@ -80,6 +80,25 @@ class _PresenceLineGuardedOwnership(BatchOwnership):
         return self._selection
 
 
+class _CountingRepeatedLines:
+    """Repeated line sequence that records indexed reads."""
+
+    def __init__(self, line_count: int) -> None:
+        self.line_count = line_count
+        self.read_count = 0
+
+    def __len__(self) -> int:
+        return self.line_count
+
+    def __getitem__(self, index: int) -> bytes:
+        if index < 0:
+            index += self.line_count
+        if index < 0 or index >= self.line_count:
+            raise IndexError(index)
+        self.read_count += 1
+        return b"same\n"
+
+
 def _advance_source_from_content(
     *,
     old_source_buffer: bytes,
@@ -736,7 +755,7 @@ def test_advance_source_preserves_claimed_lines_missing_from_working_tree():
 
 
 def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates():
-    """Synthesized source should remember working-line identity."""
+    """An exact duplicate span retains its unambiguous owned-range slot."""
     old_source = b"owned before\nsame\nsame\nowned after\n"
     working_tree = b"same\nsame\n"
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])
@@ -747,14 +766,104 @@ def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates(
         ownership=ownership,
     ) as source_with_provenance:
         assert source_with_provenance.source_buffer.to_bytes() == (
-            b"owned before\nowned after\nsame\nsame\n"
+            b"owned before\nsame\nsame\nowned after\n"
         )
         assert tuple(source_with_provenance.lineage.source_runs()) == (
             LineageRun(old_start=1, old_end=1, new_start=1),
-            LineageRun(old_start=4, old_end=4, new_start=2),
+            LineageRun(old_start=4, old_end=4, new_start=4),
         )
         assert tuple(source_with_provenance.lineage.working_runs()) == (
-            LineageRun(old_start=1, old_end=2, new_start=3),
+            LineageRun(old_start=1, old_end=2, new_start=2),
+        )
+
+
+def test_partial_replacement_slot_search_stays_linear() -> None:
+    """Repeated exact candidates must not rescan the complete live span."""
+    source_lines = _CountingRepeatedLines(4096)
+    working_lines = _CountingRepeatedLines(2048)
+    run = SemanticChangeRun(
+        SemanticChangeKind.REPLACEMENT,
+        source_start=1,
+        source_end=4096,
+        target_start=1,
+        target_end=2048,
+    )
+
+    with MatcherWorkspace() as workspace:
+        required_ranges = workspace.record_vector(0, "QQ")
+        assert (
+            advancement_module._partial_replacement_insertion_slot(
+                run,
+                source_lines,
+                working_lines,
+                required_ranges,
+                workspace,
+            )
+            == 0
+        )
+        workspace.close_resource(required_ranges)
+
+    assert source_lines.read_count + working_lines.read_count < 16 * 4096
+
+
+def test_advance_source_keeps_repeated_live_terminator_before_owned_tail():
+    """Repeated candidates agree that a live terminator precedes the tail."""
+    old_source = (
+        b"loop header\n"
+        b"loop body\n"
+        b"if condition\n"
+        b"fi\n"
+        b"extra body\n"
+        b"done\n"
+        b"\n"
+        b"another loop\n"
+        b"done\n"
+        b"\n"
+        b"owned checker\n"
+        b"owned result\n"
+    )
+    working_tree = b"loop header\nloop body\nif condition\nfi\ndone\n\n"
+    ownership = BatchOwnership.from_presence_lines(["11-12"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"loop header\nloop body\nif condition\nfi\ndone\n\n"
+            b"owned checker\nowned result\n"
+        )
+
+
+def test_advance_source_does_not_choose_between_distinct_duplicate_slots():
+    """Candidates separated by retained ranges remain placement-ambiguous."""
+    old_source = b"owned before\nsame\nowned middle\nsame\nowned after\n"
+    ownership = BatchOwnership.from_presence_lines(["1,3,5"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=b"same\n",
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"owned before\nowned middle\nowned after\nsame\n"
+        )
+
+
+def test_new_replacement_stays_before_retained_source_suffix() -> None:
+    """A new live tail remains ahead of owned source-suffix scaffolding."""
+    old_source = b"# Guide\n\nshared line\nfinal tail\n\n## Build\n\nbuild details\n"
+    working_tree = b"shared line\npredecessor tail\n\n"
+    ownership = BatchOwnership.from_presence_lines(["1-2,6-8"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == (
+            b"# Guide\n\nshared line\npredecessor tail\n\n## Build\n\nbuild details\n"
         )
 
 
@@ -1179,12 +1288,12 @@ def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):
         ownership=ownership,
     ) as source_with_provenance:
         assert source_with_provenance.source_buffer.to_bytes() == (
-            b"owned before\nowned after\nsame\nsame\n"
+            b"owned before\nsame\nsame\nowned after\n"
         )
         assert tuple(source_with_provenance.lineage.source_runs()) == (
             LineageRun(old_start=1, old_end=1, new_start=1),
-            LineageRun(old_start=4, old_end=4, new_start=2),
+            LineageRun(old_start=4, old_end=4, new_start=4),
         )
         assert tuple(source_with_provenance.lineage.working_runs()) == (
-            LineageRun(old_start=1, old_end=2, new_start=3),
+            LineageRun(old_start=1, old_end=2, new_start=2),
         )

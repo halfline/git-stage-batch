@@ -17,9 +17,15 @@ from ..core.coordinates import (
 from ..core.models import LineEntry
 from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ..core.line_selection import LineRangeBuilder
-from .file_state import BatchMetadataRevision, SourceBoundOwnership
+from .file_state import (
+    BatchMetadataRevision,
+    SourceBoundOwnership,
+)
 from .state.metadata_types import BatchFileMetadataDict
 from .ownership.hunk_translation import translate_hunk_selection_to_batch_ownership
+from .ownership.insertion_references import (
+    reanchor_selected_additions_after_relocated_context_boundary,
+)
 from .ownership.model import BatchOwnership
 from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from .ownership.merging import merge_batch_ownership
@@ -152,23 +158,30 @@ def _last_nonblank_line(lines: Sequence[bytes]) -> int | None:
 
 @dataclass(frozen=True, slots=True)
 class PreparedBatchUpdate:
-    """Prepared ownership update for a batch file after stale-source handling.
+    """Everything needed to store one batch update."""
 
-    This represents a complete ownership update ready to be persisted,
-    including the new ownership merged with existing ownership.
-    """
     batch_source_commit: str
-    """The batch source commit to use for this file."""
+    """Commit that stores the source file."""
 
     bound_ownership: SourceBoundOwnership
-    """Merged ownership bound to that commit's exact file snapshot."""
+    """Combined ownership for that source file."""
+
+    source_bound_selection: SourceBoundLineSelection
+    """Newly selected rows in that source file."""
 
     expected_metadata_revision: BatchMetadataRevision
-    """Durable batch revision against which the update was prepared."""
+    """Batch revision that must still be current when this is stored."""
+
+    def __post_init__(self) -> None:
+        if (
+            self.bound_ownership.source_snapshot
+            != self.source_bound_selection.source_snapshot
+        ):
+            raise ValueError("prepared selection and ownership use different sources")
 
 
 class _RefreshedSelectedLineOverlay(Sequence[LineEntry]):
-    """Lazy full-hunk view with selection-sized refreshed-row storage."""
+    """Read a full hunk with updated values for its selected rows."""
 
     def __init__(
         self,
@@ -387,19 +400,12 @@ def _include_owned_following_blank(
 
 def _ownership_has_baseline_references(ownership: BatchOwnership) -> bool:
     """Return whether newly translated ownership carries baseline coordinates."""
-    if any(
-        claim.baseline_references
-        for claim in ownership.presence_claims
-    ):
+    if any(claim.baseline_references for claim in ownership.presence_claims):
         return True
-    if any(
-        deletion.baseline_reference is not None
-        for deletion in ownership.deletions
-    ):
+    if any(deletion.baseline_reference is not None for deletion in ownership.deletions):
         return True
     return any(
-        unit.origin is not None
-        and unit.origin.baseline_reference is not None
+        unit.origin is not None and unit.origin.baseline_reference is not None
         for unit in ownership.replacement_units
     )
 
@@ -428,6 +434,7 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
     *,
     batch_source_commit: str,
     source_snapshot: FileSnapshot[BatchSourceSpace],
+    source_lines: Sequence[bytes],
     expected_metadata_revision: BatchMetadataRevision,
     hunk_lines: Sequence[LineEntry] | None = None,
     replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
@@ -450,24 +457,33 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
             replacement_origin_source_lines,
         )
 
+    prepared_selected_lines = refreshed.selected_lines
+    if hunk_lines is not None and replacement_line_runs is not None:
+        prepared_selected_lines = (
+            reanchor_selected_additions_after_relocated_context_boundary(
+                hunk_lines,
+                prepared_selected_lines,
+                source_lines,
+            )
+        )
+    prepared_selected_lines = _include_owned_following_blank(
+        prepared_selected_lines,
+        hunk_lines=hunk_lines,
+        source_lines=source_lines,
+        existing_ownership=refreshed.ownership,
+    )
+
     new_ownership = _translate_selection_to_batch_ownership(
-        refreshed.selected_lines,
+        prepared_selected_lines,
         hunk_lines=hunk_lines,
         replacement_line_runs=replacement_line_runs,
         replacement_origin=replacement_origin,
         baseline_lines=reference_source_lines,
-        replacement_origin_source_projection=(
-            replacement_origin_source_projection
-        ),
+        replacement_origin_source_projection=(replacement_origin_source_projection),
     )
     if (reference_source_lines is None) != (reference_target_lines is None):
-        raise ValueError(
-            "reference source and target lines must be provided together"
-        )
-    if (
-        replacement_origin_source_lines is not None
-        and reference_target_lines is None
-    ):
+        raise ValueError("reference source and target lines must be provided together")
+    if replacement_origin_source_lines is not None and reference_target_lines is None:
         raise ValueError(
             "replacement origin source lines require reference target lines"
         )
@@ -482,9 +498,7 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
         _ownership_has_replacement_origin_references(new_ownership)
         and replacement_origin_source_lines is None
     ):
-        raise ValueError(
-            "replacement baseline references require live HEAD lines"
-        )
+        raise ValueError("replacement baseline references require live HEAD lines")
     if reference_source_lines is not None and reference_target_lines is not None:
         translate_ownership_baseline_references(
             new_ownership,
@@ -503,6 +517,15 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
         bound_ownership=SourceBoundOwnership(
             source_snapshot,
             merged_ownership,
+        ),
+        source_bound_selection=SourceBoundLineSelection(
+            source_snapshot,
+            prepared_selected_lines,
+            resolve_presence_source_alternatives(
+                new_ownership.presence_line_set(),
+                source_lines,
+            ),
+            _last_nonblank_line(source_lines),
         ),
         expected_metadata_revision=expected_metadata_revision,
     )
@@ -552,9 +575,7 @@ def acquire_batch_ownership_update_for_selection(
                 source_was_advanced=False,
             )
         else:
-            current_batch_source_commit = file_metadata.get(
-                "batch_source_commit"
-            )
+            current_batch_source_commit = file_metadata.get("batch_source_commit")
             existing_ownership = stack.enter_context(
                 acquire_ownership_for_metadata_dict(file_metadata)
             )
@@ -571,9 +592,7 @@ def acquire_batch_ownership_update_for_selection(
         if not isinstance(batch_source_commit, str) or not batch_source_commit:
             raise ValueError("selection update has no durable batch source")
         source_lines = stack.enter_context(
-            read_git_object_buffer_or_empty(
-                f"{batch_source_commit}:{file_path}"
-            )
+            read_git_object_buffer_or_empty(f"{batch_source_commit}:{file_path}")
         )
         source_snapshot = content_snapshot(
             file_path,
@@ -614,6 +633,7 @@ def acquire_batch_ownership_update_for_selection(
                 refreshed,
                 batch_source_commit=batch_source_commit,
                 source_snapshot=source_snapshot,
+                source_lines=source_lines,
                 expected_metadata_revision=metadata_revision,
                 hunk_lines=hunk_lines,
                 replacement_line_runs=replacement_line_runs,

@@ -151,7 +151,30 @@ def project_attribution_to_diff(
                         lines,
                     ):
                         continue
-                    for idx in range(i, added_run.end_index):
+                    deleted_unit = next(
+                        (
+                            candidate
+                            for candidate in deletion_by_fingerprint.get(
+                                deleted_run.fingerprint,
+                                [],
+                            )
+                            if candidate.owning_batches
+                            and _anchor_consistent_with_diff_position(
+                                candidate.unit.deletion_anchor_in_working_tree,
+                                i,
+                                lines,
+                            )
+                        ),
+                        None,
+                    )
+                    for idx in range(i, deleted_run.end_index):
+                        display_to_unit[idx] = (
+                            deleted_unit
+                            if not attr_unit.owning_batches
+                            and deleted_unit is not None
+                            else attr_unit
+                        )
+                    for idx in range(deleted_run.end_index, added_run.end_index):
                         display_to_unit[idx] = attr_unit
                     matched = True
                     break

@@ -69,6 +69,7 @@ def _record_overlay(
     *,
     introduced_selected_presence: bool = False,
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = (),
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = (),
     expected_index_identities: dict[str, IndexIdentity] | None = None,
     supports_text_replay: bool = False,
 ) -> None:
@@ -89,6 +90,7 @@ def _record_overlay(
                 source_object_id="b" * 40,
                 introduced_selected_presence=introduced_selected_presence,
                 index_preimage_source_ranges=index_preimage_source_ranges,
+                added_separator_source_ranges=added_separator_source_ranges,
                 supports_text_replay=supports_text_replay,
             ),
         },
@@ -538,12 +540,48 @@ def test_reapplying_identical_ownership_preserves_one_strongest_record(
     assert applications[0]["index_preimage_source_lines"] == ["1"]
 
 
+def test_separator_ranges_persist_and_merge_on_equivalent_reapply(
+    temp_git_repo,
+):
+    """Equivalent records should retain every proven inserted separator."""
+    _record_overlay(
+        temp_git_repo,
+        added_separator_source_ranges=((2, 2),),
+    )
+    _record_overlay(
+        temp_git_repo,
+        added_separator_source_ranges=((4, 4),),
+    )
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    applications = state["files"]["file.txt"]["applications"]
+    assert len(applications) == 1
+    assert applications[0]["added_separator_source_lines"] == ["2,4"]
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+    assert view.added_separator_source_line_ranges_by_batch == {
+        "saved": ((2, 2), (4, 4)),
+    }
+
+
 def test_overlay_state_rejects_unknown_or_malformed_fields(temp_git_repo):
     """Advisory state must fail closed instead of accepting ambiguous data."""
     _record_overlay(temp_git_repo)
     state_path = get_applied_batch_overlays_file_path()
     state = json.loads(state_path.read_text())
     state["files"]["file.txt"]["unexpected"] = True
+    state_path.write_text(json.dumps(state))
+
+    with pytest.raises(CommandError, match="Applied-batch state is corrupt"):
+        load_applied_batch_overlay_snapshot()
+
+
+def test_overlay_rejects_noncanonical_separator_ranges(temp_git_repo):
+    """Inserted separator ranges must be sorted and normalized."""
+    _record_overlay(temp_git_repo)
+    state_path = get_applied_batch_overlays_file_path()
+    state = json.loads(state_path.read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    application["added_separator_source_lines"] = ["4", "2"]
     state_path.write_text(json.dumps(state))
 
     with pytest.raises(CommandError, match="Applied-batch state is corrupt"):

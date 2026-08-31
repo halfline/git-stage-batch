@@ -34,6 +34,9 @@ class _Ownership:
     def to_applied_metadata_dict(self):
         return {"presence_claims": [], "deletions": []}
 
+    def presence_line_set(self):
+        return LineRanges.empty()
+
 
 class _OwnershipContext(AbstractContextManager):
     def __init__(self, ownership: _Ownership) -> None:
@@ -285,6 +288,7 @@ def test_build_apply_text_file_action_plan_skips_exact_fresh_reapply(
         applied_source_line_ranges_by_batch={},
         source_line_ranges_by_batch={},
         index_preimage_source_line_ranges_by_batch={},
+        added_separator_source_line_ranges_by_batch={},
     )
 
     result = builders.build_apply_text_file_action_plan(

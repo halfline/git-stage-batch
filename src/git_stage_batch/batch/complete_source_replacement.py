@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import chain
 from types import TracebackType
 
@@ -22,6 +22,7 @@ from ..core.text_lines import normalize_line_endings
 from ..core.line_selection import LineRanges
 from .file_state import SourceBoundOwnership
 from .line_matching.line_range_view import LineRangeView
+from .line_matching.match import match_lines
 from .line_matching.sequence_equality import line_sequences_equal
 from .ownership.absence_claims import AbsenceClaim
 from .ownership.model import BatchOwnership
@@ -134,6 +135,74 @@ def resolve_complete_source_replacement(
         saved=SnapshotSpan(source_snapshot, saved_span),
         live=SnapshotSpan(source_snapshot, live_span),
     )
+
+
+def refresh_complete_source_replacement(
+    source_lines: Sequence[bytes],
+    bound_ownership: SourceBoundOwnership,
+    *,
+    rewritten_lines: Sequence[bytes],
+    alternatives: ExplicitReplacementAlternatives | None,
+) -> MaterializedCompleteSourceReplacement | None:
+    """Update the live version after saving more of its lines.
+
+    Do this only when each selected line has one match in the saved file. Keep
+    the current live text outside the selection.
+    """
+    complete = resolve_complete_source_replacement(
+        source_lines,
+        bound_ownership,
+    )
+    if (
+        complete is None
+        or alternatives is None
+        or not alternatives.uses_untracked_source
+        or alternatives.live is None
+        or alternatives.parent is not None
+    ):
+        return None
+
+    require_same_snapshot(
+        alternatives.edit.rewritten_snapshot,
+        content_snapshot(
+            alternatives.edit.rewritten_snapshot.path,
+            rewritten_lines,
+            space=RewrittenWorktreeSpace,
+        ),
+    )
+    with ExitStack() as stack:
+        prior_worktree = stack.enter_context(
+            _buffer_without_span(rewritten_lines, alternatives.live.span)
+        )
+        require_same_snapshot(
+            alternatives.edit.source_snapshot,
+            content_snapshot(
+                alternatives.edit.source_snapshot.path,
+                prior_worktree,
+                space=WorktreeSpace,
+            ),
+        )
+        saved_lines = LineRangeView(
+            source_lines,
+            complete.saved.span.start.offset,
+            complete.saved.span.end.offset,
+        )
+        if not _selected_saved_lines_map_to_complete_snapshot(
+            saved_lines,
+            prior_worktree,
+            alternatives,
+        ):
+            return None
+
+        new_live = stack.enter_context(
+            _buffer_without_span(rewritten_lines, alternatives.saved.span)
+        )
+        return _materialize_complete_source_replacement(
+            bound_ownership.source_snapshot.path,
+            saved_lines,
+            new_live,
+            template_ownership=bound_ownership.value,
+        )
 
 
 def materialize_untracked_source_replacement(
@@ -251,6 +320,8 @@ def _materialize_complete_source_replacement(
     path: str,
     saved_file: Sequence[bytes],
     live_file: Sequence[bytes],
+    *,
+    template_ownership: BatchOwnership | None = None,
 ) -> MaterializedCompleteSourceReplacement:
     """Store both complete versions and build their batch claims."""
     if not saved_file or not live_file:
@@ -263,22 +334,33 @@ def _materialize_complete_source_replacement(
             saved_line_count,
             len(new_source),
         )
-        deletion = AbsenceClaim(
-            content_lines=live_view,
-            baseline_reference=BaselineReference(
-                after_line=None,
-                before_line=None,
-                has_before_line=True,
-            ),
-            source_alternative=True,
-            complete_file_pair=True,
-        )
-        source_range = f"1-{saved_line_count}"
-        ownership = BatchOwnership.from_presence_lines(
-            [source_range],
-            [deletion],
-            replacement_units=[ReplacementUnit([source_range], [0])],
-        )
+        if template_ownership is None:
+            deletion = AbsenceClaim(
+                content_lines=live_view,
+                baseline_reference=BaselineReference(
+                    after_line=None,
+                    before_line=None,
+                    has_before_line=True,
+                ),
+                source_alternative=True,
+                complete_file_pair=True,
+            )
+            source_range = f"1-{saved_line_count}"
+            ownership = BatchOwnership.from_presence_lines(
+                [source_range],
+                [deletion],
+                replacement_units=[ReplacementUnit([source_range], [0])],
+            )
+        else:
+            deletion = replace(
+                template_ownership.deletions[0],
+                content_lines=live_view,
+            )
+            ownership = BatchOwnership(
+                presence_claims=list(template_ownership.presence_claims),
+                deletions=[deletion],
+                replacement_units=list(template_ownership.replacement_units),
+            )
         bound_ownership = SourceBoundOwnership(
             content_snapshot(path, new_source, space=BatchSourceSpace),
             ownership,
@@ -327,3 +409,22 @@ def _buffer_without_span(
             LineRangeView(lines, end, len(lines)),
         )
     )
+
+
+def _selected_saved_lines_map_to_complete_snapshot(
+    complete_saved_lines: Sequence[bytes],
+    prior_worktree: LineBuffer,
+    alternatives: ExplicitReplacementAlternatives,
+) -> bool:
+    """Check that every selected line has one match in the saved file."""
+    selected_span = alternatives.saved.span
+    if selected_span.end.offset > len(prior_worktree):
+        return False
+    with match_lines(complete_saved_lines, prior_worktree) as mapping:
+        return all(
+            mapping.get_source_line_from_target_line(target_offset + 1) is not None
+            for target_offset in range(
+                selected_span.start.offset,
+                selected_span.end.offset,
+            )
+        )

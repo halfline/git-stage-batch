@@ -1,8 +1,9 @@
-"""Recorded-coordinate availability and merge-strategy choices."""
+"""Choose whether a merge can use exact saved locations."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -61,10 +62,7 @@ def has_recorded_baseline_coordinates(
                 return True
     for deletion_claim in deletion_claims:
         deletion_reference = deletion_claim.baseline_reference
-        if (
-            deletion_reference is not None
-            and deletion_reference.has_after_line
-        ):
+        if deletion_reference is not None and deletion_reference.has_after_line:
             return True
     for unit in ownership.replacement_units:
         origin = unit.origin
@@ -85,22 +83,51 @@ def presence_context_line_sets(
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, LineRanges]:
     """Return distinctive-context and recorded-context presence lines."""
-    source_selection = coerce_line_ranges(presence_line_set)
-    if not source_selection:
-        return LineRanges.empty(), LineRanges.empty()
+    with acquire_presence_context_line_sets(
+        ownership,
+        presence_line_set,
+        deletion_claims,
+        target_lines=target_lines,
+        spool_dir=spool_dir,
+    ) as (distinctive_lines, recorded_lines, _references):
+        return distinctive_lines, recorded_lines
 
+
+@contextmanager
+def acquire_presence_context_line_sets(
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    deletion_claims: Sequence[AbsenceClaim],
+    *,
+    target_lines: Sequence[bytes] | None = None,
+    spool_dir: str | Path | None = None,
+) -> Iterator[tuple[LineRanges, LineRanges, EffectivePresenceReferenceIndex]]:
+    """Return the context lines and saved locations used to find them."""
+    source_selection = coerce_line_ranges(presence_line_set)
     with MatcherWorkspace(spool_dir=spool_dir) as workspace:
         presence_references = EffectivePresenceReferenceIndex(
             workspace,
             ownership,
         )
-        coverage_capacity = len(presence_references) + len(deletion_claims) + sum(
-            replacement_source_range_capacity(unit.presence_lines)
-            for unit in ownership.replacement_units
-            if _unit_has_nonempty_deletion(unit, deletion_claims)
+        if not source_selection:
+            yield (
+                LineRanges.empty(),
+                LineRanges.empty(),
+                presence_references,
+            )
+            return
+        coverage_capacity = (
+            len(presence_references)
+            + len(deletion_claims)
+            + sum(
+                replacement_source_range_capacity(unit.presence_lines)
+                for unit in ownership.replacement_units
+                if _unit_has_nonempty_deletion(unit, deletion_claims)
+            )
         )
         if coverage_capacity == 0:
-            return source_selection, LineRanges.empty()
+            yield source_selection, LineRanges.empty(), presence_references
+            return
 
         recorded_lines = LineRangeBuilder()
         covered_ranges = workspace.record_vector(
@@ -122,7 +149,8 @@ def presence_context_line_sets(
                     or baseline_reference_insertion_position(
                         reference,
                         target_lines,
-                    ) is not None
+                    )
+                    is not None
                 )
             ):
                 covered_ranges.append((claimed_line, claimed_line))
@@ -154,9 +182,10 @@ def presence_context_line_sets(
         covered_selection = LineRanges.from_ranges(
             (start, end) for start, end in covered_ranges
         )
-        return (
+        yield (
             source_selection.difference(covered_selection),
             recorded_lines.finish(),
+            presence_references,
         )
 
 

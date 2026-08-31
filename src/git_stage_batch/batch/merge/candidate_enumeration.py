@@ -41,6 +41,7 @@ from .candidates import (
 from .coordinate_strategy import (
     AMBIGUITY_KEY as _COORDINATE_STRATEGY_AMBIGUITY_KEY,
     CoordinateStrategyChoice as _CoordinateStrategyChoice,
+    acquire_presence_context_line_sets as _acquire_presence_context_line_sets,
     presence_lines_requiring_distinctive_context as _distinctive_context_lines,
 )
 from .validation import (
@@ -489,15 +490,27 @@ def _absence_candidate_set(
         return _MergeCandidateSet.refused()
     realized_entries = None
     try:
-        contextual_placements = _check_merge_structural_validity(
-            owned_mapping,
+        with _acquire_presence_context_line_sets(
+            ownership,
             presence_line_set,
             deletion_claims,
-            source_lines,
-            working_lines,
-            distinctive_presence_context_lines=distinctive_context_lines,
+            target_lines=working_lines,
             spool_dir=spool_dir,
-        )
+        ) as (
+            _distinctive_lines,
+            recorded_context_lines,
+            _presence_references,
+        ):
+            contextual_placements = _check_merge_structural_validity(
+                owned_mapping,
+                presence_line_set,
+                deletion_claims,
+                source_lines,
+                working_lines,
+                distinctive_presence_context_lines=distinctive_context_lines,
+                recorded_presence_context_lines=recorded_context_lines,
+                spool_dir=spool_dir,
+            )
         realized_entries = _presence_constraints.apply_presence_constraints(
             source_lines,
             working_lines,

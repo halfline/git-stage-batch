@@ -102,6 +102,7 @@ class _PresenceBoundaryEvidence:
 
     referenced_runs: MappedRecordVector
     unique_boundaries: MappedRecordVector
+    coordinate_boundaries: MappedRecordVector
 
 
 @dataclass(slots=True)
@@ -258,8 +259,16 @@ def _presence_boundary_evidence(
         len(presence_ranges),
         _RECORDED_PRESENCE_BOUNDARY_FORMAT,
     )
+    coordinate_boundaries = workspace.record_vector(
+        len(presence_ranges),
+        _RECORDED_PRESENCE_BOUNDARY_FORMAT,
+    )
     if references is None or not presence_lines:
-        return _PresenceBoundaryEvidence(referenced_runs, boundaries)
+        return _PresenceBoundaryEvidence(
+            referenced_runs,
+            boundaries,
+            coordinate_boundaries,
+        )
 
     occurrence_index: LinePayloadOccurrenceIndex | None = None
     try:
@@ -272,14 +281,6 @@ def _presence_boundary_evidence(
                 for source_line in range(source_start + 1, source_end + 1)
             ):
                 continue
-            if not _source_run_matches_recorded_boundary(
-                source_lines,
-                source_start,
-                source_end,
-                reference,
-            ):
-                continue
-            referenced_runs.append((source_start, source_end))
             if (
                 reference.after_line is not None
                 and reference.has_before_line
@@ -299,6 +300,18 @@ def _presence_boundary_evidence(
             except (AttributeError, IndexError, TypeError, ValueError):
                 target_position = None
             if target_position is not None:
+                coordinate_boundaries.append(
+                    (source_start, source_end, target_position)
+                )
+            if not _source_run_matches_recorded_boundary(
+                source_lines,
+                source_start,
+                source_end,
+                reference,
+            ):
+                continue
+            referenced_runs.append((source_start, source_end))
+            if target_position is not None:
                 boundaries.append((source_start, source_end, target_position))
     except BaseException:
         if occurrence_index is not None:
@@ -310,7 +323,11 @@ def _presence_boundary_evidence(
     else:
         if occurrence_index is not None:
             occurrence_index.close()
-    return _PresenceBoundaryEvidence(referenced_runs, boundaries)
+    return _PresenceBoundaryEvidence(
+        referenced_runs,
+        boundaries,
+        coordinate_boundaries,
+    )
 
 
 def _recorded_presence_ending_before(
@@ -415,10 +432,21 @@ def _authorized_context_corrections(
                     source_line,
                 )
             )
+            if ordinary_source is None and has_complete_preferred_context:
+                context_authorized_targets[target_line - 1] = 1
+                corrections.append((source_line, target_line))
+                continue
             ordinary_source_has_recorded_boundary = (
                 ordinary_source is not None
                 and sorted_line_ranges_contain(
                     boundary_evidence.referenced_runs,
+                    ordinary_source,
+                )
+            )
+            ordinary_source_has_recorded_coordinate = (
+                ordinary_source is not None
+                and sorted_line_ranges_contain(
+                    boundary_evidence.coordinate_boundaries,
                     ordinary_source,
                 )
             )
@@ -442,11 +470,21 @@ def _authorized_context_corrections(
                 and run_is_distinctive
                 and not ordinary_source_has_recorded_boundary
             )
+            context_line_is_distinctive = (
+                source_occurrences.occurrence_count(source_lines[source_line - 1]) == 1
+                and target_occurrences.occurrence_count(target_lines[target_line - 1])
+                == 1
+            )
             if (
                 ordinary_source is None
                 or ordinary_source == source_line
                 or ordinary_source not in controlled_source_lines
                 or not (explicitly_authorized or distinctively_authorized)
+                or (
+                    ordinary_authorized_targets[target_line - 1]
+                    and ordinary_source_has_recorded_coordinate
+                    and not context_line_is_distinctive
+                )
             ):
                 continue
             context_authorized_targets[target_line - 1] = 1
@@ -610,6 +648,314 @@ def _corrections_have_conflicting_assignments(
     return False
 
 
+def _append_context_for_incomplete_controlled_runs(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    controlled_source_lines: LineRanges,
+    ordinary_mapping: LineMapping,
+    context_mapping: LineMapping,
+    source_occurrences: LinePayloadOccurrenceIndex,
+    target_occurrences: LinePayloadOccurrenceIndex,
+    references: EffectivePresenceReferenceIndex | None,
+    corrections: MappedRecordVector,
+    context_authorized_targets: MappedIntVector,
+) -> None:
+    """Keep adjacent context when a selected run is clearly incomplete."""
+
+    def stable_neighbor(source_line: int, target_line: int) -> bool:
+        content = source_lines[source_line - 1]
+        return (
+            ordinary_mapping.get_target_line_from_source_line(source_line)
+            == target_line
+            and source_occurrences.occurrence_count(content) == 1
+            and target_occurrences.occurrence_count(content) == 1
+        )
+
+    for run_start, run_end in controlled_source_lines.ranges():
+        if run_start < 1 or run_end > len(source_lines):
+            continue
+        first_reference = (
+            None if references is None else references.reference_for(run_start)
+        )
+        has_any_reference = first_reference is not None
+        has_consistent_references = True
+        has_missing_distinctive_line = False
+        for source_line in range(run_start, run_end + 1):
+            if references is not None:
+                reference = references.reference_for(source_line)
+                has_any_reference = has_any_reference or reference is not None
+                has_consistent_references = (
+                    has_consistent_references and reference == first_reference
+                )
+            content = source_lines[source_line - 1]
+            has_missing_distinctive_line = has_missing_distinctive_line or (
+                ordinary_mapping.get_target_line_from_source_line(source_line) is None
+                and source_occurrences.occurrence_count(content) == 1
+                and target_occurrences.occurrence_count(content) == 0
+            )
+        if has_any_reference and (
+            first_reference is None or not has_consistent_references
+        ):
+            continue
+        if not has_missing_distinctive_line:
+            continue
+
+        before_source = run_start - 1 if run_start > 1 else None
+        after_source = run_end + 1 if run_end < len(source_lines) else None
+        before_target = (
+            0
+            if before_source is None
+            else context_mapping.get_target_line_from_source_line(before_source)
+        )
+        after_target = (
+            len(target_lines) + 1
+            if after_source is None
+            else context_mapping.get_target_line_from_source_line(after_source)
+        )
+        if (
+            before_target is None
+            or after_target is None
+            or after_target != before_target + 1
+        ):
+            continue
+
+        has_stable_neighbor = (
+            before_source is not None
+            and before_target > 0
+            and stable_neighbor(before_source, before_target)
+        ) or (
+            after_source is not None
+            and after_target <= len(target_lines)
+            and stable_neighbor(after_source, after_target)
+        )
+        if not has_stable_neighbor:
+            continue
+
+        for context_source, context_target in (
+            (before_source, before_target),
+            (after_source, after_target),
+        ):
+            if (
+                context_source is None
+                or context_source in controlled_source_lines
+                or not 1 <= context_target <= len(target_lines)
+            ):
+                continue
+            ordinary_source = ordinary_mapping.get_source_line_from_target_line(
+                context_target
+            )
+            if ordinary_source is None or not run_start <= ordinary_source <= run_end:
+                continue
+            context_authorized_targets[context_target - 1] = 1
+            corrections.append((context_source, context_target))
+
+
+def _append_distinctive_controlled_run_extensions(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    controlled_source_lines: LineRanges,
+    ordinary_mapping: LineMapping,
+    source_occurrences: LinePayloadOccurrenceIndex,
+    target_occurrences: LinePayloadOccurrenceIndex,
+    corrections: MappedRecordVector,
+    authorized_targets: MappedIntVector,
+) -> None:
+    """Extend a verified run through repeated lines assigned to another copy."""
+    for range_start, range_end in controlled_source_lines.ranges():
+        previous_source = 0
+        previous_target = 0
+        run_is_distinctive = False
+        for source_line in range(
+            max(1, range_start),
+            min(len(source_lines), range_end) + 1,
+        ):
+            target_line = ordinary_mapping.get_target_line_from_source_line(source_line)
+            if target_line is not None:
+                if (
+                    source_line != previous_source + 1
+                    or target_line != previous_target + 1
+                ):
+                    run_is_distinctive = False
+                if (
+                    source_occurrences.occurrence_count(source_lines[source_line - 1])
+                    == 1
+                    and target_occurrences.occurrence_count(
+                        target_lines[target_line - 1]
+                    )
+                    == 1
+                ):
+                    run_is_distinctive = True
+                previous_source = source_line
+                previous_target = target_line
+                continue
+
+            candidate_target = previous_target + 1
+            occupying_source = (
+                ordinary_mapping.get_source_line_from_target_line(candidate_target)
+                if candidate_target <= len(target_lines)
+                else None
+            )
+            if (
+                run_is_distinctive
+                and previous_source == source_line - 1
+                and occupying_source is not None
+                and occupying_source not in controlled_source_lines
+                and source_lines[source_line - 1] == target_lines[candidate_target - 1]
+            ):
+                corrections.append((source_line, candidate_target))
+                authorized_targets[candidate_target - 1] = 1
+                previous_source = source_line
+                previous_target = candidate_target
+                continue
+
+            previous_source = 0
+            previous_target = 0
+            run_is_distinctive = False
+
+
+def _append_local_context_extensions(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    controlled_source_lines: LineRanges,
+    ordinary_mapping: LineMapping,
+    source_occurrences: LinePayloadOccurrenceIndex,
+    target_occurrences: LinePayloadOccurrenceIndex,
+    corrections: MappedRecordVector,
+) -> None:
+    """Keep repeated lines next to the unique text that identifies them."""
+    previous_source = 0
+    previous_target = 0
+    run_has_unique_line = False
+
+    for source_line in range(1, len(source_lines) + 1):
+        if source_line in controlled_source_lines:
+            previous_source = 0
+            previous_target = 0
+            run_has_unique_line = False
+            continue
+
+        target_line = ordinary_mapping.get_target_line_from_source_line(source_line)
+        if target_line is not None:
+            if source_line != previous_source + 1 or target_line != previous_target + 1:
+                run_has_unique_line = False
+            if (
+                source_occurrences.occurrence_count(source_lines[source_line - 1]) == 1
+                and target_occurrences.occurrence_count(target_lines[target_line - 1])
+                == 1
+            ):
+                run_has_unique_line = True
+            previous_source = source_line
+            previous_target = target_line
+            continue
+
+        candidate_target = previous_target + 1
+        occupying_source = (
+            ordinary_mapping.get_source_line_from_target_line(candidate_target)
+            if candidate_target <= len(target_lines)
+            else None
+        )
+        if (
+            run_has_unique_line
+            and previous_source == source_line - 1
+            and occupying_source is not None
+            and occupying_source > source_line
+            and occupying_source not in controlled_source_lines
+            and source_lines[source_line - 1] == target_lines[candidate_target - 1]
+        ):
+            corrections.append((source_line, candidate_target))
+            previous_source = source_line
+            previous_target = candidate_target
+            continue
+
+        previous_source = 0
+        previous_target = 0
+        run_has_unique_line = False
+
+
+def _append_coordinate_bounded_controlled_run_extensions(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    controlled_source_lines: LineRanges,
+    ordinary_mapping: LineMapping,
+    source_occurrences: LinePayloadOccurrenceIndex,
+    target_occurrences: LinePayloadOccurrenceIndex,
+    coordinate_boundaries: Sequence[tuple[int, ...]],
+    corrections: MappedRecordVector,
+    authorized_targets: MappedIntVector,
+) -> None:
+    """Move a selected suffix before the boundary saved with it."""
+    for range_start, range_end, target_boundary in coordinate_boundaries:
+        anchor_source = 0
+        anchor_target = 0
+        for source_line in range(range_start, range_end + 1):
+            target_line = ordinary_mapping.get_target_line_from_source_line(source_line)
+            if target_line is None or target_line >= target_boundary:
+                continue
+            content = source_lines[source_line - 1]
+            if (
+                source_occurrences.occurrence_count(content) == 1
+                and target_occurrences.occurrence_count(content) == 1
+            ):
+                anchor_source = source_line
+                anchor_target = target_line
+
+        if not anchor_source or anchor_target >= target_boundary:
+            continue
+
+        source_cursor = anchor_source + 1
+        target_cursor = anchor_target + 1
+        while source_cursor <= range_end and target_cursor <= target_boundary:
+            if source_lines[source_cursor - 1] != target_lines[target_cursor - 1]:
+                source_cursor += 1
+                continue
+            source_target = ordinary_mapping.get_target_line_from_source_line(
+                source_cursor
+            )
+            target_source = ordinary_mapping.get_source_line_from_target_line(
+                target_cursor
+            )
+            if source_target == target_cursor or (
+                source_target is None
+                and (
+                    target_source is None
+                    or target_source not in controlled_source_lines
+                )
+            ):
+                source_cursor += 1
+                target_cursor += 1
+                continue
+            source_cursor += 1
+
+        if target_cursor <= target_boundary:
+            continue
+
+        source_cursor = anchor_source + 1
+        target_cursor = anchor_target + 1
+        while target_cursor <= target_boundary:
+            if source_lines[source_cursor - 1] != target_lines[target_cursor - 1]:
+                source_cursor += 1
+                continue
+            source_target = ordinary_mapping.get_target_line_from_source_line(
+                source_cursor
+            )
+            target_source = ordinary_mapping.get_source_line_from_target_line(
+                target_cursor
+            )
+            if source_target == target_cursor:
+                source_cursor += 1
+                target_cursor += 1
+                continue
+            if source_target is None and (
+                target_source is None or target_source not in controlled_source_lines
+            ):
+                corrections.append((source_cursor, target_cursor))
+                authorized_targets[target_cursor - 1] = 1
+                source_cursor += 1
+                target_cursor += 1
+                continue
+            source_cursor += 1
+
+
 def match_lines_preserving_unowned_context(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
@@ -676,6 +1022,7 @@ def match_lines_preserving_unowned_context(
                     if source_index + 1 not in controlled_source_lines
                 ),
             )
+            has_controlled_duplicates = False
             for range_start, range_end in controlled_source_lines.ranges():
                 for source_line in range(
                     max(1, range_start),
@@ -688,6 +1035,7 @@ def match_lines_preserving_unowned_context(
                         == 0
                     ):
                         continue
+                    has_controlled_duplicates = True
                     target_line = ordinary_mapping.get_target_line_from_source_line(
                         source_line
                     )
@@ -695,7 +1043,12 @@ def match_lines_preserving_unowned_context(
                         collisions.append((source_line, target_line))
             unowned_occurrences.close()
 
-            if not collisions:
+            has_unmapped_preferred_context = any(
+                not ordinary_mapping.is_source_line_present(source_line)
+                for range_start, range_end in preferred_context_lines.ranges()
+                for source_line in range(range_start, range_end + 1)
+            )
+            if not has_controlled_duplicates and not has_unmapped_preferred_context:
                 transferred = PresenceMappingResult(
                     ordinary_mapping,
                     owned_ordinary is not None,
@@ -746,25 +1099,67 @@ def match_lines_preserving_unowned_context(
                 target_occurrences,
                 ordinary_authorized_targets,
             )
-            if collisions:
-                presence_references = (
-                    None
-                    if ownership is None
-                    else EffectivePresenceReferenceIndex(workspace, ownership)
-                )
-                boundary_evidence = _presence_boundary_evidence(
-                    workspace,
-                    source_lines,
-                    target_lines,
-                    presence_references,
-                    (LineRanges.empty() if presence_lines is None else presence_lines),
-                )
+            presence_references = (
+                None
+                if ownership is None
+                else EffectivePresenceReferenceIndex(workspace, ownership)
+            )
+            boundary_evidence = _presence_boundary_evidence(
+                workspace,
+                source_lines,
+                target_lines,
+                presence_references,
+                (LineRanges.empty() if presence_lines is None else presence_lines),
+            )
+            _append_distinctive_controlled_run_extensions(
+                source_lines,
+                target_lines,
+                controlled_source_lines,
+                ordinary_mapping,
+                source_occurrences,
+                target_occurrences,
+                corrections,
+                ordinary_authorized_targets,
+            )
+            _append_local_context_extensions(
+                source_lines,
+                target_lines,
+                controlled_source_lines,
+                ordinary_mapping,
+                source_occurrences,
+                target_occurrences,
+                corrections,
+            )
+            _append_coordinate_bounded_controlled_run_extensions(
+                source_lines,
+                target_lines,
+                controlled_source_lines,
+                ordinary_mapping,
+                source_occurrences,
+                target_occurrences,
+                boundary_evidence.coordinate_boundaries,
+                corrections,
+                ordinary_authorized_targets,
+            )
+            if collisions or has_unmapped_preferred_context:
                 context_mapping = match_uncontrolled_context_lines(
                     source_lines,
                     target_lines,
                     controlled_source_lines,
                     spool_dir=spool_dir,
                     matcher=matcher,
+                )
+                _append_context_for_incomplete_controlled_runs(
+                    source_lines,
+                    target_lines,
+                    controlled_source_lines,
+                    ordinary_mapping,
+                    context_mapping,
+                    source_occurrences,
+                    target_occurrences,
+                    presence_references,
+                    corrections,
+                    context_authorized_targets,
                 )
                 _authorized_context_corrections(
                     source_lines,

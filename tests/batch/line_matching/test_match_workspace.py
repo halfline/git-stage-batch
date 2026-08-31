@@ -124,6 +124,7 @@ def test_occurrence_index_close_attempts_every_resource_and_can_retry():
     index._positions = Resource()
     index._contents = Resource()
     index._buckets = Resource()
+    index._boundary_positions = Resource()
     index._boundaries = Resource()
     index._boundary_buckets = Resource()
     workspace.cancelled_resource = index._boundaries
@@ -132,6 +133,7 @@ def test_occurrence_index_close_attempts_every_resource_and_can_retry():
         index.close()
 
     expected_resources = [
+        index._boundary_positions,
         index._boundaries,
         index._boundary_buckets,
         index._positions,
@@ -182,6 +184,31 @@ def test_occurrence_index_finds_unique_adjacent_boundary_without_line_scan(
         occurrence_index.close()
 
 
+def test_occurrence_index_finds_first_repeated_boundary_after_position():
+    """Boundary range queries use sorted mapped occurrences."""
+    lines = [b"A\n", b"B\n", b"A\n", b"B\n", b"tail\n"]
+
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(workspace, lines)
+
+        assert (
+            occurrence_index.first_adjacent_boundary_position(
+                b"A\n",
+                b"B\n",
+                start_position=2,
+            )
+            == 3
+        )
+        assert (
+            occurrence_index.first_adjacent_boundary_position(
+                b"A\n",
+                b"B\n",
+                start_position=4,
+            )
+            is None
+        )
+
+
 def test_adjacent_boundary_index_releases_partial_allocation(monkeypatch):
     """Cancellation after bucket allocation must not strand mapped storage."""
     workspace = MatcherWorkspace()
@@ -201,6 +228,7 @@ def test_adjacent_boundary_index_releases_partial_allocation(monkeypatch):
     assert workspace._current_bytes == initial_bytes
     assert occurrence_index._boundary_buckets is None
     assert occurrence_index._boundaries is None
+    assert occurrence_index._boundary_positions is None
     occurrence_index.close()
     workspace.close()
 

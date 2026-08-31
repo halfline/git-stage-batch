@@ -280,8 +280,18 @@ class TestResetFromBatch:
 
         original_render = batch_review_selection_module.render_batch_file_display
 
-        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_shifted_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 2, 2: 1}
             selection_id_to_gutter = {2: 1, 1: 2}
@@ -338,8 +348,18 @@ class TestResetFromBatch:
 
         original_render = batch_review_selection_module.render_batch_file_display
 
-        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_shifted_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 2, 2: 1}
             selection_id_to_gutter = {2: 1, 1: 2}
@@ -397,8 +417,18 @@ class TestResetFromBatch:
 
         original_render = batch_review_selection_module.render_batch_file_display
 
-        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_shifted_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 2, 2: 1}
             selection_id_to_gutter = {2: 1, 1: 2}
@@ -412,8 +442,18 @@ class TestResetFromBatch:
                 review_action_groups=_review_action_groups_from_map(gutter_to_selection_id),
             )
 
-        def render_with_raw_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_raw_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 1, 2: 2}
             selection_id_to_gutter = {1: 1, 2: 2}

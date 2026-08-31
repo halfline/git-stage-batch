@@ -27,6 +27,7 @@ from git_stage_batch.data.applied_batch_overlays import (
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
     get_batches_directory_path,
+    get_processed_include_ids_file_path,
     get_session_directory_path,
 )
 
@@ -203,6 +204,27 @@ def test_undo_refuses_tracked_metadata_drift(
 
     with pytest.raises(CommandError, match=expected_label):
         undo_last_checkpoint()
+
+
+def test_undo_treats_empty_processed_ids_as_absent(temp_git_repo):
+    """A fresh review's empty ID file should not block an older undo."""
+    session_directory = get_session_directory_path()
+    session_directory.mkdir(parents=True, exist_ok=True)
+    tracked = session_directory / "tracked.txt"
+    tracked.write_text("before\n")
+    processed = get_processed_include_ids_file_path()
+    processed.parent.mkdir(parents=True, exist_ok=True)
+    processed.write_text("17\n")
+
+    with undo_checkpoint("change metadata", worktree_paths=[]):
+        tracked.write_text("after\n")
+        processed.unlink()
+
+    processed.write_text("")
+    undo_last_checkpoint()
+
+    assert tracked.read_text() == "before\n"
+    assert processed.read_text() == "17\n"
 
 
 def test_scoped_undo_preserves_unrelated_index_changes(temp_git_repo):

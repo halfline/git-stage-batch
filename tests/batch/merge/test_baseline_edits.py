@@ -388,6 +388,94 @@ def test_mapped_gap_places_stale_referenced_presence(monkeypatch) -> None:
     assert index_builds == 1
 
 
+def test_partially_adopted_same_boundary_group_uses_mapped_gaps() -> None:
+    """Existing sibling runs split one recorded insertion into proven gaps."""
+    source_lines = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tbefore\n",
+        b"\tadopt helper\n",
+        b"\tafter\n",
+        b"}\n",
+        b"\n",
+        b"helper()\n",
+        b"{\n",
+        b"\tbody\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    working_lines = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tbefore\n",
+        b"\tafter\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    reference = _boundary_reference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=2,
+        before_content=b"tail\n",
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-13"],
+        baseline_references={line: reference for line in range(2, 14)},
+    )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((2, 13),)),
+            [],
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is not None
+    assert list(result) == source_lines
+
+
+def test_recorded_presence_does_not_cross_retained_source_sibling() -> None:
+    """A later saved boundary cannot invert an adjacent mapped source block."""
+    source_lines = [
+        b"head\n",
+        b"added one\n",
+        b"added two\n",
+        b"retained sibling\n",
+        b"\n",
+        b"tail\n",
+    ]
+    working_lines = [b"head\n", b"retained sibling\n", b"\n", b"tail\n"]
+    reference = _boundary_reference(
+        after_line=2,
+        after_content=b"\n",
+        before_line=3,
+        before_content=b"tail\n",
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        baseline_references={2: reference, 3: reference},
+    )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((2, 3),)),
+            [],
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is None
+
+
 def test_mapped_gap_refuses_repeated_live_boundaries() -> None:
     """A mapping choice cannot authorize an ambiguous insertion boundary."""
     source_lines = [b"head\n", b"new\n", b"tail\n"]
@@ -577,14 +665,77 @@ def test_live_planning_tracks_one_shifted_legacy_replacement() -> None:
         b"new two\n",
         b"tail\n",
     ]
-    assert baseline_edits.try_apply_baseline_coordinate_edits(
-        source_lines,
-        working_lines,
-        ownership,
-        LineRanges.from_ranges(((2, 3),)),
+    assert (
+        baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((2, 3),)),
+            deletion_claims,
+            trust_baseline_coordinates=True,
+        )
+        is None
+    )
+
+
+def test_missing_presence_stays_before_planned_replacement_payload() -> None:
+    """Mapped context and a replacement source boundary place their missing run."""
+    source_lines = [
+        b"head\n",
+        b"added call\n",
+        b"context\n",
+        b"added definition\n",
+        b"new one\n",
+        b"new two\n",
+        b"old\n",
+        b"tail\n",
+    ]
+    working_lines = [b"head\n", b"context\n", b"old\n", b"tail\n"]
+    replacement_reference = _boundary_reference(
+        after_line=2,
+        after_content=b"context\n",
+        before_line=4,
+        before_content=b"tail\n",
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=4,
+            content_lines=[b"old\n"],
+            baseline_reference=replacement_reference,
+            source_alternative=True,
+        )
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-6", "8"],
         deletion_claims,
-        trust_baseline_coordinates=True,
-    ) is None
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["5-6"],
+                deletion_indices=[0],
+            )
+        ],
+    )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            ownership.presence_line_set(),
+            deletion_claims,
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is not None
+    assert list(result) == [
+        b"head\n",
+        b"added call\n",
+        b"context\n",
+        b"added definition\n",
+        b"new one\n",
+        b"new two\n",
+        b"tail\n",
+    ]
 
 
 def test_source_alternative_can_consume_its_exact_mapped_neighbor() -> None:

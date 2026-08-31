@@ -27,6 +27,7 @@ class _ShowFromOptions(TypedDict, total=False):
 
 
 class _ShowLiveOptions(TypedDict, total=False):
+    line_ids: str | None
     page: str | None
     porcelain: bool
     selectable: bool
@@ -107,11 +108,11 @@ def _dispatch_show_live(
     *,
     resolved_file_scope: FileScope,
 ) -> None:
-    if args.line_ids or not resolved_file_scope.is_implicit:
+    if args.line_ids is not None or not resolved_file_scope.is_implicit:
         if resolved_file_scope.is_multiple and args.porcelain:
             raise CommandError(_("Cannot use --porcelain with multiple files."))
         if resolved_file_scope.is_multiple:
-            if args.line_ids:
+            if args.line_ids is not None:
                 raise CommandError(_("Cannot use --lines with multiple files."))
             if args.advance:
                 command_show_file_list(list(resolved_file_scope.files))
@@ -125,6 +126,8 @@ def _dispatch_show_live(
                 "page": args.page,
                 "porcelain": args.porcelain,
             }
+            if args.line_ids is not None:
+                options["line_ids"] = args.line_ids
             if not args.advance:
                 options["selectable"] = False
             command_show(

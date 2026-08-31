@@ -7,7 +7,11 @@ from typing import Literal
 from . import restore as _undo_restore
 from . import snapshots as _undo_snapshots
 from . import worktree as _undo_worktree
-from ..recovery_types import CheckpointState, WorktreePathState
+from ..recovery_types import (
+    CheckpointState,
+    FilesystemEntryState,
+    WorktreePathState,
+)
 from ...i18n import _
 from ...utils.git_command import run_git_command
 from ...utils.git_index import (
@@ -23,6 +27,13 @@ from ...utils.paths import (
 
 
 EXPLICIT_WORKTREE_SCOPE: Literal["explicit"] = "explicit"
+_EMPTY_BLOB_OBJECT_ID = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+_EMPTY_PROCESSED_SESSION_PATHS = frozenset(
+    {
+        "processed/included-lines.json",
+        "processed/skipped-lines.json",
+    }
+)
 
 
 def uses_explicit_worktree_scope(manifest: CheckpointState) -> bool:
@@ -63,6 +74,30 @@ def _worktree_state_by_path(
     return normalized
 
 
+def _empty_file_or_absent(entry: FilesystemEntryState | None) -> bool:
+    """Return whether an application-state entry contains no information."""
+    return entry is None or (
+        entry["mode"] == "100644" and entry["object_id"] == _EMPTY_BLOB_OBJECT_ID
+    )
+
+
+def _filesystem_entries_match(
+    path: str,
+    current: FilesystemEntryState | None,
+    expected: FilesystemEntryState | None,
+    *,
+    empty_equivalent_paths: frozenset[str],
+) -> bool:
+    """Compare one state file, allowing declared empty-file equivalents."""
+    if current == expected:
+        return True
+    return (
+        path in empty_equivalent_paths
+        and _empty_file_or_absent(current)
+        and _empty_file_or_absent(expected)
+    )
+
+
 def _detect_conflicts_against_state(
     expected_state: CheckpointState,
 ) -> list[str]:
@@ -101,13 +136,21 @@ def _detect_conflicts_against_state(
         if actual != expected:
             conflicts.append(path)
 
-    for tracked_paths, expected_files, source_dir, label, ignore_selected in (
+    for (
+        tracked_paths,
+        expected_files,
+        source_dir,
+        label,
+        ignore_selected,
+        empty_equivalent_paths,
+    ) in (
         (
             expected_state.get("tracked_session_paths"),
             expected_state.get("session_files"),
             get_session_directory_path(),
             _("session state"),
             True,
+            _EMPTY_PROCESSED_SESSION_PATHS,
         ),
         (
             expected_state.get("tracked_batches_paths"),
@@ -115,6 +158,7 @@ def _detect_conflicts_against_state(
             get_batches_directory_path(),
             _("batch metadata"),
             False,
+            frozenset(),
         ),
         (
             expected_state.get("tracked_repository_paths"),
@@ -122,6 +166,7 @@ def _detect_conflicts_against_state(
             get_git_directory_path(),
             _("repository metadata"),
             False,
+            frozenset(),
         ),
     ):
         if isinstance(tracked_paths, list) and isinstance(expected_files, dict):
@@ -139,7 +184,15 @@ def _detect_conflicts_against_state(
                 for path in conflict_paths
                 if path in expected_files
             }
-            if current_files != expected_conflict_files:
+            if not all(
+                _filesystem_entries_match(
+                    path,
+                    current_files.get(path),
+                    expected_conflict_files.get(path),
+                    empty_equivalent_paths=empty_equivalent_paths,
+                )
+                for path in conflict_paths
+            ):
                 conflicts.append(label)
 
     return conflicts

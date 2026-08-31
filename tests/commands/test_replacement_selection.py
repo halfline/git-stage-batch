@@ -18,9 +18,12 @@ from git_stage_batch.commands.selection.discard_line_replacement import (
     _expand_parent_through_relocated_prefix_context,
     _requires_explicit_added_side_alternative,
     _matching_discard_prefix_context_count,
+    _matching_baseline_prefix_context_count,
+    _replacement_payload_retains_selected_addition,
     _verified_explicit_alternative_end,
     _selected_additions_cover_working_span,
 )
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.exceptions import CommandError
 
@@ -458,22 +461,56 @@ def test_replacement_additions_reject_interleaved_deletion():
 
 def test_discard_prefix_context_counts_adjacent_closing_delimiter():
     """A copied close before the live alternative belongs to the prefix."""
-    assert _matching_discard_prefix_context_count(
-        [b"selected", b"}", b"live", b"}"],
-        [b"}\n", b"after\n"],
-        prefix_count=1,
-        working_suffix_start=0,
-    ) == 1
+    assert (
+        _matching_discard_prefix_context_count(
+            [b"selected", b"}", b"live", b"}"],
+            [b"}\n", b"after\n"],
+            prefix_count=1,
+            working_suffix_start=0,
+        )
+        == 1
+    )
 
 
 def test_discard_prefix_context_leaves_final_context_copy_unclaimed():
     """A lone copied close can remain as the unchanged working suffix."""
-    assert _matching_discard_prefix_context_count(
-        [b"selected", b"}"],
-        [b"}\n", b"after\n"],
-        prefix_count=1,
-        working_suffix_start=0,
-    ) == 0
+    assert (
+        _matching_discard_prefix_context_count(
+            [b"selected", b"}"],
+            [b"}\n", b"after\n"],
+            prefix_count=1,
+            working_suffix_start=0,
+        )
+        == 0
+    )
+
+
+def test_discard_prefix_context_accepts_tracked_content_before_alternative():
+    """A tracked transform may copy unchanged content into its owned prefix."""
+    assert (
+        _matching_discard_prefix_context_count(
+            [b"selected", b"body", b"", b"done", b"live"],
+            [b"body\n", b"\n", b"done\n", b"after\n"],
+            prefix_count=1,
+            working_suffix_start=0,
+            allow_content=True,
+        )
+        == 3
+    )
+
+
+def test_baseline_prefix_context_requires_unchanged_parent_lines():
+    """Only copied context shared with the baseline expands a tracked parent."""
+    assert (
+        _matching_baseline_prefix_context_count(
+            [b"old\n", b"shared\n", b"different\n"],
+            [b"new\n", b"shared\n", b"working\n"],
+            baseline_suffix_start=1,
+            working_suffix_start=1,
+            maximum_count=2,
+        )
+        == 1
+    )
 
 
 def test_explicit_alternative_extends_through_verified_shared_tail():
@@ -516,6 +553,50 @@ def test_discard_prefix_context_avoids_line_scale_python_heap():
             tracemalloc.stop()
 
         assert matched == line_count
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 32 * 1024
+
+
+def test_retained_addition_detection_avoids_line_scale_python_heap():
+    """Requested-overlap discovery should keep its indexes in mapped storage."""
+    line_changes = LineLevelChange(
+        path="tracked.txt",
+        header=HunkHeader(1, 1, 1, 1),
+        lines=[
+            LineEntry(1, "+", None, 1, text_bytes=b"retained-target"),
+        ],
+    )
+    heap_peaks = []
+    for line_count in (1024, 8192):
+        with (
+            LineBuffer.from_chunks(
+                (
+                    b"retained-target\n"
+                    if index == line_count - 1
+                    else f"replacement-{index}\n".encode()
+                    for index in range(line_count)
+                )
+            ) as replacement_lines,
+            LineBuffer.from_chunks(
+                f"baseline-{index}\n".encode() for index in range(line_count)
+            ) as baseline_lines,
+        ):
+            gc.collect()
+            tracemalloc.start()
+            try:
+                retains_addition = _replacement_payload_retains_selected_addition(
+                    line_changes,
+                    {1},
+                    replacement_lines,
+                    baseline_lines,
+                )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+        assert retains_addition
         heap_peaks.append(peak_heap)
 
     small_peak, large_peak = heap_peaks
@@ -614,12 +695,8 @@ def test_relocated_prefix_context_avoids_line_scale_python_heap():
     for line_count in (1024, 8192):
         baseline = [b"prefix\n", b"old body\n"]
         target = [b"prefix\n", b"new body\n"]
-        baseline.extend(
-            f"baseline-{index}\n".encode() for index in range(line_count)
-        )
-        target.extend(
-            f"target-{index}\n".encode() for index in range(line_count)
-        )
+        baseline.extend(f"baseline-{index}\n".encode() for index in range(line_count))
+        target.extend(f"target-{index}\n".encode() for index in range(line_count))
         baseline.append(b"suffix\n")
         target.append(b"suffix\n")
 

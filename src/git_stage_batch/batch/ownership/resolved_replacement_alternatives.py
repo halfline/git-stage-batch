@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ...core.coordinates import BatchSourceSpace, LineBoundary, LineSpan
 from ...core.line_selection import LineRanges
@@ -31,12 +32,19 @@ class ResolvedReplacementAlternative:
     live_payload: tuple[LineSpan[BatchSourceSpace], ...]
     live_envelope: LineSpan[BatchSourceSpace]
     absence_claim: AbsenceClaim
+    parent_deletion_index: int | None = None
 
     def __post_init__(self) -> None:
         if type(self.unit_index) is not int or self.unit_index < 0:
             raise ValueError("replacement alternative has an invalid unit index")
         if type(self.deletion_index) is not int or self.deletion_index < 0:
             raise ValueError("replacement alternative has an invalid deletion index")
+        if self.parent_deletion_index is not None and (
+            type(self.parent_deletion_index) is not int
+            or self.parent_deletion_index < 0
+            or self.parent_deletion_index == self.deletion_index
+        ):
+            raise ValueError("replacement alternative has an invalid parent")
         if len(self.saved) == 0:
             raise ValueError("replacement alternative saved span must be non-empty")
         if len(self.live_envelope) == 0:
@@ -158,6 +166,39 @@ def _resolve_live_geometry(
         ),
         absence_claim=unresolved.absence_claim,
     )
+
+
+def _parent_deletion_index(
+    alternative: ResolvedReplacementAlternative,
+    payload_spans: Sequence[tuple[int, int, int]],
+    payload_starts: Sequence[int],
+) -> int | None:
+    """Find the pair that contains this saved text, if any."""
+    saved_start = alternative.saved.start.offset
+    saved_end = alternative.saved.end.offset
+    span_index = bisect_right(payload_starts, saved_start) - 1
+    if span_index >= 0:
+        payload_start, payload_end, parent_deletion_index = payload_spans[span_index]
+        if payload_start <= saved_start and saved_end <= payload_end:
+            if parent_deletion_index == alternative.deletion_index:
+                raise InvalidReplacementAlternatives(
+                    "replacement alternative contains its own saved side"
+                )
+            return parent_deletion_index
+        if saved_start < payload_end:
+            raise InvalidReplacementAlternatives(
+                "replacement alternative saved side crosses a live payload"
+            )
+
+    next_span_index = span_index + 1
+    if (
+        next_span_index < len(payload_spans)
+        and payload_spans[next_span_index][0] < saved_end
+    ):
+        raise InvalidReplacementAlternatives(
+            "replacement alternative saved side crosses a live payload"
+        )
+    return None
 
 
 def resolve_replacement_alternatives(
@@ -282,4 +323,17 @@ def resolve_replacement_alternatives(
                 "replacement alternative live payloads overlap"
             )
         previous_end = payload_end
-    return tuple(resolved)
+    payload_starts = tuple(
+        payload_start for payload_start, _end, _index in payload_spans
+    )
+    return tuple(
+        replace(
+            alternative,
+            parent_deletion_index=_parent_deletion_index(
+                alternative,
+                payload_spans,
+                payload_starts,
+            ),
+        )
+        for alternative in resolved
+    )

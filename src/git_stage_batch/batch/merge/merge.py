@@ -646,9 +646,7 @@ def _merge_batch_acquired_line_chunks(
     resolved = ownership.resolve()
     effective_constraints = _resolve_effective_constraints(
         source_lines,
-        ownership,
-        resolved.presence_line_set,
-        resolved.deletion_claims,
+        resolved,
         spool_dir=spool_dir,
     )
     presence_line_set = effective_constraints.presence_lines

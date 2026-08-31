@@ -16,7 +16,6 @@ from git_stage_batch.batch.ownership.resolved_replacement_alternatives import (
 )
 from git_stage_batch.core.coordinates import (
     BaselineSpace,
-    BatchSourceSpace,
     LineBoundary,
     LineSpan,
     RewrittenWorktreeSpace,
@@ -155,6 +154,32 @@ def test_alternatives_reject_parent_from_different_edit_geometry() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "ownership_scope",
+    [
+        ReplacementAlternativeOwnership.SOURCE_WITHOUT_LIVE,
+        ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+    ],
+)
+def test_source_scoped_alternative_requires_live_span(
+    ownership_scope,
+) -> None:
+    """Owning the source around an alternative requires a live exclusion."""
+    edit, rewritten, _parent = _replacement_geometry()
+
+    with pytest.raises(ValueError, match="requires a live alternative"):
+        ExplicitReplacementAlternatives(
+            edit=edit,
+            saved=SnapshotSpan(
+                rewritten,
+                LineSpan(LineBoundary(0), LineBoundary(1)),
+            ),
+            live=None,
+            parent=None,
+            ownership_scope=ownership_scope,
+        )
+
+
 def test_batch_ownership_resolves_persisted_replacement_alternative() -> None:
     """Indirect metadata becomes one typed saved/live value before replay."""
     claim = AbsenceClaim(
@@ -167,18 +192,14 @@ def test_batch_ownership_resolves_persisted_replacement_alternative() -> None:
         [claim],
         replacement_units=[ReplacementUnit(["2-3"], [0])],
     ).resolve()
-    live_span: LineSpan[BatchSourceSpace] = LineSpan(
-        LineBoundary(3),
-        LineBoundary(5),
-    )
 
     assert resolved.replacement_alternatives == (
         ResolvedReplacementAlternative(
             unit_index=0,
             deletion_index=0,
             saved=LineSpan(LineBoundary(1), LineBoundary(3)),
-            live_payload=(live_span,),
-            live_envelope=live_span,
+            live_payload=(LineSpan(LineBoundary(3), LineBoundary(5)),),
+            live_envelope=LineSpan(LineBoundary(3), LineBoundary(5)),
             absence_claim=claim,
         ),
     )
@@ -248,6 +269,8 @@ def test_batch_ownership_resolves_nested_live_alternative_payload() -> None:
         LineBoundary(6),
     )
     assert alternatives[1].live_payload == (LineSpan(LineBoundary(4), LineBoundary(5)),)
+    assert alternatives[0].parent_deletion_index is None
+    assert alternatives[1].parent_deletion_index == 0
 
 
 def test_nested_alternative_at_payload_end_extends_parent_envelope() -> None:
@@ -280,12 +303,13 @@ def test_nested_alternative_at_payload_end_extends_parent_envelope() -> None:
         LineBoundary(2),
         LineBoundary(5),
     )
-
-
+    assert alternatives[1].parent_deletion_index == 0
 def test_batch_ownership_rejects_uncoupled_persisted_alternative() -> None:
-    """Every explicit old side belongs to exactly one replacement unit."""
+    """A source-alternative flag cannot escape its replacement unit."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [AbsenceClaim(content_lines=[b"live\n"], source_alternative=True)],
+    )
+
     with pytest.raises(InvalidReplacementAlternatives, match="not coupled"):
-        BatchOwnership.from_presence_lines(
-            ["1"],
-            [AbsenceClaim(content_lines=[b"old\n"], source_alternative=True)],
-        ).resolve()
+        ownership.resolve()

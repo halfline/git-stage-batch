@@ -43,10 +43,12 @@ class LinePayloadOccurrenceIndex:
         target_lines: Sequence[bytes],
         *,
         normalize_payloads: bool = True,
+        ignore_indentation: bool = False,
         target_indexes: Iterable[int] | None = None,
     ) -> None:
         self._target_lines = target_lines
         self._normalize_payloads = normalize_payloads
+        self._ignore_indentation = ignore_indentation
         self._indexes_all_target_lines = target_indexes is None
         index_capacity = (
             len(target_indexes)
@@ -329,9 +331,16 @@ class LinePayloadOccurrenceIndex:
         return payload_hash & (self._bucket_count - 1)
 
     def _payload(self, content: bytes) -> Hashable:
-        if self._normalize_payloads:
-            return normalized_line_payload(content)
-        return content
+        payload: Hashable = (
+            normalized_line_payload(content)
+            if self._normalize_payloads
+            else content
+        )
+        if not self._ignore_indentation:
+            return payload
+        if not isinstance(payload, bytes):
+            raise TypeError("indentation matching requires byte payloads")
+        return payload.lstrip(b" \t")
 
 
 def _bucket_capacity(line_count: int) -> int:

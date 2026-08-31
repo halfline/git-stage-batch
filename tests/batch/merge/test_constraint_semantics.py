@@ -115,6 +115,32 @@ def test_merge_replaces_recorded_live_source_alternative():
     )
 
 
+def test_merge_replaces_source_alternative_without_other_shared_context():
+    """The complete explicit old side can anchor a wholesale replacement."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=[b"live one\n", b"live two\n"],
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert (
+        merge_batch(
+            b"owned one\nowned two\nlive one\nlive two\n",
+            ownership,
+            b"prefix\nlive one\nlive two\nsuffix\n",
+        )
+        == b"prefix\nowned one\nowned two\nsuffix\n"
+    )
+
+
 @pytest.mark.parametrize("version_count", [2, 8])
 def test_merge_collapses_chained_source_alternatives(version_count):
     """Each superseded intermediate old side is removed exactly once."""

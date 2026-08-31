@@ -1268,6 +1268,41 @@ def test_source_alternative_replay_ignores_selected_duplicate_outside_old_side(
             list(mapping.mapped_line_pairs())
 
 
+def test_source_scoped_alternative_replays_between_duplicate_siblings() -> None:
+    """Durable old-side evidence can replace one row inside owned source context."""
+    prefix = [b"head\n", b"clean\n", b"first row\n"]
+    saved = [b"clean\n", b"final row\n", b"extra check\n"]
+    live = [b"clean\n", b"predecessor row\n"]
+    suffix = [b"clean\n", b"third row\n", b"tail\n"]
+    source = prefix + saved + live + suffix
+    reference = BaselineReference(
+        after_line=3,
+        after_content=prefix[-1],
+        before_line=9,
+        before_content=suffix[0],
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-6", "9-11"],
+        [
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=live,
+                baseline_reference=reference,
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["4-6"], [0])],
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        prefix + live + suffix,
+    ) as result:
+        assert list(result) == prefix + saved + suffix
+
+
 def test_strict_absence_index_preserves_provenance_initialization_error(
     monkeypatch,
 ) -> None:

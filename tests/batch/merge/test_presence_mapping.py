@@ -18,9 +18,14 @@ from git_stage_batch.batch.merge.presence_mapping import (
     PresenceMappingCorrection,
     match_lines_preserving_unowned_context,
 )
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.resolved_replacement_alternatives import (
+    ResolvedReplacementAlternative,
+)
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.coordinates import LineBoundary, LineSpan
 from git_stage_batch.core.line_selection import LineRanges
 
 
@@ -439,6 +444,67 @@ def test_explicit_alternative_authorizes_repeated_context() -> None:
     finally:
         if result.owned:
             result.mapping.close()
+
+
+def test_resolved_live_alternative_displaces_only_its_saved_side() -> None:
+    """A complete typed live side outranks its own anchored saved duplicate."""
+    source = [
+        b"head\n",
+        b"shared\n",
+        b"saved only\n",
+        b"shared\n",
+        b"live only\n",
+        b"tail\n",
+    ]
+    target = [b"head\n", b"shared\n", b"live only\n", b"tail\n"]
+    controlled = LineRanges.from_ranges(((1, 3),))
+    preferred = LineRanges.from_ranges(((4, 5),))
+
+    unpaired = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+        preferred_context_lines=preferred,
+    )
+    try:
+        assert unpaired.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
+        assert not unpaired.corrected
+    finally:
+        if unpaired.owned:
+            unpaired.mapping.close()
+
+    absence_claim = AbsenceClaim(
+        anchor_line=3,
+        content_lines=source[3:5],
+        source_alternative=True,
+    )
+    alternative = ResolvedReplacementAlternative(
+        unit_index=0,
+        deletion_index=0,
+        saved=LineSpan(LineBoundary(1), LineBoundary(3)),
+        live_payload=(LineSpan(LineBoundary(3), LineBoundary(5)),),
+        live_envelope=LineSpan(LineBoundary(3), LineBoundary(5)),
+        absence_claim=absence_claim,
+    )
+    paired = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+        preferred_context_lines=preferred,
+        replacement_alternatives=(alternative,),
+    )
+    try:
+        assert paired.corrected
+        assert not paired.ambiguous
+        assert list(paired.mapping.mapped_line_pairs()) == [
+            (1, 1),
+            (4, 2),
+            (5, 3),
+            (6, 4),
+        ]
+    finally:
+        if paired.owned:
+            paired.mapping.close()
 
 
 def test_explicit_alternative_does_not_authorize_repeated_neighbor() -> None:

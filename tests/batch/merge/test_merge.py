@@ -58,6 +58,9 @@ from git_stage_batch.batch.file_state import (
     SourceBoundOwnership,
 )
 from git_stage_batch.batch.merge.presence_constraints import satisfy_constraints
+from git_stage_batch.batch.merge.source_alternative_constraints import (
+    resolve_effective_merge_constraints,
+)
 from git_stage_batch.batch.merge.presence_context import (
     PresencePlacementAmbiguityError,
     contextual_presence_placements,
@@ -977,6 +980,68 @@ def test_strict_absence_anchor_queries_aggregate_duplicate_provenance(
 
     entries.close()
     assert source_group_reads <= duplicate_count * 4
+
+
+def test_nested_source_alternative_projection_avoids_line_scale_python_heap() -> None:
+    """A large split old side stays a range-backed view of the batch source."""
+    heap_peaks = []
+    for line_count in (512, 8192):
+        filler = [b"context\n"] * line_count
+        inner_saved_line = line_count + 3
+        edge_reference = BaselineReference(
+            after_line=None,
+            before_line=None,
+            has_before_line=True,
+        )
+        source = [
+            b"context\n",
+            b"saved extra\n",
+            *filler,
+            b"inner saved\n",
+            b"inner live\n",
+            b"outer suffix\n",
+        ]
+        ownership = BatchOwnership.from_presence_lines(
+            ["1-2", str(inner_saved_line)],
+            [
+                AbsenceClaim(
+                    content_lines=[
+                        *filler,
+                        b"inner saved\n",
+                        b"outer suffix\n",
+                    ],
+                    baseline_reference=edge_reference,
+                    source_alternative=True,
+                ),
+                AbsenceClaim(
+                    anchor_line=inner_saved_line - 1,
+                    content_lines=[b"inner live\n"],
+                    source_alternative=True,
+                ),
+            ],
+            replacement_units=[
+                ReplacementUnit(["1-2"], [0]),
+                ReplacementUnit([str(inner_saved_line)], [1]),
+            ],
+            baseline_references={1: edge_reference},
+        )
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            constraints = resolve_effective_merge_constraints(
+                source,
+                ownership.resolve(),
+            )
+            effective_live = constraints.deletion_claims[0].content_lines
+            assert sum(len(line) for line in effective_live) > line_count
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
 
 
 def test_strict_absence_index_preserves_provenance_initialization_error(

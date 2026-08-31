@@ -155,6 +155,47 @@ def test_merge_collapses_chained_source_alternatives(version_count):
     )
 
 
+def test_merge_collapses_nested_source_alternatives():
+    """A root replacement removes the latest live form of its nested lineage."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2", "4"],
+        [
+            AbsenceClaim(
+                content_lines=[
+                    b"outer one\n",
+                    b"inner saved\n",
+                    b"outer two\n",
+                ],
+                source_alternative=True,
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b"inner live\n"],
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["4"], deletion_indices=[1]),
+        ],
+    )
+
+    assert (
+        merge_batch(
+            b"saved one\n"
+            b"saved two\n"
+            b"outer one\n"
+            b"inner saved\n"
+            b"inner live\n"
+            b"outer two\n"
+            b"tail\n",
+            ownership,
+            b"outer one\ninner live\nouter two\ntail\n",
+        )
+        == b"saved one\nsaved two\ntail\n"
+    )
+
+
 def test_merge_rejects_nonadjacent_source_alternative():
     """An explicit old side must match the span immediately after its unit."""
     ownership = BatchOwnership.from_presence_lines(

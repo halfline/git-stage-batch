@@ -283,6 +283,59 @@ def test_live_planning_tracks_one_shifted_insertion_boundary() -> None:
     ) is None
 
 
+def test_realization_joins_presence_across_explicit_collapsed_source_span() -> None:
+    """A saved replacement may surround its omitted live source alternative."""
+    source_lines = [
+        b"head\n",
+        b"saved one\n",
+        b"saved two\n",
+        b"live predecessor\n",
+        b"saved suffix\n",
+        b"tail\n",
+    ]
+    working_lines = [b"head\n", b"tail\n"]
+    ownership = BatchOwnership.from_presence_lines(["1-3", "5-6"])
+
+    with match_lines(source_lines, working_lines) as mapping:
+        assert (
+            baseline_edits.try_apply_baseline_coordinate_edits(
+                source_lines,
+                working_lines,
+                ownership,
+                ownership.presence_line_set(),
+                [],
+                allow_adjacent_unmapped_presence=True,
+                prefer_source_mapping_for_presence=True,
+                trust_baseline_coordinates=True,
+                source_to_working_mapping=mapping,
+            )
+            is None
+        )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            ownership.presence_line_set(),
+            [],
+            allow_adjacent_unmapped_presence=True,
+            prefer_source_mapping_for_presence=True,
+            trust_baseline_coordinates=True,
+            source_to_working_mapping=mapping,
+            collapsed_source_lines=LineRanges.from_specs(["4"]),
+        )
+
+    assert result is not None
+    assert list(result) == [
+        b"head\n",
+        b"saved one\n",
+        b"saved two\n",
+        b"saved suffix\n",
+        b"tail\n",
+    ]
+
+
 def test_mapped_gap_places_stale_referenced_presence(monkeypatch) -> None:
     """Unique mapped neighbors may supersede a stale insertion reference."""
     source_lines = [b"head\n", b"new one\n", b"new two\n", b"tail\n"]

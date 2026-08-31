@@ -16,6 +16,8 @@ from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.batch.line_matching.occurrence_index import (
     LinePayloadOccurrenceIndex,
 )
+from git_stage_batch.core.coordinates import LineBoundary, LineSpan, WorktreeSpace
+from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.mapped_storage import MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
 
 
@@ -149,14 +151,20 @@ def test_occurrence_index_finds_unique_adjacent_boundary_without_line_scan(
             ),
         )
 
-        assert occurrence_index.unique_adjacent_boundary_position(
-            b"A\n",
-            b"B\n",
-        ) == 500
-        assert occurrence_index.unique_adjacent_boundary_position(
-            b"A\n",
-            b"A\n",
-        ) is None
+        assert (
+            occurrence_index.unique_adjacent_boundary_position(
+                b"A\n",
+                b"B\n",
+            )
+            == 500
+        )
+        assert (
+            occurrence_index.unique_adjacent_boundary_position(
+                b"A\n",
+                b"A\n",
+            )
+            is None
+        )
 
         occurrence_index.close()
 
@@ -218,9 +226,7 @@ def test_match_occurrence_table_close_attempts_every_resource_and_can_retry():
                 raise KeyboardInterrupt("close cancelled")
 
     workspace = Workspace()
-    table = match_module._LineOccurrenceTable.__new__(
-        match_module._LineOccurrenceTable
-    )
+    table = match_module._LineOccurrenceTable.__new__(match_module._LineOccurrenceTable)
     table._workspace = workspace
     table._records = Resource()
     table._buckets = Resource()
@@ -255,9 +261,7 @@ def test_match_occurrence_table_preserves_body_cancellation_during_close():
             raise RuntimeError("close failed")
 
     workspace = Workspace()
-    table = match_module._LineOccurrenceTable.__new__(
-        match_module._LineOccurrenceTable
-    )
+    table = match_module._LineOccurrenceTable.__new__(match_module._LineOccurrenceTable)
     table._workspace = workspace
     table._records = Resource()
     table._buckets = Resource()
@@ -406,6 +410,80 @@ def test_allocate_line_mapping_preserves_allocation_error_during_cleanup(
         line_mapping_module.allocate_line_mapping(1, 1)
 
     assert source_mapping.close_calls == 1
+
+
+def test_line_mapping_copy_can_leave_selected_source_ranges_unmapped() -> None:
+    """A filtered copy must clear both directions of each removed pair."""
+    mapping = LineMapping(
+        [1, 2, 3, 4],
+        [1, 2, 3, 4],
+        may_have_unmapped_equal_lines=False,
+    )
+
+    with line_mapping_module.copy_line_mapping_excluding(
+        mapping,
+        LineRanges.from_ranges(((2, 3),)),
+    ) as filtered:
+        assert list(filtered.source_to_target) == [1, 0, 0, 4]
+        assert list(filtered.target_to_source) == [1, 0, 0, 4]
+        assert filtered.may_have_unmapped_equal_lines is True
+
+
+def test_line_mapping_copy_can_leave_target_spans_unmapped() -> None:
+    """A target exclusion must clear both directions without listing its lines."""
+    mapping = LineMapping(
+        [1, 2, 3, 4, 5],
+        [1, 2, 3, 4, 5],
+        may_have_unmapped_equal_lines=False,
+    )
+    target_span: LineSpan[WorktreeSpace] = LineSpan(
+        LineBoundary(1),
+        LineBoundary(4),
+    )
+
+    with line_mapping_module.copy_line_mapping_excluding(
+        mapping,
+        LineRanges.empty(),
+        excluded_target_spans=(target_span,),
+    ) as filtered:
+        assert list(filtered.source_to_target) == [1, 0, 0, 0, 5]
+        assert list(filtered.target_to_source) == [1, 0, 0, 0, 5]
+        assert filtered.may_have_unmapped_equal_lines is True
+
+
+def test_target_span_filter_does_not_use_line_scale_python_heap() -> None:
+    """A large excluded span stays two offsets while the mapping stays mapped."""
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        with line_mapping_module.allocate_line_mapping(
+            line_count,
+            line_count,
+        ) as mapping:
+            for line_index in range(line_count):
+                mapping.source_to_target[line_index] = line_index + 1
+                mapping.target_to_source[line_index] = line_index + 1
+            target_span: LineSpan[WorktreeSpace] = LineSpan(
+                LineBoundary(line_count // 4),
+                LineBoundary(3 * line_count // 4),
+            )
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                with line_mapping_module.copy_line_mapping_excluding(
+                    mapping,
+                    LineRanges.empty(),
+                    excluded_target_spans=(target_span,),
+                ) as filtered:
+                    assert filtered.target_to_source[target_span.start.offset] == 0
+                    assert filtered.target_to_source[target_span.end.offset] != 0
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
 def test_line_mapping_close_attempts_both_vectors_before_raising():

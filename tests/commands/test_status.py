@@ -279,6 +279,30 @@ class TestCommandStatus:
         assert captured.out == " STAGING"
         assert captured.err == ""
 
+    def test_status_cache_refresh_is_silent(
+        self,
+        temp_git_repo,
+        capsys,
+        monkeypatch,
+    ):
+        """The internal cache worker should not write terminal output."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nNew content\n")
+        command_start()
+        capsys.readouterr()
+        refreshed = []
+        monkeypatch.setattr(
+            "git_stage_batch.commands.status.refresh_status_summary_cache",
+            lambda: refreshed.append(True),
+        )
+
+        command_status(refresh_cache=True)
+
+        assert refreshed == [True]
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
     def test_status_for_prompt_formats_status_fields(self, temp_git_repo, capsys):
         """Prompt mode should render custom fields without a trailing newline."""
         readme = temp_git_repo / "README.md"

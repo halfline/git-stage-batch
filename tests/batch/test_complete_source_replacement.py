@@ -3,6 +3,7 @@
 from git_stage_batch.batch.complete_source_replacement import (
     materialize_untracked_source_replacement,
     promote_untracked_presence_to_complete_source_replacement,
+    refresh_complete_source_replacement,
     resolve_complete_source_replacement,
 )
 from git_stage_batch.batch.file_state import SourceBoundOwnership
@@ -221,6 +222,156 @@ def test_promote_untracked_presence_requires_exact_batch_predecessor() -> None:
                 existing,
                 rewritten_lines=independently_peeled,
                 alternatives=peeled_alternatives,
+            )
+            is None
+        )
+
+
+def test_refresh_complete_source_replacement_advances_only_live_snapshot() -> None:
+    """A re-peel keeps the complete saved file and replaces its predecessor."""
+    path = "tool.c"
+    saved_file = (
+        b"caps = ASYNC_TX |\n",
+        b"       RX_INJECT |\n",
+        b"       TRANSPORT_STATE |\n",
+        b"       EDID;\n",
+        b"request path\n",
+        b"tail\n",
+    )
+    old_live_file = (
+        b"caps = ASYNC_TX |\n",
+        b"       RX_INJECT |\n",
+        b"       TRANSPORT_STATE |\n",
+        b"       EDID;\n",
+        b"tail\n",
+    )
+    prior_worktree = (
+        b"caps = ASYNC_TX |\n",
+        b"       TRANSPORT_STATE |\n",
+        b"       EDID;\n",
+        b"tail\n",
+    )
+    rewritten = (
+        b"caps = ASYNC_TX |\n",
+        b"       TRANSPORT_STATE |\n",
+        b"caps = TRANSPORT_STATE |\n",
+        b"       EDID;\n",
+        b"tail\n",
+    )
+    baseline_snapshot = content_snapshot(path, (), space=BaselineSpace)
+    worktree_snapshot = content_snapshot(
+        path,
+        prior_worktree,
+        space=WorktreeSpace,
+    )
+    rewritten_snapshot = content_snapshot(
+        path,
+        rewritten,
+        space=RewrittenWorktreeSpace,
+    )
+    edit = ReplacementEditPlan(
+        path=path,
+        baseline_snapshot=baseline_snapshot,
+        worktree_snapshot=worktree_snapshot,
+        baseline_span=LineSpan(LineBoundary(0), LineBoundary(0)),
+        worktree_span=LineSpan(LineBoundary(0), LineBoundary(2)),
+    ).bind_result(rewritten_snapshot, replacement_line_count=3)
+    alternatives = ExplicitReplacementAlternatives(
+        edit=edit,
+        saved=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(0), LineBoundary(2)),
+        ),
+        live=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(2), LineBoundary(3)),
+        ),
+        parent=None,
+        ownership_scope=ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+    )
+
+    with LineBuffer.from_chunks((*saved_file, *old_live_file)) as source_lines:
+        refreshed = refresh_complete_source_replacement(
+            source_lines,
+            _complete_ownership(
+                path,
+                source_lines,
+                saved_line_count=len(saved_file),
+            ),
+            rewritten_lines=rewritten,
+            alternatives=alternatives,
+        )
+        assert refreshed is not None
+        with refreshed:
+            expected_live = (
+                b"caps = TRANSPORT_STATE |\n",
+                b"       EDID;\n",
+                b"tail\n",
+            )
+            assert tuple(refreshed.source_buffer) == (*saved_file, *expected_live)
+            assert (
+                tuple(refreshed.bound_ownership.value.deletions[0].content_lines)
+                == expected_live
+            )
+            assert (
+                resolve_complete_source_replacement(
+                    refreshed.source_buffer,
+                    refreshed.bound_ownership,
+                )
+                is not None
+            )
+
+
+def test_refresh_complete_source_replacement_refuses_ambiguous_saved_line() -> None:
+    """Repeated content without structural provenance cannot advance the target."""
+    path = "file.txt"
+    saved_file = (b"left\n", b"same\n", b"middle\n", b"same\n", b"right\n")
+    old_live_file = (b"old\n",)
+    prior_worktree = (b"before\n", b"same\n", b"after\n")
+    rewritten = (b"before\n", b"same\n", b"live\n", b"after\n")
+    baseline_snapshot = content_snapshot(path, (), space=BaselineSpace)
+    worktree_snapshot = content_snapshot(
+        path,
+        prior_worktree,
+        space=WorktreeSpace,
+    )
+    rewritten_snapshot = content_snapshot(
+        path,
+        rewritten,
+        space=RewrittenWorktreeSpace,
+    )
+    edit = ReplacementEditPlan(
+        path=path,
+        baseline_snapshot=baseline_snapshot,
+        worktree_snapshot=worktree_snapshot,
+        baseline_span=LineSpan(LineBoundary(0), LineBoundary(0)),
+        worktree_span=LineSpan(LineBoundary(1), LineBoundary(2)),
+    ).bind_result(rewritten_snapshot, replacement_line_count=2)
+    alternatives = ExplicitReplacementAlternatives(
+        edit=edit,
+        saved=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(1), LineBoundary(2)),
+        ),
+        live=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(2), LineBoundary(3)),
+        ),
+        parent=None,
+        ownership_scope=ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+    )
+
+    with LineBuffer.from_chunks((*saved_file, *old_live_file)) as source_lines:
+        assert (
+            refresh_complete_source_replacement(
+                source_lines,
+                _complete_ownership(
+                    path,
+                    source_lines,
+                    saved_line_count=len(saved_file),
+                ),
+                rewritten_lines=rewritten,
+                alternatives=alternatives,
             )
             is None
         )

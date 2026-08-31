@@ -4,6 +4,7 @@ import pytest
 
 from git_stage_batch.batch.replacement_alternatives import (
     ExplicitReplacementAlternatives,
+    ExplicitReplacementParent,
     ReplacementAlternativeOwnership,
 )
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
@@ -49,12 +50,23 @@ def _replacement_geometry():
         baseline_span=LineSpan(LineBoundary(0), LineBoundary(1)),
         worktree_span=LineSpan(LineBoundary(0), LineBoundary(1)),
     )
-    return plan.bind_result(rewritten, replacement_line_count=2), rewritten
+    edit = plan.bind_result(rewritten, replacement_line_count=2)
+    parent = ExplicitReplacementParent(
+        baseline=SnapshotSpan(
+            baseline,
+            LineSpan(LineBoundary(0), LineBoundary(1)),
+        ),
+        worktree=SnapshotSpan(
+            worktree,
+            LineSpan(LineBoundary(0), LineBoundary(1)),
+        ),
+    )
+    return edit, rewritten, parent
 
 
-def test_alternatives_bind_saved_and_live_spans() -> None:
+def test_alternatives_bind_saved_live_and_parent_spans() -> None:
     """Saved/live roles remain distinct even when live extends past the edit."""
-    edit, rewritten = _replacement_geometry()
+    edit, rewritten, parent = _replacement_geometry()
     alternatives = ExplicitReplacementAlternatives(
         edit=edit,
         saved=SnapshotSpan(
@@ -65,6 +77,7 @@ def test_alternatives_bind_saved_and_live_spans() -> None:
             rewritten,
             LineSpan(LineBoundary(1), LineBoundary(3)),
         ),
+        parent=parent,
         ownership_scope=ReplacementAlternativeOwnership.TRANSLATED_SELECTION,
     )
 
@@ -74,11 +87,13 @@ def test_alternatives_bind_saved_and_live_spans() -> None:
         LineBoundary(0),
         LineBoundary(3),
     )
+    assert parent.as_line_run().old_start == 1
+    assert parent.as_line_run().new_start == 1
 
 
 def test_alternatives_reject_nonadjacent_live_span() -> None:
     """A live predecessor must immediately follow its saved snapshot."""
-    edit, rewritten = _replacement_geometry()
+    edit, rewritten, parent = _replacement_geometry()
 
     with pytest.raises(ValueError, match="not adjacent"):
         ExplicitReplacementAlternatives(
@@ -91,6 +106,51 @@ def test_alternatives_reject_nonadjacent_live_span() -> None:
                 rewritten,
                 LineSpan(LineBoundary(2), LineBoundary(3)),
             ),
+            parent=parent,
+            ownership_scope=ReplacementAlternativeOwnership.TRANSLATED_SELECTION,
+        )
+
+
+def test_presence_only_alternative_rejects_tracked_parent() -> None:
+    """Presence-only additions cannot also claim a baseline replacement parent."""
+    edit, rewritten, parent = _replacement_geometry()
+
+    with pytest.raises(ValueError, match="tracked parent"):
+        ExplicitReplacementAlternatives(
+            edit=edit,
+            saved=SnapshotSpan(
+                rewritten,
+                LineSpan(LineBoundary(0), LineBoundary(1)),
+            ),
+            live=SnapshotSpan(
+                rewritten,
+                LineSpan(LineBoundary(1), LineBoundary(2)),
+            ),
+            parent=parent,
+            ownership_scope=ReplacementAlternativeOwnership.EXACT_SAVED_SPAN,
+        )
+
+
+def test_alternatives_reject_parent_from_different_edit_geometry() -> None:
+    """A parent cannot silently mix spans from another replacement edit."""
+    edit, rewritten, parent = _replacement_geometry()
+    mismatched_parent = ExplicitReplacementParent(
+        baseline=SnapshotSpan(
+            parent.baseline.snapshot,
+            LineSpan(LineBoundary(1), LineBoundary(2)),
+        ),
+        worktree=parent.worktree,
+    )
+
+    with pytest.raises(ValueError, match="extend the edit equally"):
+        ExplicitReplacementAlternatives(
+            edit=edit,
+            saved=SnapshotSpan(
+                rewritten,
+                LineSpan(LineBoundary(0), LineBoundary(1)),
+            ),
+            live=None,
+            parent=mismatched_parent,
             ownership_scope=ReplacementAlternativeOwnership.TRANSLATED_SELECTION,
         )
 

@@ -1269,6 +1269,69 @@ def test_advance_source_keeps_saved_and_live_alternatives_adjacent():
         assert advanced.lineage.translate_working_line(2) is None
 
 
+def test_advance_source_inserts_new_wording_inside_older_file_alternative():
+    """A later edit stays beside its matching line in the older file copy."""
+    path = "file.txt"
+    saved = (b"Errors\n", b"detached\n", b"device\n", b"End\n")
+    live = (
+        b"Errors\n",
+        b"detached\n",
+        b"device\n",
+        b"owned later\n",
+        b"End\n",
+    )
+    current = (b"Errors\n", b"detached\n", b"device\n", b"End\n")
+    rewritten = (
+        b"Errors\n",
+        b"detached\n",
+        b"not attached\n",
+        b"device\n",
+        b"End\n",
+    )
+    rewritten_snapshot = content_snapshot(
+        path,
+        rewritten,
+        space=RewrittenWorktreeSpace,
+    )
+    edit = ReplacementEditPlan(
+        path=path,
+        baseline_snapshot=content_snapshot(path, (), space=BaselineSpace),
+        worktree_snapshot=content_snapshot(path, current, space=WorktreeSpace),
+        baseline_span=LineSpan(LineBoundary(0), LineBoundary(0)),
+        worktree_span=LineSpan(LineBoundary(1), LineBoundary(2)),
+    ).bind_result(rewritten_snapshot, replacement_line_count=2)
+    advancing_alternatives = ExplicitReplacementAlternatives(
+        edit=edit,
+        saved=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(1), LineBoundary(2)),
+        ),
+        live=SnapshotSpan(
+            rewritten_snapshot,
+            LineSpan(LineBoundary(2), LineBoundary(3)),
+        ),
+        parent=None,
+        ownership_scope=ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-4,8"],
+        [AbsenceClaim(content_lines=live, source_alternative=True)],
+        replacement_units=[ReplacementUnit(["1-4"], [0])],
+    )
+
+    with _advance_source_from_content(
+        old_source_buffer=b"".join((*saved, *live)),
+        working_buffer=b"".join(rewritten),
+        ownership=ownership,
+        advancing_working_ranges=LineRanges.from_ranges(((2, 3),)),
+        advancing_alternatives=advancing_alternatives,
+    ) as advanced:
+        assert advanced.source_buffer.to_bytes() == b"".join(
+            (*saved, live[0], live[1], rewritten[2], *live[2:])
+        )
+        assert advanced.lineage.translate_working_line(3) == 7
+
+
 def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
     """Repeated live baseline variants must not replace saved ownership."""
     ownership = BatchOwnership.from_presence_lines(
@@ -1410,6 +1473,7 @@ def test_advance_source_keeps_owned_block_after_explicit_live_wording() -> None:
             rewritten_snapshot,
             LineSpan(LineBoundary(3), LineBoundary(4)),
         ),
+        parent=None,
         ownership_scope=ReplacementAlternativeOwnership.EXACT_SAVED_SPAN,
     )
 

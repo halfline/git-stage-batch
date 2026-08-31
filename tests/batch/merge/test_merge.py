@@ -4589,6 +4589,51 @@ class TestMergeLineSequences:
         ) as result:
             assert result.to_bytes() == b"line1\r\nold\r\nline3\r\n"
 
+    @pytest.mark.parametrize(
+        "trusted_target",
+        (
+            [b"keep\n", b"}\n"],
+            [b"keep\n", b"}\n", b"\n"],
+        ),
+    )
+    def test_discard_fresh_presence_alternative_restores_exact_predecessor(
+        self,
+        trusted_target,
+    ):
+        """Reverse a composed duplicate suffix and only its introduced separator."""
+        source = [
+            b"keep\n",
+            b"}\n",
+            b"\n",
+            b"feature\n",
+            b"body\n",
+            b"shared\n",
+            b"}\n",
+            b"sibling\n",
+            b"shared\n",
+            b"}\n",
+        ]
+        presence = LineRanges.from_specs(["4-5,9-10"])
+        ownership = BatchOwnership.from_presence_lines(["4-5,9-10"])
+        baseline = source[:3]
+        working = [
+            *trusted_target,
+            b"feature\n",
+            b"body\n",
+            b"shared\n",
+            b"}\n",
+        ]
+
+        with discard_batch_from_line_sequences_as_buffer(
+            source,
+            ownership,
+            working,
+            baseline,
+            trusted_target_lines=trusted_target,
+            applied_presence_lines=presence,
+        ) as result:
+            assert result.to_bytes() == b"".join(trusted_target)
+
     def test_merge_chunks_acquire_normalized_line_buffer_lines(self):
         """Merge realization uses scoped normalized line acquisition."""
         with (

@@ -559,14 +559,7 @@ def _analyze_presence_runs(
                     after = mapped_after
                     assert before is not None
                     gap_index = before[1]
-                elif (
-                    run_has_recorded_context
-                    and exact_target_gap_collapsed
-                    and (
-                        (exact_before is not None and exact_before[0] == run_start - 1)
-                        or (exact_after is not None and exact_after[0] == run_end + 1)
-                    )
-                ):
+                elif run_has_recorded_context and exact_target_gap_collapsed:
                     before = exact_before
                     after = exact_after
                     gap_index = _choose_insertion_gap(

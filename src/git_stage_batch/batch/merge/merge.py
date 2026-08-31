@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 from typing import TYPE_CHECKING
 
 from . import baseline_anchor_matching as _baseline_anchor_matching
@@ -18,11 +20,17 @@ from .presence_placement_choices import (
     presence_resolution_decision as _presence_resolution_decision,
 )
 from .presence_mapping import (
+    PresenceMappingAmbiguity,
+    PresenceMappingCorrection,
     match_uncontrolled_context_lines as _match_uncontrolled_context_lines,
     match_lines_preserving_unowned_context as _match_presence_lines,
     presence_lines_requiring_context_protection as _protected_presence_lines,
 )
 from .presence_context import PresencePlacementAmbiguityError
+from .presence_context_alternatives import (
+    build_presence_context_alternative_mapping as _build_presence_context_alternative_mapping,
+    resolve_presence_context_alternative as _resolve_presence_context_alternative,
+)
 from .source_alternative_constraints import (
     resolve_effective_merge_constraints as _resolve_effective_constraints,
 )
@@ -178,6 +186,185 @@ def _close_owned_mappings(
 ) -> None:
     """Close every owned mapping while preserving the first close failure."""
     close_resources_preserving_first(mappings, suppress_errors=suppress_errors)
+
+
+@dataclass(slots=True)
+class _ReplayMappingEvidence:
+    """The line maps used for replay and the resources they hold."""
+
+    ordinary: LineMapping | None
+    structural: LineMapping | None
+    coordinate: LineMapping | None
+    trusted_source: LineMapping | None
+    trusted_working: LineMapping | None
+    correction: PresenceMappingCorrection
+    ambiguity: PresenceMappingAmbiguity
+    _owned: tuple[LineMapping, ...]
+
+    @property
+    def corrected(self) -> bool:
+        return self.correction is PresenceMappingCorrection.CORRECTED
+
+    @property
+    def ambiguous(self) -> bool:
+        return self.ambiguity is not PresenceMappingAmbiguity.NONE
+
+    @property
+    def competing_context(self) -> bool:
+        return self.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
+
+    def close(self, *, suppress_errors: bool = False) -> None:
+        """Close every mapping created for this replay."""
+        close_resources_preserving_first(
+            reversed(self._owned),
+            suppress_errors=suppress_errors,
+        )
+
+    def __enter__(self) -> _ReplayMappingEvidence:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close(suppress_errors=exc_type is not None)
+
+
+def _acquire_replay_mapping_evidence(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    controlled_source_lines: "LineRanges",
+    *,
+    ownership: "BatchOwnership",
+    presence_lines: "LineRanges",
+    deletion_claims: Sequence["AbsenceClaim"],
+    source_alternative_lines: "LineRanges",
+    needs_origin_resolution_preflight: bool,
+    has_presence_resolution: bool,
+    source_to_working_mapping: LineMapping | None,
+    trusted_target_lines: Sequence[bytes] | None,
+    source_to_trusted_target_mapping: LineMapping | None,
+    trusted_target_to_working_mapping: LineMapping | None,
+    spool_dir: str | Path | None,
+) -> _ReplayMappingEvidence:
+    """Build the line maps needed for replay."""
+    owned: list[LineMapping] = []
+
+    def acquire(mapping: LineMapping) -> LineMapping:
+        owned.append(mapping)
+        return mapping
+
+    ordinary = source_to_working_mapping
+    structural = ordinary
+    correction = PresenceMappingCorrection.ORDINARY
+    ambiguity = PresenceMappingAmbiguity.NONE
+    trusted_source = source_to_trusted_target_mapping
+    trusted_working = trusted_target_to_working_mapping
+    has_exact_presence_context = False
+    try:
+        if (
+            ordinary is None
+            and trusted_target_lines is None
+            and presence_lines
+            and not deletion_claims
+            and not ownership.replacement_units
+            and not has_presence_resolution
+        ):
+            presence_context = _resolve_presence_context_alternative(
+                presence_lines,
+                source_lines,
+                working_lines,
+                spool_dir=spool_dir,
+            )
+            if presence_context is not None:
+                ordinary = acquire(
+                    _build_presence_context_alternative_mapping(
+                        presence_context,
+                        source_line_count=len(source_lines),
+                        target_line_count=len(working_lines),
+                        spool_dir=spool_dir,
+                    )
+                )
+                structural = ordinary
+                correction = PresenceMappingCorrection.CORRECTED
+                has_exact_presence_context = True
+
+        if not has_exact_presence_context and (
+            presence_lines or needs_origin_resolution_preflight
+        ):
+            if ordinary is None:
+                ordinary = acquire(
+                    match_lines(
+                        source_lines,
+                        working_lines,
+                        spool_dir=spool_dir,
+                    )
+                )
+            mapping_result = _match_presence_lines(
+                source_lines,
+                working_lines,
+                controlled_source_lines,
+                ownership=ownership,
+                presence_lines=presence_lines,
+                preferred_context_lines=source_alternative_lines,
+                ordinary_mapping=ordinary,
+                spool_dir=spool_dir,
+                matcher=match_lines,
+            )
+            structural = mapping_result.mapping
+            correction = mapping_result.correction
+            ambiguity = mapping_result.ambiguity
+            if mapping_result.owned:
+                acquire(structural)
+            if mapping_result.ambiguous and has_presence_resolution:
+                if mapping_result.owned:
+                    structural.close()
+                structural = acquire(
+                    _match_uncontrolled_context_lines(
+                        source_lines,
+                        working_lines,
+                        controlled_source_lines,
+                        spool_dir=spool_dir,
+                        matcher=match_lines,
+                    )
+                )
+
+        coordinate = ordinary if trusted_target_lines is not None else structural
+        if trusted_target_lines is not None and ownership.replacement_units:
+            if trusted_source is None:
+                trusted_source = acquire(
+                    match_lines(
+                        source_lines,
+                        trusted_target_lines,
+                        spool_dir=spool_dir,
+                    )
+                )
+        if trusted_target_lines is not None and (
+            ownership.replacement_units or deletion_claims
+        ):
+            if trusted_working is None:
+                trusted_working = acquire(
+                    match_lines(
+                        trusted_target_lines,
+                        working_lines,
+                        spool_dir=spool_dir,
+                    )
+                )
+        return _ReplayMappingEvidence(
+            ordinary=ordinary,
+            structural=structural,
+            coordinate=coordinate,
+            trusted_source=trusted_source,
+            trusted_working=trusted_working,
+            correction=correction,
+            ambiguity=ambiguity,
+            _owned=tuple(owned),
+        )
+    except BaseException:
+        close_resources_preserving_first(reversed(owned), suppress_errors=True)
+        raise
 
 
 def _replacement_origin_resolution_unit_indices(
@@ -702,100 +889,29 @@ def _merge_batch_acquired_line_chunks(
         strategy_choice == _CoordinateStrategyChoice.RECORDED_COORDINATES
         and has_origin_replacement_units
     )
-    needs_shared_mapping = bool(presence_line_set) or (
-        needs_origin_resolution_preflight
+    replay_mappings = _acquire_replay_mapping_evidence(
+        source_lines,
+        working_lines,
+        controlled_source_lines,
+        ownership=ownership,
+        presence_lines=presence_line_set,
+        deletion_claims=deletion_claims,
+        source_alternative_lines=source_alternative_lines,
+        needs_origin_resolution_preflight=needs_origin_resolution_preflight,
+        has_presence_resolution=has_presence_resolution,
+        source_to_working_mapping=source_to_working_mapping,
+        trusted_target_lines=trusted_target_lines,
+        source_to_trusted_target_mapping=source_to_trusted_target_mapping,
+        trusted_target_to_working_mapping=trusted_target_to_working_mapping,
+        spool_dir=spool_dir,
     )
-    owned_ordinary_shared_mapping = None
-    ordinary_shared_mapping = source_to_working_mapping
-    owned_shared_mapping = None
-    shared_mapping = ordinary_shared_mapping
-    shared_mapping_was_corrected = False
-    shared_mapping_is_ambiguous = False
-    shared_mapping_has_competing_context = False
-    owned_source_to_trusted_target_mapping = None
-    trusted_source_mapping = source_to_trusted_target_mapping
-    owned_trusted_target_to_working_mapping = None
-    trusted_working_mapping = trusted_target_to_working_mapping
-    try:
-        if needs_shared_mapping:
-            if ordinary_shared_mapping is None:
-                owned_ordinary_shared_mapping = match_lines(
-                    source_lines,
-                    working_lines,
-                    spool_dir=spool_dir,
-                )
-                ordinary_shared_mapping = owned_ordinary_shared_mapping
-            mapping_result = _match_presence_lines(
-                source_lines,
-                working_lines,
-                controlled_source_lines,
-                ownership=ownership,
-                presence_lines=presence_line_set,
-                preferred_context_lines=source_alternative_lines,
-                ordinary_mapping=ordinary_shared_mapping,
-                spool_dir=spool_dir,
-                matcher=match_lines,
-            )
-            shared_mapping = mapping_result.mapping
-            shared_mapping_was_corrected = mapping_result.corrected
-            shared_mapping_is_ambiguous = mapping_result.ambiguous
-            shared_mapping_has_competing_context = mapping_result.competing_context
-            if mapping_result.owned:
-                owned_shared_mapping = shared_mapping
-            if shared_mapping_is_ambiguous and has_presence_resolution:
-                if owned_shared_mapping is not None:
-                    owned_shared_mapping.close()
-                owned_shared_mapping = _match_uncontrolled_context_lines(
-                    source_lines,
-                    working_lines,
-                    controlled_source_lines,
-                    spool_dir=spool_dir,
-                    matcher=match_lines,
-                )
-                shared_mapping = owned_shared_mapping
+    prefer_source_presence = replay_mappings.corrected or any(
+        claim.source_alternative for claim in deletion_claims
+    )
 
-        coordinate_mapping = (
-            ordinary_shared_mapping
-            if trusted_target_lines is not None
-            else shared_mapping
-        )
-        prefer_source_presence = shared_mapping_was_corrected or any(
-            claim.source_alternative for claim in deletion_claims
-        )
-
-        if trusted_target_lines is not None and ownership.replacement_units:
-            if trusted_source_mapping is None:
-                owned_source_to_trusted_target_mapping = match_lines(
-                    source_lines,
-                    trusted_target_lines,
-                    spool_dir=spool_dir,
-                )
-                trusted_source_mapping = owned_source_to_trusted_target_mapping
-        if trusted_target_lines is not None and (
-            ownership.replacement_units or deletion_claims
-        ):
-            if trusted_working_mapping is None:
-                owned_trusted_target_to_working_mapping = match_lines(
-                    trusted_target_lines,
-                    working_lines,
-                    spool_dir=spool_dir,
-                )
-                trusted_working_mapping = owned_trusted_target_to_working_mapping
-    except BaseException:
-        try:
-            _close_owned_mappings(
-                owned_trusted_target_to_working_mapping,
-                owned_source_to_trusted_target_mapping,
-                owned_shared_mapping,
-                owned_ordinary_shared_mapping,
-            )
-        except BaseException:
-            pass
-        raise
-
-    try:
+    with replay_mappings:
         if (
-            shared_mapping_is_ambiguous
+            replay_mappings.ambiguous
             and not has_recorded_coordinates
             and not has_presence_resolution
         ):
@@ -810,12 +926,12 @@ def _merge_batch_acquired_line_chunks(
                 _("Batch was created from a different version of the file")
             )
         if needs_origin_resolution_preflight:
-            assert shared_mapping is not None
+            assert replay_mappings.structural is not None
             if _has_mixed_origin_replacement_claims(
                 ownership,
                 presence_line_set,
                 source_lines,
-                shared_mapping,
+                replay_mappings.structural,
                 spool_dir=spool_dir,
             ):
                 raise _MergeError(_("Selected merge resolution is no longer valid"))
@@ -828,7 +944,7 @@ def _merge_batch_acquired_line_chunks(
                 ownership,
                 presence_line_set,
                 source_lines,
-                shared_mapping,
+                replay_mappings.structural,
                 unit_indices=mapped_unit_indices,
                 spool_dir=spool_dir,
             ):
@@ -847,10 +963,10 @@ def _merge_batch_acquired_line_chunks(
                     resolution=effective_resolution,
                     max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
                     trust_baseline_coordinates=True,
-                    source_to_working_mapping=shared_mapping,
+                    source_to_working_mapping=replay_mappings.structural,
                     trusted_target_lines=trusted_target_lines,
-                    source_to_trusted_target_mapping=trusted_source_mapping,
-                    trusted_target_to_working_mapping=trusted_working_mapping,
+                    source_to_trusted_target_mapping=replay_mappings.trusted_source,
+                    trusted_target_to_working_mapping=replay_mappings.trusted_working,
                     spool_dir=spool_dir,
                 )
             )
@@ -863,12 +979,12 @@ def _merge_batch_acquired_line_chunks(
         skip_coordinate_replay = (
             strategy_choice is None
             and has_origin_replacement_units
-            and coordinate_mapping is not None
+            and replay_mappings.coordinate is not None
             and _has_mapped_origin_replacement_claims(
                 ownership,
                 presence_line_set,
                 source_lines,
-                coordinate_mapping,
+                replay_mappings.coordinate,
                 unit_indices=(
                     replacement_resolution_unit_indices
                     if has_replacement_resolution
@@ -892,11 +1008,11 @@ def _merge_batch_acquired_line_chunks(
                     deletion_claims,
                     resolution=effective_resolution,
                     max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
-                    source_to_working_mapping=coordinate_mapping,
+                    source_to_working_mapping=replay_mappings.coordinate,
                     prefer_source_mapping_for_presence=prefer_source_presence,
                     trusted_target_lines=trusted_target_lines,
-                    source_to_trusted_target_mapping=trusted_source_mapping,
-                    trusted_target_to_working_mapping=trusted_working_mapping,
+                    source_to_trusted_target_mapping=replay_mappings.trusted_source,
+                    trusted_target_to_working_mapping=replay_mappings.trusted_working,
                     spool_dir=spool_dir,
                 )
             )
@@ -913,22 +1029,22 @@ def _merge_batch_acquired_line_chunks(
                 deletion_claims,
                 resolution=effective_resolution,
                 max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
-                source_to_working_mapping=coordinate_mapping,
+                source_to_working_mapping=replay_mappings.coordinate,
                 prefer_source_mapping_for_presence=prefer_source_presence,
                 trusted_target_lines=trusted_target_lines,
-                source_to_trusted_target_mapping=trusted_source_mapping,
-                trusted_target_to_working_mapping=trusted_working_mapping,
+                source_to_trusted_target_mapping=replay_mappings.trusted_source,
+                trusted_target_to_working_mapping=replay_mappings.trusted_working,
                 spool_dir=spool_dir,
             )
             if fallback_chunks is not None:
-                if not shared_mapping_has_competing_context:
+                if not replay_mappings.competing_context:
                     with _close_candidates_on_exit(fallback_chunks):
                         yield from fallback_chunks
                     return
                 _close_candidate(fallback_chunks)
 
         if (
-            shared_mapping_is_ambiguous
+            replay_mappings.ambiguous
             and not has_presence_resolution
             and not has_recorded_coordinates
         ):
@@ -963,14 +1079,14 @@ def _merge_batch_acquired_line_chunks(
                 resolution=effective_resolution,
                 max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
                 trust_baseline_coordinates=True,
-                source_to_working_mapping=coordinate_mapping,
+                source_to_working_mapping=replay_mappings.coordinate,
                 trusted_target_lines=trusted_target_lines,
-                source_to_trusted_target_mapping=trusted_source_mapping,
-                trusted_target_to_working_mapping=trusted_working_mapping,
+                source_to_trusted_target_mapping=replay_mappings.trusted_source,
+                trusted_target_to_working_mapping=replay_mappings.trusted_working,
                 spool_dir=spool_dir,
             )
         if (
-            shared_mapping_is_ambiguous
+            replay_mappings.ambiguous
             and coordinate_candidate is None
             and not has_presence_resolution
             and strategy_choice != _CoordinateStrategyChoice.STRUCTURAL
@@ -991,7 +1107,7 @@ def _merge_batch_acquired_line_chunks(
                     deletion_claims,
                     controlled_source_lines=controlled_source_lines,
                     source_alternative_lines=source_alternative_lines,
-                    source_to_working_mapping=shared_mapping,
+                    source_to_working_mapping=replay_mappings.structural,
                     resolution=effective_resolution,
                     spool_dir=spool_dir,
                 )
@@ -1009,24 +1125,6 @@ def _merge_batch_acquired_line_chunks(
                         coordinate_candidate,
                         structural_chunks,
                     )
-    except BaseException:
-        try:
-            _close_owned_mappings(
-                owned_trusted_target_to_working_mapping,
-                owned_source_to_trusted_target_mapping,
-                owned_shared_mapping,
-                owned_ordinary_shared_mapping,
-            )
-        except BaseException:
-            pass
-        raise
-    else:
-        _close_owned_mappings(
-            owned_trusted_target_to_working_mapping,
-            owned_source_to_trusted_target_mapping,
-            owned_shared_mapping,
-            owned_ordinary_shared_mapping,
-        )
 
 
 def enumerate_merge_batch_candidates_from_line_sequences(

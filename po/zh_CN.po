@@ -7468,3 +7468,7 @@ msgstr "Cannot use --lines with submodule pointers."
 #: src/git_stage_batch/commands/file_scope/file_display_action.py
 msgid "Cannot use --lines with binary files."
 msgstr "Cannot use --lines with binary files."
+
+#: src/git_stage_batch/commands/status.py
+msgid "Cache refresh cannot be combined with status output."
+msgstr "Cache refresh cannot be combined with status output."

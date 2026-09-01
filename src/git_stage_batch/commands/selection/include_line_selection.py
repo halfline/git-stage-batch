@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Collection, Iterator, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -293,7 +293,7 @@ def build_transient_index_buffer(
 def try_build_index_content_via_transient_batch(
     *,
     line_changes: LineLevelChange,
-    selected_display_ids: set[int],
+    selected_display_ids: Collection[int],
     current_index_lines: Sequence[bytes],
     hunk_base_lines: Sequence[bytes],
     hunk_source_lines: Sequence[bytes],

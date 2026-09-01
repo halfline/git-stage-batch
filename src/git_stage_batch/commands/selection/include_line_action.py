@@ -130,10 +130,16 @@ def include_live_line_selection(
                 if partial_structural_run_error is not None:
                     exit_with_error(partial_structural_run_error)
 
+            staging_include_ids = (
+                replacement_selection.expand_addition_selection_to_keep_repeated_context(
+                    line_changes,
+                    combined_include_ids,
+                )
+            )
             transient_result = (
                 _include_line_selection.try_build_index_content_via_transient_batch(
                     line_changes=line_changes,
-                    selected_display_ids=set(combined_include_ids),
+                    selected_display_ids=staging_include_ids,
                     current_index_lines=current_index_lines,
                     hunk_base_lines=hunk_base_lines,
                     hunk_source_lines=hunk_source_lines,
@@ -153,7 +159,7 @@ def include_live_line_selection(
                     load_working_tree_file_as_buffer(line_changes.path) as working_lines,
                     build_target_index_buffer_from_lines(
                         line_changes,
-                        set(combined_include_ids),
+                        staging_include_ids,
                         hunk_base_lines,
                         base_has_trailing_newline=(
                             _include_line_selection.line_sequence_ends_with_lf(
@@ -171,7 +177,7 @@ def include_live_line_selection(
                         _include_line_selection.TransientIncludeResult.success(
                             build_target_index_buffer_from_lines(
                                 line_changes,
-                                set(combined_include_ids),
+                                staging_include_ids,
                                 hunk_base_lines,
                                 base_has_trailing_newline=(
                                     _include_line_selection.line_sequence_ends_with_lf(

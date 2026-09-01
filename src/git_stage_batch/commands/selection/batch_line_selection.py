@@ -111,7 +111,6 @@ def include_single_line_replacement_peer(
         ):
             end += 1
         return content[start:end]
-
     selected_ids = set(selection.requested_ids)
     line_index = 0
     changed = False

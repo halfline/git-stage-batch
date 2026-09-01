@@ -92,6 +92,7 @@ def apply_include_line_replacement(
     effective_ids = replacement_selection.expand_replacement_selection_ids(
         line_changes,
         requested_ids,
+        preserve_explicit_deletion_span=True,
     )
 
     selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
@@ -109,6 +110,7 @@ def apply_include_line_replacement(
             effective_ids,
             hunk_base_lines,
             hunk_source_lines,
+            allow_incomplete_deletion_span=True,
         )
         target_index_buffer = build_target_index_buffer_with_edit_plan(
             edit_plan,
@@ -261,6 +263,7 @@ def translate_file_view_replacement_to_unstaged_diff(
     effective_ids = replacement_selection.expand_replacement_selection_ids(
         line_changes,
         requested_ids,
+        preserve_explicit_deletion_span=True,
     )
     selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
     if not selected_lines:

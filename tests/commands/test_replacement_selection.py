@@ -9,6 +9,7 @@ from git_stage_batch.batch.ownership.replacement_line_runs import (
     ReplacementLineRun,
 )
 from git_stage_batch.commands.selection.replacement_selection import (
+    expand_addition_selection_to_keep_repeated_context,
     expand_replacement_selection_ids,
     expand_replacement_selection_ids_with_explicit_span_status,
     require_contiguous_display_selection,
@@ -41,6 +42,112 @@ def test_contiguous_display_selection_rejects_gapped_ids():
     assert "Replacement selection must be one contiguous line range." in (
         exc_info.value.message
     )
+
+
+def test_addition_selection_keeps_repeated_context_before_it():
+    """Selected new text keeps the copied lines that place it after a block."""
+    line_changes = LineLevelChange(
+        path="driver.c",
+        header=HunkHeader(1, 4, 1, 9),
+        lines=[
+            LineEntry(1, "-", 1, None, text_bytes=b"old"),
+            LineEntry(2, "+", None, 1, text_bytes=b"new"),
+            LineEntry(3, "+", None, 2, text_bytes=b"}"),
+            LineEntry(4, "+", None, 3, text_bytes=b""),
+            LineEntry(5, "+", None, 4, text_bytes=b"new_block"),
+            LineEntry(6, "+", None, 5, text_bytes=b"{"),
+            LineEntry(None, " ", 2, 6, text_bytes=b"}"),
+            LineEntry(None, " ", 3, 7, text_bytes=b""),
+            LineEntry(None, " ", 4, 8, text_bytes=b"tail"),
+        ],
+    )
+    assert set(
+        expand_addition_selection_to_keep_repeated_context(
+            line_changes,
+            {5, 6},
+        )
+    ) == {3, 4, 5, 6}
+
+
+def test_inner_addition_selection_does_not_copy_later_context():
+    """An unselected new line after the selection keeps the old anchor reusable."""
+    line_changes = LineLevelChange(
+        path="notes.txt",
+        header=HunkHeader(1, 2, 1, 6),
+        lines=[
+            LineEntry(1, "+", None, 1, text_bytes=b""),
+            LineEntry(2, "+", None, 2, text_bytes=b"selected"),
+            LineEntry(3, "+", None, 3, text_bytes=b"later"),
+            LineEntry(None, " ", 1, 4, text_bytes=b""),
+            LineEntry(None, " ", 2, 5, text_bytes=b"tail"),
+        ],
+    )
+    selected_ids = {2}
+    assert (
+        expand_addition_selection_to_keep_repeated_context(
+            line_changes,
+            selected_ids,
+        )
+        is selected_ids
+    )
+
+
+def test_repeated_context_expansion_avoids_line_scale_python_heap():
+    """Large copied spans stay range-backed while their match uses mapped storage."""
+    heap_peaks = []
+    for line_count in (1024, 8192):
+        lines = [
+            LineEntry(
+                line_id,
+                "+",
+                None,
+                line_id,
+                text_bytes=b"}",
+            )
+            for line_id in range(1, line_count + 1)
+        ]
+        selected_id = line_count + 1
+        lines.append(
+            LineEntry(
+                selected_id,
+                "+",
+                None,
+                selected_id,
+                text_bytes=b"selected",
+            )
+        )
+        lines.extend(
+            LineEntry(
+                None,
+                " ",
+                context_offset,
+                selected_id + context_offset,
+                text_bytes=b"}",
+            )
+            for context_offset in range(1, line_count + 1)
+        )
+        line_changes = LineLevelChange(
+            path="driver.c",
+            header=HunkHeader(1, line_count, 1, len(lines)),
+            lines=lines,
+        )
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            expanded = expand_addition_selection_to_keep_repeated_context(
+                line_changes,
+                {selected_id},
+            )
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        assert len(expanded) == line_count + 1
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 32 * 1024
 
 
 @pytest.mark.parametrize(
@@ -82,6 +189,26 @@ def test_replacement_selection_leaves_surplus_additions_outside_core():
 
     assert expand_replacement_selection_ids(line_changes, {2}) == {1, 2}
     assert expand_replacement_selection_ids(line_changes, {3}) == {3}
+
+
+def test_replacement_text_can_keep_an_explicit_old_side_span():
+    """An explicit old-side edit need not absorb neighboring removals."""
+    line_changes = LineLevelChange(
+        path="test.txt",
+        header=HunkHeader(1, 3, 1, 1),
+        lines=[
+            LineEntry(1, "-", 1, None, text_bytes=b"replace"),
+            LineEntry(2, "-", 2, None, text_bytes=b"keep-a"),
+            LineEntry(3, "-", 3, None, text_bytes=b"keep-b"),
+            LineEntry(4, "+", None, 1, text_bytes=b"working"),
+        ],
+    )
+
+    assert expand_replacement_selection_ids(
+        line_changes,
+        {1},
+        preserve_explicit_deletion_span=True,
+    ) == {1}
 
 
 def test_replacement_selection_keeps_explicit_partial_addition_prefix():

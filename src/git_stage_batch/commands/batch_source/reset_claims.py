@@ -25,7 +25,7 @@ from ...batch.state.metadata_types import (
     BatchMetadataDict,
 )
 from ...batch.selection import require_display_ids_available
-from ...batch.state.references import sync_batch_state_refs
+from ...batch.state.content_commits import restore_batch_commit_to_baseline
 from ...batch.text_file_storage import (
     add_source_bound_file_to_batch,
 )
@@ -271,7 +271,7 @@ def reset_all_claims_from_batch(batch_name: str) -> None:
     metadata = read_batch_metadata(batch_name)
     metadata["files"] = {}
     metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
-    sync_batch_state_refs(batch_name, metadata_model)
+    restore_batch_commit_to_baseline(batch_name, metadata=metadata_model)
 
 
 def _ensure_destination_batch(

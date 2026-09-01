@@ -11,11 +11,11 @@ from .state.compatibility_metadata import write_file_backed_batch_metadata
 
 
 def remove_file_from_batch(batch_name: str, file_path: str) -> None:
-    """Remove a file from batch metadata and batch commit tree."""
+    """Remove a file's claims and restore its baseline batch-tree entry."""
     metadata = read_batch_metadata(batch_name)
     metadata.get("files", {}).pop(file_path, None)
     metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
-    _content_commits.remove_file_from_batch_commit(
+    _content_commits.restore_file_from_batch_baseline(
         batch_name,
         file_path,
         metadata=metadata_model,

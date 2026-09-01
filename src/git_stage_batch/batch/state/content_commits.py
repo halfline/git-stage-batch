@@ -11,7 +11,11 @@ from ...utils.git_index import (
     git_write_tree,
     temp_git_index,
 )
-from ...utils.git_object_io import get_git_object_type
+from ...utils.git_object_io import (
+    get_empty_git_tree_object_id,
+    get_git_object_type,
+    list_git_tree_entries,
+)
 from .metadata_schema import BatchMetadata
 from .query import get_batch_baseline_commit, get_batch_commit_sha
 from .references import read_file_backed_batch_metadata, sync_batch_state_refs
@@ -64,6 +68,54 @@ def remove_file_from_batch_commit(
         content_commit=commit_sha,
         source_buffers=source_buffers,
     )
+
+
+def restore_file_from_batch_baseline(
+    batch_name: str,
+    file_path: str,
+    *,
+    metadata: BatchMetadata,
+) -> None:
+    """Restore one batch-tree path to its baseline entry."""
+    baseline = get_batch_baseline_commit(batch_name)
+    baseline_entries = (
+        list_git_tree_entries(baseline, [file_path]) if baseline else {}
+    )
+    baseline_entry = baseline_entries.get(file_path)
+    if baseline_entry is None:
+        remove_file_from_batch_commit(
+            batch_name,
+            file_path,
+            metadata=metadata,
+        )
+        return
+
+    update_batch_commit(
+        batch_name,
+        file_path,
+        baseline_entry.object_id,
+        baseline_entry.mode,
+        metadata=metadata,
+    )
+
+
+def restore_batch_commit_to_baseline(
+    batch_name: str,
+    *,
+    metadata: BatchMetadata,
+) -> None:
+    """Replace the batch content tree with its baseline tree."""
+    baseline = get_batch_baseline_commit(batch_name)
+    with temp_git_index() as env:
+        git_read_tree(baseline or get_empty_git_tree_object_id(), env=env)
+        tree_sha = git_write_tree(env=env)
+
+    commit_sha = git_commit_tree(
+        tree_sha,
+        parents=batch_content_commit_parents(batch_name),
+        message=f"Batch: {batch_name}",
+    )
+    sync_batch_state_refs(batch_name, metadata, content_commit=commit_sha)
 
 
 def update_batch_commit(

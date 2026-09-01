@@ -1,4 +1,4 @@
-"""Replacement edits for baseline-coordinate merge planning."""
+"""Plan replacements from their locations in the original file."""
 
 from __future__ import annotations
 
@@ -21,6 +21,9 @@ from .baseline_anchor_matching import (
     unique_live_removal_edit as _unique_live_removal_edit,
 )
 from .baseline_edit_plan import BaselineEditPlan
+from .baseline_reference_positions import (
+    baseline_reference_insertion_position as _baseline_reference_insertion_position,
+)
 from .baseline_replacement_choices import (
     replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
 )
@@ -52,6 +55,7 @@ if TYPE_CHECKING:
         ReplacementUnit,
         ReplacementUnitOrigin,
     )
+    from .presence_reference_index import EffectivePresenceReferenceIndex
 
 
 def _record_mapped_replacement_lines(
@@ -936,6 +940,48 @@ def _replacement_baseline_edit(
     return reviewed_edit, True
 
 
+def _plan_relocated_replacement_from_presence_reference(
+    plan: BaselineEditPlan,
+    claim: AbsenceClaim,
+    unit: ReplacementUnit,
+    claimed_ranges: Sequence[tuple[int, ...]],
+    working_lines: Sequence[bytes],
+    presence_references: EffectivePresenceReferenceIndex | None,
+) -> _BaselineRemovalEdit | None:
+    """Move a replacement when every saved line records one newer boundary."""
+    if unit.origin is None or presence_references is None:
+        return None
+    reference = presence_references.common_reference_for_ranges(claimed_ranges)
+    insertion_position = _baseline_reference_insertion_position(
+        reference,
+        working_lines,
+    )
+    removal_edit = _replacement_edit_with_origin_guard(
+        claim,
+        unit.origin,
+        working_lines,
+    )
+    if insertion_position is None or removal_edit is None:
+        return None
+
+    removal_start, removal_end = removal_edit
+    if (
+        insertion_position == removal_start
+        or removal_start < insertion_position < removal_end
+    ):
+        return None
+    plan.add_removal(removal_start, removal_end)
+    plan.add_source_ranges(
+        insertion_position,
+        insertion_position,
+        (
+            (source_start, source_end)
+            for source_start, source_end in claimed_ranges
+        ),
+    )
+    return removal_edit
+
+
 def _mapped_source_alternative_edit(
     claim: AbsenceClaim,
     claimed_ranges: Sequence[tuple[int, ...]],
@@ -1562,6 +1608,7 @@ def plan_replacement_unit_edits(
     trust_baseline_coordinates: bool = False,
     allow_mixed_mapped_replacement_islands: bool = False,
     mapped_source_lines: Sequence[tuple[int, ...]] | None = None,
+    presence_references: EffectivePresenceReferenceIndex | None = None,
 ) -> bool:
     """Plan coupled replacement units and record their claimed source ranges."""
     if isinstance(source_lines, int):
@@ -1796,6 +1843,32 @@ def plan_replacement_unit_edits(
                     1,
                     target_position,
                     target_end,
+                    1,
+                )
+                continue
+
+            relocated_bounds = (
+                _plan_relocated_replacement_from_presence_reference(
+                    plan,
+                    claim,
+                    unit,
+                    claimed_ranges,
+                    working_lines,
+                    presence_references,
+                )
+                if trust_baseline_coordinates
+                else None
+            )
+            if relocated_bounds is not None:
+                removal_start, removal_end = relocated_bounds
+                for source_start, source_end in claimed_ranges:
+                    replacement_source_ranges.append(
+                        (source_start, source_end)
+                    )
+                deletion_edit_bounds[deletion_index] = (
+                    1,
+                    removal_start,
+                    removal_end,
                     1,
                 )
                 continue

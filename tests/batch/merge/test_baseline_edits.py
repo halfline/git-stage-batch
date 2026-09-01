@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import gc
+import tracemalloc
 
 import pytest
 
@@ -12,6 +14,7 @@ from git_stage_batch.batch.merge import (
     baseline_presence_edits,
     baseline_removal_edits,
     baseline_replacement_edits,
+    deletions_across_source_insertions,
 )
 from git_stage_batch.batch.merge.baseline_replacement_choices import (
     replacement_origin_choices_for_unit,
@@ -236,15 +239,18 @@ def test_baseline_edit_planning_places_presence_after_replacement_anchor() -> No
         working_lines,
         anchor_pairs=((3, 3),),
     ) as mapping:
-        assert baseline_edits.try_apply_baseline_coordinate_edits(
-            source_lines,
-            working_lines,
-            ownership,
-            LineRanges.from_ranges(((4, 4), (13, 13))),
-            deletion_claims,
-            trust_baseline_coordinates=True,
-            source_to_working_mapping=mapping,
-        ) is None
+        assert (
+            baseline_edits.try_apply_baseline_coordinate_edits(
+                source_lines,
+                working_lines,
+                ownership,
+                LineRanges.from_ranges(((4, 4), (13, 13))),
+                deletion_claims,
+                trust_baseline_coordinates=True,
+                source_to_working_mapping=mapping,
+            )
+            is None
+        )
 
     with match_lines(
         source_lines,
@@ -304,14 +310,17 @@ def test_live_planning_tracks_one_shifted_insertion_boundary() -> None:
         b"added\n",
         b"tail\n",
     ]
-    assert baseline_edits.try_apply_baseline_coordinate_edits(
-        source_lines,
-        working_lines,
-        ownership,
-        LineRanges.from_ranges(((2, 2),)),
-        [],
-        trust_baseline_coordinates=True,
-    ) is None
+    assert (
+        baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((2, 2),)),
+            [],
+            trust_baseline_coordinates=True,
+        )
+        is None
+    )
 
 
 def test_realization_joins_presence_across_explicit_collapsed_source_span() -> None:
@@ -588,14 +597,17 @@ def test_live_planning_uses_mapped_repeated_insertion_boundary() -> None:
         b"end\n",
         b"tail\n",
     ]
-    assert baseline_edits.try_apply_baseline_coordinate_edits(
-        source_lines,
-        working_lines,
-        ownership,
-        LineRanges.from_ranges(((6, 6),)),
-        [],
-        trust_baseline_coordinates=True,
-    ) is None
+    assert (
+        baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((6, 6),)),
+            [],
+            trust_baseline_coordinates=True,
+        )
+        is None
+    )
 
 
 def test_mapped_insertion_run_requires_one_saved_boundary() -> None:
@@ -781,17 +793,18 @@ def test_source_alternative_can_consume_its_exact_mapped_neighbor() -> None:
 
     with match_lines(source_lines, working_lines) as mapping:
         mapped_source_lines = tuple(
-            (source_line,)
-            for source_line, _target_line in mapping.mapped_line_pairs()
+            (source_line,) for source_line, _target_line in mapping.mapped_line_pairs()
         )
-        assert baseline_replacement_edits._replacement_edit_fits_mapped_source_neighbors(
-            (1, 2),
-            claim,
-            ((2, 2),),
-            source_lines,
-            len(working_lines),
-            mapping,
-            mapped_source_lines,
+        assert (
+            baseline_replacement_edits._replacement_edit_fits_mapped_source_neighbors(
+                (1, 2),
+                claim,
+                ((2, 2),),
+                source_lines,
+                len(working_lines),
+                mapping,
+                mapped_source_lines,
+            )
         )
 
 
@@ -813,8 +826,7 @@ def test_source_alternative_does_not_consume_unrelated_mapped_neighbor() -> None
 
     with match_lines(source_lines, working_lines) as mapping:
         mapped_source_lines = tuple(
-            (source_line,)
-            for source_line, _target_line in mapping.mapped_line_pairs()
+            (source_line,) for source_line, _target_line in mapping.mapped_line_pairs()
         )
         assert not baseline_replacement_edits._replacement_edit_fits_mapped_source_neighbors(
             (2, 3),
@@ -900,15 +912,18 @@ def test_mapped_planning_tracks_shifted_independent_deletions(
     assert list(result) == [b"staged\n", *source_lines]
 
     with match_lines(source_lines, working_lines) as mapping:
-        assert baseline_edits.try_apply_baseline_coordinate_edits(
-            source_lines,
-            working_lines,
-            ownership,
-            LineRanges.empty(),
-            deletion_claims,
-            trust_baseline_coordinates=True,
-            source_to_working_mapping=mapping,
-        ) is None
+        assert (
+            baseline_edits.try_apply_baseline_coordinate_edits(
+                source_lines,
+                working_lines,
+                ownership,
+                LineRanges.empty(),
+                deletion_claims,
+                trust_baseline_coordinates=True,
+                source_to_working_mapping=mapping,
+            )
+            is None
+        )
 
 
 def test_trusted_target_allows_shifted_historical_duplicate_removal() -> None:
@@ -1153,6 +1168,226 @@ def test_mapped_independent_deletion_spans_claimed_presence(
     assert list(result) == [b"staged\n", *source_lines]
 
 
+def test_mapped_deletion_crosses_unclaimed_inserted_source_context() -> None:
+    """A partially surviving old side should be removed around source context."""
+    source_lines = [
+        b"head\n",
+        b"check tool\n",
+        b"tail\n",
+    ]
+    working_lines = [
+        b"staged\n",
+        b"head\n",
+        b"check tool\n",
+        b"updated setup\n",
+        b"obsolete assertion\n",
+        b"tail\n",
+    ]
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"obsolete setup\n", b"obsolete assertion\n"],
+            baseline_reference=_boundary_reference(
+                after_line=1,
+                after_content=b"head\n",
+                before_line=4,
+                before_content=b"tail\n",
+            ),
+        )
+    ]
+    ownership = BatchOwnership.from_presence_lines([], deletion_claims)
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.empty(),
+            deletion_claims,
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is not None
+    assert list(result) == [b"staged\n", *source_lines]
+
+
+def test_mapped_deletion_keeps_unrelated_text_inside_source_context() -> None:
+    """An absent old side must not consume unrelated target-only lines."""
+    source_lines = [
+        b"head\n",
+        b"check tool\n",
+        b"tail\n",
+    ]
+    working_lines = [
+        b"staged\n",
+        b"head\n",
+        b"check tool\n",
+        b"unrelated one\n",
+        b"unrelated two\n",
+        b"tail\n",
+    ]
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"obsolete setup\n", b"obsolete assertion\n"],
+            baseline_reference=_boundary_reference(
+                after_line=1,
+                after_content=b"head\n",
+                before_line=4,
+                before_content=b"tail\n",
+            ),
+        )
+    ]
+    ownership = BatchOwnership.from_presence_lines([], deletion_claims)
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.empty(),
+            deletion_claims,
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is not None
+    assert list(result) == working_lines
+
+
+def test_inserted_source_deletion_scans_disjoint_regions_once(monkeypatch) -> None:
+    """Many source insertions should not cause repeated file scans."""
+    deletion_count = 128
+    source_lines: list[bytes] = []
+    working_lines = [b"staged\n"]
+    deletion_claims = []
+    for index in range(deletion_count):
+        head = f"head {index}\n".encode()
+        inserted = f"inserted {index}\n".encode()
+        tail = f"tail {index}\n".encode()
+        assertion = f"obsolete assertion {index}\n".encode()
+        source_anchor = len(source_lines) + 1
+        baseline_anchor = index * 4 + 1
+        source_lines.extend((head, inserted, tail))
+        working_lines.extend(
+            (
+                head,
+                inserted,
+                f"updated setup {index}\n".encode(),
+                assertion,
+                tail,
+            )
+        )
+        deletion_claims.append(
+            AbsenceClaim(
+                anchor_line=source_anchor,
+                content_lines=[f"obsolete setup {index}\n".encode(), assertion],
+                baseline_reference=_boundary_reference(
+                    after_line=baseline_anchor,
+                    after_content=head,
+                    before_line=baseline_anchor + 3,
+                    before_content=tail,
+                ),
+            )
+        )
+    ownership = BatchOwnership.from_presence_lines([], deletion_claims)
+    payload_checks = 0
+    original_payload = deletions_across_source_insertions.normalized_line_payload
+
+    def count_payload_checks(content):
+        nonlocal payload_checks
+        payload_checks += 1
+        return original_payload(content)
+
+    monkeypatch.setattr(
+        deletions_across_source_insertions,
+        "normalized_line_payload",
+        count_payload_checks,
+    )
+
+    with match_lines(source_lines, working_lines) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.empty(),
+            deletion_claims,
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is not None
+    assert list(result) == [b"staged\n", *source_lines]
+    assert payload_checks <= deletion_count * 6
+
+
+def test_inserted_source_deletion_planning_avoids_line_scale_python_heap() -> None:
+    """Larger region plans should grow mapped storage, not the Python heap."""
+    heap_peaks = []
+    for deletion_count in (32, 512):
+        source_lines: list[bytes] = []
+        working_lines = [b"staged\n"]
+        deletion_claims = []
+        for index in range(deletion_count):
+            head = f"head {index}\n".encode()
+            inserted = f"inserted {index}\n".encode()
+            tail = f"tail {index}\n".encode()
+            assertion = f"obsolete assertion {index}\n".encode()
+            source_anchor = len(source_lines) + 1
+            baseline_anchor = index * 4 + 1
+            source_lines.extend((head, inserted, tail))
+            working_lines.extend(
+                (
+                    head,
+                    inserted,
+                    f"updated setup {index}\n".encode(),
+                    assertion,
+                    tail,
+                )
+            )
+            deletion_claims.append(
+                AbsenceClaim(
+                    anchor_line=source_anchor,
+                    content_lines=[
+                        f"obsolete setup {index}\n".encode(),
+                        assertion,
+                    ],
+                    baseline_reference=_boundary_reference(
+                        after_line=baseline_anchor,
+                        after_content=head,
+                        before_line=baseline_anchor + 3,
+                        before_content=tail,
+                    ),
+                )
+            )
+        ownership = BatchOwnership.from_presence_lines([], deletion_claims)
+
+        with match_lines(source_lines, working_lines) as mapping:
+            gc.collect()
+            tracemalloc.start()
+            try:
+                result = baseline_edits.try_apply_baseline_coordinate_edits(
+                    source_lines,
+                    working_lines,
+                    ownership,
+                    LineRanges.empty(),
+                    deletion_claims,
+                    source_to_working_mapping=mapping,
+                )
+                try:
+                    _current_heap, peak_heap = tracemalloc.get_traced_memory()
+                finally:
+                    if result is not None:
+                        close = getattr(result, "close", None)
+                        if close is not None:
+                            close()
+            finally:
+                tracemalloc.stop()
+        assert result is not None
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 256 * 1024
+
+
 def test_mapped_independent_deletion_rejects_partial_old_side() -> None:
     """A mapped gap containing only part of a deletion must fail closed."""
     source_lines = [b"head\n", b"tail\n"]
@@ -1258,10 +1493,7 @@ def test_overlapping_mapped_deletion_gaps_fail_before_content_scans(
 ) -> None:
     """Overlapping shifted gaps must not trigger repeated full-gap matching."""
     deletion_count = 500
-    additions = [
-        f"added-{index}\n".encode()
-        for index in range(deletion_count)
-    ]
+    additions = [f"added-{index}\n".encode() for index in range(deletion_count)]
     source_lines = [b"head\n", *additions, b"tail\n"]
     working_lines = [b"staged\n", *source_lines]
     deletion_claims = []
@@ -1284,9 +1516,7 @@ def test_overlapping_mapped_deletion_gaps_fail_before_content_scans(
         deletion_claims,
     )
     classification_calls = 0
-    original_classify = (
-        baseline_removal_edits.classify_replacement_old_side
-    )
+    original_classify = baseline_removal_edits.classify_replacement_old_side
 
     def count_classification(*args, **kwargs):
         nonlocal classification_calls
@@ -1318,10 +1548,7 @@ def test_shifted_insertion_lookup_checks_one_indexed_boundary_per_line(
 ) -> None:
     """Many shifted unique insertions must not rescan the target per claim."""
     insertion_count = 1000
-    anchors = [
-        f"anchor-{index}\n".encode()
-        for index in range(insertion_count)
-    ]
+    anchors = [f"anchor-{index}\n".encode() for index in range(insertion_count)]
     source_lines: list[bytes] = []
     claimed_lines = []
     references = {}
@@ -1332,15 +1559,9 @@ def test_shifted_insertion_lookup_checks_one_indexed_boundary_per_line(
         references[claimed_line] = _boundary_reference(
             after_line=index + 1,
             after_content=anchor,
-            before_line=(
-                index + 2
-                if index + 1 < insertion_count
-                else None
-            ),
+            before_line=(index + 2 if index + 1 < insertion_count else None),
             before_content=(
-                anchors[index + 1]
-                if index + 1 < insertion_count
-                else None
+                anchors[index + 1] if index + 1 < insertion_count else None
             ),
         )
     working_lines = [b"staged\n", *anchors]
@@ -1349,9 +1570,7 @@ def test_shifted_insertion_lookup_checks_one_indexed_boundary_per_line(
         baseline_references=references,
     )
     identity_checks = 0
-    original_check = (
-        baseline_anchor_matching._insertion_boundary_identity_matches_at
-    )
+    original_check = baseline_anchor_matching._insertion_boundary_identity_matches_at
 
     def count_identity_checks(*args, **kwargs):
         nonlocal identity_checks
@@ -1381,10 +1600,7 @@ def test_shared_insertion_boundary_is_validated_once(monkeypatch) -> None:
     """One large insertion run must not rescan repeated boundary payloads."""
     repeat_count = 500
     insertion_count = 500
-    additions = [
-        f"added-{index}\n".encode()
-        for index in range(insertion_count)
-    ]
+    additions = [f"added-{index}\n".encode() for index in range(insertion_count)]
     working_lines = [b"A\n"] * repeat_count + [b"B\n"] * repeat_count
     source_lines = [
         *working_lines[:repeat_count],
@@ -1402,14 +1618,11 @@ def test_shared_insertion_boundary_is_validated_once(monkeypatch) -> None:
     ownership = BatchOwnership.from_presence_lines(
         [f"{first_claimed_line}-{last_claimed_line}"],
         baseline_references={
-            line: reference
-            for line in range(first_claimed_line, last_claimed_line + 1)
+            line: reference for line in range(first_claimed_line, last_claimed_line + 1)
         },
     )
     identity_checks = 0
-    original_check = (
-        baseline_anchor_matching._insertion_boundary_identity_matches_at
-    )
+    original_check = baseline_anchor_matching._insertion_boundary_identity_matches_at
 
     def count_identity_checks(*args, **kwargs):
         nonlocal identity_checks
@@ -1588,6 +1801,94 @@ def test_same_boundary_replacement_payloads_follow_source_order() -> None:
 
         assert result is not None
         assert list(result) == source_lines
+
+
+def test_replacement_uses_newer_shared_presence_boundary() -> None:
+    """A moved replacement follows its saved source block, not its old side."""
+    source_lines = [
+        b"head\n",
+        b"allocate\n",
+        b"if missing\n",
+        b"return error\n",
+        b"initialize\n",
+        b"middle\n",
+        b"tail\n",
+    ]
+    working_lines = [
+        b"head\n",
+        b"middle\n",
+        b"allocate\n",
+        b"if missing {\n",
+        b"set error\n",
+        b"goto unlock\n",
+        b"}\n",
+        b"initialize\n",
+        b"tail\n",
+    ]
+    moved_reference = _boundary_reference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=2,
+        before_content=b"middle\n",
+    )
+    old_reference = _boundary_reference(
+        after_line=3,
+        after_content=b"allocate\n",
+        before_line=8,
+        before_content=b"initialize\n",
+    )
+    deletion = AbsenceClaim(
+        anchor_line=3,
+        content_lines=[
+            b"if missing {\n",
+            b"set error\n",
+            b"goto unlock\n",
+            b"}\n",
+        ],
+        baseline_reference=old_reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-5"],
+        [deletion],
+        baseline_references={
+            source_line: moved_reference for source_line in range(2, 6)
+        },
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3-4"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(
+                    old_start=4,
+                    old_end=7,
+                    new_start=3,
+                    new_end=4,
+                    baseline_reference=old_reference,
+                ),
+            )
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
+        source_lines,
+        working_lines,
+        ownership,
+        ownership.presence_line_set(),
+        [deletion],
+        trust_baseline_coordinates=True,
+    )
+
+    assert result is not None
+    assert list(result) == [
+        b"head\n",
+        b"allocate\n",
+        b"if missing\n",
+        b"return error\n",
+        b"initialize\n",
+        b"middle\n",
+        b"allocate\n",
+        b"initialize\n",
+        b"tail\n",
+    ]
 
 
 def test_same_boundary_noncontiguous_payloads_follow_source_order() -> None:

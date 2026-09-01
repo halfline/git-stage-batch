@@ -72,7 +72,10 @@ from ..line_matching.line_mapping import (
 from ..line_matching.match import match_lines
 from ..line_matching.sequence_equality import line_sequences_equal
 from ..complete_source_replacement import (
+    acquire_source_replacement_replay_mapping,
     changes_from_complete_source_replacement,
+    changes_from_leading_source_replacement,
+    unique_live_alternative_span,
 )
 from ..ownership.resolved_presence_alternatives import (
     resolve_presence_source_alternatives,
@@ -318,6 +321,7 @@ def _acquire_replay_mapping_evidence(
     needs_origin_resolution_preflight: bool,
     has_presence_resolution: bool,
     source_to_working_mapping: LineMapping | None,
+    source_mapping_authority: _CoordinateMappingAuthority,
     trusted_target_lines: Sequence[bytes] | None,
     source_to_trusted_target_mapping: LineMapping | None,
     trusted_target_to_working_mapping: LineMapping | None,
@@ -336,7 +340,11 @@ def _acquire_replay_mapping_evidence(
     ambiguity = PresenceMappingAmbiguity.NONE
     trusted_source = source_to_trusted_target_mapping
     trusted_working = trusted_target_to_working_mapping
-    has_exact_presence_context = False
+    has_exact_presence_context = (
+        source_to_working_mapping is not None
+        and source_mapping_authority
+        is _CoordinateMappingAuthority.SOURCE_ALTERNATIVE_CONTEXT
+    )
     try:
         if (
             ordinary is None
@@ -999,32 +1007,72 @@ def _merge_batch_acquired_line_chunks(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    source_mapping_authority: _CoordinateMappingAuthority = (
+        _CoordinateMappingAuthority.SHARED_ALIGNMENT
+    ),
     trusted_target_lines: Sequence[bytes] | None = None,
     source_to_trusted_target_mapping: LineMapping | None = None,
     trusted_target_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
     spool_dir: str | Path | None = None,
+    trusted_presence_context_lines: "LineRanges | None" = None,
 ) -> Iterator[bytes]:
     """Merge acquired normalized line sequences and yield normalized chunks."""
     _validate_resolution_shape(resolution)
     complete_changes = changes_from_complete_source_replacement(
         source_lines,
         ownership,
+        unmarked_target_lines=working_lines,
         spool_dir=spool_dir,
     )
+    if complete_changes is None and working_lines:
+        complete_changes = changes_from_leading_source_replacement(
+            source_lines,
+            ownership,
+            spool_dir=spool_dir,
+        )
     if complete_changes is not None:
         if line_sequences_equal(working_lines, complete_changes.live_lines):
             yield from complete_changes.source_lines
             return
-        yield from _merge_batch_acquired_line_chunks(
-            complete_changes.source_lines,
-            complete_changes.ownership,
+        if not complete_changes.ownership.deletions:
+            live_span = unique_live_alternative_span(
+                complete_changes,
+                working_lines,
+                spool_dir=spool_dir,
+            )
+            if live_span is not None:
+                for index in range(live_span.start.offset):
+                    yield working_lines[index]
+                yield from complete_changes.source_lines
+                for index in range(live_span.end.offset, len(working_lines)):
+                    yield working_lines[index]
+                return
+        with acquire_source_replacement_replay_mapping(
+            complete_changes,
             working_lines,
-            trusted_target_lines=trusted_target_lines,
-            trusted_target_to_working_mapping=trusted_target_to_working_mapping,
-            resolution=resolution,
             spool_dir=spool_dir,
-        )
+        ) as replacement_mapping:
+            yield from _merge_batch_acquired_line_chunks(
+                complete_changes.source_lines,
+                complete_changes.ownership,
+                working_lines,
+                source_to_working_mapping=replacement_mapping,
+                source_mapping_authority=(
+                    _CoordinateMappingAuthority.SOURCE_ALTERNATIVE_CONTEXT
+                    if replacement_mapping is not None
+                    else _CoordinateMappingAuthority.SHARED_ALIGNMENT
+                ),
+                trusted_target_lines=trusted_target_lines,
+                trusted_target_to_working_mapping=trusted_target_to_working_mapping,
+                resolution=resolution,
+                spool_dir=spool_dir,
+                trusted_presence_context_lines=(
+                    complete_changes.ownership.presence_line_set()
+                    if replacement_mapping is not None
+                    else None
+                ),
+            )
         return
     resolved = ownership.resolve()
     effective_constraints = _resolve_effective_constraints(
@@ -1103,6 +1151,7 @@ def _merge_batch_acquired_line_chunks(
         needs_origin_resolution_preflight=needs_origin_resolution_preflight,
         has_presence_resolution=has_presence_resolution,
         source_to_working_mapping=source_to_working_mapping,
+        source_mapping_authority=source_mapping_authority,
         trusted_target_lines=trusted_target_lines,
         source_to_trusted_target_mapping=source_to_trusted_target_mapping,
         trusted_target_to_working_mapping=trusted_target_to_working_mapping,
@@ -1321,6 +1370,7 @@ def _merge_batch_acquired_line_chunks(
                     source_to_working_mapping=replay_mappings.structural,
                     resolution=effective_resolution,
                     spool_dir=spool_dir,
+                    trusted_presence_context_lines=(trusted_presence_context_lines),
                 )
             except _MergeError:
                 if mapped_coordinate_fallback is None:

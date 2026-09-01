@@ -55,22 +55,6 @@ def test_explicit_span_uses_nearest_following_two_sided_boundary() -> None:
     assert chosen is before_heading
 
 
-def test_explicit_span_prefix_accepts_only_trailing_blank_suffix() -> None:
-    """A selected trailing separator may complete an exact explicit span."""
-    owned = LineRanges.from_ranges(((2, 3),))
-    explicit = LineRanges.from_ranges(((2, 4),))
-    matches_prefix = _presence_is_explicit_span_prefix_with_blank_suffix
-
-    assert matches_prefix(
-        owned,
-        explicit_presence=explicit,
-        source_lines=[b"head\n", b"one\n", b"two\n", b"\n"],
-    )
-    assert not matches_prefix(
-        owned,
-        explicit_presence=explicit,
-        source_lines=[b"head\n", b"one\n", b"two\n", b"payload\n"],
-    )
 def test_displaced_single_line_moves_before_its_old_after_boundary() -> None:
     """A peeled line before a replacement stays before that old replacement."""
     displaced = BaselineReference(
@@ -94,4 +78,22 @@ def test_displaced_single_line_moves_before_its_old_after_boundary() -> None:
         before_line=3,
         before_content=b"Useful commands:\n",
         has_before_line=True,
+    )
+
+
+def test_explicit_span_prefix_accepts_only_trailing_blank_suffix() -> None:
+    """A selected trailing separator may complete an exact explicit span."""
+    owned = LineRanges.from_ranges(((2, 3),))
+    explicit = LineRanges.from_ranges(((2, 4),))
+    matches_prefix = _presence_is_explicit_span_prefix_with_blank_suffix
+
+    assert matches_prefix(
+        owned,
+        explicit_presence=explicit,
+        source_lines=[b"head\n", b"one\n", b"two\n", b"\n"],
+    )
+    assert not matches_prefix(
+        owned,
+        explicit_presence=explicit,
+        source_lines=[b"head\n", b"one\n", b"two\n", b"payload\n"],
     )

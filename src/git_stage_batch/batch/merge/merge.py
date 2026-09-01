@@ -53,8 +53,8 @@ from .candidates import (
 from .coordinate_strategy import (
     AMBIGUITY_KEY as _COORDINATE_STRATEGY_AMBIGUITY_KEY,
     CoordinateStrategyChoice as _CoordinateStrategyChoice,
+    acquire_presence_context_line_sets as _acquire_presence_context_line_sets,
     has_recorded_baseline_coordinates as _has_recorded_baseline_coordinates,
-    presence_context_line_sets as _presence_context_line_sets,
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
@@ -582,6 +582,7 @@ def _build_structural_realized_entries(
     source_to_working_mapping: LineMapping | None,
     resolution: _MergeResolution | None,
     spool_dir: str | Path | None,
+    trusted_presence_context_lines: "LineRanges | None" = None,
 ) -> "RealizedEntries":
     """Build the structural candidate while owning any derived mapping."""
     owned_mapping: LineMapping | None = None
@@ -706,32 +707,46 @@ def _build_structural_realized_entries(
                 )
             )
 
-        (
-            distinctive_presence_context_lines,
-            recorded_presence_context_lines,
-        ) = _presence_context_line_sets(
+        with _acquire_presence_context_line_sets(
             ownership,
             presence_line_set,
             deletion_claims,
             target_lines=working_lines,
             spool_dir=spool_dir,
-        )
-
-        try:
-            contextual_placements = _check_merge_structural_validity(
-                mapping,
-                presence_line_set,
-                deletion_claims,
-                source_lines,
-                working_lines,
-                distinctive_presence_context_lines=(distinctive_presence_context_lines),
-                recorded_presence_context_lines=(recorded_presence_context_lines),
-                replacement_units=ownership.replacement_units,
-                spool_dir=spool_dir,
-            )
-        except PresencePlacementAmbiguityError:
-            if not _has_presence_resolution(resolution):
-                raise
+        ) as (
+            distinctive_presence_context_lines,
+            recorded_presence_context_lines,
+            presence_references,
+        ):
+            if trusted_presence_context_lines:
+                distinctive_presence_context_lines = (
+                    distinctive_presence_context_lines.difference(
+                        trusted_presence_context_lines
+                    )
+                )
+                recorded_presence_context_lines = recorded_presence_context_lines.union(
+                    trusted_presence_context_lines
+                )
+            try:
+                contextual_placements = _check_merge_structural_validity(
+                    mapping,
+                    presence_line_set,
+                    deletion_claims,
+                    source_lines,
+                    working_lines,
+                    distinctive_presence_context_lines=(
+                        distinctive_presence_context_lines
+                    ),
+                    recorded_presence_context_lines=(recorded_presence_context_lines),
+                    include_leading_blank_for_line=(
+                        presence_references.line_came_from_empty_file
+                    ),
+                    replacement_units=ownership.replacement_units,
+                    spool_dir=spool_dir,
+                )
+            except PresencePlacementAmbiguityError:
+                if not _has_presence_resolution(resolution):
+                    raise
 
         result = _presence_constraints.satisfy_constraints(
             source_lines,

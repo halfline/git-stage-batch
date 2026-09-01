@@ -64,8 +64,19 @@ from git_stage_batch.utils import git_object_promotion
 from .conftest import git
 
 
-def _write_plan(repo, mutation=None):
-    plan = history_plan_document_record(acquire_history_plan_document(repo.base))
+def _write_plan(
+    repo,
+    mutation=None,
+    *,
+    movable_boundary=None,
+    onto_boundary=None,
+):
+    plan = history_plan_document_record(
+        acquire_history_plan_document(
+            repo.base if movable_boundary is None else movable_boundary,
+            onto_boundary=onto_boundary,
+        )
+    )
     if mutation is not None:
         mutation(plan)
     path = repo.root / "history-plan.json"
@@ -1069,6 +1080,22 @@ def test_apply_requires_an_exact_published_ref_exception(linear_history_repo):
         str(path),
         allowed_remote_refs=("refs/remotes/origin/topic",),
     )
+
+    assert state.phase is HistoryPhase.COMPLETE
+
+
+def test_apply_onto_ignores_publication_of_the_pinned_prefix(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    git("update-ref", "refs/remotes/origin/topic", repo.first)
+    path, _plan = _write_plan(
+        repo,
+        movable_boundary=repo.first,
+        onto_boundary=repo.base,
+    )
+
+    state = start_history_operation(str(path))
 
     assert state.phase is HistoryPhase.COMPLETE
 

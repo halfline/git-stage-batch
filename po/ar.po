@@ -8199,3 +8199,19 @@ msgstr "files[{path!r}] has an invalid complete-file-pair flag"
 #, python-brace-format
 msgid "files[{path!r}] has a complete file pair without a source alternative"
 msgstr "files[{path!r}] has a complete file pair without a source alternative"
+
+#: src/git_stage_batch/commands/file_scope/file_display_action.py
+msgid "Cannot use --lines with whole-file deletions."
+msgstr "Cannot use --lines with whole-file deletions."
+
+#: src/git_stage_batch/commands/file_scope/file_display_action.py
+msgid "Cannot use --lines with file renames."
+msgstr "Cannot use --lines with file renames."
+
+#: src/git_stage_batch/commands/file_scope/file_display_action.py
+msgid "Cannot use --lines with submodule pointers."
+msgstr "Cannot use --lines with submodule pointers."
+
+#: src/git_stage_batch/commands/file_scope/file_display_action.py
+msgid "Cannot use --lines with binary files."
+msgstr "Cannot use --lines with binary files."

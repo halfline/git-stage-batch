@@ -7483,3 +7483,13 @@ msgstr "스냅샷 캐시: {status} ({reason})"
 
 msgid "This result is advisory; rewrite validate authenticates live objects."
 msgstr "이 결과는 참고용입니다. rewrite validate가 현재 객체를 인증합니다."
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
+msgid "files[{path!r}] has an invalid complete-file-pair flag"
+msgstr "files[{path!r}] has an invalid complete-file-pair flag"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
+msgid "files[{path!r}] has a complete file pair without a source alternative"
+msgstr "files[{path!r}] has a complete file pair without a source alternative"

@@ -8084,3 +8084,13 @@ msgstr "Cache d’instantanés : {status} ({reason})"
 
 msgid "This result is advisory; rewrite validate authenticates live objects."
 msgstr "Ce résultat est indicatif ; rewrite validate authentifie les objets actuels."
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
+msgid "files[{path!r}] has an invalid complete-file-pair flag"
+msgstr "files[{path!r}] has an invalid complete-file-pair flag"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
+msgid "files[{path!r}] has a complete file pair without a source alternative"
+msgstr "files[{path!r}] has a complete file pair without a source alternative"

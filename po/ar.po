@@ -8171,3 +8171,13 @@ msgstr "ذاكرة التخزين المؤقت للقطات: {status} ({reason})
 
 msgid "This result is advisory; rewrite validate authenticates live objects."
 msgstr "هذه النتيجة استشارية؛ يصادق ⁦rewrite validate⁩ على الكائنات الحالية."
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
+msgid "files[{path!r}] has an invalid complete-file-pair flag"
+msgstr "files[{path!r}] has an invalid complete-file-pair flag"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
+msgid "files[{path!r}] has a complete file pair without a source alternative"
+msgstr "files[{path!r}] has a complete file pair without a source alternative"

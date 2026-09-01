@@ -83,6 +83,7 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
             args.file,
             args.file_patterns,
             include_staged=True,
+            include_unchanged_explicit_files=True,
             selected_action=FileReviewAction.INCLUDE,
         )
         if resolved_live_scope.is_implicit:

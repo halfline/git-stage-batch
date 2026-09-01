@@ -52,6 +52,21 @@ def list_untracked_files(paths: Iterable[str] | None = None) -> list[str]:
     return [decode_path(path) for path in nul_records(result.stdout)]
 
 
+def list_tracked_files(paths: Iterable[str]) -> list[str]:
+    """Return index paths matching the supplied literal repository paths."""
+    unique_paths = list(dict.fromkeys(paths))
+    if not unique_paths:
+        return []
+
+    result = run_git_command(
+        ["ls-files", "-z", "--cached", "--", *unique_paths],
+        text_output=False,
+        requires_index_lock=False,
+        literal_pathspecs=True,
+    )
+    return [decode_path(path) for path in nul_records(result.stdout)]
+
+
 def auto_add_untracked_files(
     paths: Iterable[str] | None = None,
     *,

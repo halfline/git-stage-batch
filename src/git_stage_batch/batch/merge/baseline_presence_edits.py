@@ -1,4 +1,4 @@
-"""Presence edits for baseline-coordinate merge planning."""
+"""Plan where selected source lines belong in the original file."""
 
 from __future__ import annotations
 
@@ -177,12 +177,15 @@ def _collect_presence_position_records(
     *,
     prefer_source_mapping: bool,
     relocate_live_boundaries: bool,
-) -> tuple[
-    MappedRecordVector,
-    MappedRecordVector,
-    bool,
-    LinePayloadOccurrenceIndex | None,
-] | None:
+) -> (
+    tuple[
+        MappedRecordVector,
+        MappedRecordVector,
+        bool,
+        LinePayloadOccurrenceIndex | None,
+    ]
+    | None
+):
     """Partition presence lines into positioned and mapping-backed records."""
     positioned_lines = workspace.record_vector(
         len(presence_lines),
@@ -239,10 +242,7 @@ def _collect_presence_position_records(
         if position is None:
             unmapped_lines.append((claimed_line,))
         else:
-            if (
-                previous_position is not None
-                and position < previous_position
-            ):
+            if previous_position is not None and position < previous_position:
                 positioned_lines_are_ordered = False
             positioned_lines.append((position, claimed_line))
             previous_position = position
@@ -312,22 +312,17 @@ def _unique_mapped_gap_insertion_position(
     ):
         return None
 
-    following_target = mapping.get_target_line_from_source_line(
-        following_source
-    )
+    following_target = mapping.get_target_line_from_source_line(following_source)
     if following_target != mapped_predecessor_target + 1:
         return None
 
     predecessor_content = source_lines[mapped_predecessor_source - 1]
     following_content = source_lines[following_source - 1]
-    if (
-        normalized_line_payload(
-            working_lines[mapped_predecessor_target - 1]
-        )
-        != normalized_line_payload(predecessor_content)
-        or normalized_line_payload(working_lines[following_target - 1])
-        != normalized_line_payload(following_content)
-    ):
+    if normalized_line_payload(
+        working_lines[mapped_predecessor_target - 1]
+    ) != normalized_line_payload(predecessor_content) or normalized_line_payload(
+        working_lines[following_target - 1]
+    ) != normalized_line_payload(following_content):
         return None
     if (
         occurrence_index.occurrence_count(predecessor_content) != 1
@@ -427,9 +422,7 @@ def _mapping_preserves_unpositioned_presence(
     for record_index in range(len(unmapped_lines)):
         claimed_line = unmapped_lines[record_index][0]
         while source_scan < claimed_line:
-            target_line = mapping.get_target_line_from_source_line(
-                source_scan
-            )
+            target_line = mapping.get_target_line_from_source_line(source_scan)
             if target_line is not None:
                 latest_mapped_source = source_scan
                 latest_mapped_target = target_line
@@ -464,18 +457,15 @@ def _mapping_preserves_unpositioned_presence(
             if not continues_missing_run:
                 run_end = claimed_line
                 run_stop = record_index + 1
-                reference = presence_references.reference_for(
-                    claimed_line
-                )
+                reference = presence_references.reference_for(claimed_line)
                 while run_stop < len(unmapped_lines):
                     next_claimed_line = unmapped_lines[run_stop][0]
                     if (
                         next_claimed_line != run_end + 1
                         or presence_references.reference_for(next_claimed_line)
                         != reference
-                        or mapping.get_target_line_from_source_line(
-                            next_claimed_line
-                        ) is not None
+                        or mapping.get_target_line_from_source_line(next_claimed_line)
+                        is not None
                     ):
                         break
                     run_end = next_claimed_line
@@ -498,8 +488,7 @@ def _mapping_preserves_unpositioned_presence(
                 )
                 unique_mapped_gap_position = None
                 if allow_unique_mapped_gap and not (
-                    is_allowed_adjacent_insertion
-                    or has_saved_mapped_boundary
+                    is_allowed_adjacent_insertion or has_saved_mapped_boundary
                 ):
                     if occurrence_index is None:
                         occurrence_index = LinePayloadOccurrenceIndex(
@@ -552,15 +541,15 @@ def _mapping_preserves_unpositioned_presence(
                     )
                 )
                 current_saved_boundary = (
-                    None
-                    if is_allowed_adjacent_insertion
-                    else reference
+                    None if is_allowed_adjacent_insertion else reference
                 )
             assert current_insertion_position is not None
-            adjacent_insertions.append((
-                current_insertion_position,
-                claimed_line,
-            ))
+            adjacent_insertions.append(
+                (
+                    current_insertion_position,
+                    claimed_line,
+                )
+            )
             previous_missing_source = claimed_line
             source_scan = claimed_line + 1
             continue

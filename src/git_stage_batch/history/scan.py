@@ -223,6 +223,12 @@ def acquire_history_plan_document(
             source_commits=tuple(
                 commit.commit_id for commit in history_snapshot.commits
             ),
+            publication_source_commits=tuple(
+                commit.commit_id
+                for commit in history_snapshot.commits[
+                    history_snapshot.movable_commit_start :
+                ]
+            ),
             allowed_remote_refs=allowed_remote_refs,
         )
         _require_frozen_head(commit_range.tip_commit, branch_ref)

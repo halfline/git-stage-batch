@@ -940,6 +940,12 @@ def read_and_validate_frozen_history_plan_semantics_from_payload(
         final_tree=live_snapshot.final_tree,
         branch_ref=branch_ref,
         source_commits=tuple(commit.commit_id for commit in live_snapshot.commits),
+        publication_source_commits=tuple(
+            commit.commit_id
+            for commit in live_snapshot.commits[
+                live_snapshot.movable_commit_start :
+            ]
+        ),
         allowed_remote_refs=allowed_remote_refs,
     )
     live = HistoryPlanDocument(

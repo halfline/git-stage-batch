@@ -1,4 +1,4 @@
-"""Text action plan builders for batch-source commands."""
+"""Plan text changes for commands that read a batch."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ from ...utils.git_repository import get_git_repository_root_path
 
 
 class _SpoolDirOptions(TypedDict, total=False):
-    """Typed optional arguments for spool-aware helpers."""
+    """An optional temporary directory for large buffers."""
 
     spool_dir: str | Path
 
@@ -74,7 +74,7 @@ def _spool_dir_options(spool_dir: str | Path | None) -> _SpoolDirOptions:
 
 @dataclass(frozen=True)
 class ApplyTextPlanBuildResult:
-    """Result of building one apply-from text action plan."""
+    """The plan or review choices produced for one text apply."""
 
     plan: _action_plans.ApplyTextFileActionPlan | None = None
     missing_source: bool = False
@@ -86,7 +86,7 @@ class ApplyTextPlanBuildResult:
 
 @dataclass(frozen=True)
 class IncludeTextPlanBuildResult:
-    """Result of building one include-from text action plan."""
+    """The plan or review choices produced for one text include."""
 
     plan: _action_plans.IncludeTextFileActionPlan | None = None
     missing_source: bool = False
@@ -94,7 +94,7 @@ class IncludeTextPlanBuildResult:
 
 @dataclass(frozen=True)
 class DiscardTextPlanBuildResult:
-    """Result of building one discard-from text action plan."""
+    """The plan or review choices produced for one text discard."""
 
     plan: _action_plans.DiscardTextFileActionPlan | None = None
     missing_source: bool = False
@@ -133,7 +133,7 @@ def build_apply_text_file_action_plan(
     applied_overlay: AppliedBatchOverlayView | None = None,
     spool_dir: str | Path | None = None,
 ) -> ApplyTextPlanBuildResult:
-    """Build one deferred apply-from text action plan."""
+    """Plan one text apply without changing the repository."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
     if captured_working_tree_exists is None:
@@ -441,7 +441,7 @@ def build_include_text_file_action_plan(
     captured_working_tree_exists: bool | None = None,
     spool_dir: str | Path | None = None,
 ) -> IncludeTextPlanBuildResult:
-    """Build one deferred include-from text action plan."""
+    """Plan one text include without changing the repository."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
     if captured_index_identity is None:
@@ -664,7 +664,7 @@ def build_discard_text_file_action_plan(
     captured_working_tree_exists: bool | None = None,
     spool_dir: str | Path | None = None,
 ) -> DiscardTextPlanBuildResult:
-    """Build one deferred discard-from text action plan."""
+    """Plan one text discard without changing the repository."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
     if selected_ids is None and text_change_type in {
         TextFileChangeType.ADDED,
@@ -751,26 +751,34 @@ def build_discard_text_file_action_plan(
                 if trusted_target_buffer is None
                 else stack.enter_context(trusted_target_buffer)
             )
-            with acquire_batch_ownership_for_display_ids_from_lines(
-                file_meta,
-                batch_source_lines,
-                selection_ids_to_discard,
-                **_spool_dir_options(spool_dir),
-            ) as ownership:
-                if ownership.is_empty():
-                    return DiscardTextPlanBuildResult()
-
+            replay_applications = (
+                () if applied_overlay is None else applied_overlay.text_applications
+            )
+            saved_predecessor = (
+                load_predecessor_before_trailing_batch(
+                    replay_applications,
+                    batch_name,
+                    **_spool_dir_options(spool_dir),
+                )
                 if (
-                    selected_ids is None
-                    and batch_name is not None
-                    and applied_overlay is not None
-                ):
-                    discarded_buffer = load_predecessor_before_trailing_batch(
-                        applied_overlay.text_applications,
-                        batch_name,
-                        spool_dir=spool_dir,
-                    )
-                if discarded_buffer is None:
+                    batch_name is not None
+                    and selected_ids is None
+                    and selection_ids_to_discard is None
+                )
+                else None
+            )
+            if saved_predecessor is not None:
+                discarded_buffer = saved_predecessor
+            else:
+                with acquire_batch_ownership_for_display_ids_from_lines(
+                    file_meta,
+                    batch_source_lines,
+                    selection_ids_to_discard,
+                    **_spool_dir_options(spool_dir),
+                ) as ownership:
+                    if ownership.is_empty():
+                        return DiscardTextPlanBuildResult()
+
                     discard_options = (
                         {}
                         if not trusted_presence_lines
@@ -790,9 +798,7 @@ def build_discard_text_file_action_plan(
                         working_lines,
                         baseline_lines,
                         trusted_target_lines=trusted_target_lines,
-                        index_preimage_presence_lines=(
-                            index_preimage_presence_lines
-                        ),
+                        index_preimage_presence_lines=(index_preimage_presence_lines),
                         **discard_options,
                     )
 

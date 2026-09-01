@@ -276,7 +276,9 @@ class TestBuildTargetIndexContent:
         """Test hunk starting at line 1."""
         header = HunkHeader(1, 2, 1, 3)
         lines = [
-            LineEntry(1, "+", None, 1, text_bytes=b"new first line", text="new first line"),
+            LineEntry(
+                1, "+", None, 1, text_bytes=b"new first line", text="new first line"
+            ),
             LineEntry(None, " ", 1, 2, text_bytes=b"line1", text="line1"),
             LineEntry(None, " ", 2, 3, text_bytes=b"line2", text="line2"),
         ]
@@ -292,7 +294,9 @@ class TestBuildTargetIndexContent:
         header = HunkHeader(2, 1, 2, 2)
         lines = [
             LineEntry(None, " ", 2, 2, text_bytes=b"line2", text="line2"),
-            LineEntry(1, "+", None, 3, text_bytes=b"new last line", text="new last line"),
+            LineEntry(
+                1, "+", None, 3, text_bytes=b"new last line", text="new last line"
+            ),
         ]
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_text = "line1\nline2\n"
@@ -512,16 +516,44 @@ class TestBuildTargetIndexContent:
         header = HunkHeader(1, 15, 1, 13)
         lines = [
             LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
-            LineEntry(1, "-", 2, None, text_bytes=b"from old import a", text="from old import a"),
-            LineEntry(2, "+", None, 2, text_bytes=b"from new import a", text="from new import a"),
+            LineEntry(
+                1,
+                "-",
+                2,
+                None,
+                text_bytes=b"from old import a",
+                text="from old import a",
+            ),
+            LineEntry(
+                2,
+                "+",
+                None,
+                2,
+                text_bytes=b"from new import a",
+                text="from new import a",
+            ),
             LineEntry(None, " ", 3, 3, text_bytes=b"line3", text="line3"),
             LineEntry(None, " ", 4, 4, text_bytes=b"line4", text="line4"),
             LineEntry(None, " ", 5, 5, text_bytes=b"line5", text="line5"),
             LineEntry(None, " ", 11, 11, text_bytes=b"line11", text="line11"),
             LineEntry(None, " ", 12, 12, text_bytes=b"line12", text="line12"),
-            LineEntry(3, "-", 13, None, text_bytes=b"ownership = old_value", text="ownership = old_value"),
+            LineEntry(
+                3,
+                "-",
+                13,
+                None,
+                text_bytes=b"ownership = old_value",
+                text="ownership = old_value",
+            ),
             LineEntry(4, "-", 14, None, text_bytes=b"", text=""),
-            LineEntry(5, "+", None, 13, text_bytes=b"selected_lines = selected_lines", text="selected_lines = selected_lines"),
+            LineEntry(
+                5,
+                "+",
+                None,
+                13,
+                text_bytes=b"selected_lines = selected_lines",
+                text="selected_lines = selected_lines",
+            ),
             LineEntry(None, " ", 15, 14, text_bytes=b"if binary:", text="if binary:"),
         ]
         line_changes = LineLevelChange(path="test.py", header=header, lines=lines)
@@ -678,7 +710,9 @@ class TestBuildTargetIndexContent:
         lines = [
             LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
             LineEntry(1, "-", 2, None, text_bytes=b"old value", text="old value"),
-            LineEntry(2, "+", None, 2, text_bytes=b"working value", text="working value"),
+            LineEntry(
+                2, "+", None, 2, text_bytes=b"working value", text="working value"
+            ),
             LineEntry(3, "+", None, 3, text_bytes=b"extra line", text="extra line"),
         ]
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
@@ -839,11 +873,9 @@ class TestBuildTargetIndexContent:
             gc.collect()
             tracemalloc.start()
             try:
-                span = (
-                    content_buffers_module._replacement_selection_span_indices(
-                        line_changes,
-                        replace_ids,
-                    )
+                span = content_buffers_module._replacement_selection_span_indices(
+                    line_changes,
+                    replace_ids,
                 )
                 _current_heap, peak_heap = tracemalloc.get_traced_memory()
             finally:
@@ -911,9 +943,7 @@ class TestBuildTargetIndexContent:
         heap_peaks = []
         for context_line_count in (1024, 32768):
             source_lines = [b"anchor\n"] * context_line_count
-            replacement_lines = (
-                [b"anchor"] * context_line_count + [b"replacement"]
-            )
+            replacement_lines = [b"anchor"] * context_line_count + [b"replacement"]
 
             gc.collect()
             tracemalloc.start()
@@ -923,10 +953,13 @@ class TestBuildTargetIndexContent:
                     0,
                     context_line_count,
                 )
-                assert content_buffers_module._longest_prefix_context_match(
-                    replacement_lines,
-                    context_lines,
-                ) == context_line_count
+                assert (
+                    content_buffers_module._longest_prefix_context_match(
+                        replacement_lines,
+                        context_lines,
+                    )
+                    == context_line_count
+                )
                 _current_heap, peak_heap = tracemalloc.get_traced_memory()
             finally:
                 tracemalloc.stop()
@@ -970,11 +1003,9 @@ class TestBuildTargetIndexContent:
             gc.collect()
             tracemalloc.start()
             try:
-                span = (
-                    content_buffers_module._replacement_selection_span_indices(
-                        line_changes,
-                        replace_ids,
-                    )
+                span = content_buffers_module._replacement_selection_span_indices(
+                    line_changes,
+                    replace_ids,
                 )
                 _current_heap, peak_heap = tracemalloc.get_traced_memory()
             finally:
@@ -1104,8 +1135,12 @@ class TestBuildTargetIndexContent:
                 text="... 14 more lines ...",
             ),
             LineEntry(None, " ", 20, 22, text_bytes=b"line20", text="line20"),
-            LineEntry(3, "+", None, 23, text_bytes=b"change-two-a", text="change-two-a"),
-            LineEntry(4, "+", None, 24, text_bytes=b"change-two-b", text="change-two-b"),
+            LineEntry(
+                3, "+", None, 23, text_bytes=b"change-two-a", text="change-two-a"
+            ),
+            LineEntry(
+                4, "+", None, 24, text_bytes=b"change-two-b", text="change-two-b"
+            ),
             LineEntry(None, " ", 21, 25, text_bytes=b"line21", text="line21"),
             LineEntry(
                 None,
@@ -1116,8 +1151,12 @@ class TestBuildTargetIndexContent:
                 text="... 14 more lines ...",
             ),
             LineEntry(None, " ", 35, 39, text_bytes=b"line35", text="line35"),
-            LineEntry(5, "+", None, 40, text_bytes=b"change-three-a", text="change-three-a"),
-            LineEntry(6, "+", None, 41, text_bytes=b"change-three-b", text="change-three-b"),
+            LineEntry(
+                5, "+", None, 40, text_bytes=b"change-three-a", text="change-three-a"
+            ),
+            LineEntry(
+                6, "+", None, 41, text_bytes=b"change-three-b", text="change-three-b"
+            ),
             LineEntry(None, " ", 36, 42, text_bytes=b"line36", text="line36"),
         ]
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
@@ -1410,7 +1449,9 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
 
-    def test_working_tree_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(self):
+    def test_working_tree_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(
+        self,
+    ):
         """Working-tree replacement should preserve duplicated anchors when requested."""
         header = HunkHeader(1, 4, 1, 4)
         lines = [
@@ -1552,7 +1593,9 @@ class TestBuildTargetIndexContent:
 
         assert result == b"line1\nreplacement\nline3\n"
 
-    def test_working_tree_replacement_accepts_non_list_line_sequences(self, line_sequence):
+    def test_working_tree_replacement_accepts_non_list_line_sequences(
+        self, line_sequence
+    ):
         """Working-tree replacement can read from an indexed line sequence."""
         header = HunkHeader(1, 3, 1, 3)
         lines = [
@@ -1689,7 +1732,9 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nadded line\nline2\n"
 
-        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, {1}, working_text
+        )
 
         # Discarding the addition removes it
         assert result == "line1\nline2\n"
@@ -1705,7 +1750,9 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"  # Line already deleted in working tree
 
-        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, {1}, working_text
+        )
 
         # Discarding the deletion reinserts it
         assert result == "line1\ndeleted line\nline2\n"
@@ -1859,7 +1906,9 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nadded line\nline2\n"
 
-        result = _build_target_working_tree_content_text(line_changes, set(), working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, set(), working_text
+        )
 
         # Not discarding means working tree stays the same
         assert result == "line1\nadded line\nline2\n"
@@ -1875,7 +1924,9 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"
 
-        result = _build_target_working_tree_content_text(line_changes, set(), working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, set(), working_text
+        )
 
         # Not discarding the deletion means it stays deleted
         assert result == "line1\nline2\n"
@@ -1892,7 +1943,9 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nnew line\nline2\n"
 
-        result = _build_target_working_tree_content_text(line_changes, {1, 2}, working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, {1, 2}, working_text
+        )
 
         # Discarding both reverts to original
         assert result == "line1\nold line\nline2\n"
@@ -1918,8 +1971,7 @@ class TestBuildTargetWorkingTreeContent:
             ],
         )
         working_text = (
-            "prefix\nnew_outer\n{\nouter-body\n}\n"
-            "new_inner\n{\nnew\n}\ntail\n"
+            "prefix\nnew_outer\n{\nouter-body\n}\nnew_inner\n{\nnew\n}\ntail\n"
         )
 
         result = _build_target_working_tree_content_text(
@@ -1929,8 +1981,7 @@ class TestBuildTargetWorkingTreeContent:
         )
 
         assert result == (
-            "prefix\nnew_outer\n{\nouter-body\n}\n"
-            "new_inner\n{\nold\n}\ntail\n"
+            "prefix\nnew_outer\n{\nouter-body\n}\nnew_inner\n{\nold\n}\ntail\n"
         )
 
     def test_discard_one_to_many_tail_keeps_independent_deletion_anchor(self):
@@ -1982,9 +2033,7 @@ class TestBuildTargetWorkingTreeContent:
                     None,
                     addition_index + 2,
                     text_bytes=(
-                        b"{"
-                        if addition_index == addition_count - 2
-                        else b"new"
+                        b"{" if addition_index == addition_count - 2 else b"new"
                     ),
                 )
                 for addition_index in range(addition_count)
@@ -1995,11 +2044,7 @@ class TestBuildTargetWorkingTreeContent:
             header=HunkHeader(1, 2, 1, addition_count + 1),
             lines=lines,
         )
-        working_content = (
-            b"{\n"
-            + b"new\n" * (addition_count - 2)
-            + b"{\nnew\n"
-        )
+        working_content = b"{\n" + b"new\n" * (addition_count - 2) + b"{\nnew\n"
 
         with LineBuffer.from_bytes(working_content) as working_lines:
             with build_target_working_tree_buffer_from_lines(
@@ -2029,20 +2074,14 @@ class TestBuildTargetWorkingTreeContent:
                         None,
                         addition_index + 2,
                         text_bytes=(
-                            b"{"
-                            if addition_index == addition_count - 2
-                            else b"new"
+                            b"{" if addition_index == addition_count - 2 else b"new"
                         ),
                     )
                     for addition_index in range(addition_count)
                 ],
             )
             discard_ids = {1, addition_count + 1}
-            working_content = (
-                b"{\n"
-                + b"new\n" * (addition_count - 2)
-                + b"{\nnew\n"
-            )
+            working_content = b"{\n" + b"new\n" * (addition_count - 2) + b"{\nnew\n"
 
             with LineBuffer.from_bytes(working_content) as working_lines:
                 gc.collect()
@@ -2075,7 +2114,9 @@ class TestBuildTargetWorkingTreeContent:
         working_text = "add1\nadd2\ncontext\nadd3\n"
 
         # Discard only ID 2
-        result = _build_target_working_tree_content_text(line_changes, {2}, working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, {2}, working_text
+        )
 
         assert result == "add1\ncontext\nadd3\n"
 
@@ -2091,7 +2132,9 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "add1\nadd2\nadd3\nkept\n"
 
-        result = _build_target_working_tree_content_text(line_changes, {1, 2, 3}, working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, {1, 2, 3}, working_text
+        )
 
         assert result == "kept\n"
 
@@ -2106,7 +2149,9 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "added first\nline1\nline2\n"
 
-        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, {1}, working_text
+        )
 
         assert result == "line1\nline2\n"
 
@@ -2120,9 +2165,12 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_text = "line1\nline2\n"
 
-        result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
+        result = _build_target_working_tree_content_text(
+            line_changes, {1}, working_text
+        )
 
         assert result.endswith("\n")
+
     def test_discard_selected_lines_refuses_drifted_worktree_content(self):
         """Classic worktree discard must fail instead of consuming stale rows."""
         line_changes = LineLevelChange(

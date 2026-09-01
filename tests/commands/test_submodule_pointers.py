@@ -1084,7 +1084,7 @@ def test_reset_from_batch_removes_submodule_pointer_claim(
     submodule_pointer_repo: tuple[Path, str, str],
 ) -> None:
     """reset --from should remove a stored submodule pointer claim."""
-    repo, _old_oid, _new_oid = submodule_pointer_repo
+    repo, old_oid, _new_oid = submodule_pointer_repo
 
     command_start(quiet=True)
     command_include_to_batch("pointers", quiet=True)
@@ -1094,7 +1094,9 @@ def test_reset_from_batch_removes_submodule_pointer_claim(
     assert "sub" not in read_batch_metadata("pointers").get("files", {})
     batch_commit = get_batch_commit_sha("pointers")
     assert batch_commit is not None
-    assert _git_stdout(["ls-tree", batch_commit, "--", "sub"], cwd=repo) == ""
+    assert _git_stdout(
+        ["ls-tree", batch_commit, "--", "sub"], cwd=repo
+    ) == f"160000 commit {old_oid}\tsub"
 
 
 def test_batch_submodule_pointer_actions_refuse_lines(

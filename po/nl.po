@@ -8001,6 +8001,10 @@ msgstr "Momentopnamecache: {status} ({reason})"
 msgid "This result is advisory; rewrite validate authenticates live objects."
 msgstr "Dit resultaat is adviserend; rewrite validate verifieert de actuele objecten."
 
+#: src/git_stage_batch/batch/applied_text_replay.py
+msgid "Saved text predecessor is missing or invalid"
+msgstr "Saved text predecessor is missing or invalid"
+
 #: src/git_stage_batch/batch/state/metadata_schema.py
 #, python-brace-format
 msgid "files[{path!r}] has an invalid complete-file-pair flag"

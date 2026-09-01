@@ -1,4 +1,4 @@
-"""Batch source advancement with refreshed line provenance."""
+"""Update a batch source while preserving where its lines came from."""
 
 from __future__ import annotations
 
@@ -246,15 +246,11 @@ def advance_source_lines_preserving_existing_presence(
     advancing_working_ranges: LineRanges | None = None,
     advancing_alternatives: ExplicitReplacementAlternatives | None = None,
 ) -> SourceContentWithLineProvenance:
-    """Reconcile source content with the worktree and retain owned provenance.
+    """Update a batch source without losing lines the batch owns.
 
-    Owned source lines in a changed semantic run are advanced to the live
-    variant when the complete source side is owned.  Partial ownership remains
-    conservative: required old lines are retained beside the live variant so
-    unrelated ownership is never silently absorbed.  Source-only runs that
-    contain required lines are retained whole because their unowned lines may
-    be shared structural boundaries.  An explicit saved replacement remains
-    authoritative when the live run is the baseline variant it suppresses.
+    Use the current wording when the batch owns the whole changed block.
+    Otherwise keep its old selected lines beside the current text. Also keep a
+    saved version when its replacement is still in the worktree.
     """
     presence_lines = coerce_line_ranges(ownership.presence_line_set())
     lineage = BatchSourceLineage()
@@ -283,7 +279,11 @@ def _required_source_ranges(
     ownership: BatchOwnership,
     presence_lines: LineRanges,
 ) -> MappedRecordVector:
-    """Return storage-backed ranges whose old-source lineage is required."""
+    """Find source ranges that must remain.
+
+    Store the search data in temporary mapped files instead of Python objects
+    for every line.
+    """
     replacement_alternatives = ownership.resolve().replacement_alternatives
     required = workspace.record_vector(
         len(presence_lines.ranges())
@@ -311,7 +311,7 @@ def _required_source_ranges(
 
 
 def _compact_source_ranges(source_ranges: MappedRecordVector) -> None:
-    """Coalesce ordered overlapping or adjacent mapped source ranges."""
+    """Merge overlapping or adjacent ranges."""
     retained_count = 0
     for source_start, source_end in source_ranges:
         if retained_count:
@@ -332,7 +332,7 @@ def _required_ranges_in(
     source_start: int,
     source_end: int,
 ) -> Iterator[tuple[int, int]]:
-    """Yield required-range intersections with one source interval."""
+    """Yield the required parts of one source interval."""
     low = 0
     high = len(required_ranges)
     while low < high:
@@ -449,7 +449,7 @@ def _advanced_source_chunks(
     advancing_working_ranges: LineRanges | None = None,
     advancing_alternatives: ExplicitReplacementAlternatives | None = None,
 ) -> Iterator[bytes]:
-    """Yield reconciled source chunks while recording source and live lineage."""
+    """Build the new source and record where each input line went."""
     source_cursor = 1
     working_cursor = 1
     new_cursor = 1
@@ -462,16 +462,20 @@ def _advanced_source_chunks(
             return
         source_end = source_cursor + line_count - 1
         working_end = working_cursor + line_count - 1
-        lineage.append_source_run(LineageRun(
-            old_start=source_cursor,
-            old_end=source_end,
-            new_start=new_cursor,
-        ))
-        lineage.append_working_run(LineageRun(
-            old_start=working_cursor,
-            old_end=working_end,
-            new_start=new_cursor,
-        ))
+        lineage.append_source_run(
+            LineageRun(
+                old_start=source_cursor,
+                old_end=source_end,
+                new_start=new_cursor,
+            )
+        )
+        lineage.append_working_run(
+            LineageRun(
+                old_start=working_cursor,
+                old_end=working_end,
+                new_start=new_cursor,
+            )
+        )
         new_cursor += line_count
         yield from _line_chunks(working_lines, working_cursor, working_end)
         source_cursor = source_end + 1
@@ -479,13 +483,43 @@ def _advanced_source_chunks(
 
     def emit_source(start: int, end: int) -> Iterator[bytes]:
         nonlocal new_cursor
-        lineage.append_source_run(LineageRun(
-            old_start=start,
-            old_end=end,
-            new_start=new_cursor,
-        ))
+        lineage.append_source_run(
+            LineageRun(
+                old_start=start,
+                old_end=end,
+                new_start=new_cursor,
+            )
+        )
         new_cursor += end - start + 1
         yield from _line_chunks(old_lines, start, end)
+
+    def emit_matching_source_and_working(
+        source_start: int,
+        source_end: int,
+        working_start: int,
+        working_end: int,
+    ) -> Iterator[bytes]:
+        """Keep source text while recording its exact worktree counterpart."""
+        nonlocal new_cursor
+        source_count = source_end - source_start + 1
+        if working_end - working_start + 1 != source_count:
+            raise ValueError("matching source and working ranges have unequal lengths")
+        lineage.append_source_run(
+            LineageRun(
+                old_start=source_start,
+                old_end=source_end,
+                new_start=new_cursor,
+            )
+        )
+        lineage.append_working_run(
+            LineageRun(
+                old_start=working_start,
+                old_end=working_end,
+                new_start=new_cursor,
+            )
+        )
+        new_cursor += source_count
+        yield from _line_chunks(old_lines, source_start, source_end)
 
     def emit_working(
         start: int,
@@ -496,25 +530,31 @@ def _advanced_source_chunks(
     ) -> Iterator[bytes]:
         nonlocal new_cursor
         if source_start is not None and source_end is not None:
-            lineage.append_source_run(LineageRun(
-                old_start=source_start,
-                old_end=source_end,
-                new_start=new_cursor,
-            ))
+            lineage.append_source_run(
+                LineageRun(
+                    old_start=source_start,
+                    old_end=source_end,
+                    new_start=new_cursor,
+                )
+            )
             source_count = source_end - source_start + 1
             working_count = end - start + 1
             if working_count > source_count:
-                lineage.append_source_expansion(SourceSelectionExpansion(
-                    source_start=source_start,
-                    source_end=source_end,
-                    new_start=new_cursor,
-                    new_end=new_cursor + working_count - 1,
-                ))
-        lineage.append_working_run(LineageRun(
-            old_start=start,
-            old_end=end,
-            new_start=new_cursor,
-        ))
+                lineage.append_source_expansion(
+                    SourceSelectionExpansion(
+                        source_start=source_start,
+                        source_end=source_end,
+                        new_start=new_cursor,
+                        new_end=new_cursor + working_count - 1,
+                    )
+                )
+        lineage.append_working_run(
+            LineageRun(
+                old_start=start,
+                old_end=end,
+                new_start=new_cursor,
+            )
+        )
         new_cursor += end - start + 1
         yield from _line_chunks(working_lines, start, end)
 
@@ -548,11 +588,17 @@ def _advanced_source_chunks(
             assert run.source_start is not None
             assert run.source_end is not None
             if run.kind is SemanticChangeKind.DELETION:
-                if next(_required_ranges_in(
-                    required_source_ranges,
-                    run.source_start,
-                    run.source_end,
-                ), None) is not None:
+                if (
+                    next(
+                        _required_ranges_in(
+                            required_source_ranges,
+                            run.source_start,
+                            run.source_end,
+                        ),
+                        None,
+                    )
+                    is not None
+                ):
                     yield from emit_source(run.source_start, run.source_end)
                 source_cursor = run.source_end + 1
                 continue
@@ -563,8 +609,7 @@ def _advanced_source_chunks(
             source_count = run.source_end - run.source_start + 1
             target_count = run.target_end - run.target_start + 1
             fully_owned = (
-                presence_lines.count(run.source_start, run.source_end)
-                == source_count
+                presence_lines.count(run.source_start, run.source_end) == source_count
             )
 
             saved_replacement_spans = _saved_replacement_target_spans(
@@ -647,6 +692,9 @@ def _advanced_source_chunks(
                                 retained_ranges,
                                 explicit_insertion,
                                 emit_source=emit_source,
+                                emit_matching_source_and_working=(
+                                    emit_matching_source_and_working
+                                ),
                                 emit_working=emit_working,
                             )
                             source_cursor = run.source_end + 1
@@ -736,9 +784,14 @@ def _run_is_explicit_live_alternative(
 class _ExplicitAlternativeInsertion:
     """Where to put new wording in the batch source."""
 
-    source_boundary: int
-    working_start: int
-    working_end: int
+    saved_source_start: int
+    saved_source_end: int
+    mapped_source_start: int | None
+    mapped_source_end: int | None
+    mapped_working_start: int | None
+    mapped_working_end: int | None
+    live_working_start: int
+    live_working_end: int
 
 
 def _retained_ranges_cover_run(
@@ -835,10 +888,37 @@ def _explicit_alternative_insertion(
 
     if candidate_boundary is None:
         return None
+    saved_source_start = candidate_boundary - len(saved_lines) + 1
+    saved_working_start = saved_span.start.offset + 1
+    saved_working_end = saved_span.end.offset
+    mapped_source_start: int | None
+    mapped_source_end: int | None
+    candidate_working_start = max(saved_working_start, run.target_start)
+    candidate_working_end = min(saved_working_end, run.target_end)
+    if candidate_working_start <= candidate_working_end:
+        mapped_working_start: int | None = candidate_working_start
+        mapped_working_end: int | None = candidate_working_end
+        mapped_source_start = (
+            saved_source_start + candidate_working_start - saved_working_start
+        )
+        mapped_source_end = (
+            mapped_source_start + candidate_working_end - candidate_working_start
+        )
+    else:
+        mapped_source_start = None
+        mapped_source_end = None
+        mapped_working_start = None
+        mapped_working_end = None
+
     return _ExplicitAlternativeInsertion(
-        source_boundary=candidate_boundary,
-        working_start=live_start,
-        working_end=live_end,
+        saved_source_start=saved_source_start,
+        saved_source_end=candidate_boundary,
+        mapped_source_start=mapped_source_start,
+        mapped_source_end=mapped_source_end,
+        mapped_working_start=mapped_working_start,
+        mapped_working_end=mapped_working_end,
+        live_working_start=live_start,
+        live_working_end=live_end,
     )
 
 
@@ -847,36 +927,55 @@ def _emit_retained_ranges_with_insertion(
     insertion: _ExplicitAlternativeInsertion,
     *,
     emit_source: Callable[[int, int], Iterator[bytes]],
+    emit_matching_source_and_working: Callable[
+        [int, int, int, int], Iterator[bytes]
+    ],
     emit_working: Callable[..., Iterator[bytes]],
 ) -> Iterator[bytes]:
     """Write saved ranges and insert the new wording at the chosen point."""
     inserted = False
     for retained_start, retained_end in retained_ranges:
-        if not inserted and insertion.source_boundary < retained_start:
-            yield from emit_working(
-                insertion.working_start,
-                insertion.working_end,
-            )
-            inserted = True
-        if not inserted and retained_start <= insertion.source_boundary <= retained_end:
-            yield from emit_source(retained_start, insertion.source_boundary)
-            yield from emit_working(
-                insertion.working_start,
-                insertion.working_end,
-            )
-            if insertion.source_boundary < retained_end:
+        if (
+            not inserted
+            and retained_start <= insertion.saved_source_start
+            and insertion.saved_source_end <= retained_end
+        ):
+            source_cursor = retained_start
+            if insertion.mapped_source_start is not None:
+                assert insertion.mapped_source_end is not None
+                assert insertion.mapped_working_start is not None
+                assert insertion.mapped_working_end is not None
+                if source_cursor < insertion.mapped_source_start:
+                    yield from emit_source(
+                        source_cursor,
+                        insertion.mapped_source_start - 1,
+                    )
+                yield from emit_matching_source_and_working(
+                    insertion.mapped_source_start,
+                    insertion.mapped_source_end,
+                    insertion.mapped_working_start,
+                    insertion.mapped_working_end,
+                )
+                source_cursor = insertion.mapped_source_end + 1
+            if source_cursor <= insertion.saved_source_end:
                 yield from emit_source(
-                    insertion.source_boundary + 1,
+                    source_cursor,
+                    insertion.saved_source_end,
+                )
+            yield from emit_working(
+                insertion.live_working_start,
+                insertion.live_working_end,
+            )
+            if insertion.saved_source_end < retained_end:
+                yield from emit_source(
+                    insertion.saved_source_end + 1,
                     retained_end,
                 )
             inserted = True
             continue
         yield from emit_source(retained_start, retained_end)
     if not inserted:
-        yield from emit_working(
-            insertion.working_start,
-            insertion.working_end,
-        )
+        raise ValueError("saved replacement match is outside retained source ranges")
 
 
 def _unchanged_line_count_before_run(
@@ -897,7 +996,9 @@ def _unchanged_line_count_before_run(
 
     if source_count is not None and working_count is not None:
         if source_count != working_count:
-            raise ValueError("Semantic source comparison produced unequal matched spans")
+            raise ValueError(
+                "Semantic source comparison produced unequal matched spans"
+            )
         return source_count
     if source_count is not None:
         return source_count
@@ -941,10 +1042,7 @@ def _saved_replacement_target_spans(
                 - max(source_start, run.source_start)
                 + 1
                 for source_start, source_end in replacement_ranges
-                if (
-                    source_start <= run.source_end
-                    and source_end >= run.source_start
-                )
+                if (source_start <= run.source_end and source_end >= run.source_start)
             )
         finally:
             workspace.close_resource(replacement_ranges)
@@ -963,9 +1061,7 @@ def _saved_replacement_target_spans(
                     or deletion_index >= len(ownership.deletions)
                 ):
                     continue
-                suppressed_variant = ownership.deletions[
-                    deletion_index
-                ].content_lines
+                suppressed_variant = ownership.deletions[deletion_index].content_lines
                 variant_count = len(suppressed_variant)
                 if variant_count == 0:
                     continue
@@ -991,10 +1087,12 @@ def _saved_replacement_target_spans(
                         )
                     matched_start = target_index + 1
                 if matched_start is not None:
-                    unit_spans.append((
-                        matched_start,
-                        matched_start + variant_count - 1,
-                    ))
+                    unit_spans.append(
+                        (
+                            matched_start,
+                            matched_start + variant_count - 1,
+                        )
+                    )
 
             if len(unit_spans) > 1:
                 sort_mapped_records(unit_spans)
@@ -1018,12 +1116,9 @@ def _saved_replacement_target_spans(
                 )
                 for span in unit_spans:
                     matched_unit_spans.append(span)
-            elif (
-                len(matched_unit_spans) != len(unit_spans)
-                or any(
-                    matched_unit_spans[index] != unit_spans[index]
-                    for index in range(len(unit_spans))
-                )
+            elif len(matched_unit_spans) != len(unit_spans) or any(
+                matched_unit_spans[index] != unit_spans[index]
+                for index in range(len(unit_spans))
             ):
                 raise BatchSourceAdvanceError(
                     _(

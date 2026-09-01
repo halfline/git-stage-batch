@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 import hashlib
 from pathlib import Path
+import re
 import stat
 from typing import TYPE_CHECKING
 
@@ -62,6 +64,300 @@ class _AcquiredTextApplication:
     baseline_lines: Sequence[bytes]
 
 
+@dataclass(frozen=True, slots=True)
+class _WordToken:
+    """One non-whitespace word and its byte offsets."""
+
+    value: bytes
+    start: int
+    end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _WordInsertion:
+    """Words inserted at one boundary in the earlier text."""
+
+    boundary: int
+    words: tuple[bytes, ...]
+
+
+_MAX_WORD_COMPOSITION_BYTES = 256 * 1024
+_WORD_CONTEXT_LIMIT = 16
+_MAX_WORD_INSERTIONS = 8
+
+
+def _bounded_content(lines: Sequence[bytes]) -> bytes | None:
+    """Return small content without allowing file-sized Python allocation."""
+    byte_count = 0
+    content = bytearray()
+    for line in lines:
+        chunk = bytes(line)
+        byte_count += len(chunk)
+        if byte_count > _MAX_WORD_COMPOSITION_BYTES:
+            return None
+        content.extend(chunk)
+    return bytes(content)
+
+
+def _word_tokens(content: bytes) -> list[_WordToken]:
+    """Split bounded content into words while retaining byte positions."""
+    return [
+        _WordToken(match.group(), match.start(), match.end())
+        for match in re.finditer(rb"\S+", content)
+    ]
+
+
+def _insertion_only_word_changes(
+    base: Sequence[_WordToken],
+    changed: Sequence[_WordToken],
+) -> tuple[_WordInsertion, ...] | None:
+    """Return added words when every earlier word remains in order."""
+    insertions: list[_WordInsertion] = []
+    base_index = 0
+    changed_index = 0
+    while base_index < len(base):
+        if (
+            changed_index < len(changed)
+            and changed[changed_index].value == base[base_index].value
+        ):
+            base_index += 1
+            changed_index += 1
+            continue
+        insertion_start = changed_index
+        while (
+            changed_index < len(changed)
+            and changed[changed_index].value != base[base_index].value
+        ):
+            changed_index += 1
+        if changed_index == len(changed):
+            return None
+        insertions.append(
+            _WordInsertion(
+                base_index,
+                tuple(
+                    token.value
+                    for token in changed[insertion_start:changed_index]
+                ),
+            )
+        )
+        if len(insertions) > _MAX_WORD_INSERTIONS:
+            return None
+    if changed_index < len(changed):
+        insertions.append(
+            _WordInsertion(
+                len(base),
+                tuple(token.value for token in changed[changed_index:]),
+            )
+        )
+        if len(insertions) > _MAX_WORD_INSERTIONS:
+            return None
+    return tuple(insertion for insertion in insertions if insertion.words)
+
+
+def _unique_contiguous_word_span(
+    container: Sequence[_WordToken],
+    candidate: Sequence[_WordToken],
+) -> bool:
+    """Return whether a substantial word sequence occurs exactly once."""
+    if len(candidate) < 3 or len(candidate) > len(container):
+        return False
+    values = tuple(token.value for token in candidate)
+    match_count = 0
+    for start in range(len(container) - len(values) + 1):
+        if tuple(token.value for token in container[start : start + len(values)]) != values:
+            continue
+        match_count += 1
+        if match_count > 1:
+            return False
+    return match_count == 1
+
+
+def _insertions_preserving_baseline_words(
+    before: Sequence[_WordToken],
+    changed: Sequence[_WordToken],
+    replacement: Sequence[_WordToken],
+) -> tuple[_WordInsertion, ...] | None:
+    """Find additions while retaining uniquely identified baseline wording.
+
+    A transformed selection can end before wording that another applied batch
+    preserves.  In that case ``changed`` omits those baseline words even though
+    its independent addition can still be carried into ``replacement``.
+    """
+    matcher = SequenceMatcher(
+        a=[token.value for token in replacement],
+        b=[token.value for token in changed],
+        autojunk=False,
+    )
+    insertions: list[_WordInsertion] = []
+    for tag, replacement_start, replacement_end, changed_start, changed_end in (
+        matcher.get_opcodes()
+    ):
+        if tag == "equal":
+            continue
+        if tag == "delete":
+            if not _unique_contiguous_word_span(
+                before,
+                replacement[replacement_start:replacement_end],
+            ):
+                return None
+            continue
+        if tag != "insert":
+            return None
+        if (
+            _matching_word_context(
+                replacement,
+                replacement_start,
+                changed,
+                changed_start,
+            )
+            < min(3, len(replacement))
+        ):
+            return None
+        insertions.append(
+            _WordInsertion(
+                replacement_start,
+                tuple(
+                    token.value
+                    for token in changed[changed_start:changed_end]
+                ),
+            )
+        )
+        if len(insertions) > _MAX_WORD_INSERTIONS:
+            return None
+    return tuple(insertion for insertion in insertions if insertion.words) or None
+
+
+def _matching_word_context(
+    base: Sequence[_WordToken],
+    boundary: int,
+    target: Sequence[_WordToken],
+    target_boundary: int,
+) -> int:
+    """Count equal words next to two proposed boundaries."""
+    matched = 0
+    offset = 1
+    while (
+        offset <= _WORD_CONTEXT_LIMIT
+        and boundary - offset >= 0
+        and target_boundary - offset >= 0
+        and base[boundary - offset].value
+        == target[target_boundary - offset].value
+    ):
+        matched += 1
+        offset += 1
+    offset = 0
+    while (
+        offset < _WORD_CONTEXT_LIMIT
+        and boundary + offset < len(base)
+        and target_boundary + offset < len(target)
+        and base[boundary + offset].value
+        == target[target_boundary + offset].value
+    ):
+        matched += 1
+        offset += 1
+    return matched
+
+
+def _unique_target_boundary(
+    base: Sequence[_WordToken],
+    boundary: int,
+    target: Sequence[_WordToken],
+) -> int | None:
+    """Find one target boundary with the strongest nearby word context."""
+    best_boundary: int | None = None
+    best_score = 0
+    tied = False
+    for candidate in range(len(target) + 1):
+        score = _matching_word_context(base, boundary, target, candidate)
+        if score > best_score:
+            best_boundary = candidate
+            best_score = score
+            tied = False
+        elif score == best_score and score > 0:
+            tied = True
+    required_context = min(3, len(base))
+    if tied or best_boundary is None or best_score < required_context:
+        return None
+    return best_boundary
+
+
+def _compose_word_insertions(
+    before: Sequence[bytes],
+    changed: Sequence[bytes],
+    replacement: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None,
+) -> LineBuffer | None:
+    """Carry unambiguous added words across another paragraph rewrite."""
+    before_content = _bounded_content(before)
+    changed_content = _bounded_content(changed)
+    replacement_content = _bounded_content(replacement)
+    if (
+        before_content is None
+        or changed_content is None
+        or replacement_content is None
+    ):
+        return None
+    before_tokens = _word_tokens(before_content)
+    changed_tokens = _word_tokens(changed_content)
+    replacement_tokens = _word_tokens(replacement_content)
+    insertions = _insertion_only_word_changes(before_tokens, changed_tokens)
+    replacement_boundaries = False
+    if not insertions:
+        insertions = _insertions_preserving_baseline_words(
+            before_tokens,
+            changed_tokens,
+            replacement_tokens,
+        )
+        replacement_boundaries = True
+    if not insertions:
+        return None
+
+    edits: list[tuple[int, bytes]] = []
+    previous_position = -1
+    for insertion in insertions:
+        target_boundary = (
+            insertion.boundary
+            if replacement_boundaries
+            else _unique_target_boundary(
+                before_tokens,
+                insertion.boundary,
+                replacement_tokens,
+            )
+        )
+        if target_boundary is None:
+            return None
+        position = (
+            len(replacement_content)
+            if target_boundary == len(replacement_tokens)
+            else replacement_tokens[target_boundary].start
+        )
+        if position < previous_position:
+            return None
+        previous_position = position
+        prefix = (
+            b""
+            if position == 0 or replacement_content[position - 1 : position].isspace()
+            else b" "
+        )
+        suffix = (
+            b""
+            if position == len(replacement_content)
+            or replacement_content[position : position + 1].isspace()
+            else b" "
+        )
+        edits.append((position, prefix + b" ".join(insertion.words) + suffix))
+
+    chunks: list[bytes] = []
+    cursor = 0
+    for position, inserted in edits:
+        chunks.append(replacement_content[cursor:position])
+        chunks.append(inserted)
+        cursor = position
+    chunks.append(replacement_content[cursor:])
+    return LineBuffer.from_chunks(chunks, spool_dir=spool_dir)
+
+
 class AppliedTextReplayContext:
     """The worktree text before the recorded batches were applied."""
 
@@ -93,14 +389,46 @@ class AppliedTextReplayContext:
                 self._trusted_target_lines,
                 spool_dir=self._spool_dir,
             )
-            for application in self._applications:
-                updated = _merge_with_trusted_target(
-                    application.source_lines,
-                    application.ownership,
-                    current,
-                    self._trusted_target_lines,
-                    spool_dir=self._spool_dir,
-                )
+            for application_index, application in enumerate(self._applications):
+                updated: LineBuffer | None
+                try:
+                    updated = _merge_with_trusted_target(
+                        application.source_lines,
+                        application.ownership,
+                        current,
+                        self._trusted_target_lines,
+                        spool_dir=self._spool_dir,
+                    )
+                except MergeError:
+                    with ExitStack() as stack:
+                        before_application = self._base_lines
+                        if application_index:
+                            before_application = stack.enter_context(
+                                _replay_applications(
+                                    self._applications[:application_index],
+                                    self._base_lines,
+                                    self._trusted_target_lines,
+                                    spool_dir=self._spool_dir,
+                                )
+                            )
+                        replacement = stack.enter_context(
+                            _merge_with_trusted_target(
+                                application.source_lines,
+                                application.ownership,
+                                before_application,
+                                self._trusted_target_lines,
+                                spool_dir=self._spool_dir,
+                            )
+                        )
+                        updated = _compose_word_insertions(
+                            before_application,
+                            current,
+                            replacement,
+                            spool_dir=self._spool_dir,
+                        )
+                    if updated is None:
+                        raise
+                assert updated is not None
                 current.close()
                 current = updated
             return current

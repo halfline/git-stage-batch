@@ -16,6 +16,7 @@ from ..line_matching.occurrence_index import normalized_line_payload
 from .candidates import MergeResolution as _MergeResolution
 from .presence_context import (
     PresenceRunPlacement as _PresenceRunPlacement,
+    ReplacementPlacement as _ReplacementPlacement,
     contextual_presence_placements as _contextual_presence_placements,
 )
 from .presence_missing_claims import (
@@ -65,6 +66,7 @@ def apply_presence_constraints(
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
     source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
+    replacement_placements: Sequence[_ReplacementPlacement] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
@@ -104,6 +106,7 @@ def apply_presence_constraints(
             contextual_placements=contextual_placements,
             source_alternatives=source_alternatives,
             collapsing_target_spans=collapsing_target_spans,
+            replacement_placements=replacement_placements,
             spool_dir=spool_dir,
         )
     except BaseException:
@@ -139,6 +142,7 @@ def _apply_presence_constraints_with_mapping(
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
     source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
+    replacement_placements: Sequence[_ReplacementPlacement] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
@@ -245,6 +249,7 @@ def _apply_presence_constraints_with_mapping(
                 require_distinctive_context=require_distinctive_context,
                 distinctive_context_lines=distinctive_context_lines,
                 collapsing_target_spans=collapsing_target_spans,
+                replacement_placements=replacement_placements,
                 spool_dir=spool_dir,
             )
             placements = computed_placements
@@ -473,6 +478,7 @@ def satisfy_constraints(
     distinctive_context_lines: LineSelection | None = None,
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
     source_alternatives: Sequence["ResolvedPresenceSourceAlternative"] = (),
+    replacement_placements: Sequence[_ReplacementPlacement] = (),
     ownership: BatchOwnership | None = None,
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
@@ -523,6 +529,7 @@ def satisfy_constraints(
             contextual_placements=contextual_placements,
             source_alternatives=source_alternatives,
             collapsing_target_spans=collapsing_target_spans,
+            replacement_placements=replacement_placements,
             spool_dir=spool_dir,
         )
         updated_entries = _apply_merge_absence_constraints(

@@ -74,6 +74,7 @@ _FILE_REVIEW_KEYS = frozenset(
     }
 )
 
+
 @dataclass(frozen=True, slots=True)
 class SessionMarkerIdentity:
     """Filesystem identity of the marker created once per session."""
@@ -115,6 +116,7 @@ class CachedPromptStatus:
     session_marker: SessionMarkerIdentity
     exact: bool
 
+
 def read_session_marker_identity(
     git_dir: Path | None = None,
 ) -> SessionMarkerIdentity | None:
@@ -143,6 +145,7 @@ def mark_prompt_status_cache_requested(git_dir: Path | None = None) -> bool:
     if prompt_status_cache_requested(git_dir):
         return True
     return _write_in_existing_directory(path, (b"",))
+
 
 def read_cached_prompt_status(
     git_dir: Path | None = None,
@@ -230,6 +233,7 @@ def write_cached_prompt_status(
         maximum_bytes=_MAXIMUM_CACHE_BYTES,
     )
 
+
 def _read_small_regular_file(path: Path) -> str:
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
@@ -307,6 +311,7 @@ def _write_in_existing_directory(
             pass
         os.close(directory_descriptor)
 
+
 def _decode_marker(value: object) -> SessionMarkerIdentity:
     record = require_object(value, "status summary cache.session_marker")
     require_exact_keys(record, _MARKER_KEYS, "status summary cache.session_marker")
@@ -327,6 +332,7 @@ def _decode_summary(value: object) -> PromptStatusSummary:
     _validate_change(summary["selected_change"])
     _validate_file_review(summary["file_review"])
     return cast(PromptStatusSummary, summary)
+
 
 def _validate_session(value: object) -> None:
     record = require_object(value, "status summary cache.summary.session")
@@ -358,6 +364,7 @@ def _validate_progress(value: object) -> None:
             "status summary cache.summary.progress",
         ) < 0:
             raise StrictJsonError("status summary cache progress cannot be negative")
+
 
 def _validate_change(value: object) -> None:
     if value is None:

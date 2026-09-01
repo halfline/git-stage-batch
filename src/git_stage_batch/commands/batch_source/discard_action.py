@@ -1,4 +1,4 @@
-"""Discard-from execution for batch-source action commands."""
+"""Remove saved batch changes from the worktree."""
 
 from __future__ import annotations
 

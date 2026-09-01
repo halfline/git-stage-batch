@@ -1,4 +1,4 @@
-"""Reviewed candidate execution for batch-source action commands."""
+"""Run a merge result chosen during review."""
 
 from __future__ import annotations
 

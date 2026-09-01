@@ -1,4 +1,4 @@
-"""Source-coordinate translation for combined diff displays."""
+"""Map displayed diff rows back to lines in a batch source."""
 
 from __future__ import annotations
 
@@ -126,9 +126,7 @@ def translate_display_source_coordinates(
                 if source_line is not None:
                     last_source_line = source_line
                 if line.old_line_number is not None:
-                    coordinate_delta = (
-                        line.new_line_number - line.old_line_number
-                    )
+                    coordinate_delta = line.new_line_number - line.old_line_number
             deletion_run_anchor = None
             previous_deleted_old_line = None
         elif line.kind == "+":
@@ -145,20 +143,12 @@ def translate_display_source_coordinates(
                 and line.old_line_number == previous_deleted_old_line + 1
             ):
                 deletion_run_anchor = last_source_line
-                if (
-                    deletion_run_anchor is None
-                    and line.source_line is not None
-                ):
+                if deletion_run_anchor is None and line.source_line is not None:
                     deletion_run_anchor = transform.translate_existing_source_line(
                         line.source_line
                     )
-                if (
-                    deletion_run_anchor is None
-                    and line.old_line_number is not None
-                ):
-                    working_anchor = (
-                        line.old_line_number - 1 + coordinate_delta
-                    )
+                if deletion_run_anchor is None and line.old_line_number is not None:
+                    working_anchor = line.old_line_number - 1 + coordinate_delta
                     if working_anchor > 0:
                         deletion_run_anchor = transform.translate_working_line(
                             working_anchor

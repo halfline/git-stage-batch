@@ -1029,6 +1029,7 @@ def _merge_application_authority(
             )
         ).to_range_strings()
 
+
 def _all_selected_presence_introduced(
     file_metadata: BatchFileMetadataDict,
     source_object_id: str | None,

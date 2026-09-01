@@ -1,4 +1,4 @@
-"""Batch file display rendering without selected-state mutation."""
+"""Render a batch file without changing the current selection."""
 
 from __future__ import annotations
 
@@ -167,9 +167,7 @@ def build_batch_file_display_from_inputs(
             applied_overlay=applied_overlay,
         )
         mergeable_id_ranges = mergeability.mergeable_id_ranges
-        mergeable_selection_groups = (
-            mergeability.mergeable_selection_groups
-        )
+        mergeable_selection_groups = mergeability.mergeable_selection_groups
         units = mergeability.units
 
     return _file_display_model.build_rendered_batch_display_model(

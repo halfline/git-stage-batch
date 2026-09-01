@@ -1,4 +1,4 @@
-"""Presence-constraint reversal for batch discard."""
+"""Undo selected lines when discarding a batch."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def reverse_presence_constraints(
     introduced_structural_lines: LineSelection | None = None,
     independent_insertion_lines: LineSelection | None = None,
 ) -> RealizedEntries:
-    """Replace or remove batch-owned claimed lines during discard."""
+    """Undo selected additions and remove separator lines when proven safe."""
     processed_replace_regions: set[int] = set()
     structural_lines = (
         LineRanges.empty()
@@ -108,8 +108,7 @@ def reverse_presence_constraints(
             else:
                 raise _MergeError(
                     _(
-                        "Source line {line} offset {offset} "
-                        "outside region bounds"
+                        "Source line {line} offset {offset} outside region bounds"
                     ).format(line=source_line, offset=offset)
                 )
 
@@ -182,9 +181,7 @@ def reverse_presence_constraints(
                 processed_replace_regions.add(region.region_id)
 
         else:
-            raise _MergeError(
-                _("Unknown region kind: {kind}").format(kind=region.kind)
-            )
+            raise _MergeError(_("Unknown region kind: {kind}").format(kind=region.kind))
 
     try:
         copy_start: int | None = 0
@@ -214,11 +211,7 @@ def reverse_presence_constraints(
                             and source_line in preserved_presence_lines
                         ):
                             continue
-                        index = (
-                            run.dest_start
-                            + source_line
-                            - run.source_start
-                        )
+                        index = run.dest_start + source_line - run.source_start
                         flush_copy(copy_start, index)
                         copy_start = None
                         if source_line not in structural_lines:

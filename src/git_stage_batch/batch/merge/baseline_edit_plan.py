@@ -1,4 +1,4 @@
-"""Storage-backed execution plans for baseline-coordinate edits."""
+"""Plan edits from exact locations in the original file."""
 
 from __future__ import annotations
 

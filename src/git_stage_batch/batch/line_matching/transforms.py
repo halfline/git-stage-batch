@@ -1,4 +1,4 @@
-"""Authority-bearing exact transforms and non-authoritative alignments."""
+"""Exact line maps and approximate line matches."""
 
 from __future__ import annotations
 
@@ -344,9 +344,10 @@ class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
         if target_start is None:
             return None
         for source_line in range(source_start + 1, source_end + 1):
-            if self._mapping.get_target_line_from_source_line(
-                source_line
-            ) != target_start + source_line - source_start:
+            if (
+                self._mapping.get_target_line_from_source_line(source_line)
+                != target_start + source_line - source_start
+            ):
                 return None
         return SnapshotSpan(
             self.target_snapshot,
@@ -419,6 +420,8 @@ class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
 
     def __exit__(self, *_args: object) -> None:
         self.close()
+
+
 @dataclass(frozen=True, slots=True)
 class _SourceLineageVariant:
     """Evidence that the transform projects old batch-source coordinates."""
@@ -732,9 +735,7 @@ def _validate_source_expansions(
                 or current_run.old_start > expected_source
                 or current_run.translate(expected_source) != expected_target
             ):
-                raise ValueError(
-                    "source expansion lacks contiguous direct lineage"
-                )
+                raise ValueError("source expansion lacks contiguous direct lineage")
             covered_end = min(current_run.old_end, expansion.source_end)
             covered_count = covered_end - expected_source + 1
             expected_source = covered_end + 1
@@ -749,10 +750,7 @@ def _validate_source_expansions(
         if current_run.old_end > expansion.source_end:
             raise ValueError("source expansion overlaps direct source lineage")
         current_run = next(source_runs, None)
-        if (
-            current_run is not None
-            and current_run.new_start <= expansion.new_end
-        ):
+        if current_run is not None and current_run.new_start <= expansion.new_end:
             raise ValueError("source expansion overlaps later source lineage")
 
         previous_source_end = expansion.source_end

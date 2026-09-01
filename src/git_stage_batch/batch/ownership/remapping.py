@@ -1,4 +1,4 @@
-"""Batch ownership remapping across source-line spaces."""
+"""Update batch claims after source lines move."""
 
 from __future__ import annotations
 
@@ -86,13 +86,15 @@ def _remap_replacement_units_with_lineage(
             else:
                 origin_evidence = NoReplacementUnitOrigin()
 
-        remapped_units.append(ReplacementUnit(
-            presence_lines=format_ownership_line_set(
-                lineage.translate_source_selection(old_presence_lines)
-            ),
-            deletion_indices=unit.deletion_indices,
-            origin_evidence=origin_evidence,
-        ))
+        remapped_units.append(
+            ReplacementUnit(
+                presence_lines=format_ownership_line_set(
+                    lineage.translate_source_selection(old_presence_lines)
+                ),
+                deletion_indices=unit.deletion_indices,
+                origin_evidence=origin_evidence,
+            )
+        )
 
     return normalize_replacement_units(
         remapped_units,

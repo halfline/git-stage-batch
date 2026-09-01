@@ -1,4 +1,4 @@
-"""Ownership unit construction, filtering, and rebuild helpers."""
+"""Group, filter, and rebuild batch claims for display."""
 
 from __future__ import annotations
 
@@ -48,11 +48,7 @@ def _presence_references_for_lines(
     source_lines: LineSelection,
 ) -> dict[int, BaselineReference]:
     """Return baseline references owned by one semantic unit."""
-    return {
-        line: references[line]
-        for line in source_lines
-        if line in references
-    }
+    return {line: references[line] for line in source_lines if line in references}
 
 
 def build_ownership_units_from_display_lines(
@@ -269,11 +265,14 @@ def _build_explicit_replacement_units_from_display_lines(
             source_line = display_line.get("source_line")
             if source_line is None:
                 continue
-            interval_index = bisect_right(
-                claimed_interval_owners,
-                source_line,
-                key=interval_start,
-            ) - 1
+            interval_index = (
+                bisect_right(
+                    claimed_interval_owners,
+                    source_line,
+                    key=interval_start,
+                )
+                - 1
+            )
             if interval_index < 0:
                 continue
             _start, end, unit_index = claimed_interval_owners[interval_index]

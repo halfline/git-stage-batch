@@ -1,4 +1,4 @@
-"""Apply-from execution for batch-source action commands."""
+"""Apply saved batch changes to the worktree."""
 
 from __future__ import annotations
 
@@ -389,9 +389,7 @@ def _build_apply_action_plans(
 ]:
     capture = _capture_apply_plan_inputs(
         batch_name=batch_name,
-        batch_metadata=(
-            {"files": files} if batch_metadata is None else batch_metadata
-        ),
+        batch_metadata=({"files": files} if batch_metadata is None else batch_metadata),
         files=files,
         selected_ids=selected_ids,
         workspace=workspace,

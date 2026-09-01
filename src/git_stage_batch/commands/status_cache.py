@@ -133,6 +133,7 @@ def refresh_status_summary_cache() -> None:
             session_marker=session_marker,
         )
 
+
 def cache_exact_prompt_status_if_requested(
     summary: PromptStatusSummary,
 ) -> None:

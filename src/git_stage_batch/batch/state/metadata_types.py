@@ -1,4 +1,4 @@
-"""Typed application-facing batch metadata mappings."""
+"""Types for batch metadata used by the application."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Action plan records for batch-source command execution."""
+"""Plans for commands that read a batch's saved files."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from ...data.file_target_identity import IndexIdentity
 
 
 class BatchSourceActionPlan(CloseableResource, Protocol):
-    """Plan record that may hold resources until command execution."""
+    """A plan that may keep files open until the command runs."""
 
     @property
     def file_path(self) -> str: ...
@@ -34,11 +34,11 @@ def close_resources(resources: Iterable[CloseableResource]) -> None:
 def resource_cleanup(
     resources: Iterable[CloseableResource],
 ) -> Iterator[Callable[[], None]]:
-    """Close resources once, preserving any error already in flight.
+    """Close resources once without hiding an earlier error.
 
-    The yielded callback lets a publisher perform teardown before its
-    transaction commits.  Earlier planning failures still close on context
-    exit, and a cleanup failure never replaces the primary failure.
+    The callback lets the caller close them before committing. They are also
+    closed when the context exits. If closing fails while another error is
+    already being handled, the earlier error is kept.
     """
     cleanup_attempted = False
 
@@ -63,7 +63,7 @@ def resource_cleanup(
 
 @dataclass
 class ApplyTextFileActionPlan:
-    """Deferred apply-from text file action with optional merged content."""
+    """A planned apply to a text file, including merged content when needed."""
 
     file_path: str
     buffer: LineBuffer | None
@@ -83,7 +83,7 @@ class ApplyTextFileActionPlan:
 
 @dataclass
 class IncludeTextFileActionPlan:
-    """Deferred include-from text file action with index and worktree content."""
+    """A planned include with its index and worktree content."""
 
     file_path: str
     index_buffer: LineBuffer | None
@@ -107,7 +107,7 @@ class IncludeTextFileActionPlan:
 
 @dataclass
 class DiscardTextFileActionPlan:
-    """Deferred discard-from text file action with final worktree content."""
+    """A planned discard with the resulting worktree content."""
 
     file_path: str
     buffer: LineBuffer | None
@@ -145,5 +145,5 @@ class SubmodulePointerActionPlan:
 
 
 def close_action_plans(plans: Iterable[BatchSourceActionPlan]) -> None:
-    """Close any resources owned by deferred batch-source action plans."""
+    """Close files held by the plans."""
     close_resources(plans)

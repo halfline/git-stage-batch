@@ -914,10 +914,10 @@ def contextual_presence_placements(
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
     """Find where each missing selected run belongs.
+
     A run usually follows the nearest preceding mapped line. If unmatched text
     separates them, unique nearby lines must show which side of that text the
     run belongs on. Repeated braces and blank lines are not enough evidence.
-
     """
     missing, analyses = _analyze_presence_runs(
         source_lines,

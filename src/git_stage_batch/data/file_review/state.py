@@ -1,4 +1,4 @@
-"""Persisted safety state for page-aware file reviews."""
+"""Read and write the state saved by file review."""
 
 from __future__ import annotations
 

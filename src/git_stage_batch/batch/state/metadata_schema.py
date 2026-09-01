@@ -1,4 +1,4 @@
-"""Versioned batch metadata parsing and canonical serialization."""
+"""Read, validate, and write versioned batch metadata."""
 
 from __future__ import annotations
 

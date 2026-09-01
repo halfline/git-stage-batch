@@ -1,4 +1,4 @@
-"""Attach persistent baseline references to selected insertion lines."""
+"""Remember where selected additions belong in the original file."""
 
 from __future__ import annotations
 
@@ -83,23 +83,17 @@ def _set_addition_baseline_reference(
     """Record the two baseline lines surrounding an insertion position."""
     after_line = insertion_position or None
     before_line = (
-        insertion_position + 1
-        if insertion_position < len(baseline_lines)
-        else None
+        insertion_position + 1 if insertion_position < len(baseline_lines) else None
     )
     return addition_line.with_baseline_reference(
         after_line=after_line,
         after_content=(
-            bytes(baseline_lines[after_line - 1])
-            if after_line is not None
-            else None
+            bytes(baseline_lines[after_line - 1]) if after_line is not None else None
         ),
         has_after=True,
         before_line=before_line,
         before_content=(
-            bytes(baseline_lines[before_line - 1])
-            if before_line is not None
-            else None
+            bytes(baseline_lines[before_line - 1]) if before_line is not None else None
         ),
         has_before=True,
     )
@@ -144,10 +138,12 @@ def _record_snapshot_baseline_references_for_additions(
                 and 1 <= line.source_line <= len(source_lines)
                 and not reference_fits_baseline(line)
             ):
-                addition_line_records.append((
-                    line.source_line,
-                    line_index,
-                ))
+                addition_line_records.append(
+                    (
+                        line.source_line,
+                        line_index,
+                    )
+                )
 
         if not addition_line_records:
             return
@@ -176,9 +172,7 @@ def _record_snapshot_baseline_references_for_additions(
                     previous_pair = next_pair
                     next_pair = next(mapped_pairs, None)
                 else:
-                    after_line = (
-                        previous_pair[1] if previous_pair is not None else None
-                    )
+                    after_line = previous_pair[1] if previous_pair is not None else None
                     before_line = next_pair[1] if next_pair is not None else None
                     insertion_position = after_line or 0
                     expected_before_line = insertion_position + 1

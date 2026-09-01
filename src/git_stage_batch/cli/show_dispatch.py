@@ -39,14 +39,10 @@ def _validate_show_page_request(
     resolved_file_scope: FileScope,
 ) -> None:
     lookup_batch = (
-        batch_name_for_source_lookup(args.from_batch)
-        if args.from_batch
-        else None
+        batch_name_for_source_lookup(args.from_batch) if args.from_batch else None
     )
     if lookup_batch and not batch_exists(lookup_batch):
-        raise CommandError(
-            _("Batch '{name}' does not exist").format(name=lookup_batch)
-        )
+        raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch))
     if resolved_file_scope.is_implicit:
         if not (
             args.from_batch
@@ -75,11 +71,7 @@ def _dispatch_show_from_batch(
     resolved_file_scope: FileScope,
     replacement_requested: bool,
 ) -> None:
-    replacement_text = (
-        resolve_replacement_text(args)
-        if replacement_requested
-        else None
-    )
+    replacement_text = resolve_replacement_text(args) if replacement_requested else None
     options: _ShowFromOptions = {"page": args.page}
     if args.porcelain:
         options["porcelain"] = True

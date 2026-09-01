@@ -1,4 +1,4 @@
-"""Mergeability probing for displayed batch file ownership units."""
+"""Check which displayed parts of a batch file can be merged."""
 
 from __future__ import annotations
 
@@ -257,8 +257,7 @@ def probe_batch_file_mergeability(
             group_end = unit_index + 1
             origin = units[unit_index].replacement_origin_evidence
             if not isinstance(origin, NoReplacementUnitOrigin) and not (
-                isinstance(origin, LegacyReplacementUnitOrigin)
-                and origin.value is None
+                isinstance(origin, LegacyReplacementUnitOrigin) and origin.value is None
             ):
                 while (
                     group_end < len(units)

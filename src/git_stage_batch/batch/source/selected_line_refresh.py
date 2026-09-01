@@ -1,4 +1,4 @@
-"""Selected-line source coordinate refresh helpers."""
+"""Update the source line recorded for each selected diff row."""
 
 from __future__ import annotations
 
@@ -96,20 +96,14 @@ def _acquire_coordinate_selected_line_records(
     ) as selected_line_records:
         for line in selected_lines:
             line_id = line.id
-            if (
-                type(line_id) is not int
-                or line_id < 0
-                or line_id > _MAX_UINT64
-            ):
+            if type(line_id) is not int or line_id < 0 or line_id > _MAX_UINT64:
                 yield None
                 return
             selected_line_records.append((line_id, 0, 0, 0))
 
         sort_mapped_records(selected_line_records)
         previous_line_id: int | None = None
-        for line_id, _count, _coordinate_index, _source_line in (
-            selected_line_records
-        ):
+        for line_id, _count, _coordinate_index, _source_line in selected_line_records:
             if line_id == previous_line_id:
                 yield None
                 return
@@ -117,11 +111,7 @@ def _acquire_coordinate_selected_line_records(
 
         for coordinate_index, line in enumerate(coordinate_lines):
             line_id = line.id
-            if (
-                type(line_id) is not int
-                or line_id < 0
-                or line_id > _MAX_UINT64
-            ):
+            if type(line_id) is not int or line_id < 0 or line_id > _MAX_UINT64:
                 continue
             record_index = _selected_line_record_index(
                 selected_line_records,
@@ -129,9 +119,9 @@ def _acquire_coordinate_selected_line_records(
             )
             if record_index is None:
                 continue
-            selected_id, count, _coordinate_index, source_line = (
-                selected_line_records[record_index]
-            )
+            selected_id, count, _coordinate_index, source_line = selected_line_records[
+                record_index
+            ]
             selected_line_records[record_index] = (
                 selected_id,
                 count + 1,
@@ -164,16 +154,10 @@ def _refresh_selected_line_coordinates(
         transform,
     ):
         if selected_line_records is None:
-            reannotated_lines.append(
-                line.with_source_line(source_line)
-            )
+            reannotated_lines.append(line.with_source_line(source_line))
             continue
         line_id = line.id
-        if (
-            type(line_id) is not int
-            or line_id < 0
-            or line_id > _MAX_UINT64
-        ):
+        if type(line_id) is not int or line_id < 0 or line_id > _MAX_UINT64:
             continue
         record_index = _selected_line_record_index(
             selected_line_records,
@@ -181,9 +165,9 @@ def _refresh_selected_line_coordinates(
         )
         if record_index is None:
             continue
-        selected_id, count, coordinate_index, _source_line = (
-            selected_line_records[record_index]
-        )
+        selected_id, count, coordinate_index, _source_line = selected_line_records[
+            record_index
+        ]
         selected_line_records[record_index] = (
             selected_id,
             count,
@@ -203,14 +187,12 @@ def _refresh_selected_line_coordinates(
             selected_display_id,
         )
         assert record_index is not None
-        _line_id, _count, coordinate_index, encoded_source_line = (
-            selected_line_records[record_index]
-        )
+        _line_id, _count, coordinate_index, encoded_source_line = selected_line_records[
+            record_index
+        ]
         reannotated_lines.append(
             coordinate_lines[coordinate_index - 1].with_source_line(
-                encoded_source_line - 1
-                if encoded_source_line > 0
-                else None
+                encoded_source_line - 1 if encoded_source_line > 0 else None
             )
         )
 

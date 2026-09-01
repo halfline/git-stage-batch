@@ -146,8 +146,7 @@ def _changed_line_numbers(line_count: int, hunk_count: int) -> frozenset[int]:
     if spacing < 8 and hunk_count > 1:
         raise ValueError("fixture edits must remain separate Git hunks")
     return frozenset(
-        max(1, min(line_count, spacing * (index + 1)))
-        for index in range(hunk_count)
+        max(1, min(line_count, spacing * (index + 1))) for index in range(hunk_count)
     )
 
 
@@ -255,12 +254,8 @@ def _install_worker_measurement(
             measurement["workspace_root"] = (
                 None if workspace_root is None else str(workspace_root)
             )
-            measurement["input_artifact_bytes"] = _directory_bytes(
-                workspace_root
-            )
-            measurement["peak_artifact_bytes"] = measurement[
-                "input_artifact_bytes"
-            ]
+            measurement["input_artifact_bytes"] = _directory_bytes(workspace_root)
+            measurement["peak_artifact_bytes"] = measurement["input_artifact_bytes"]
             yield plan
             measurement["peak_artifact_bytes"] = max(
                 measurement["input_artifact_bytes"],
@@ -272,28 +267,26 @@ def _install_worker_measurement(
 
     def select_execution(jobs, **selection):
         execution = original_select(jobs, **selection)
-        measurement.update({
-            "requested_jobs": selection["requested_jobs"] or "auto",
-            "transport": execution.transport,
-            "worker_count": execution.max_workers,
-            "selection_reason": execution.reason,
-            "job_count": len(jobs),
-            "total_estimated_bytes": sum(
-                job.estimated_bytes for job in jobs
-            ),
-            "largest_job_estimated_bytes": max(
-                (job.estimated_bytes for job in jobs),
-                default=0,
-            ),
-        })
+        measurement.update(
+            {
+                "requested_jobs": selection["requested_jobs"] or "auto",
+                "transport": execution.transport,
+                "worker_count": execution.max_workers,
+                "selection_reason": execution.reason,
+                "job_count": len(jobs),
+                "total_estimated_bytes": sum(job.estimated_bytes for job in jobs),
+                "largest_job_estimated_bytes": max(
+                    (job.estimated_bytes for job in jobs),
+                    default=0,
+                ),
+            }
+        )
         return execution
 
     def run_jobs(*args, **kwargs):
         workspace_root_value = measurement.get("workspace_root")
         workspace_root = (
-            None
-            if workspace_root_value is None
-            else Path(workspace_root_value)
+            None if workspace_root_value is None else Path(workspace_root_value)
         )
         stop_event = threading.Event()
         sampler = None
@@ -309,9 +302,7 @@ def _install_worker_measurement(
         try:
             return original_run(*args, **kwargs)
         finally:
-            measurement["transport_seconds"] = (
-                time.perf_counter() - started
-            )
+            measurement["transport_seconds"] = time.perf_counter() - started
             if workspace_root is not None:
                 measurement["peak_artifact_bytes"] = max(
                     measurement["peak_artifact_bytes"],
@@ -325,9 +316,7 @@ def _install_worker_measurement(
         def __init__(self, *args, **kwargs):
             started = time.perf_counter()
             super().__init__(*args, **kwargs)
-            measurement["worker_startup_seconds"] = (
-                time.perf_counter() - started
-            )
+            measurement["worker_startup_seconds"] = time.perf_counter() - started
 
         def submit(self, job):
             started = time.perf_counter()
@@ -412,9 +401,7 @@ def _worker_command(
 
 def _read_rss_bytes(process_id: int) -> int:
     try:
-        with Path(f"/proc/{process_id}/status").open(
-            encoding="ascii"
-        ) as status_file:
+        with Path(f"/proc/{process_id}/status").open(encoding="ascii") as status_file:
             for line in status_file:
                 if line.startswith("VmRSS:"):
                     return int(line.split()[1]) * 1024
@@ -425,10 +412,8 @@ def _read_rss_bytes(process_id: int) -> int:
 
 def _process_start_marker(process_id: int) -> str | None:
     try:
-        content = Path(f"/proc/{process_id}/stat").read_text(
-            encoding="ascii"
-        )
-        fields_after_name = content[content.rfind(")") + 2:].split()
+        content = Path(f"/proc/{process_id}/stat").read_text(encoding="ascii")
+        fields_after_name = content[content.rfind(")") + 2 :].split()
         return fields_after_name[19]
     except (
         FileNotFoundError,
@@ -440,9 +425,7 @@ def _process_start_marker(process_id: int) -> str | None:
 
 
 def _direct_children(process_id: int) -> tuple[int, ...]:
-    children_path = Path(
-        f"/proc/{process_id}/task/{process_id}/children"
-    )
+    children_path = Path(f"/proc/{process_id}/task/{process_id}/children")
     try:
         content = children_path.read_text().strip()
     except (FileNotFoundError, PermissionError, ProcessLookupError):
@@ -556,12 +539,14 @@ def _run_worker(
             break
         time.sleep(0.01)
 
-    measurement.update({
-        "wall_seconds": wall_seconds,
-        "peak_parent_rss_bytes": peak_parent_rss,
-        "peak_child_rss_bytes": peak_child_rss,
-        "leaked_processes": leaked_processes,
-    })
+    measurement.update(
+        {
+            "wall_seconds": wall_seconds,
+            "peak_parent_rss_bytes": peak_parent_rss,
+            "peak_child_rss_bytes": peak_child_rss,
+            "leaked_processes": leaked_processes,
+        }
+    )
     return measurement
 
 
@@ -585,15 +570,11 @@ def _validate_output(
 ) -> None:
     expected_remaining = _expected_output(case)
     if measurement["stderr"]:
-        raise RuntimeError(
-            f"{case.name} wrote stderr: {measurement['stderr']!r}"
-        )
+        raise RuntimeError(f"{case.name} wrote stderr: {measurement['stderr']!r}")
     if mode == "prompt":
         actual_remaining = int(measurement["stdout"])
     else:
-        actual_remaining = json.loads(measurement["stdout"])[
-            "progress"
-        ]["remaining"]
+        actual_remaining = json.loads(measurement["stdout"])["progress"]["remaining"]
     if actual_remaining != expected_remaining:
         raise RuntimeError(
             f"{case.name} reported {actual_remaining} remaining changes; "
@@ -613,8 +594,8 @@ def _git_count_environment(
     wrapper_path = wrapper_directory / "git"
     wrapper_path.write_text(
         "#!/bin/sh\n"
-        'printf "1\\n" >> \"$GIT_STAGE_BATCH_BENCHMARK_GIT_COUNT\"\n'
-        f"exec {shlex.quote(real_git)} \"$@\"\n",
+        'printf "1\\n" >> "$GIT_STAGE_BATCH_BENCHMARK_GIT_COUNT"\n'
+        f'exec {shlex.quote(real_git)} "$@"\n',
         encoding="utf-8",
     )
     wrapper_path.chmod(0o755)
@@ -668,9 +649,7 @@ def _measure_execution(
     )
     _validate_output(count_measurement, case, mode)
     git_subprocess_count = (
-        len(count_path.read_text().splitlines())
-        if count_path.exists()
-        else 0
+        len(count_path.read_text().splitlines()) if count_path.exists() else 0
     )
 
     representative = timing_samples[0]
@@ -693,9 +672,7 @@ def _measure_execution(
         "selection_reason": representative["selection_reason"],
         "job_count": representative["job_count"],
         "total_estimated_bytes": representative["total_estimated_bytes"],
-        "largest_job_estimated_bytes": representative[
-            "largest_job_estimated_bytes"
-        ],
+        "largest_job_estimated_bytes": representative["largest_job_estimated_bytes"],
         "input_artifact_bytes": representative["input_artifact_bytes"],
         "peak_artifact_bytes": max(
             sample["peak_artifact_bytes"]
@@ -706,20 +683,21 @@ def _measure_execution(
             sample["workspace_cleaned"]
             for sample in timing_samples + memory_samples + [count_measurement]
         ),
-        "leaked_processes": sorted({
-            process_id
-            for sample in timing_samples + memory_samples + [count_measurement]
-            for process_id in sample["leaked_processes"]
-        }),
+        "leaked_processes": sorted(
+            {
+                process_id
+                for sample in timing_samples + memory_samples + [count_measurement]
+                for process_id in sample["leaked_processes"]
+            }
+        ),
         "summary": {
             field: _summary([sample[field] for sample in timing_samples])
             for field in scalar_fields
         }
         | {
-            "tracemalloc_peak_bytes": _summary([
-                sample["tracemalloc_peak_bytes"]
-                for sample in memory_samples
-            ]),
+            "tracemalloc_peak_bytes": _summary(
+                [sample["tracemalloc_peak_bytes"] for sample in memory_samples]
+            ),
         },
         "samples": {
             field: [sample[field] for sample in timing_samples]
@@ -727,8 +705,7 @@ def _measure_execution(
         }
         | {
             "tracemalloc_peak_bytes": [
-                sample["tracemalloc_peak_bytes"]
-                for sample in memory_samples
+                sample["tracemalloc_peak_bytes"] for sample in memory_samples
             ],
         },
     }
@@ -763,9 +740,7 @@ def _environment_metadata(
         "clock": "time.perf_counter",
         "rss_metric": "sampled Linux /proc VmRSS",
         "queue_metric": "parent time serializing and sending jobs",
-        "task_metric": (
-            "transport time minus worker startup and parent queue time"
-        ),
+        "task_metric": ("transport time minus worker startup and parent queue time"),
     }
 
 
@@ -816,9 +791,7 @@ def run_suite(
             _build_repository(repository, case)
             executions = []
             for value in jobs_values:
-                profile_directory = (
-                    suite_directory / case.name / f"profile-{value}"
-                )
+                profile_directory = suite_directory / case.name / f"profile-{value}"
                 profile_directory.mkdir()
                 executions.append(
                     _measure_execution(
@@ -832,16 +805,18 @@ def run_suite(
                         profile_directory=profile_directory,
                     )
                 )
-            reports.append({
-                "name": case.name,
-                "description": case.description,
-                "dimensions": {
-                    "files": case.file_count,
-                    "lines_per_file": case.line_count,
-                    "hunks_per_file": case.hunks_per_file,
-                },
-                "executions": executions,
-            })
+            reports.append(
+                {
+                    "name": case.name,
+                    "description": case.description,
+                    "dimensions": {
+                        "files": case.file_count,
+                        "lines_per_file": case.line_count,
+                        "hunks_per_file": case.hunks_per_file,
+                    },
+                    "executions": executions,
+                }
+            )
 
     return {
         "schema_version": SCHEMA_VERSION,

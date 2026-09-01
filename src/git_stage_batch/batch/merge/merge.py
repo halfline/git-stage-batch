@@ -1,4 +1,4 @@
-"""Structural batch merge using Long Common Subsequence-based alignment."""
+"""Merge batch text by matching saved lines with the target file."""
 
 from __future__ import annotations
 

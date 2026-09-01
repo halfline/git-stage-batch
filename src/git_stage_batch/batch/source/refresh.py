@@ -58,6 +58,7 @@ class RefreshedBatchSelection:
     If the source was stale, it has been advanced, ownership remapped,
     and lines re-annotated. If not stale, this contains the original state.
     """
+
     batch_source_commit: str | None
     """The current batch source commit (possibly newly created)."""
 
@@ -164,7 +165,7 @@ def ensure_batch_source_current_for_selection(
             batch_name=batch_name,
             file_path=file_path,
             old_batch_source_commit=current_batch_source_commit,
-            existing_ownership=existing_ownership
+            existing_ownership=existing_ownership,
         ) as advance_result:
             # Update session cache so add_file_to_batch uses the new source.
             batch_sources = load_session_batch_sources()
@@ -186,7 +187,7 @@ def ensure_batch_source_current_for_selection(
                 batch_source_commit=advance_result.batch_source_commit,
                 ownership=advance_result.ownership,
                 selected_lines=reannotated_lines,
-                source_was_advanced=True
+                source_was_advanced=True,
             )
 
     elif is_stale and current_batch_source_commit and not existing_ownership:
@@ -212,7 +213,7 @@ def ensure_batch_source_current_for_selection(
             batch_source_commit=current_batch_source_commit,
             ownership=existing_ownership,
             selected_lines=reannotated_lines,
-            source_was_advanced=False
+            source_was_advanced=False,
         )
 
     else:
@@ -221,7 +222,7 @@ def ensure_batch_source_current_for_selection(
             batch_source_commit=current_batch_source_commit,
             ownership=existing_ownership,
             selected_lines=selected_lines,
-            source_was_advanced=False
+            source_was_advanced=False,
         )
 
 
@@ -427,9 +428,7 @@ def prepare_initial_batch_source_for_selection(
 
     batch_source_commit = create_batch_source_commit(file_path)
     _cache_session_source(file_path, batch_source_commit)
-    source_buffer = read_git_object_buffer_or_none(
-        f"{batch_source_commit}:{file_path}"
-    )
+    source_buffer = read_git_object_buffer_or_none(f"{batch_source_commit}:{file_path}")
     if source_buffer is None:
         raise ValueError(
             _("Cannot read initial batch source for {file} at {commit}").format(

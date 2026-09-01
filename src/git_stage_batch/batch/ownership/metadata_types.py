@@ -1,4 +1,4 @@
-"""Typed shapes for serialized batch-ownership metadata."""
+"""Types for serialized batch claims."""
 
 from __future__ import annotations
 

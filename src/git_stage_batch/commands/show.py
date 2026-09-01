@@ -30,17 +30,16 @@ def command_show(
     porcelain: bool = False,
     selectable: bool = True,
 ) -> None:
-    """Show the first unprocessed hunk or entire file.
+    """Show the next change or a whole file.
 
     Args:
-        file: Optional file path for file-scoped display.
-              If empty string, uses selected hunk's file.
-              If None, shows selected hunk (normal behavior).
-        page: Optional file-review page selection.
-        porcelain: If True, produce no output and exit with code 0 if hunk found, 1 if none
-        selectable: If True, cache the file and show selectable gutter IDs.
-                    If False, only preview the file and hide gutter IDs.
+        file: File to show. An empty string uses the current file; ``None``
+            shows only the next change.
         line_ids: Row IDs to include when showing a file.
+        page: Page of the file to show.
+        porcelain: Print nothing and use the exit status to report whether a
+            change exists.
+        selectable: Cache the file and show row IDs that can be selected.
     """
     require_git_repository()
     require_session_started()

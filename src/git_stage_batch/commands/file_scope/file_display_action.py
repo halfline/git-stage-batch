@@ -1,4 +1,4 @@
-"""Live single-file display action orchestration."""
+"""Show live changes for one file."""
 
 from __future__ import annotations
 
@@ -78,7 +78,9 @@ def show_live_file_display(
     if file_arg == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
-            exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            exit_with_error(
+                _("No selected hunk. Run 'show' first or specify file path.")
+            )
     else:
         target_file = file_arg
 
@@ -87,9 +89,7 @@ def show_live_file_display(
     deletion_change = (
         render_text_deletion_change(target_file) if preview_lines is None else None
     )
-    if deletion_change is not None and text_deletion_change_is_batched(
-        deletion_change
-    ):
+    if deletion_change is not None and text_deletion_change_is_batched(deletion_change):
         deletion_change = None
     binary_change = (
         render_binary_file_change(target_file, base=comparison_base)
@@ -98,9 +98,7 @@ def show_live_file_display(
     )
     gitlink_change = (
         render_gitlink_change(target_file, base=comparison_base)
-        if preview_lines is None
-        and deletion_change is None
-        and binary_change is None
+        if preview_lines is None and deletion_change is None and binary_change is None
         else None
     )
     rename_change = (
@@ -197,9 +195,7 @@ def show_live_file_display(
         if porcelain:
             sys.exit(1)
         print(
-            _("No changes in file '{file}'.").format(
-                file=display_path(target_file)
-            ),
+            _("No changes in file '{file}'.").format(file=display_path(target_file)),
             file=sys.stderr,
         )
         return

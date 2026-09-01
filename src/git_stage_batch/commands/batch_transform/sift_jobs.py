@@ -1,4 +1,4 @@
-"""Artifact-backed text computation for sift commands."""
+"""Run text sift work through temporary files."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ _MAX_ERROR_MESSAGE_CHARACTERS = 4 * 1024
 
 
 class SiftTextJobInput(TypedDict):
-    """Private pickle payload captured for one sift worker."""
+    """Inputs saved for one sift worker."""
 
     baseline_object_id: str | None
     batch_source_object_id: str | None
@@ -51,7 +51,7 @@ class _SiftDeletionRecord(TypedDict):
 
 @dataclass(frozen=True, slots=True)
 class SiftTextFileJob:
-    """Compact worker request for one captured text sift computation."""
+    """Files and expected state for one sift worker."""
 
     ordinal: int
     file_path: str
@@ -65,7 +65,7 @@ class SiftTextFileJob:
 
 @dataclass(frozen=True, slots=True)
 class SiftTextFileJobResult:
-    """Compact worker response for one text sift computation."""
+    """Result returned by one sift worker."""
 
     ordinal: int
     file_path: str
@@ -78,7 +78,7 @@ class SiftTextFileJobResult:
 def compute_sifted_text_file_job(
     job: SiftTextFileJob,
 ) -> SiftTextFileJobResult:
-    """Compute and stream one text sift result into private artifacts."""
+    """Run one text sift and write its result to temporary files."""
     input_value = _read_pickle(job.input_artifact_path)
     if type(input_value) is not dict:
         raise TypeError("sift text input must be a dictionary")
@@ -130,7 +130,7 @@ def validate_sifted_text_file_job_result(
     job: SiftTextFileJob,
     result: SiftTextFileJobResult,
 ) -> None:
-    """Validate one worker response before opening its artifacts."""
+    """Check one worker result before opening its files."""
     if not isinstance(result, SiftTextFileJobResult):
         raise TypeError("sift text worker returned an invalid result")
     if result.ordinal != job.ordinal or result.file_path != job.file_path:
@@ -171,7 +171,7 @@ def load_sifted_text_file_result(
     job: SiftTextFileJob,
     result: SiftTextFileJobResult,
 ) -> _sift_results.SiftedTextFileResult:
-    """Reconstruct one retained result from validated private artifacts."""
+    """Load one retained result from its temporary files."""
     validate_sifted_text_file_job_result(job, result)
     if result.outcome != "retained":
         raise ValueError("only retained sift text results can be loaded")

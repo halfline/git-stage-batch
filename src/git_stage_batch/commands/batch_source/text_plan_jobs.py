@@ -1,4 +1,4 @@
-"""Artifact-backed text planning for batch-source actions."""
+"""Plan text changes in workers using files for large inputs."""
 
 from __future__ import annotations
 
@@ -43,26 +43,32 @@ IncludeTextPlanOutcome = Literal[
     "value_error",
     "unexpected_error",
 ]
-_APPLY_DETAIL_OUTCOMES = frozenset({
-    "merge_error",
-    "atomic_unit_error",
-    "command_error",
-    "unexpected_error",
-})
+_APPLY_DETAIL_OUTCOMES = frozenset(
+    {
+        "merge_error",
+        "atomic_unit_error",
+        "command_error",
+        "unexpected_error",
+    }
+)
 _INCLUDE_DETAIL_OUTCOMES = _APPLY_DETAIL_OUTCOMES | {"value_error"}
-_EMPTY_OUTCOMES = frozenset({
-    "noop",
-    "missing_source",
-})
-_TEXT_CHANGE_TYPES = frozenset({
-    "added",
-    "modified",
-    "deleted",
-})
+_EMPTY_OUTCOMES = frozenset(
+    {
+        "noop",
+        "missing_source",
+    }
+)
+_TEXT_CHANGE_TYPES = frozenset(
+    {
+        "added",
+        "modified",
+        "deleted",
+    }
+)
 
 
 class _ApplyInputMetadata(TypedDict):
-    """Serialized inputs for one apply text-planning worker."""
+    """Inputs saved for one apply worker."""
 
     batch_name: str
     batch_source_object_id: str | None
@@ -75,7 +81,7 @@ class _ApplyInputMetadata(TypedDict):
 
 
 class _IncludeInputMetadata(_ApplyInputMetadata):
-    """Serialized inputs for one include text-planning worker."""
+    """Inputs saved for one include worker."""
 
     replacement_artifact_path: str | None
     replacement_display_text: str | None
@@ -84,7 +90,7 @@ class _IncludeInputMetadata(_ApplyInputMetadata):
 
 @dataclass(frozen=True, slots=True)
 class ApplyTextPlanJob:
-    """Compact worker request for one text apply plan."""
+    """Input file paths and order for one apply worker."""
 
     ordinal: int
     file_path: str
@@ -97,7 +103,7 @@ class ApplyTextPlanJob:
 
 @dataclass(frozen=True, slots=True)
 class ApplyTextPlanJobResult:
-    """Compact worker result for one text apply plan."""
+    """Output file paths and status from one apply worker."""
 
     ordinal: int
     file_path: str
@@ -115,7 +121,7 @@ class ApplyTextPlanJobResult:
 
 @dataclass(frozen=True, slots=True)
 class IncludeTextPlanJob:
-    """Compact worker request for one text include plan."""
+    """Input file paths and order for one include worker."""
 
     ordinal: int
     file_path: str
@@ -129,7 +135,7 @@ class IncludeTextPlanJob:
 
 @dataclass(frozen=True, slots=True)
 class IncludeTextPlanJobResult:
-    """Compact worker result for one text include plan."""
+    """Output file paths and status from one include worker."""
 
     ordinal: int
     file_path: str
@@ -146,7 +152,7 @@ class IncludeTextPlanJobResult:
 def compute_apply_text_plan_job(
     job: ApplyTextPlanJob,
 ) -> ApplyTextPlanJobResult:
-    """Build one text apply plan from immutable artifact inputs."""
+    """Build one apply plan from saved input files."""
     raw_input_metadata = _read_pickle(job.input_artifact_path)
     if type(raw_input_metadata) is not dict:
         raise TypeError("apply text-plan input must be a dictionary")
@@ -289,7 +295,7 @@ def compute_apply_text_plan_job(
 def compute_include_text_plan_job(
     job: IncludeTextPlanJob,
 ) -> IncludeTextPlanJobResult:
-    """Build one text include plan from immutable artifact inputs."""
+    """Build one include plan from saved input files."""
     raw_input_metadata = _read_pickle(job.input_artifact_path)
     if type(raw_input_metadata) is not dict:
         raise TypeError("include text-plan input must be a dictionary")
@@ -386,9 +392,7 @@ def compute_include_text_plan_job(
                 batch_source_object_id=batch_source_object_id,
                 captured_index_identity=job.expected_index_identity,
                 working_tree_artifact_path=working_tree_artifact_path,
-                captured_working_tree_exists=(
-                    job.expected_worktree_identity.exists
-                ),
+                captured_working_tree_exists=(job.expected_worktree_identity.exists),
                 spool_dir=scratch_directory,
             )
         )
@@ -453,7 +457,7 @@ def validate_apply_text_plan_job_result(
     job: ApplyTextPlanJob,
     result: ApplyTextPlanJobResult,
 ) -> None:
-    """Validate one worker result before the parent opens artifacts or mutates."""
+    """Validate a worker result before opening outputs or making changes."""
     if not isinstance(result, ApplyTextPlanJobResult):
         raise TypeError("apply text-plan worker returned an invalid result")
     if result.ordinal != job.ordinal or result.file_path != job.file_path:
@@ -468,18 +472,14 @@ def validate_apply_text_plan_job_result(
         str,
     ):
         raise TypeError("apply text-plan result change type must be text")
-    if (
-        result.selected_ownership_artifact_path is not None
-        and not isinstance(result.selected_ownership_artifact_path, str)
+    if result.selected_ownership_artifact_path is not None and not isinstance(
+        result.selected_ownership_artifact_path, str
     ):
         raise TypeError("apply text-plan ownership artifact path must be text")
     if type(result.introduced_selected_presence) is not bool:
-        raise TypeError(
-            "apply text-plan introduced-presence flag must be boolean"
-        )
-    if (
-        result.expected_index_identity is not None
-        and not isinstance(result.expected_index_identity, IndexIdentity)
+        raise TypeError("apply text-plan introduced-presence flag must be boolean")
+    if result.expected_index_identity is not None and not isinstance(
+        result.expected_index_identity, IndexIdentity
     ):
         raise TypeError(
             "apply text-plan expected index identity must be an index identity"
@@ -527,9 +527,7 @@ def validate_apply_text_plan_job_result(
                 "successful apply text plan returned an invalid change type"
             )
         expected_output_path = (
-            None
-            if result.change_type == "deleted"
-            else job.output_path
+            None if result.change_type == "deleted" else job.output_path
         )
         if result.output_path != expected_output_path:
             raise ValueError(
@@ -537,9 +535,7 @@ def validate_apply_text_plan_job_result(
                 f"{display_path(job.file_path)}"
             )
         expected_ownership_path = str(
-            Path(job.details_artifact_path).with_name(
-                "selected-ownership.pickle"
-            )
+            Path(job.details_artifact_path).with_name("selected-ownership.pickle")
         )
         if result.selected_ownership_artifact_path != expected_ownership_path:
             raise ValueError(
@@ -547,13 +543,8 @@ def validate_apply_text_plan_job_result(
                 f"ownership path for "
                 f"{display_path(job.file_path)}"
             )
-        if (
-            result.change_type != "deleted"
-            and result.expected_index_identity is None
-        ):
-            raise ValueError(
-                "successful apply text plan omitted its index identity"
-            )
+        if result.change_type != "deleted" and result.expected_index_identity is None:
+            raise ValueError("successful apply text plan omitted its index identity")
         return
 
     if result.outcome in _APPLY_DETAIL_OUTCOMES:
@@ -594,7 +585,7 @@ def validate_include_text_plan_job_result(
     job: IncludeTextPlanJob,
     result: IncludeTextPlanJobResult,
 ) -> None:
-    """Validate one include worker result before opening its artifacts."""
+    """Validate an include result before opening its output files."""
     if not isinstance(result, IncludeTextPlanJobResult):
         raise TypeError("include text-plan worker returned an invalid result")
     if result.ordinal != job.ordinal or result.file_path != job.file_path:
@@ -634,9 +625,7 @@ def validate_include_text_plan_job_result(
                     f"successful include text plan returned an invalid "
                     f"{target} change type"
                 )
-            required_path = (
-                None if change_type == "deleted" else expected_path
-            )
+            required_path = None if change_type == "deleted" else expected_path
             if output_path != required_path:
                 raise ValueError(
                     f"include text-plan worker returned an invalid "
@@ -696,9 +685,7 @@ def _result(
         ordinal=job.ordinal,
         file_path=job.file_path,
         outcome=outcome,
-        details_artifact_path=(
-            job.details_artifact_path if has_details else None
-        ),
+        details_artifact_path=(job.details_artifact_path if has_details else None),
         output_path=output_path,
         file_mode=file_mode,
         change_type=change_type,
@@ -726,9 +713,7 @@ def _include_result(
         ordinal=job.ordinal,
         file_path=job.file_path,
         outcome=outcome,
-        details_artifact_path=(
-            job.details_artifact_path if has_details else None
-        ),
+        details_artifact_path=(job.details_artifact_path if has_details else None),
         index_output_path=index_output_path,
         worktree_output_path=worktree_output_path,
         index_file_mode=index_file_mode,

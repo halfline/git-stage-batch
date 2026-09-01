@@ -1,4 +1,4 @@
-"""Presence-aware structural line mapping."""
+"""Map lines without letting selected text displace unselected text."""
 
 from __future__ import annotations
 
@@ -691,47 +691,6 @@ def _mark_explicitly_anchored_controlled_lines(
         authorized_targets[target_line - 1] = 1
 
 
-def _deduplicate_sorted_corrections(corrections: MappedRecordVector) -> None:
-    """Remove duplicate corrections."""
-    write_index = 0
-    previous: tuple[int, ...] | None = None
-    for correction in corrections:
-        if correction == previous:
-            continue
-        corrections[write_index] = correction
-        write_index += 1
-        previous = correction
-    corrections.truncate(write_index)
-
-
-def _corrections_have_conflicting_assignments(
-    workspace: MatcherWorkspace,
-    corrections: Sequence[tuple[int, ...]],
-    target_line_count: int,
-) -> bool:
-    """Return whether corrected lines collide or appear out of order."""
-    target_sources = workspace.int_vector(
-        target_line_count,
-        width=8,
-        fill=0,
-    )
-    try:
-        previous_source = 0
-        previous_target = 0
-        for source_line, target_line in corrections:
-            if previous_source == source_line and previous_target != target_line:
-                return True
-            target_source = target_sources[target_line - 1]
-            if target_source not in (0, source_line):
-                return True
-            target_sources[target_line - 1] = source_line
-            previous_source = source_line
-            previous_target = target_line
-    finally:
-        workspace.close_resource(target_sources)
-    return False
-
-
 def _append_context_for_incomplete_controlled_runs(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
@@ -1040,6 +999,47 @@ def _append_coordinate_bounded_controlled_run_extensions(
             source_cursor += 1
 
 
+def _deduplicate_sorted_corrections(corrections: MappedRecordVector) -> None:
+    """Remove duplicate corrections."""
+    write_index = 0
+    previous: tuple[int, ...] | None = None
+    for correction in corrections:
+        if correction == previous:
+            continue
+        corrections[write_index] = correction
+        write_index += 1
+        previous = correction
+    corrections.truncate(write_index)
+
+
+def _corrections_have_conflicting_assignments(
+    workspace: MatcherWorkspace,
+    corrections: Sequence[tuple[int, ...]],
+    target_line_count: int,
+) -> bool:
+    """Return whether corrected lines collide or appear out of order."""
+    target_sources = workspace.int_vector(
+        target_line_count,
+        width=8,
+        fill=0,
+    )
+    try:
+        previous_source = 0
+        previous_target = 0
+        for source_line, target_line in corrections:
+            if previous_source == source_line and previous_target != target_line:
+                return True
+            target_source = target_sources[target_line - 1]
+            if target_source not in (0, source_line):
+                return True
+            target_sources[target_line - 1] = source_line
+            previous_source = source_line
+            previous_target = target_line
+    finally:
+        workspace.close_resource(target_sources)
+    return False
+
+
 def match_lines_preserving_unowned_context(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
@@ -1055,15 +1055,12 @@ def match_lines_preserving_unowned_context(
     spool_dir: str | Path | None = None,
     matcher: Callable[..., LineMapping] = match_lines,
 ) -> PresenceMappingResult:
-    """Map context before presence so claimed lines cannot steal live content.
+    """Map unselected text before placing selected lines.
 
-    The ordinary mapping remains authoritative except where one of its selected
-    source lines took content that also exists outside the selection. A
-    distinctive context-only run can reassign that target. Otherwise the result
-    is marked ambiguous: exact-coordinate planning may still prove the claim,
-    but structural replay must refuse rather than infer ownership from the
-    duplicate. Ordinary mappings survive between proven corrections. All
-    file-sized vectors use mapped storage.
+    Keep the usual line map unless a selected line took text that also appears
+    outside the selection. Unique surrounding text or an exact saved location
+    may choose the right copy. Otherwise report ambiguity. Large arrays are
+    kept in temporary mapped files instead of Python objects for every line.
     """
     owned_ordinary: LineMapping | None = None
     context_mapping: LineMapping | None = None

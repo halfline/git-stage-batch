@@ -138,8 +138,15 @@ def test_detect_stale_batch_source_with_none_source_lines():
     """Test detection of stale batch source when source_line is None."""
     # Lines with source_line=None indicate stale source
     stale_lines = [
-        LineEntry(id=1, kind='+', old_line_number=None, new_line_number=1,
-                 text_bytes=b"new line", text="new line", source_line=None),
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new line",
+            text="new line",
+            source_line=None,
+        ),
     ]
 
     assert detect_stale_batch_source_for_selection(stale_lines) is True
@@ -148,10 +155,24 @@ def test_detect_stale_batch_source_with_none_source_lines():
 def test_detect_current_batch_source_with_valid_source_lines():
     """Test detection passes when all source_lines are valid."""
     current_lines = [
-        LineEntry(id=1, kind=' ', old_line_number=1, new_line_number=1,
-                 text_bytes=b"context", text="context", source_line=1),
-        LineEntry(id=2, kind='+', old_line_number=None, new_line_number=2,
-                 text_bytes=b"addition", text="addition", source_line=2),
+        LineEntry(
+            id=1,
+            kind=" ",
+            old_line_number=1,
+            new_line_number=1,
+            text_bytes=b"context",
+            text="context",
+            source_line=1,
+        ),
+        LineEntry(
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"addition",
+            text="addition",
+            source_line=2,
+        ),
     ]
 
     assert detect_stale_batch_source_for_selection(current_lines) is False
@@ -160,8 +181,15 @@ def test_detect_current_batch_source_with_valid_source_lines():
 def test_detect_stale_batch_source_with_missing_deletion_anchor():
     """Deletion-only selections after file start need source refresh."""
     stale_lines = [
-        LineEntry(id=1, kind='-', old_line_number=2, new_line_number=None,
-                 text_bytes=b"old line", text="old line", source_line=None),
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=2,
+            new_line_number=None,
+            text_bytes=b"old line",
+            text="old line",
+            source_line=None,
+        ),
     ]
 
     assert detect_stale_batch_source_for_selection(stale_lines) is True
@@ -170,8 +198,15 @@ def test_detect_stale_batch_source_with_missing_deletion_anchor():
 def test_detect_current_batch_source_with_file_start_deletion_anchor():
     """A missing deletion source line is valid before the first line."""
     current_lines = [
-        LineEntry(id=1, kind='-', old_line_number=1, new_line_number=None,
-                 text_bytes=b"old first", text="old first", source_line=None),
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"old first",
+            text="old first",
+            source_line=None,
+        ),
     ]
 
     assert detect_stale_batch_source_for_selection(current_lines) is False
@@ -180,8 +215,15 @@ def test_detect_current_batch_source_with_file_start_deletion_anchor():
 def test_translate_fails_loudly_with_none_source_line():
     """Test that translation fails loudly instead of silently dropping None source_lines."""
     stale_lines = [
-        LineEntry(id=1, kind='+', old_line_number=None, new_line_number=1,
-                 text_bytes=b"new code", text="new code", source_line=None),
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new code",
+            text="new code",
+            source_line=None,
+        ),
     ]
 
     with pytest.raises(ValueError, match="Batch source is stale"):
@@ -309,12 +351,18 @@ def test_batch_source_lineage_finds_unmapped_source_ranges():
             LineageRun(old_start=30, old_end=40, new_start=200),
         ],
     ) as lineage:
-        assert lineage.first_unmapped_source_line(
-            _IterationGuardedLineSelection(((5, 5), (10, 12)))
-        ) is None
-        assert lineage.first_unmapped_source_line(
-            _IterationGuardedLineSelection(((5, 5), (10, 12), (25, 26)))
-        ) == 25
+        assert (
+            lineage.first_unmapped_source_line(
+                _IterationGuardedLineSelection(((5, 5), (10, 12)))
+            )
+            is None
+        )
+        assert (
+            lineage.first_unmapped_source_line(
+                _IterationGuardedLineSelection(((5, 5), (10, 12), (25, 26)))
+            )
+            == 25
+        )
 
 
 def test_late_source_selection_binary_searches_fragmented_lineage(
@@ -340,9 +388,12 @@ def test_late_source_selection_binary_searches_fragmented_lineage(
         monkeypatch.setattr(run_table, "_run_at_index", counted_run_at_index)
         selected_line = 2 * run_count - 1
 
-        assert lineage.first_unmapped_source_line(
-            LineRanges.from_ranges(((selected_line, selected_line),))
-        ) is None
+        assert (
+            lineage.first_unmapped_source_line(
+                LineRanges.from_ranges(((selected_line, selected_line),))
+            )
+            is None
+        )
         assert lineage.translate_source_selection(
             LineRanges.from_ranges(((selected_line, selected_line),))
         ).ranges() == ((selected_line, selected_line),)
@@ -397,14 +448,10 @@ def test_late_source_selection_binary_searches_source_expansions(
 def test_batch_source_lineage_rejects_overlapping_appends():
     """Lineage appends should require monotonic old-coordinate runs."""
     with BatchSourceLineage() as lineage:
-        lineage.append_source_run(
-            LineageRun(old_start=10, old_end=20, new_start=100)
-        )
+        lineage.append_source_run(LineageRun(old_start=10, old_end=20, new_start=100))
 
         with pytest.raises(ValueError, match="lineage runs must not overlap"):
-            lineage.append_source_run(
-                LineageRun(old_start=5, old_end=9, new_start=200)
-            )
+            lineage.append_source_run(LineageRun(old_start=5, old_end=9, new_start=200))
 
         with pytest.raises(ValueError, match="lineage runs must not overlap"):
             lineage.append_source_run(
@@ -1005,8 +1052,7 @@ def test_advance_source_does_not_duplicate_changed_return_statement():
 def test_advance_source_tracks_contiguous_lineage_as_runs():
     """Large contiguous source refreshes should keep one source-line run."""
     source_lines = b"".join(
-        f"line {index}\n".encode("utf-8")
-        for index in range(1, 1001)
+        f"line {index}\n".encode("utf-8") for index in range(1, 1001)
     )
     ownership = BatchOwnership.from_presence_lines(["1-1000"], [])
 
@@ -1028,8 +1074,7 @@ def test_advance_source_avoids_line_scale_python_heap():
     heap_peaks = []
     for line_count in _LINE_SCALE_TEST_COUNTS:
         source_content = b"".join(
-            f"line-{line_index:08d}\n".encode()
-            for line_index in range(line_count)
+            f"line-{line_index:08d}\n".encode() for line_index in range(line_count)
         )
         ownership = BatchOwnership.from_presence_lines([f"1-{line_count}"], [])
 
@@ -1047,9 +1092,7 @@ def test_advance_source_avoids_line_scale_python_heap():
                     working_lines,
                     ownership,
                 ) as source_with_provenance:
-                    result_byte_count = (
-                        source_with_provenance.source_buffer.byte_count
-                    )
+                    result_byte_count = source_with_provenance.source_buffer.byte_count
                 _current_heap, peak_heap = tracemalloc.get_traced_memory()
             finally:
                 tracemalloc.stop()
@@ -1157,9 +1200,10 @@ def test_advance_source_replaces_suppressed_span_without_losing_live_neighbors(
         )
 
         assert source_with_provenance.source_buffer.to_bytes() == expected_source
-        assert source_with_provenance.lineage.translate_working_line(
-            working_extra[0]
-        ) == working_extra[1]
+        assert (
+            source_with_provenance.lineage.translate_working_line(working_extra[0])
+            == working_extra[1]
+        )
 
     assert remapped.presence_line_set().ranges() == expected_presence
     assert remapped.replacement_units[0].presence_lines == [
@@ -1501,12 +1545,14 @@ def test_advance_source_keeps_owned_block_after_explicit_live_wording() -> None:
 
 def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):
     """Source construction accepts indexed line sequences."""
-    old_lines = line_sequence([
-        b"owned before\n",
-        b"same\n",
-        b"same\n",
-        b"owned after\n",
-    ])
+    old_lines = line_sequence(
+        [
+            b"owned before\n",
+            b"same\n",
+            b"same\n",
+            b"owned after\n",
+        ]
+    )
     working_lines = line_sequence([b"same\n", b"same\n"])
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])
 

@@ -568,6 +568,99 @@ def test_split_replacement_ranges_share_their_verified_old_side() -> None:
 """
 
 
+def test_split_replacement_ranges_do_not_use_unrelated_target_text() -> None:
+    """A replacement group cannot resolve ambiguity without its exact old text."""
+    batch_source = b"""static int init(void)
+{
+    int err;
+
+    setup();
+    err = add_action();
+    if (err)
+        return err;
+    err = old_init();
+    if (err)
+        return err;
+    new_init();
+
+    return 0;
+}
+"""
+    working = b"""static int init(void)
+{
+    return unrelated_init();
+}
+"""
+    ownership = BatchOwnership.from_presence_lines(
+        ["3-8", "12-14"],
+        [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"    return baseline_init();\n"],
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3-8", "12-14"],
+                deletion_indices=[0],
+            )
+        ],
+    )
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(batch_source, ownership, working)
+
+
+def test_replacement_rebuilds_a_claimed_line_that_matched_its_old_side() -> None:
+    """A shared line inside old text must not split the replacement."""
+    batch_source = b"head\nnew start\n\nnew end\ntail\n"
+    working = b"head\nold start\n\nold end\ntail\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-4"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old start\n", b"\n", b"old end\n"],
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2-4"],
+                deletion_indices=[0],
+            )
+        ],
+    )
+
+    result = merge_batch(batch_source, ownership, working)
+
+    assert result == batch_source
+
+
+def test_replacement_removes_unowned_source_match_inside_its_old_side() -> None:
+    """A mapped source line cannot shield text claimed by the deletion."""
+    batch_source = b"head\nold one\nnew\ntail\n"
+    working = b"head\nold one\nold two\ntail\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old one\n", b"old two\n"],
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3"],
+                deletion_indices=[0],
+            )
+        ],
+    )
+
+    result = merge_batch(batch_source, ownership, working)
+
+    assert result == b"head\nnew\ntail\n"
+
+
 def test_crlf_normalization_in_discard_restoration():
     """Discard should handle CRLF in deletion content correctly.
 

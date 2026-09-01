@@ -249,6 +249,7 @@ class TestLineLevelOperationPaths:
         lock_path = get_session_lock_file_path()
         state_dir = get_state_directory_path()
         assert lock_path == state_dir / "session.lock"
+
     def test_get_status_summary_paths(self, temp_git_repo):
         """Prompt cache data is local while its worker lock is shared."""
         state_dir = get_state_directory_path()

@@ -71,7 +71,7 @@ def test_refreshed_batch_selection_dataclass():
         batch_source_commit="abc123",
         ownership=None,
         selected_lines=[],
-        source_was_advanced=False
+        source_was_advanced=False,
     )
 
     assert refresh.batch_source_commit == "abc123"
@@ -85,8 +85,13 @@ def test_ensure_batch_source_current_non_stale_source(monkeypatch):
     # Lines with valid source_line values (not stale)
     lines = [
         LineEntry(
-            id=1, kind='+', old_line_number=None, new_line_number=1,
-            text_bytes=b"new line", text="new line", source_line=1
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new line",
+            text="new line",
+            source_line=1,
         ),
     ]
 
@@ -109,7 +114,7 @@ def test_ensure_batch_source_current_non_stale_source(monkeypatch):
         file_path="test.py",
         current_batch_source_commit="old_source",
         existing_ownership=ownership,
-        selected_lines=lines
+        selected_lines=lines,
     )
 
     assert result.batch_source_commit == "old_source"
@@ -208,8 +213,13 @@ def test_ensure_batch_source_current_first_time_stale(monkeypatch):
     # Lines with source_line=None (stale) but no existing ownership
     lines = [
         LineEntry(
-            id=1, kind='+', old_line_number=None, new_line_number=1,
-            text_bytes=b"new line", text="new line", source_line=None
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new line",
+            text="new line",
+            source_line=None,
         ),
     ]
     _capture_session_sources(monkeypatch)
@@ -221,7 +231,7 @@ def test_ensure_batch_source_current_first_time_stale(monkeypatch):
         file_path="test.py",
         current_batch_source_commit=None,
         existing_ownership=None,
-        selected_lines=lines
+        selected_lines=lines,
     )
 
     assert result.batch_source_commit is None
@@ -234,8 +244,13 @@ def test_prepare_initial_batch_source_maps_selection(monkeypatch):
     """A first session source receives matching selection coordinates."""
     lines = [
         LineEntry(
-            id=1, kind='+', old_line_number=None, new_line_number=2,
-            text_bytes=b"new line", text="new line", source_line=None
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"new line",
+            text="new line",
+            source_line=None,
         ),
     ]
     cached_sources = {}
@@ -267,11 +282,9 @@ def test_prepare_initial_batch_source_maps_selection(monkeypatch):
         lambda _file_path: LineBuffer.from_bytes(b"header\nnew line\n"),
     )
 
-    batch_source_commit, prepared_lines = (
-        prepare_initial_batch_source_for_selection(
-            "test.py",
-            lines,
-        )
+    batch_source_commit, prepared_lines = prepare_initial_batch_source_for_selection(
+        "test.py",
+        lines,
     )
 
     assert batch_source_commit == "new_source"
@@ -339,16 +352,12 @@ def test_prepare_initial_cached_source_remaps_deletion_anchor(monkeypatch):
     monkeypatch.setattr(
         source_refresh,
         "load_working_tree_file_as_buffer",
-        lambda _file_path: LineBuffer.from_bytes(
-            b"header\nanchor\nfooter\n"
-        ),
+        lambda _file_path: LineBuffer.from_bytes(b"header\nanchor\nfooter\n"),
     )
     monkeypatch.setattr(
         source_refresh,
         "create_batch_source_commit",
-        lambda *_args, **_kwargs: pytest.fail(
-            "the cached source should remain usable"
-        ),
+        lambda *_args, **_kwargs: pytest.fail("the cached source should remain usable"),
     )
     selected_lines = [
         LineEntry(
@@ -361,11 +370,9 @@ def test_prepare_initial_cached_source_remaps_deletion_anchor(monkeypatch):
         ),
     ]
 
-    batch_source_commit, prepared_lines = (
-        prepare_initial_batch_source_for_selection(
-            "test.py",
-            selected_lines,
-        )
+    batch_source_commit, prepared_lines = prepare_initial_batch_source_for_selection(
+        "test.py",
+        selected_lines,
     )
 
     assert batch_source_commit == "cached_source"
@@ -636,12 +643,22 @@ def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
     ) as source_with_provenance:
         selected_lines = [
             LineEntry(
-                id=1, kind='+', old_line_number=None, new_line_number=1,
-                text_bytes=b"same", text="same", source_line=None
+                id=1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=1,
+                text_bytes=b"same",
+                text="same",
+                source_line=None,
             ),
             LineEntry(
-                id=2, kind='+', old_line_number=None, new_line_number=2,
-                text_bytes=b"same", text="same", source_line=None
+                id=2,
+                kind="+",
+                old_line_number=None,
+                new_line_number=2,
+                text_bytes=b"same",
+                text="same",
+                source_line=None,
             ),
         ]
 
@@ -659,8 +676,13 @@ def test_refresh_selected_lines_accepts_non_list_source_sequences(line_sequence)
     """Source refresh can use already indexed line sequences."""
     selected_lines = [
         LineEntry(
-            id=None, kind=' ', old_line_number=2, new_line_number=2,
-            text_bytes=b"line3", text="line3", source_line=None
+            id=None,
+            kind=" ",
+            old_line_number=2,
+            new_line_number=2,
+            text_bytes=b"line3",
+            text="line3",
+            source_line=None,
         ),
     ]
 
@@ -727,8 +749,13 @@ def test_refresh_selected_lines_accepts_non_list_line_sequences(line_sequence):
     """Source refresh matching only requires sized indexable line sequences."""
     selected_lines = [
         LineEntry(
-            id=None, kind=' ', old_line_number=2, new_line_number=2,
-            text_bytes=b"line3", text="line3", source_line=None
+            id=None,
+            kind=" ",
+            old_line_number=2,
+            new_line_number=2,
+            text_bytes=b"line3",
+            text="line3",
+            source_line=None,
         ),
     ]
 

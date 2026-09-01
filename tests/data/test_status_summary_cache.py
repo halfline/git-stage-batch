@@ -24,6 +24,7 @@ from git_stage_batch.utils.paths import (
     get_status_summary_cache_file_path,
 )
 
+
 @pytest.fixture
 def status_cache_repo(tmp_path, monkeypatch):
     """Create a repository with only the active marker needed by the cache."""
@@ -59,6 +60,7 @@ def _summary() -> PromptStatusSummary:
             "remaining": 5,
         },
     }
+
 
 def test_status_summary_cache_round_trips_small_prompt_snapshot(status_cache_repo):
     """The cache should retain prompt fields without full status-only lists."""
@@ -99,6 +101,7 @@ def test_status_summary_cache_rejects_previous_session_marker(status_cache_repo)
 
     assert read_cached_prompt_status() is None
 
+
 def test_status_summary_cache_rejects_malformed_values(status_cache_repo):
     """A corrupt optimization record should behave like a cache miss."""
     cache_path = get_status_summary_cache_file_path()
@@ -123,6 +126,7 @@ def test_status_summary_cache_does_not_publish_oversized_values(
         session_marker=marker,
     )
     assert not get_status_summary_cache_file_path().exists()
+
 
 def test_status_summary_cache_does_not_recreate_removed_session(status_cache_repo):
     """A late refresh must not resurrect a session removed by stop."""

@@ -304,6 +304,8 @@ def test_nested_alternative_at_payload_end_extends_parent_envelope() -> None:
         LineBoundary(5),
     )
     assert alternatives[1].parent_deletion_index == 0
+
+
 def test_batch_ownership_rejects_uncoupled_persisted_alternative() -> None:
     """A source-alternative flag cannot escape its replacement unit."""
     ownership = BatchOwnership.from_presence_lines(

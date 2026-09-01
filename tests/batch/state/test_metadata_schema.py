@@ -13,7 +13,9 @@ from git_stage_batch.batch.state.metadata_schema import (
     encode_batch_metadata,
     metadata_from_application_dict,
 )
-from git_stage_batch.batch.state.compatibility_metadata import write_file_backed_batch_metadata
+from git_stage_batch.batch.state.compatibility_metadata import (
+    write_file_backed_batch_metadata,
+)
 from git_stage_batch.exceptions import BatchMetadataError
 
 
@@ -79,11 +81,10 @@ def test_v1_migrates_to_current_schema_deterministically_and_immutably():
     encoded = encode_batch_metadata(model)
     reparsed = decode_batch_metadata(encoded, expected_batch="feature")
 
-    assert json.loads(encoded)["schema_version"] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
     assert (
-        model.files[0].values["legacy_unmarked_source_alternatives"]
-        is True
+        json.loads(encoded)["schema_version"] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
     )
+    assert model.files[0].values["legacy_unmarked_source_alternatives"] is True
     assert reparsed == model
     assert encoded == encode_batch_metadata(reparsed)
     with pytest.raises(FrozenInstanceError):
@@ -132,7 +133,9 @@ def test_unversioned_state_metadata_migrates_deterministically():
     }
 
     first = decode_batch_metadata(legacy, expected_batch="feature")
-    second = decode_batch_metadata(dict(reversed(list(legacy.items()))), expected_batch="feature")
+    second = decode_batch_metadata(
+        dict(reversed(list(legacy.items()))), expected_batch="feature"
+    )
 
     assert first == second
     assert first.revision.startswith("v0-")
@@ -199,9 +202,10 @@ def test_file_backed_v0_migration_keeps_recovery_copy(tmp_path, monkeypatch):
     )
 
     assert metadata_path.with_name("metadata.v0.json").read_text() == original
-    assert json.loads(metadata_path.read_text())[
-        "schema_version"
-    ] == CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    assert (
+        json.loads(metadata_path.read_text())["schema_version"]
+        == CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    )
 
 
 def test_file_backed_writer_refuses_to_replace_future_schema(tmp_path, monkeypatch):
@@ -293,9 +297,7 @@ def test_v1_rejects_equivalent_presence_claim_spellings():
 def test_v1_rejects_replacement_with_out_of_range_deletion_index():
     data = _v1_metadata()
     file_metadata = data["files"]["src/example.py"]
-    file_metadata["deletions"] = [
-        {"after_source_line": 1, "blob": _oid("d")}
-    ]
+    file_metadata["deletions"] = [{"after_source_line": 1, "blob": _oid("d")}]
     file_metadata["replacement_units"] = [
         {"presence_lines": ["1"], "deletion_indices": [1]}
     ]
@@ -341,9 +343,7 @@ def test_current_schema_rejects_complete_file_pair_without_source_alternative():
 
 def test_current_schema_rejects_non_boolean_source_alternative_deletion_flag():
     data = _current_source_alternative_metadata()
-    data["files"]["src/example.py"]["deletions"][0][
-        "source_alternative"
-    ] = 1
+    data["files"]["src/example.py"]["deletions"][0]["source_alternative"] = 1
 
     with pytest.raises(BatchMetadataError, match="source-alternative flag"):
         decode_batch_metadata(data, expected_batch="feature")
@@ -351,9 +351,7 @@ def test_current_schema_rejects_non_boolean_source_alternative_deletion_flag():
 
 def test_current_schema_rejects_source_alternative_without_live_boundary():
     data = _current_source_alternative_metadata()
-    del data["files"]["src/example.py"]["deletions"][0][
-        "baseline_reference"
-    ]
+    del data["files"]["src/example.py"]["deletions"][0]["baseline_reference"]
 
     with pytest.raises(BatchMetadataError, match="without a live boundary"):
         decode_batch_metadata(data, expected_batch="feature")
@@ -361,9 +359,7 @@ def test_current_schema_rejects_source_alternative_without_live_boundary():
 
 def test_current_schema_rejects_source_alternative_with_empty_live_boundary():
     data = _current_source_alternative_metadata()
-    data["files"]["src/example.py"]["deletions"][0][
-        "baseline_reference"
-    ] = {}
+    data["files"]["src/example.py"]["deletions"][0]["baseline_reference"] = {}
 
     with pytest.raises(BatchMetadataError, match="without a live boundary"):
         decode_batch_metadata(data, expected_batch="feature")
@@ -379,9 +375,7 @@ def test_current_schema_rejects_uncoupled_source_alternative():
 
 def test_current_schema_rejects_source_alternative_with_unowned_replacement_side():
     data = _current_source_alternative_metadata()
-    data["files"]["src/example.py"]["replacement_units"][0][
-        "presence_lines"
-    ] = ["4"]
+    data["files"]["src/example.py"]["replacement_units"][0]["presence_lines"] = ["4"]
 
     with pytest.raises(BatchMetadataError, match="without an owned replacement"):
         decode_batch_metadata(data, expected_batch="feature")
@@ -390,9 +384,7 @@ def test_current_schema_rejects_source_alternative_with_unowned_replacement_side
 def test_current_schema_rejects_non_boolean_legacy_alternative_marker():
     data = _v1_metadata()
     data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
-    data["files"]["src/example.py"][
-        "legacy_unmarked_source_alternatives"
-    ] = 1
+    data["files"]["src/example.py"]["legacy_unmarked_source_alternatives"] = 1
 
     with pytest.raises(BatchMetadataError, match="legacy source-alternative"):
         decode_batch_metadata(data, expected_batch="feature")
@@ -401,9 +393,7 @@ def test_current_schema_rejects_non_boolean_legacy_alternative_marker():
 def test_current_schema_rejects_null_legacy_alternative_marker():
     data = _v1_metadata()
     data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
-    data["files"]["src/example.py"][
-        "legacy_unmarked_source_alternatives"
-    ] = None
+    data["files"]["src/example.py"]["legacy_unmarked_source_alternatives"] = None
 
     with pytest.raises(BatchMetadataError, match="legacy source-alternative"):
         decode_batch_metadata(data, expected_batch="feature")

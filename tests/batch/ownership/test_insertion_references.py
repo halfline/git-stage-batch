@@ -176,6 +176,7 @@ def test_snapshot_reference_order_avoids_python_line_collections(
     monkeypatch,
 ) -> None:
     """Source-order indexing should stay in storage-backed records."""
+
     def fail_sorted(*_args, **_kwargs):
         raise AssertionError("addition lines must not be collected on the heap")
 

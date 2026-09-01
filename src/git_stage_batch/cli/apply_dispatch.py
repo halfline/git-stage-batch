@@ -13,10 +13,15 @@ from .file_scope import resolve_batch_file_scope
 def dispatch_apply_command(args: argparse.Namespace) -> None:
     """Dispatch parsed apply arguments."""
     line_ids = args.line_ids if hasattr(args, "line_ids") else None
+    file_patterns = args.file_patterns
+    if args.file is None and file_patterns is None and line_ids is None:
+        # Bare apply is batch-wide. A prior file review only scopes an explicit
+        # pathless --file or a line selection.
+        file_patterns = ["**"]
     resolved_file_scope = resolve_batch_file_scope(
         args.from_batch,
         args.file,
-        args.file_patterns,
+        file_patterns,
         selected_action=FileReviewAction.APPLY_FROM_BATCH,
         command_name="apply",
         line_ids=line_ids,

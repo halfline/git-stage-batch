@@ -209,6 +209,34 @@ footer
     )
 
 
+def test_composed_presence_source_alternative_restores_leading_separator() -> None:
+    """A shared claimed suffix restores its missing structural separator."""
+    source = (
+        b"keep\n"
+        b"\n"
+        b"prefix one\n"
+        b"prefix two\n"
+        b"suffix one\n"
+        b"suffix two\n"
+        b"stale sibling\n"
+        b"suffix one\n"
+        b"suffix two\n"
+    )
+    selected_lines = (3, 4, 8, 9)
+    empty_baseline = BaselineReference(
+        after_line=None,
+        before_line=None,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3-4,8-9"],
+        baseline_references={line: empty_baseline for line in selected_lines},
+    )
+
+    assert merge_batch(source, ownership, b"keep\n") == (
+        b"keep\n\nprefix one\nprefix two\nsuffix one\nsuffix two\n"
+    )
+
+
 def test_recorded_presence_uses_exact_repeated_context_inside_mapped_edges() -> None:
     """Repeated local lines can prove one source-relative insertion gap."""
     source = [
@@ -362,12 +390,15 @@ def test_recorded_presence_does_not_duplicate_partially_present_run() -> None:
         baseline_references={line: reference for line in range(2, 6)},
     )
 
-    assert merge_batch(
-        source,
-        ownership,
-        working,
-        trusted_target_content=b"head\ntail\n",
-    ) == source
+    assert (
+        merge_batch(
+            source,
+            ownership,
+            working,
+            trusted_target_content=b"head\ntail\n",
+        )
+        == source
+    )
 
 
 def test_contextual_presence_split_runs_do_not_cross_live_target_content() -> None:
@@ -586,14 +617,10 @@ def test_merge_uses_source_bound_batch_file_state():
     """The canonical merge API cannot detach ownership from its source."""
     source = (b"base\n", b"saved\n")
     target = (b"base\n",)
-    source_snapshot = content_snapshot(
-        "file.txt", source, space=BatchSourceSpace
-    )
+    source_snapshot = content_snapshot("file.txt", source, space=BatchSourceSpace)
     state = BatchFileState(
         path="file.txt",
-        baseline_snapshot=content_snapshot(
-            "file.txt", target, space=BaselineSpace
-        ),
+        baseline_snapshot=content_snapshot("file.txt", target, space=BaselineSpace),
         source_snapshot=source_snapshot,
         baseline_lines=target,
         source_lines=source,
@@ -616,14 +643,10 @@ def test_merge_rejects_target_bytes_from_another_snapshot():
     """Equal line counts do not satisfy the canonical target binding."""
     source = (b"base\n", b"saved\n")
     target = (b"base\n",)
-    source_snapshot = content_snapshot(
-        "file.txt", source, space=BatchSourceSpace
-    )
+    source_snapshot = content_snapshot("file.txt", source, space=BatchSourceSpace)
     state = BatchFileState(
         path="file.txt",
-        baseline_snapshot=content_snapshot(
-            "file.txt", target, space=BaselineSpace
-        ),
+        baseline_snapshot=content_snapshot("file.txt", target, space=BaselineSpace),
         source_snapshot=source_snapshot,
         baseline_lines=target,
         source_lines=source,
@@ -647,14 +670,10 @@ def test_discard_uses_source_bound_batch_file_state():
     source = (b"base\n", b"saved\n")
     target = (b"base\n", b"saved\n", b"extra\n")
     baseline = (b"base\n",)
-    source_snapshot = content_snapshot(
-        "file.txt", source, space=BatchSourceSpace
-    )
+    source_snapshot = content_snapshot("file.txt", source, space=BatchSourceSpace)
     state = BatchFileState(
         path="file.txt",
-        baseline_snapshot=content_snapshot(
-            "file.txt", baseline, space=BaselineSpace
-        ),
+        baseline_snapshot=content_snapshot("file.txt", baseline, space=BaselineSpace),
         source_snapshot=source_snapshot,
         baseline_lines=baseline,
         source_lines=source,
@@ -678,14 +697,10 @@ def test_discard_rejects_target_bytes_from_another_snapshot():
     source = (b"base\n", b"saved\n")
     target = (b"base\n", b"saved\n", b"extra\n")
     baseline = (b"base\n",)
-    source_snapshot = content_snapshot(
-        "file.txt", source, space=BatchSourceSpace
-    )
+    source_snapshot = content_snapshot("file.txt", source, space=BatchSourceSpace)
     state = BatchFileState(
         path="file.txt",
-        baseline_snapshot=content_snapshot(
-            "file.txt", baseline, space=BaselineSpace
-        ),
+        baseline_snapshot=content_snapshot("file.txt", baseline, space=BaselineSpace),
         source_snapshot=source_snapshot,
         baseline_lines=baseline,
         source_lines=source,
@@ -708,14 +723,10 @@ def test_discard_rejects_target_path_mismatch():
     """The discard target must name the same path as the batch file."""
     source = (b"line\n",)
     baseline = (b"line\n",)
-    source_snapshot = content_snapshot(
-        "file.txt", source, space=BatchSourceSpace
-    )
+    source_snapshot = content_snapshot("file.txt", source, space=BatchSourceSpace)
     state = BatchFileState(
         path="file.txt",
-        baseline_snapshot=content_snapshot(
-            "file.txt", baseline, space=BaselineSpace
-        ),
+        baseline_snapshot=content_snapshot("file.txt", baseline, space=BaselineSpace),
         source_snapshot=source_snapshot,
         baseline_lines=baseline,
         source_lines=source,
@@ -849,8 +860,7 @@ def test_realization_removal_planning_avoids_line_scale_python_heap() -> None:
     heap_peaks = []
     for claim_count in (512, 8192):
         claims = [
-            AbsenceClaim(anchor_line=None, content_lines=[])
-            for _ in range(claim_count)
+            AbsenceClaim(anchor_line=None, content_lines=[]) for _ in range(claim_count)
         ]
 
         gc.collect()
@@ -1114,6 +1124,138 @@ def test_distinct_source_alternative_does_not_supersede_deletion() -> None:
         assert list(superseded) == [(0,), (0,)]
 
 
+def test_source_alternative_replay_ignores_selected_duplicate_outside_old_side(
+    monkeypatch,
+) -> None:
+    """Coordinate replay uses the durable old side when new-side context collides."""
+    prefix = [b"# Guide\n", b"\n"]
+    final_region = [b"shared line\n", b"final tail\n", b"\n"]
+    predecessor_region = [b"shared line\n", b"predecessor tail\n", b"\n"]
+    suffix = [b"## Build\n", b"\n", b"build details\n"]
+    reference = BaselineReference(
+        after_line=None,
+        after_content=None,
+        before_line=None,
+        before_content=None,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-3"],
+        [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=predecessor_region,
+                baseline_reference=reference,
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["1-3"], [0])],
+    )
+    acquired_mappings = []
+    real_match_lines = merge_module.match_lines
+
+    def track_mapping(*args, **kwargs):
+        mapping = real_match_lines(*args, **kwargs)
+        acquired_mappings.append(mapping)
+        return mapping
+
+    monkeypatch.setattr(merge_module, "match_lines", track_mapping)
+
+    with merge_batch_from_line_sequences_as_buffer(
+        final_region + predecessor_region,
+        ownership,
+        prefix + predecessor_region + suffix,
+    ) as result:
+        assert list(result) == prefix + final_region + suffix
+    assert acquired_mappings
+    for mapping in acquired_mappings:
+        with pytest.raises(ValueError, match="line mapping is closed"):
+            list(mapping.mapped_line_pairs())
+
+
+def test_source_scoped_alternative_replays_between_duplicate_siblings() -> None:
+    """Durable old-side evidence can replace one row inside owned source context."""
+    prefix = [b"head\n", b"clean\n", b"first row\n"]
+    saved = [b"clean\n", b"final row\n", b"extra check\n"]
+    live = [b"clean\n", b"predecessor row\n"]
+    suffix = [b"clean\n", b"third row\n", b"tail\n"]
+    source = prefix + saved + live + suffix
+    reference = BaselineReference(
+        after_line=3,
+        after_content=prefix[-1],
+        before_line=9,
+        before_content=suffix[0],
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-6", "9-11"],
+        [
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=live,
+                baseline_reference=reference,
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[ReplacementUnit(["4-6"], [0])],
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        prefix + live + suffix,
+    ) as result:
+        assert list(result) == prefix + saved + suffix
+
+
+def test_source_scoped_alternatives_replace_every_unambiguous_predecessor() -> None:
+    """Durable old sides govern coordinates even without structural ambiguity."""
+    source = [b"head\n"]
+    predecessor = [b"head\n"]
+    final = [b"head\n"]
+    deletions = []
+    replacement_units = []
+    for alternative_index in range(3):
+        saved_start = len(source) + 1
+        common = f"common {alternative_index}\n".encode()
+        saved = [
+            common,
+            f"final {alternative_index}\n".encode(),
+            f"extra {alternative_index}\n".encode(),
+        ]
+        live = [common, f"predecessor {alternative_index}\n".encode()]
+        separator = f"separator {alternative_index}\n".encode()
+        source.extend((*saved, *live, separator))
+        predecessor.extend((*live, separator))
+        final.extend((*saved, separator))
+        deletions.append(
+            AbsenceClaim(
+                anchor_line=saved_start - 1,
+                content_lines=live,
+                source_alternative=True,
+            )
+        )
+        replacement_units.append(
+            ReplacementUnit(
+                [f"{saved_start}-{saved_start + len(saved) - 1}"],
+                [alternative_index],
+            )
+        )
+
+    ownership = BatchOwnership.from_presence_lines(
+        [f"1-{len(source)}"],
+        deletions,
+        replacement_units=replacement_units,
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        predecessor,
+    ) as result:
+        assert list(result) == final
+
+
 def test_source_alternative_index_avoids_deletion_scale_python_heap() -> None:
     """Alternative identity indexing keeps claim-scale state out of the heap."""
     heap_peaks = []
@@ -1217,138 +1359,6 @@ def test_nested_source_alternative_projection_avoids_line_scale_python_heap() ->
 
     small_peak, large_peak = heap_peaks
     assert large_peak < small_peak + _HEAP_GROWTH_TOLERANCE
-
-
-def test_source_scoped_alternative_replays_between_duplicate_siblings() -> None:
-    """Durable old-side evidence can replace one row inside owned source context."""
-    prefix = [b"head\n", b"clean\n", b"first row\n"]
-    saved = [b"clean\n", b"final row\n", b"extra check\n"]
-    live = [b"clean\n", b"predecessor row\n"]
-    suffix = [b"clean\n", b"third row\n", b"tail\n"]
-    source = prefix + saved + live + suffix
-    reference = BaselineReference(
-        after_line=3,
-        after_content=prefix[-1],
-        before_line=9,
-        before_content=suffix[0],
-        has_before_line=True,
-    )
-    ownership = BatchOwnership.from_presence_lines(
-        ["1-6", "9-11"],
-        [
-            AbsenceClaim(
-                anchor_line=3,
-                content_lines=live,
-                baseline_reference=reference,
-                source_alternative=True,
-            )
-        ],
-        replacement_units=[ReplacementUnit(["4-6"], [0])],
-    )
-
-    with merge_batch_from_line_sequences_as_buffer(
-        source,
-        ownership,
-        prefix + live + suffix,
-    ) as result:
-        assert list(result) == prefix + saved + suffix
-
-
-def test_source_scoped_alternatives_replace_every_unambiguous_predecessor() -> None:
-    """Durable old sides govern coordinates even without structural ambiguity."""
-    source = [b"head\n"]
-    predecessor = [b"head\n"]
-    final = [b"head\n"]
-    deletions = []
-    replacement_units = []
-    for alternative_index in range(3):
-        saved_start = len(source) + 1
-        common = f"common {alternative_index}\n".encode()
-        saved = [
-            common,
-            f"final {alternative_index}\n".encode(),
-            f"extra {alternative_index}\n".encode(),
-        ]
-        live = [common, f"predecessor {alternative_index}\n".encode()]
-        separator = f"separator {alternative_index}\n".encode()
-        source.extend((*saved, *live, separator))
-        predecessor.extend((*live, separator))
-        final.extend((*saved, separator))
-        deletions.append(
-            AbsenceClaim(
-                anchor_line=saved_start - 1,
-                content_lines=live,
-                source_alternative=True,
-            )
-        )
-        replacement_units.append(
-            ReplacementUnit(
-                [f"{saved_start}-{saved_start + len(saved) - 1}"],
-                [alternative_index],
-            )
-        )
-
-    ownership = BatchOwnership.from_presence_lines(
-        [f"1-{len(source)}"],
-        deletions,
-        replacement_units=replacement_units,
-    )
-
-    with merge_batch_from_line_sequences_as_buffer(
-        source,
-        ownership,
-        predecessor,
-    ) as result:
-        assert list(result) == final
-
-
-def test_source_alternative_replay_ignores_selected_duplicate_outside_old_side(
-    monkeypatch,
-) -> None:
-    """Coordinate replay uses the durable old side when new-side context collides."""
-    prefix = [b"# Guide\n", b"\n"]
-    final_region = [b"shared line\n", b"final tail\n", b"\n"]
-    predecessor_region = [b"shared line\n", b"predecessor tail\n", b"\n"]
-    suffix = [b"## Build\n", b"\n", b"build details\n"]
-    reference = BaselineReference(
-        after_line=None,
-        after_content=None,
-        before_line=None,
-        before_content=None,
-        has_before_line=True,
-    )
-    ownership = BatchOwnership.from_presence_lines(
-        ["1-3"],
-        [
-            AbsenceClaim(
-                anchor_line=None,
-                content_lines=predecessor_region,
-                baseline_reference=reference,
-                source_alternative=True,
-            )
-        ],
-        replacement_units=[ReplacementUnit(["1-3"], [0])],
-    )
-    acquired_mappings = []
-    real_match_lines = merge_module.match_lines
-
-    def track_mapping(*args, **kwargs):
-        mapping = real_match_lines(*args, **kwargs)
-        acquired_mappings.append(mapping)
-        return mapping
-
-    monkeypatch.setattr(merge_module, "match_lines", track_mapping)
-
-    with merge_batch_from_line_sequences_as_buffer(
-        final_region + predecessor_region,
-        ownership,
-        prefix + predecessor_region + suffix,
-    ) as result:
-        assert list(result) == prefix + final_region + suffix
-    assert acquired_mappings
-    for mapping in acquired_mappings:
-        with pytest.raises(ValueError, match="line mapping is closed"):
-            list(mapping.mapped_line_pairs())
 
 
 def test_strict_absence_index_preserves_provenance_initialization_error(
@@ -1881,8 +1891,7 @@ def test_distinctive_presence_context_avoids_line_scale_python_heap():
     for line_count in (512, 8192):
         changed_index = line_count // 2
         source_content = b"".join(
-            f"line-{line_index:08d}\n".encode()
-            for line_index in range(line_count)
+            f"line-{line_index:08d}\n".encode() for line_index in range(line_count)
         )
         target_content = b"".join(
             (
@@ -1892,9 +1901,7 @@ def test_distinctive_presence_context_avoids_line_scale_python_heap():
             )
             for line_index in range(line_count)
         )
-        selected = LineRanges.from_ranges(
-            ((changed_index + 1, changed_index + 1),)
-        )
+        selected = LineRanges.from_ranges(((changed_index + 1, changed_index + 1),))
 
         with (
             LineBuffer.from_bytes(source_content) as source_lines,
@@ -2070,11 +2077,7 @@ def test_coordinate_candidate_cleanup_preserves_stream_failure(monkeypatch):
             ownership,
             target,
             resolution=MergeResolution(
-                {
-                    AMBIGUITY_KEY: (
-                        CoordinateStrategyChoice.RECORDED_COORDINATES.value
-                    )
-                }
+                {AMBIGUITY_KEY: (CoordinateStrategyChoice.RECORDED_COORDINATES.value)}
             ),
         )
 

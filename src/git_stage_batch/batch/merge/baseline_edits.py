@@ -1,4 +1,4 @@
-"""Coordinate-based edit planning and streaming for batch merge."""
+"""Plan and stream batch edits from saved file locations."""
 
 from __future__ import annotations
 
@@ -312,6 +312,7 @@ def _build_baseline_edit_plan(
         trust_baseline_coordinates=trust_baseline_coordinates,
         allow_mixed_mapped_replacement_islands=(allow_mixed_mapped_replacement_islands),
         mapped_source_lines=mapped_source_lines,
+        presence_references=presence_references,
         spool_dir=spool_dir,
     ):
         return None
@@ -323,6 +324,7 @@ def _build_baseline_edit_plan(
     if not _plan_independent_removal_edits(
         workspace,
         plan,
+        source_lines,
         working_lines,
         deletion_claims,
         deletion_edit_bounds,

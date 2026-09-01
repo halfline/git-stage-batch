@@ -8,13 +8,18 @@ from enum import Enum
 from pathlib import Path
 from typing import AbstractSet, TYPE_CHECKING, cast, overload
 
+from ...core.coordinates import (
+    BatchSourceSpace,
+    LineBoundary,
+    LineSpan,
+    WorktreeSpace,
+)
 from ...core.line_selection import (
     LineRangeBuilder,
     LineRanges,
     LineSelection,
     coerce_line_ranges,
 )
-from ...core.coordinates import LineBoundary, LineSpan, WorktreeSpace
 from ...core.mapped_storage import MappedRecordVector
 from ...core.text_lines import normalize_line_sequence_endings
 from ...exceptions import MergeError as _MergeError
@@ -109,6 +114,7 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
         mapping: LineMapping,
         claimed_ranges: Sequence[tuple[int, ...]],
         *,
+        additional_claimed_span: LineSpan[BatchSourceSpace] | None = None,
         masked_start: int | None = None,
         masked_end: int | None = None,
         indices: range | None = None,
@@ -117,6 +123,7 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
         self._indices = range(start, end) if indices is None else indices
         self._mapping = mapping
         self._claimed_ranges = claimed_ranges
+        self._additional_claimed_span = additional_claimed_span
         self._masked_start = masked_start
         self._masked_end = masked_end
 
@@ -137,6 +144,7 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
                 0,
                 self._mapping,
                 self._claimed_ranges,
+                additional_claimed_span=self._additional_claimed_span,
                 masked_start=self._masked_start,
                 masked_end=self._masked_end,
                 indices=self._indices[index],
@@ -152,9 +160,14 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
         ):
             return _CLAIMED_TARGET_LINE
         source_line = self._mapping.get_source_line_from_target_line(target_index + 1)
-        if source_line is not None and _line_is_claimed(
-            self._claimed_ranges,
-            source_line,
+        if source_line is not None and (
+            _line_is_claimed(self._claimed_ranges, source_line)
+            or (
+                self._additional_claimed_span is not None
+                and self._additional_claimed_span.start.offset
+                < source_line
+                <= self._additional_claimed_span.end.offset
+            )
         ):
             return _CLAIMED_TARGET_LINE
         return self._target_lines[target_index]
@@ -725,15 +738,15 @@ def replacement_mapping_exclusions_for_old_side(
                 return None
             target_span: LineSpan[WorktreeSpace] = LineSpan(
                 LineBoundary(old_side.target_position),
-                LineBoundary(
-                    old_side.target_position + len(deletion.content_lines)
-                ),
+                LineBoundary(old_side.target_position + len(deletion.content_lines)),
             )
             excluded_target_spans.append(target_span)
             if any(
-                (mapped_source_line := mapping.get_source_line_from_target_line(
-                    target_index + 1
-                ))
+                (
+                    mapped_source_line := mapping.get_source_line_from_target_line(
+                        target_index + 1
+                    )
+                )
                 is not None
                 and mapped_source_line in unit_lines
                 for target_index in range(
@@ -815,9 +828,7 @@ def _replacement_old_side_realization(
     mapping: LineMapping,
     claimed_lines: LineSelection | Sequence[tuple[int, ...]],
     *,
-    collision_claimed_lines: (
-        LineSelection | Sequence[tuple[int, ...]] | None
-    ) = None,
+    collision_claimed_lines: (LineSelection | Sequence[tuple[int, ...]] | None) = None,
     spool_dir: str | Path | None,
     mapped_source_lines: Sequence[tuple[int, ...]] | None = None,
 ) -> ReplacementOldSideRealization | None:
@@ -848,11 +859,10 @@ def classify_replacement_old_side(
     mapping: LineMapping,
     claimed_lines: LineSelection | Sequence[tuple[int, ...]],
     *,
-    collision_claimed_lines: (
-        LineSelection | Sequence[tuple[int, ...]] | None
-    ) = None,
+    collision_claimed_lines: (LineSelection | Sequence[tuple[int, ...]] | None) = None,
     spool_dir: str | Path | None = None,
     mapped_source_lines: Sequence[tuple[int, ...]] | None = None,
+    additional_claimed_span: LineSpan[BatchSourceSpace] | None = None,
 ) -> ReplacementOldSideRealization | None:
     """Classify old-side content in the deletion's mapped structural gap.
 
@@ -901,7 +911,12 @@ def classify_replacement_old_side(
             continue
         if next_target_line <= target_position:
             return None
-        if _line_is_claimed(claimed_ranges, source_line):
+        if _line_is_claimed(claimed_ranges, source_line) or (
+            additional_claimed_span is not None
+            and additional_claimed_span.start.offset
+            < source_line
+            <= additional_claimed_span.end.offset
+        ):
             continue
         target_end_position = next_target_line - 1
         break
@@ -959,6 +974,7 @@ def classify_replacement_old_side(
         target_end_position,
         mapping,
         claimed_ranges,
+        additional_claimed_span=additional_claimed_span,
     )
 
     def deletion_matches_at(removal_position: int) -> bool:
@@ -991,6 +1007,7 @@ def classify_replacement_old_side(
             target_end_position,
             mapping,
             () if collision_position is not None else claimed_ranges,
+            additional_claimed_span=additional_claimed_span,
             masked_start=known_position,
             masked_end=known_position + len(deleted_sequence),
         )
@@ -1375,9 +1392,7 @@ def _check_unbounded_trailing_context(
             cluster.run_stop_index,
         ):
             run_start, run_end = missing_ranges[run_index]
-            if verified_runs.count(run_start, run_end) == (
-                run_end - run_start + 1
-            ):
+            if verified_runs.count(run_start, run_end) == (run_end - run_start + 1):
                 continue
             trailing_gap = (
                 after_source_line - run_end - 1

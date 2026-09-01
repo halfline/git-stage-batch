@@ -15,6 +15,9 @@ from .baseline_anchor_matching import (
     unique_live_removal_edit,
 )
 from .baseline_edit_plan import BaselineEditPlan
+from .deletions_across_source_insertions import (
+    plan_deletions_across_source_insertions,
+)
 from .validation import (
     ReplacementOldSideState,
     classify_replacement_old_side,
@@ -35,6 +38,7 @@ _SHIFTED_REMOVAL_CANDIDATE_LIMIT = 16
 def plan_independent_removal_edits(
     workspace: MatcherWorkspace,
     plan: BaselineEditPlan,
+    source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     deletion_claims: Sequence[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
@@ -82,15 +86,12 @@ def plan_independent_removal_edits(
                     occurrence_index,
                     candidate_limit=_SHIFTED_REMOVAL_CANDIDATE_LIMIT,
                 )
-                if (
-                    removal_edit is not None
-                    and trusted_target_span_matches_working(
-                        working_lines,
-                        trusted_target_lines,
-                        trusted_target_to_working_mapping,
-                        removal_edit[0],
-                        removal_edit[1],
-                    )
+                if removal_edit is not None and trusted_target_span_matches_working(
+                    working_lines,
+                    trusted_target_lines,
+                    trusted_target_to_working_mapping,
+                    removal_edit[0],
+                    removal_edit[1],
                 ):
                     coordinate_was_reviewed = True
                 else:
@@ -120,6 +121,7 @@ def plan_independent_removal_edits(
         return _plan_mapped_independent_removal_edits(
             workspace,
             plan,
+            source_lines,
             working_lines,
             deletion_claims,
             deletion_edit_bounds,
@@ -136,6 +138,7 @@ def plan_independent_removal_edits(
 def _plan_mapped_independent_removal_edits(
     workspace: MatcherWorkspace,
     plan: BaselineEditPlan,
+    source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     deletion_claims: Sequence[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
@@ -150,21 +153,36 @@ def _plan_mapped_independent_removal_edits(
     source_line_count = len(source_to_working_mapping.source_to_target)
     next_unclaimed_targets = workspace.int_vector(source_line_count + 1)
     mapped_gaps = workspace.record_vector(len(deletion_indices), "QQQ")
+    transformed_claims = workspace.int_vector(len(deletion_claims))
     try:
         next_target_line = 0
         for source_index in range(source_line_count - 1, -1, -1):
             source_line = source_index + 1
-            mapped_target_line = (
-                source_to_working_mapping.source_to_target[source_index]
-            )
-            if (
-                mapped_target_line != 0
-                and source_line not in selected_presence
-            ):
+            mapped_target_line = source_to_working_mapping.source_to_target[
+                source_index
+            ]
+            if mapped_target_line != 0 and source_line not in selected_presence:
                 next_target_line = mapped_target_line
             next_unclaimed_targets[source_index] = next_target_line
 
+        plan_deletions_across_source_insertions(
+            workspace,
+            plan,
+            source_lines,
+            working_lines,
+            deletion_claims,
+            deletion_edit_bounds,
+            deletion_indices,
+            transformed_claims,
+            selected_presence,
+            source_to_working_mapping,
+            mapped_source_lines,
+            spool_dir=spool_dir,
+        )
+
         for (deletion_index,) in deletion_indices:
+            if transformed_claims[deletion_index]:
+                continue
             claim = deletion_claims[deletion_index]
             anchor_line = claim.anchor_line
             if anchor_line is None:
@@ -221,14 +239,10 @@ def _plan_mapped_independent_removal_edits(
                 spool_dir=spool_dir,
                 mapped_source_lines=mapped_source_lines,
             )
-            if (
-                old_side is None
-                or old_side.state
-                not in (
-                    ReplacementOldSideState.FULL,
-                    ReplacementOldSideState.FULLY_CLAIMED,
-                    ReplacementOldSideState.ABSENT,
-                )
+            if old_side is None or old_side.state not in (
+                ReplacementOldSideState.FULL,
+                ReplacementOldSideState.FULLY_CLAIMED,
+                ReplacementOldSideState.ABSENT,
             ):
                 return False
             removal_start = (
@@ -248,10 +262,7 @@ def _plan_mapped_independent_removal_edits(
                 else 0
             )
             removal_end = removal_start + removal_line_count
-            if (
-                removal_start < gap_start
-                or removal_end > gap_end
-            ):
+            if removal_start < gap_start or removal_end > gap_end:
                 return False
 
             plan.add_removal(removal_start, removal_end)
@@ -263,6 +274,7 @@ def _plan_mapped_independent_removal_edits(
             )
         return True
     finally:
+        workspace.close_resource(transformed_claims)
         workspace.close_resource(mapped_gaps)
         workspace.close_resource(next_unclaimed_targets)
 
@@ -278,9 +290,7 @@ def all_deletions_are_already_absent(
         if baseline_removal_edit(claim, working_lines) is not None:
             return False
 
-        forbidden_sequence = normalize_line_sequence_endings(
-            claim.content_lines
-        )
+        forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
         if len(forbidden_sequence) > len(working_lines):
             continue
 

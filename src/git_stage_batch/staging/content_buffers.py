@@ -115,10 +115,7 @@ def _edit_lines_preserving_source_endings_as_buffer(
 
     edited_line_count = len(edited_lines)
     output_line_count = (
-        selection_start
-        + edited_line_count
-        + source_line_count
-        - selection_end
+        selection_start + edited_line_count + source_line_count - selection_end
     )
     generated_line_ending = _replacement_line_ending(
         source_lines,
@@ -165,10 +162,7 @@ def _replacement_result_has_trailing_newline(
 ) -> bool:
     """Return the target EOF state without altering surviving source lines."""
     if not replacement_payload.exact:
-        return (
-            replacement_payload.has_trailing_lf
-            or source_has_trailing_newline
-        )
+        return replacement_payload.has_trailing_lf or source_has_trailing_newline
     if selection_end != source_line_count:
         return source_has_trailing_newline
     if replacement_line_count:
@@ -244,14 +238,10 @@ def _longest_edge_context_match(
         return 0
 
     def candidate_at(index: int) -> bytes:
-        return candidate_lines[
-            candidate_count - index - 1 if reverse else index
-        ]
+        return candidate_lines[candidate_count - index - 1 if reverse else index]
 
     def context_at(index: int) -> bytes:
-        return context_lines[
-            context_count - index - 1 if reverse else index
-        ]
+        return context_lines[context_count - index - 1 if reverse else index]
 
     width = 4 if candidate_count <= (1 << 32) - 1 else 8
     with MappedIntVector(candidate_count, width=width) as prefix_lengths:
@@ -311,6 +301,7 @@ def _replacement_selection_span_indices(
     replace_ids: set[int],
     *,
     allow_incomplete_addition_span: bool = False,
+    allow_incomplete_deletion_span: bool = False,
 ) -> tuple[int, int]:
     """Return the display span for one contiguous run of changed rows."""
     line_index = 0
@@ -326,10 +317,9 @@ def _replacement_selection_span_indices(
         selected_count_in_run = 0
         selected_indices_are_contiguous = True
         malformed_run = False
-        while (
-            line_index < len(line_changes.lines)
-            and line_changes.lines[line_index].kind in ("+", "-")
-        ):
+        while line_index < len(line_changes.lines) and line_changes.lines[
+            line_index
+        ].kind in ("+", "-"):
             line = line_changes.lines[line_index]
             if line.id in replace_ids:
                 selected_count_in_run += 1
@@ -345,20 +335,13 @@ def _replacement_selection_span_indices(
                 malformed_run = True
             line_index += 1
 
-        if (
-            malformed_run
-            or first_addition is None
-            or first_addition == run_start
-        ):
+        if malformed_run or first_addition is None or first_addition == run_start:
             continue
         replacement_stop = first_addition + min(
             first_addition - run_start,
             line_index - first_addition,
         )
-        if (
-            first_selected_index is None
-            or first_selected_index >= replacement_stop
-        ):
+        if first_selected_index is None or first_selected_index >= replacement_stop:
             continue
         replacement_core_is_incomplete = any(
             line_changes.lines[run_index].id is None
@@ -380,6 +363,14 @@ def _replacement_selection_span_indices(
             and selected_count_in_run == len(replace_ids)
             and selected_indices_are_contiguous
         )
+        deletion_span_is_contiguous = (
+            first_selected_index is not None
+            and first_selected_index < first_addition
+            and last_selected_index is not None
+            and last_selected_index < first_addition
+            and selected_count_in_run == len(replace_ids)
+            and selected_indices_are_contiguous
+        )
         selected_addition_count = 0
         for run_index in range(first_addition, line_index):
             line_id = line_changes.lines[run_index].id
@@ -398,6 +389,7 @@ def _replacement_selection_span_indices(
         )
         if replacement_core_is_incomplete and not (
             (allow_incomplete_addition_span and addition_span_is_contiguous)
+            or (allow_incomplete_deletion_span and deletion_span_is_contiguous)
             or (deletion_side_is_complete and addition_prefix_is_partial)
         ):
             raise ValueError(
@@ -431,14 +423,10 @@ def _replacement_selection_span_indices(
 
     if selected_count != len(replace_ids):
         raise ValueError(
-            _(
-                "Replacement selection contains line IDs outside the current hunk"
-            )
+            _("Replacement selection contains line IDs outside the current hunk")
         )
     if selection_is_discontiguous:
-        raise ValueError(
-            _("Replacement selection must be one contiguous line range")
-        )
+        raise ValueError(_("Replacement selection must be one contiguous line range"))
 
     assert span_start_index is not None
     assert span_end_index is not None
@@ -616,11 +604,14 @@ def resolve_replacement_edit_plan(
     replace_ids: set[int],
     baseline_lines: Sequence[bytes],
     worktree_lines: Sequence[bytes],
+    *,
+    allow_incomplete_deletion_span: bool = False,
 ) -> ReplacementEditPlan:
     """Resolve display selection geometry once at the staging boundary."""
     span_start_index, span_end_index = _replacement_selection_span_indices(
         line_changes,
         replace_ids,
+        allow_incomplete_deletion_span=allow_incomplete_deletion_span,
     )
     working_start, working_end = _replacement_working_tree_span_from_display_span(
         line_changes,
@@ -716,9 +707,8 @@ def _target_index_line_contents(
     base_pointer = line_changes.header.old_prefix_line_count()
 
     def line_is_included(line_entry: LineEntry) -> bool:
-        return (
-            line_entry.id is not None
-            and (include_ids is None or line_entry.id in include_ids)
+        return line_entry.id is not None and (
+            include_ids is None or line_entry.id in include_ids
         )
 
     def flush_pending_additions(before_index: int) -> Iterator[bytes]:
@@ -732,11 +722,9 @@ def _target_index_line_contents(
         pending_addition_start = None
 
     def base_line_matches(line_entry: LineEntry) -> bool:
-        return (
-            base_pointer < base_line_count
-            and _line_payload_at(base_lines, base_pointer)
-            == _line_entry_payload(line_entry)
-        )
+        return base_pointer < base_line_count and _line_payload_at(
+            base_lines, base_pointer
+        ) == _line_entry_payload(line_entry)
 
     def copy_unchanged_lines_before(old_line_number: int | None) -> Iterator[bytes]:
         nonlocal base_pointer
@@ -797,9 +785,7 @@ def build_target_index_buffer_from_lines(
     base_line_count = len(base_lines)
     detected_line_ending = detect_line_ending(base_lines)
     default_line_ending = (
-        detected_line_ending
-        if detected_line_ending in (b"\n", b"\r\n")
-        else b"\n"
+        detected_line_ending if detected_line_ending in (b"\n", b"\r\n") else b"\n"
     )
     return LineBuffer.from_chunks(
         ensure_line_chunk_boundaries(
@@ -1331,9 +1317,7 @@ def build_target_working_tree_buffer_from_lines(
     working_line_count = len(working_lines)
     detected_line_ending = detect_line_ending(working_lines)
     default_line_ending = (
-        detected_line_ending
-        if detected_line_ending in (b"\n", b"\r\n")
-        else b"\n"
+        detected_line_ending if detected_line_ending in (b"\n", b"\r\n") else b"\n"
     )
     return LineBuffer.from_chunks(
         ensure_line_chunk_boundaries(
@@ -1369,9 +1353,7 @@ def build_target_working_tree_buffer_with_replaced_lines(
             working_lines,
             working_has_trailing_newline=working_has_trailing_newline,
             trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
-            preserved_replacement_prefix_count=(
-                preserved_replacement_prefix_count
-            ),
+            preserved_replacement_prefix_count=(preserved_replacement_prefix_count),
         )
 
 
@@ -1413,9 +1395,7 @@ def _build_target_working_tree_buffer_with_replaced_lines(
     preserved_replacement_prefix_count: int,
 ) -> LineBuffer:
     """Build working content while replacement line storage is open."""
-    if not (
-        0 <= preserved_replacement_prefix_count <= len(replacement_lines)
-    ):
+    if not (0 <= preserved_replacement_prefix_count <= len(replacement_lines)):
         raise ValueError("preserved replacement prefix exceeds replacement")
     if not replace_ids:
         return _edit_lines_preserving_source_endings_as_buffer(
@@ -1496,7 +1476,8 @@ def _build_target_working_tree_buffer_with_replacement_span(
             and _longest_prefix_context_match(
                 replacement_lines,
                 before_context,
-            ) >= 2
+            )
+            >= 2
         ):
             raise ValueError(
                 _(

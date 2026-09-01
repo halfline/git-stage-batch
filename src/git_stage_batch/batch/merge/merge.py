@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING
 
 from . import baseline_anchor_matching as _baseline_anchor_matching
 from . import baseline_edits as _baseline_edits
+from .deletions_across_source_insertions import (
+    deletion_may_cross_source_insertion as _deletion_may_cross_source_insertion,
+)
 from . import presence_constraints as _presence_constraints
 from .absence_constraints import (
     ABSENCE_AMBIGUITY_PREFIX as _ABSENCE_AMBIGUITY_PREFIX,
@@ -363,7 +366,12 @@ def _acquire_replay_mapping_evidence(
                 has_exact_presence_context = True
 
         if not has_exact_presence_context and (
-            presence_lines or needs_origin_resolution_preflight
+            presence_lines
+            or needs_origin_resolution_preflight
+            or _deletion_may_cross_source_insertion(
+                source_lines,
+                deletion_claims,
+            )
         ):
             if ordinary is None:
                 ordinary = acquire(
@@ -586,6 +594,8 @@ def _build_structural_realized_entries(
             source_lines,
             working_lines,
             deletion_claims,
+            compatible_mapping=mapping,
+            protected_source_lines=controlled_source_lines,
             spool_dir=spool_dir,
         ) as deletion_anchor_pairs:
             if mapping is None or deletion_anchor_pairs:

@@ -17,6 +17,7 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_file_list,
 )
 from ..data.file_review.records import FileReviewAction
+from ..data.file_review.records import ReviewSource
 from ..data.file_review.action_refusals import (
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
@@ -221,6 +222,43 @@ def command_include_line_as(
         replacement_text,
         file,
         review_state=review_state,
+        no_edge_overlap=no_edge_overlap,
+        auto_advance=auto_advance,
+    )
+
+
+def command_include_line_as_to_batch(
+    batch_name: str,
+    line_id_specification: str,
+    replacement_text: str | ReplacementPayload,
+    file: str | None = None,
+    *,
+    no_edge_overlap: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
+    """Save replacement text to a batch without changing the live file."""
+    require_git_repository()
+    validate_batch_name(batch_name)
+    require_session_started()
+    ensure_state_directory_exists()
+    scope_resolution = resolve_live_line_action_scope(
+        FileReviewAction.INCLUDE_TO_BATCH,
+        action_command=(
+            f"include --to {batch_name} --line {line_id_specification} --as"
+        ),
+        line_id_specification=line_id_specification,
+        file=file,
+        source=ReviewSource.FILE_VS_HEAD,
+    )
+    if scope_resolution.should_stop:
+        return
+
+    _include_line_replacement_action.include_live_line_replacement_to_batch(
+        batch_name,
+        line_id_specification,
+        replacement_text,
+        file,
+        review_state=scope_resolution.review_state,
         no_edge_overlap=no_edge_overlap,
         auto_advance=auto_advance,
     )

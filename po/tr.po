@@ -7901,6 +7901,10 @@ msgstr "Bu sonuç öneri niteliğindedir; rewrite validate canlı nesneleri doğ
 msgid "Saved text predecessor is missing or invalid"
 msgstr "Saved text predecessor is missing or invalid"
 
+#: src/git_stage_batch/batch/applied_text_replay.py
+msgid "Recorded text applications do not reproduce the worktree"
+msgstr "Recorded text applications do not reproduce the worktree"
+
 #: src/git_stage_batch/batch/state/metadata_schema.py
 #, python-brace-format
 msgid "files[{path!r}] has an invalid complete-file-pair flag"

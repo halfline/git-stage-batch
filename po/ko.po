@@ -7488,6 +7488,10 @@ msgstr "이 결과는 참고용입니다. rewrite validate가 현재 객체를 �
 msgid "Saved text predecessor is missing or invalid"
 msgstr "Saved text predecessor is missing or invalid"
 
+#: src/git_stage_batch/batch/applied_text_replay.py
+msgid "Recorded text applications do not reproduce the worktree"
+msgstr "Recorded text applications do not reproduce the worktree"
+
 #: src/git_stage_batch/batch/state/metadata_schema.py
 #, python-brace-format
 msgid "files[{path!r}] has an invalid complete-file-pair flag"

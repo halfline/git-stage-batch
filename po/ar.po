@@ -8182,6 +8182,16 @@ msgstr "Recorded text applications do not reproduce the worktree"
 
 #: src/git_stage_batch/batch/state/metadata_schema.py
 #, python-brace-format
+msgid "file entry for {path!r} has an invalid batch-source target flag"
+msgstr "file entry for {path!r} has an invalid batch-source target flag"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
+msgid "non-text file entry for {path!r} has a batch-source target flag"
+msgstr "non-text file entry for {path!r} has a batch-source target flag"
+
+#: src/git_stage_batch/batch/state/metadata_schema.py
+#, python-brace-format
 msgid "files[{path!r}] has an invalid complete-file-pair flag"
 msgstr "files[{path!r}] has an invalid complete-file-pair flag"
 

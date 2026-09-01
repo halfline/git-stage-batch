@@ -1,8 +1,8 @@
-"""Storage-backed effective presence-reference lookup."""
+"""Look up the latest saved location for each selected source line."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
 from ...core.mapped_storage import sort_mapped_records
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class EffectivePresenceReferenceIndex:
-    """Index last-claim-wins baseline references without a per-line dict."""
+    """A temporary lookup table for each selected line's latest location."""
 
     def __init__(
         self,
@@ -25,8 +25,7 @@ class EffectivePresenceReferenceIndex:
         self._valid = True
         try:
             reference_count = sum(
-                len(claim.baseline_references)
-                for claim in ownership.presence_claims
+                len(claim.baseline_references) for claim in ownership.presence_claims
             )
         except (AttributeError, TypeError, ValueError):
             reference_count = 0
@@ -66,7 +65,7 @@ class EffectivePresenceReferenceIndex:
         return len(self._records)
 
     def reference_for(self, source_line: int) -> BaselineReference | None:
-        """Return one effective reference, or None for absent/bad metadata."""
+        """Return the latest valid location for a source line, if any."""
         if not self._valid:
             return None
         low = 0
@@ -84,6 +83,56 @@ class EffectivePresenceReferenceIndex:
             return None
         return self._reference_from_claim(source_line, claim_index)
 
+    def common_reference_for_ranges(
+        self,
+        source_ranges: Sequence[tuple[int, ...]],
+    ) -> BaselineReference | None:
+        """Return one reference shared by every line in the ranges."""
+        if not source_ranges:
+            return None
+        common_reference: BaselineReference | None = None
+        has_reference = False
+        record_index = self._record_index_at_or_after(source_ranges[0][0])
+        previous_end = 0
+        for source_start, source_end in source_ranges:
+            if source_start < 1 or source_end < source_start or source_start <= previous_end:
+                return None
+            while (
+                record_index < len(self._records)
+                and self._records[record_index][0] < source_start
+            ):
+                record_index += 1
+            for source_line in range(source_start, source_end + 1):
+                if (
+                    record_index >= len(self._records)
+                    or self._records[record_index][0] != source_line
+                ):
+                    return None
+                _record_source_line, claim_index = self._records[record_index]
+                reference = self._reference_from_claim(source_line, claim_index)
+                if reference is None:
+                    return None
+                if not has_reference:
+                    common_reference = reference
+                    has_reference = True
+                elif reference != common_reference:
+                    return None
+                record_index += 1
+            previous_end = source_end
+        return common_reference
+
+    def _record_index_at_or_after(self, source_line: int) -> int:
+        """Return the first record index at or after a source line."""
+        low = 0
+        high = len(self._records)
+        while low < high:
+            middle = (low + high) // 2
+            if self._records[middle][0] < source_line:
+                low = middle + 1
+            else:
+                high = middle
+        return low
+
     def line_came_from_empty_file(self, source_line: int) -> bool:
         """Return whether both recorded sides point to an empty file."""
         reference = self.reference_for(source_line)
@@ -100,22 +149,25 @@ class EffectivePresenceReferenceIndex:
         source_line: int,
         claim_index: int,
     ) -> BaselineReference | None:
-        """Read a reference selected by one compact index record."""
+        """Read the saved location named by one lookup entry."""
         try:
-            return self._ownership.presence_claims[
-                claim_index
-            ].baseline_references[source_line]
+            return self._ownership.presence_claims[claim_index].baseline_references[
+                source_line
+            ]
         except (AttributeError, KeyError, TypeError):
             return None
 
     def items(self) -> Iterator[tuple[int, BaselineReference | None]]:
-        """Yield effective references in ascending source-line order."""
+        """Yield the latest locations in source-line order."""
         if not self._valid:
             return
         for source_line, claim_index in self._records:
-            yield source_line, self._reference_from_claim(
+            yield (
                 source_line,
-                claim_index,
+                self._reference_from_claim(
+                    source_line,
+                    claim_index,
+                ),
             )
 
     def _invalidate(self) -> None:

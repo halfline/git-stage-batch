@@ -28,8 +28,11 @@ from ...core.models import (
     TextFileDeletionChange,
 )
 from ...data.file_tracking import auto_add_untracked_files
+from ...data.file_modes import detect_file_mode
+from ...data.index_entries import read_index_entry
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_included
+from ...data.session import path_is_intent_to_add
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
@@ -39,6 +42,7 @@ from ...utils.git_command import git_diff_reports_changes, run_git_command
 from ...utils.git_index import (
     git_add_paths,
     git_apply_to_index,
+    git_update_index,
 )
 from ...utils.index_transaction import isolated_index_transaction
 from ..selection import selected_change_staging as _selected_change_staging
@@ -108,10 +112,17 @@ def include_file_changes(
         patch_context = nullcontext(iter(_prepared_changes))
         index_transaction = nullcontext(None)
 
+    intent_to_add_mode = (
+        detect_file_mode(target_file)
+        if path_is_intent_to_add(target_file)
+        else None
+    )
+
     with index_transaction as publish_index, checkpoint:
         hunks_staged = 0
         submodule_pointers_staged = 0
         renames_staged = 0
+        text_hunks_staged = 0
         included_hashes: list[str] = []
         staged_rename_pairs: set[tuple[str, str]] = set()
         with patch_context as patches:
@@ -220,10 +231,36 @@ def include_file_changes(
                 if apply_result is None or apply_result.returncode == 0:
                     included_hashes.append(patch_hash)
                     hunks_staged += 1
+                    text_hunks_staged += 1
                 else:
                     exit_with_error(
                         _("Failed to apply hunk: {error}").format(
                             error=apply_result.stderr,
+                        )
+                    )
+
+        if (
+            text_hunks_staged
+            and intent_to_add_mode in {"100644", "100755"}
+        ):
+            index_entry = read_index_entry(target_file)
+            if index_entry is None:
+                exit_with_error(
+                    _("Failed to retain the file mode for {file}.").format(
+                        file=display_path(target_file),
+                    )
+                )
+            if index_entry.mode != intent_to_add_mode:
+                result = git_update_index(
+                    file_path=target_file,
+                    mode=intent_to_add_mode,
+                    blob_sha=index_entry.object_id,
+                    check=False,
+                )
+                if result.returncode != 0:
+                    exit_with_error(
+                        _("Failed to retain the file mode for {file}.").format(
+                            file=display_path(target_file),
                         )
                     )
 

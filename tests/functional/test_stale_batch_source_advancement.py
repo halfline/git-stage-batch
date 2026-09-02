@@ -15,6 +15,8 @@ from git_stage_batch.commands.discard import (
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.start import command_start
 
+from .conftest import git_stage_batch
+
 
 def _presence_source_lines(file_metadata: dict) -> list[str]:
     lines: list[str] = []
@@ -30,6 +32,213 @@ def _show_file(commit: str, path: str) -> str:
         capture_output=True,
         text=True,
     ).stdout
+
+
+def _display_id_for_text(view: str, text: str) -> str:
+    matches = [line for line in view.splitlines() if text in line and "[#" in line]
+    assert len(matches) == 1, matches
+    return matches[0].split("[#", 1)[1].split("]", 1)[0]
+
+
+def test_new_batch_uses_source_after_prior_deletion_restore(functional_repo):
+    """Saving later additions must use the file enlarged by an earlier peel."""
+    test_file = functional_repo / "evolved.txt"
+    test_file.write_text(
+        "header\n"
+        "old block one\n"
+        "old block two\n"
+        "middle\n"
+        "old gate one\n"
+        "footer\n"
+    )
+    subprocess.run(
+        ["git", "add", "evolved.txt"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add evolved source"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text(
+        "header\n"
+        "middle\n"
+        "new gate one\n"
+        "new trailing one\n"
+        "footer\n"
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    initial_view = git_stage_batch(
+        "show", "--file", "evolved.txt", "--page", "all"
+    ).stdout
+    deleted_ids = [
+        _display_id_for_text(initial_view, text)
+        for text in (
+            "old block one",
+            "old block two",
+        )
+    ]
+    git_stage_batch(
+        "discard",
+        "--to",
+        "earlier-peel",
+        "--line",
+        ",".join(deleted_ids),
+        "--no-auto-advance",
+    )
+
+    evolved_view = git_stage_batch(
+        "show", "--file", "evolved.txt", "--page", "all"
+    ).stdout
+    selected_ids = [
+        _display_id_for_text(evolved_view, text)
+        for text in (
+            "old gate one",
+            "new gate one",
+            "new trailing one",
+        )
+    ]
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "later-peel",
+        "--line",
+        ",".join(selected_ids),
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert test_file.read_text() == (
+        "header\n"
+        "old block one\n"
+        "old block two\n"
+        "middle\n"
+        "old gate one\n"
+        "footer\n"
+    )
+
+    metadata = read_batch_metadata("later-peel")
+    file_metadata = metadata["files"]["evolved.txt"]
+    source_content = _show_file(
+        file_metadata["batch_source_commit"],
+        "evolved.txt",
+    )
+    source_line_count = len(source_content.splitlines())
+    origins = [
+        unit["original_unit"]
+        for unit in file_metadata["replacement_units"]
+        if "original_unit" in unit
+    ]
+    assert origins
+    assert {
+        (origin["new_start"], origin["new_end"])
+        for origin in origins
+    } == {(3, 4)}
+    assert all(origin["new_end"] <= source_line_count for origin in origins)
+
+    batch_commit = get_batch_commit_sha("later-peel")
+    assert batch_commit is not None
+    assert _show_file(batch_commit, "evolved.txt") == (
+        "header\n"
+        "old block one\n"
+        "old block two\n"
+        "middle\n"
+        "new gate one\n"
+        "new trailing one\n"
+        "footer\n"
+    )
+
+
+def test_separate_replacement_peels_preserve_evolved_markdown(functional_repo):
+    """A later replacement peel must not restore an earlier baseline block."""
+    test_file = functional_repo / "guide.md"
+    test_file.write_text(
+        "# Guide\n"
+        "old command\n"
+        "separator\n"
+        "legacy block alpha\n"
+        "legacy block beta\n"
+        "footer\n"
+    )
+    subprocess.run(["git", "add", "guide.md"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add guide"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text(
+        "# Guide\n"
+        "new command\n"
+        "separator\n"
+        "replacement narrative gamma\n"
+        "replacement narrative delta\n"
+        "footer\n"
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    command_view = git_stage_batch(
+        "show", "--file", "guide.md", "--page", "all"
+    ).stdout
+    command_ids = [
+        int(_display_id_for_text(command_view, text))
+        for text in ("old command", "new command")
+    ]
+    git_stage_batch(
+        "discard",
+        "--to",
+        "guide-update",
+        "--line",
+        f"{min(command_ids)}-{max(command_ids)}",
+        "--no-auto-advance",
+    )
+
+    legacy_view = git_stage_batch(
+        "show", "--file", "guide.md", "--page", "all"
+    ).stdout
+    legacy_ids = [
+        int(_display_id_for_text(legacy_view, text))
+        for text in ("legacy block alpha", "legacy block beta")
+    ]
+    git_stage_batch(
+        "discard",
+        "--to",
+        "guide-update",
+        "--line",
+        f"{min(legacy_ids)}-{max(legacy_ids)}",
+        "--no-auto-advance",
+    )
+
+    replacement_view = git_stage_batch(
+        "show", "--file", "guide.md", "--page", "all"
+    ).stdout
+    replacement_ids = [
+        int(_display_id_for_text(replacement_view, text))
+        for text in ("replacement narrative gamma", "replacement narrative delta")
+    ]
+    git_stage_batch(
+        "discard",
+        "--to",
+        "guide-update",
+        "--line",
+        f"{min(replacement_ids)}-{max(replacement_ids)}",
+        "--no-auto-advance",
+    )
+
+    batch_commit = get_batch_commit_sha("guide-update")
+    assert batch_commit is not None
+    assert _show_file(batch_commit, "guide.md") == (
+        "# Guide\n"
+        "new command\n"
+        "separator\n"
+        "replacement narrative gamma\n"
+        "replacement narrative delta\n"
+        "footer\n"
+    )
 
 
 def test_stale_source_advancement_on_discard(functional_repo):

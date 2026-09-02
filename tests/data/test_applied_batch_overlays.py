@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 import subprocess
 
 import pytest
 
 import git_stage_batch.data.applied_batch_overlays as overlays
+from git_stage_batch.batch.applied_text_replay import (
+    load_predecessor_before_trailing_batch,
+)
 from git_stage_batch.batch.state.lifecycle import create_batch, update_batch_note
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.data.applied_batch_overlays import (
     AppliedFileProvenance,
+    AppliedTextPreimageInput,
+    applied_batch_overlay_repository_paths,
     fresh_applied_batch_overlay_for_path,
     load_applied_batch_overlay_snapshot,
     rebind_applied_batch_overlays_after_session,
@@ -24,7 +29,11 @@ from git_stage_batch.data.file_target_identity import (
 )
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.paths import get_applied_batch_overlays_file_path
+from git_stage_batch.exceptions import MergeError
+from git_stage_batch.utils.paths import (
+    get_applied_batch_overlays_file_path,
+    get_applied_batch_preimages_directory_path,
+)
 
 
 @pytest.fixture
@@ -60,7 +69,9 @@ def _record_overlay(
     *,
     introduced_selected_presence: bool = False,
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = (),
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = (),
     expected_index_identities: dict[str, IndexIdentity] | None = None,
+    supports_text_replay: bool = False,
 ) -> None:
     before_identity = capture_worktree_identity("file.txt")
     (repo / "file.txt").write_text("after\n")
@@ -79,11 +90,151 @@ def _record_overlay(
                 source_object_id="b" * 40,
                 introduced_selected_presence=introduced_selected_presence,
                 index_preimage_source_ranges=index_preimage_source_ranges,
+                added_separator_source_ranges=added_separator_source_ranges,
+                supports_text_replay=supports_text_replay,
             ),
         },
         before_worktree_identities={"file.txt": before_identity},
         expected_index_identities=expected_index_identities,
     )
+
+
+def test_fresh_overlay_exposes_text_that_can_be_replayed(temp_git_repo):
+    """Fresh state should retain an ordered text application record."""
+    _record_overlay(temp_git_repo, supports_text_replay=True)
+
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+
+    assert len(view.text_applications) == 1
+    application = view.text_applications[0]
+    assert application.batch_name == "saved"
+    assert application.file_path == "file.txt"
+    assert application.source_object_id == "b" * 40
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    assert state["files"]["file.txt"]["applications"][0]["supports_text_replay"] is True
+
+
+def test_recorded_text_preimage_restores_the_latest_batch(temp_git_repo):
+    """A full inverse can load the exact text captured before apply."""
+    captured_path = temp_git_repo.parent / "captured-before"
+    captured_path.write_bytes(b"before\n")
+    before_identity = capture_worktree_identity("file.txt")
+    preimage = AppliedTextPreimageInput(before_identity, captured_path)
+    provenance = AppliedFileProvenance(
+        file_metadata={
+            "batch_source_commit": "a" * 40,
+            "change_type": "modified",
+            "presence_claims": [{"source_lines": ["1"]}],
+        },
+        source_object_id="b" * 40,
+        supports_text_replay=True,
+        text_preimage=preimage,
+    )
+    revision = read_batch_metadata("saved")["revision"]
+    assert isinstance(revision, str)
+    (temp_git_repo / "file.txt").write_text("after\n")
+
+    record_applied_batch_overlays(
+        batch_name="saved",
+        batch_revision=revision,
+        files={"file.txt": provenance},
+        before_worktree_identities={"file.txt": before_identity},
+    )
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    stored = state["files"]["file.txt"]["applications"][0]["text_preimage"]
+    stored_path = get_applied_batch_preimages_directory_path() / stored["sha256"]
+    assert stored_path.read_bytes() == b"before\n"
+    assert applied_batch_overlay_repository_paths({"file.txt": provenance}) == [
+        "git-stage-batch/applied-batch-overlays.json",
+        f"git-stage-batch/applied-batch-preimages/{stored['sha256']}",
+    ]
+
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+    restored = load_predecessor_before_trailing_batch(
+        view.text_applications,
+        "saved",
+    )
+    assert restored is not None
+    try:
+        assert restored.to_bytes() == b"before\n"
+    finally:
+        restored.close()
+
+
+def test_saved_predecessor_is_not_used_beneath_a_later_batch(temp_git_repo):
+    """Exact text for one apply cannot erase a later unrelated apply."""
+    captured_path = temp_git_repo.parent / "captured-before"
+    captured_path.write_bytes(b"before\n")
+    before_identity = capture_worktree_identity("file.txt")
+    revision = read_batch_metadata("saved")["revision"]
+    assert isinstance(revision, str)
+    (temp_git_repo / "file.txt").write_text("after\n")
+    record_applied_batch_overlays(
+        batch_name="saved",
+        batch_revision=revision,
+        files={
+            "file.txt": AppliedFileProvenance(
+                file_metadata={
+                    "batch_source_commit": "a" * 40,
+                    "change_type": "modified",
+                    "presence_claims": [{"source_lines": ["1"]}],
+                },
+                source_object_id="b" * 40,
+                supports_text_replay=True,
+                text_preimage=AppliedTextPreimageInput(
+                    before_identity,
+                    captured_path,
+                ),
+            )
+        },
+        before_worktree_identities={"file.txt": before_identity},
+    )
+    application = fresh_applied_batch_overlay_for_path(
+        "file.txt"
+    ).text_applications[0]
+
+    assert (
+        load_predecessor_before_trailing_batch(
+            (application, replace(application, batch_name="later")),
+            "saved",
+        )
+        is None
+    )
+
+
+def test_saved_predecessor_rejects_corrupt_content(temp_git_repo):
+    """A changed predecessor file must fail closed."""
+    captured_path = temp_git_repo.parent / "captured-before"
+    captured_path.write_bytes(b"before\n")
+    before_identity = capture_worktree_identity("file.txt")
+    revision = read_batch_metadata("saved")["revision"]
+    assert isinstance(revision, str)
+    (temp_git_repo / "file.txt").write_text("after\n")
+    provenance = AppliedFileProvenance(
+        file_metadata={
+            "batch_source_commit": "a" * 40,
+            "change_type": "modified",
+            "presence_claims": [{"source_lines": ["1"]}],
+        },
+        source_object_id="b" * 40,
+        supports_text_replay=True,
+        text_preimage=AppliedTextPreimageInput(before_identity, captured_path),
+    )
+    record_applied_batch_overlays(
+        batch_name="saved",
+        batch_revision=revision,
+        files={"file.txt": provenance},
+        before_worktree_identities={"file.txt": before_identity},
+    )
+    application = fresh_applied_batch_overlay_for_path(
+        "file.txt"
+    ).text_applications[0]
+    assert application.preimage is not None
+    application.preimage.path.write_bytes(b"changed\n")
+
+    with pytest.raises(MergeError, match="missing or invalid"):
+        load_predecessor_before_trailing_batch((application,), "saved")
 
 
 def test_fresh_overlay_requires_exact_repository_and_batch_identity(temp_git_repo):
@@ -389,12 +540,48 @@ def test_reapplying_identical_ownership_preserves_one_strongest_record(
     assert applications[0]["index_preimage_source_lines"] == ["1"]
 
 
+def test_separator_ranges_persist_and_merge_on_equivalent_reapply(
+    temp_git_repo,
+):
+    """Equivalent records should retain every proven inserted separator."""
+    _record_overlay(
+        temp_git_repo,
+        added_separator_source_ranges=((2, 2),),
+    )
+    _record_overlay(
+        temp_git_repo,
+        added_separator_source_ranges=((4, 4),),
+    )
+
+    state = json.loads(get_applied_batch_overlays_file_path().read_text())
+    applications = state["files"]["file.txt"]["applications"]
+    assert len(applications) == 1
+    assert applications[0]["added_separator_source_lines"] == ["2,4"]
+    view = fresh_applied_batch_overlay_for_path("file.txt")
+    assert view.added_separator_source_line_ranges_by_batch == {
+        "saved": ((2, 2), (4, 4)),
+    }
+
+
 def test_overlay_state_rejects_unknown_or_malformed_fields(temp_git_repo):
     """Advisory state must fail closed instead of accepting ambiguous data."""
     _record_overlay(temp_git_repo)
     state_path = get_applied_batch_overlays_file_path()
     state = json.loads(state_path.read_text())
     state["files"]["file.txt"]["unexpected"] = True
+    state_path.write_text(json.dumps(state))
+
+    with pytest.raises(CommandError, match="Applied-batch state is corrupt"):
+        load_applied_batch_overlay_snapshot()
+
+
+def test_overlay_rejects_noncanonical_separator_ranges(temp_git_repo):
+    """Inserted separator ranges must be sorted and normalized."""
+    _record_overlay(temp_git_repo)
+    state_path = get_applied_batch_overlays_file_path()
+    state = json.loads(state_path.read_text())
+    application = state["files"]["file.txt"]["applications"][0]
+    application["added_separator_source_lines"] = ["4", "2"]
     state_path.write_text(json.dumps(state))
 
     with pytest.raises(CommandError, match="Applied-batch state is corrupt"):

@@ -122,6 +122,7 @@ def add_sifted_text_file_to_batch(
     text_change_type = normalized_text_change_type(change_type)
     file_metadata: BatchFileMetadataDict = {
         "batch_source_commit": batch_source_commit,
+        "batch_source_is_target": True,
         "mode": file_mode,
     }
     add_ownership_metadata(file_metadata, ownership.to_metadata_dict())

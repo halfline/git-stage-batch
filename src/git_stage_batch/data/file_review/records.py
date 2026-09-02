@@ -56,6 +56,7 @@ class FileReviewSelectionState:
     last_page: int
     reason: _ActionableSelectionReason
     actions: tuple[FileReviewAction, ...]
+    pages: tuple[int, ...] = ()
     is_splittable: bool = False
 
 

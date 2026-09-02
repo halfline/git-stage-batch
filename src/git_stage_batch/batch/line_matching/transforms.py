@@ -1,4 +1,4 @@
-"""Authority-bearing exact transforms and non-authoritative alignments."""
+"""Exact line maps and approximate line matches."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from ...core.coordinates import (
     FileSnapshot,
     LineBoundary,
     LineSpan,
+    RewrittenWorktreeSpace,
     SnapshotBoundary,
     SnapshotSpan,
     WorktreeSpace,
@@ -127,6 +128,101 @@ PlacementResult = Union[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class SameContentSpanProjection(Generic[SourceSpace, TargetSpace]):
+    """Exact coordinate projection between roles for identical file content."""
+
+    source_snapshot: FileSnapshot[SourceSpace]
+    target_snapshot: FileSnapshot[TargetSpace]
+
+    def __post_init__(self) -> None:
+        if (
+            self.source_snapshot.path != self.target_snapshot.path
+            or self.source_snapshot.identity != self.target_snapshot.identity
+            or self.source_snapshot.line_count != self.target_snapshot.line_count
+        ):
+            raise ValueError("same-content projection endpoints differ")
+
+    def translate_boundary(
+        self,
+        boundary: SnapshotBoundary[SourceSpace],
+    ) -> SnapshotBoundary[TargetSpace]:
+        """Rebind an exact boundary to the identical target content."""
+        require_same_snapshot(boundary.snapshot, self.source_snapshot)
+        return SnapshotBoundary(
+            self.target_snapshot,
+            LineBoundary(boundary.boundary.offset),
+        )
+
+    def translate_span(
+        self,
+        span: SnapshotSpan[SourceSpace],
+    ) -> SnapshotSpan[TargetSpace]:
+        """Rebind an exact span to the identical target content snapshot."""
+        require_same_snapshot(span.snapshot, self.source_snapshot)
+        return SnapshotSpan(
+            self.target_snapshot,
+            LineSpan(
+                LineBoundary(span.span.start.offset),
+                LineBoundary(span.span.end.offset),
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddedContentSpanProjection(Generic[SourceSpace, TargetSpace]):
+    """Map lines between two equal sections of a file.
+
+    An exact search finds the sections. A line at a given offset in one section
+    maps to the line at the same offset in the other, even when nearby text is
+    repeated.
+    """
+
+    source_snapshot: FileSnapshot[SourceSpace]
+    target_span: SnapshotSpan[TargetSpace]
+
+    def __post_init__(self) -> None:
+        if self.source_snapshot.path != self.target_span.snapshot.path:
+            raise ValueError("embedded projection endpoints have different paths")
+        if self.source_snapshot.line_count != len(self.target_span.span):
+            raise ValueError("embedded projection endpoints have different lengths")
+
+    @property
+    def target_snapshot(self) -> FileSnapshot[TargetSpace]:
+        return self.target_span.snapshot
+
+    def translate_line_number(self, line_number: int) -> int | None:
+        """Translate a one-based source line."""
+        if line_number <= 0 or line_number > self.source_snapshot.line_count:
+            return None
+        return self.target_span.span.start.offset + line_number
+
+    def translate_boundary(
+        self,
+        boundary: SnapshotBoundary[SourceSpace],
+    ) -> SnapshotBoundary[TargetSpace]:
+        require_same_snapshot(boundary.snapshot, self.source_snapshot)
+        return SnapshotBoundary(
+            self.target_snapshot,
+            LineBoundary(self.target_span.span.start.offset + boundary.boundary.offset),
+        )
+
+    def translate_span(
+        self,
+        span: SnapshotSpan[SourceSpace],
+    ) -> SnapshotSpan[TargetSpace]:
+        require_same_snapshot(span.snapshot, self.source_snapshot)
+        return SnapshotSpan(
+            self.target_snapshot,
+            LineSpan(
+                LineBoundary(
+                    self.target_span.span.start.offset + span.span.start.offset
+                ),
+                LineBoundary(self.target_span.span.start.offset + span.span.end.offset),
+            ),
+        )
+
+
 @dataclass(slots=True)
 class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
     """Content-derived correspondence that cannot silently become provenance."""
@@ -228,6 +324,39 @@ class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
         """Return the reciprocal structural correspondence as evidence only."""
         return self._mapping.get_source_line_from_target_line(target_line)
 
+    def translate_span(
+        self,
+        span: SnapshotSpan[SourceSpace],
+    ) -> SnapshotSpan[TargetSpace] | None:
+        """Project a complete span only when its structural mapping is exact.
+
+        Structural correspondence is not provenance.  Require every line in
+        the requested source span to have reciprocal, contiguous mapping into
+        the target snapshot.  Unmapped equal lines elsewhere in the file do
+        not make this particular span ambiguous.
+        """
+        require_same_snapshot(span.snapshot, self.source_snapshot)
+        if len(span.span) == 0:
+            return None
+        source_start = span.span.start.offset + 1
+        source_end = span.span.end.offset
+        target_start = self._mapping.get_target_line_from_source_line(source_start)
+        if target_start is None:
+            return None
+        for source_line in range(source_start + 1, source_end + 1):
+            if (
+                self._mapping.get_target_line_from_source_line(source_line)
+                != target_start + source_line - source_start
+            ):
+                return None
+        return SnapshotSpan(
+            self.target_snapshot,
+            LineSpan(
+                LineBoundary(target_start - 1),
+                LineBoundary(target_start + source_end - source_start),
+            ),
+        )
+
     def _boundary_placement(
         self,
         offset: int,
@@ -291,6 +420,8 @@ class StructuralAlignment(Generic[SourceSpace, TargetSpace]):
 
     def __exit__(self, *_args: object) -> None:
         self.close()
+
+
 @dataclass(frozen=True, slots=True)
 class _SourceLineageVariant:
     """Evidence that the transform projects old batch-source coordinates."""
@@ -301,7 +432,16 @@ class _WorkingLineageVariant:
     """Evidence that the transform projects observed worktree coordinates."""
 
 
-_LineageVariant = Union[_SourceLineageVariant, _WorkingLineageVariant]
+@dataclass(frozen=True, slots=True)
+class _RewrittenWorkingLineageVariant:
+    """Evidence that the transform projects an explicit rewritten worktree."""
+
+
+_LineageVariant = Union[
+    _SourceLineageVariant,
+    _WorkingLineageVariant,
+    _RewrittenWorkingLineageVariant,
+]
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -364,6 +504,26 @@ class BatchSourceExactTransform(Generic[SourceSpace, TargetSpace]):
             transform,
         )
 
+    @classmethod
+    def from_rewritten_working_lineage(
+        cls,
+        source_snapshot: FileSnapshot[RewrittenWorktreeSpace],
+        target_snapshot: FileSnapshot[BatchSourceSpace],
+        lineage: BatchSourceLineage,
+    ) -> BatchSourceExactTransform[RewrittenWorktreeSpace, BatchSourceSpace]:
+        """Bind rewritten-worktree lineage to its exact batch-source result."""
+        transform = object.__new__(cls)
+        transform._initialize(
+            source_snapshot,
+            target_snapshot,
+            lineage,
+            _RewrittenWorkingLineageVariant(),
+        )
+        return cast(
+            "BatchSourceExactTransform[RewrittenWorktreeSpace, BatchSourceSpace]",
+            transform,
+        )
+
     def _initialize(
         self,
         source_snapshot: FileSnapshot[Any],
@@ -396,7 +556,14 @@ class BatchSourceExactTransform(Generic[SourceSpace, TargetSpace]):
                 target_count=self.target_snapshot.line_count,
             )
         else:
-            require_snapshot_role(self.source_snapshot, WorktreeSpace)
+            require_snapshot_role(
+                self.source_snapshot,
+                (
+                    WorktreeSpace
+                    if isinstance(self._variant, _WorkingLineageVariant)
+                    else RewrittenWorktreeSpace
+                ),
+            )
             _validate_lineage_runs(
                 self.lineage.working_runs(),
                 source_count=self.source_snapshot.line_count,
@@ -568,9 +735,7 @@ def _validate_source_expansions(
                 or current_run.old_start > expected_source
                 or current_run.translate(expected_source) != expected_target
             ):
-                raise ValueError(
-                    "source expansion lacks contiguous direct lineage"
-                )
+                raise ValueError("source expansion lacks contiguous direct lineage")
             covered_end = min(current_run.old_end, expansion.source_end)
             covered_count = covered_end - expected_source + 1
             expected_source = covered_end + 1
@@ -585,10 +750,7 @@ def _validate_source_expansions(
         if current_run.old_end > expansion.source_end:
             raise ValueError("source expansion overlaps direct source lineage")
         current_run = next(source_runs, None)
-        if (
-            current_run is not None
-            and current_run.new_start <= expansion.new_end
-        ):
+        if current_run is not None and current_run.new_start <= expansion.new_end:
             raise ValueError("source expansion overlaps later source lineage")
 
         previous_source_end = expansion.source_end

@@ -8,10 +8,12 @@ from typing import Union
 
 from ...core.line_selection import LineRanges
 from ...core.coordinates import (
+    BatchSourceSpace,
     LineBoundary,
     LineSpan,
     ReplacementNewSpace,
     ReplacementOldSpace,
+    SnapshotSpan,
 )
 from .claims import (
     format_ownership_line_set,
@@ -144,6 +146,19 @@ class ReplacementUnitOrigin:
             old_end=self.old_end,
             new_start=new_start,
             new_end=new_end,
+            baseline_reference=self.baseline_reference,
+        )
+
+    def with_batch_source_span(
+        self,
+        span: SnapshotSpan[BatchSourceSpace],
+    ) -> ReplacementUnitOrigin:
+        """Bind produced-side geometry to one exact batch-source snapshot."""
+        return ReplacementUnitOrigin(
+            old_start=self.old_start,
+            old_end=self.old_end,
+            new_start=span.span.start.offset + 1,
+            new_end=span.span.end.offset,
             baseline_reference=self.baseline_reference,
         )
 

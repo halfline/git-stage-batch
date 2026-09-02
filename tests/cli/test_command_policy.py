@@ -66,6 +66,15 @@ def test_regular_status_uses_repository_and_session_lock():
     assert policy_uses_session_lock(policy, args) is True
 
 
+def test_status_cache_refresh_requires_repository_without_session_lock():
+    """The worker validates its repository but never joins the command lock."""
+    args = _parse("status", "--refresh-cache")
+    policy = policy_for_args(args)
+
+    assert policy_requires_repository(policy, args) is True
+    assert policy_uses_session_lock(policy, args) is False
+
+
 def test_history_verify_allows_foreign_owner_under_session_lock():
     args = _parse("rewrite", "verify")
     policy = policy_for_args(args)

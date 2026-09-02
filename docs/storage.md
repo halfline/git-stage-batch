@@ -3,6 +3,27 @@
 Git-stage-batch stores durable batch state under `refs/git-stage-batch/` and
 worktree-local session scratch files below the worktree's Git directory.
 
+## Shell prompt status cache
+
+After a rich `status --for-prompt` format is used, the active session keeps a
+compact JSON summary in `session/status-summary.json`. It contains only fields
+available to prompt formats; the full skipped-change list from porcelain status
+is not copied into it. A small marker enables refreshes for the rest of that
+session, so users who do not put rich status fields in their prompt pay no
+refresh cost.
+
+The first prompt writes a quick snapshot and starts one background refresh.
+Later git-stage-batch commands request another refresh when needed. A
+repository has at most one prompt refresh worker, and each worker makes at most
+one full pass. The worker does not acquire the session lock. It publishes only
+when the session marker and lock generation are unchanged across the pass, so
+an overlapping command leaves the earlier complete cache in place.
+
+These private files are disposable session state. Undo and redo checkpoints
+ignore them. `stop` and `abort` remove them with the rest of the session;
+`again` keeps them long enough to display the prior complete snapshot while a
+new one is calculated.
+
 ## Applied batch provenance
 
 `apply --from` writes compact, worktree-local provenance to

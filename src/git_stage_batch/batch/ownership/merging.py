@@ -20,6 +20,7 @@ class _AbsenceSignature:
     byte_count: int
     line_count: int
     source_alternative: bool
+    complete_file_pair: bool
 
 
 def _absence_signature(claim: AbsenceClaim) -> _AbsenceSignature:
@@ -36,6 +37,7 @@ def _absence_signature(claim: AbsenceClaim) -> _AbsenceSignature:
         byte_count=byte_count,
         line_count=len(claim.content_lines),
         source_alternative=claim.source_alternative,
+        complete_file_pair=claim.complete_file_pair,
     )
 
 
@@ -101,10 +103,13 @@ def _merge_deletion_claim_metadata(
             new.baseline_reference,
         ),
         source_alternative=existing.source_alternative,
+        complete_file_pair=existing.complete_file_pair,
     )
 
 
-def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> BatchOwnership:
+def merge_batch_ownership(
+    existing: BatchOwnership, new: BatchOwnership
+) -> BatchOwnership:
     """Merge two BatchOwnership objects.
 
     Combines presence claims (union) and merges deletion constraints with
@@ -126,9 +131,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
     new_claimed = new.presence_line_set()
     combined_claimed = existing_claimed.union(new_claimed)
     combined_presence_references = existing.presence_baseline_references()
-    for source_line, new_reference in (
-        new.presence_baseline_references().items()
-    ):
+    for source_line, new_reference in new.presence_baseline_references().items():
         merged_reference = _merge_baseline_references(
             combined_presence_references.get(source_line),
             new_reference,
@@ -141,10 +144,10 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
     existing_deletion_index_map: dict[int, int] = {}
     new_deletion_index_map: dict[int, int] = {}
 
-    for source_name, source_index, deletion in (
-        [("existing", index, deletion) for index, deletion in enumerate(existing.deletions)]
-        + [("new", index, deletion) for index, deletion in enumerate(new.deletions)]
-    ):
+    for source_name, source_index, deletion in [
+        ("existing", index, deletion)
+        for index, deletion in enumerate(existing.deletions)
+    ] + [("new", index, deletion) for index, deletion in enumerate(new.deletions)]:
         signature = _absence_signature(deletion)
 
         if signature not in deletion_index_by_signature:
@@ -173,11 +176,13 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
                 for index in unit.deletion_indices
                 if type(index) is int and index in index_map
             ]
-            combined_replacement_units.append(ReplacementUnit(
-                presence_lines=unit.presence_lines,
-                deletion_indices=remapped_indices,
-                origin_evidence=unit.origin_evidence,
-            ))
+            combined_replacement_units.append(
+                ReplacementUnit(
+                    presence_lines=unit.presence_lines,
+                    deletion_indices=remapped_indices,
+                    origin_evidence=unit.origin_evidence,
+                )
+            )
 
     return BatchOwnership(
         presence_claims=presence_claims_from_source_lines(

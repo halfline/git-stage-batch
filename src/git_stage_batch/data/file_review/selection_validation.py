@@ -1,4 +1,4 @@
-"""Selection validation for page-aware file reviews."""
+"""Validate selections made from file review pages."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _format_line_ranges(selection: LineRanges) -> str:
 
 
 class ReviewSelectionForValidation(Protocol):
-    """Selection fields needed by review-scoped validation."""
+    """The selection fields needed for validation."""
 
     @property
     def display_ids(self) -> tuple[int, ...]:
@@ -36,7 +36,7 @@ def shown_review_selections_for_action(
     review_state: _records.FileReviewState,
     action: _records.FileReviewAction | str,
 ) -> list[_records.FileReviewSelectionState]:
-    """Return actionable selections fully contained by the shown review pages."""
+    """Return selections for this action that were shown in full."""
     review_action = _records.coerce_review_action(action)
     shown_pages = (
         set(range(1, review_state.page_count + 1))
@@ -47,7 +47,10 @@ def shown_review_selections_for_action(
         selection
         for selection in review_state.selections
         if review_action in selection.actions
-        and set(range(selection.first_page, selection.last_page + 1)).issubset(
+        and set(
+            selection.pages
+            or range(selection.first_page, selection.last_page + 1)
+        ).issubset(
             shown_pages
         )
     ]
@@ -57,7 +60,7 @@ def validate_review_scoped_line_selection(
     requested_ids: LineSelection | Iterable[int],
     valid_selections: Iterable[ReviewSelectionForValidation],
 ) -> None:
-    """Validate a union of complete actionable review selections."""
+    """Require every requested ID to belong to a complete valid selection."""
     requested_ranges = coerce_line_ranges(requested_ids)
     matched_ids = LineRangeBuilder()
     partial_atomic_groups: list[LineRanges] = []

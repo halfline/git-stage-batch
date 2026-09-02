@@ -1,4 +1,4 @@
-"""Helpers for expressing replacement text in batch source space."""
+"""Describe replacements using lines in a batch's saved source."""
 
 from __future__ import annotations
 
@@ -28,20 +28,17 @@ __all__ = [
 def _localized_selection_error(message: str) -> str | None:
     """Translate the replacement-selection errors exposed by this module."""
     if message == (
-        "Replacement selection must resolve to one contiguous "
-        "batch-source line range."
+        "Replacement selection must resolve to one contiguous batch-source line range."
     ):
         return _(
             "Replacement selection must resolve to one contiguous "
             "batch-source line range."
         )
     if message == (
-        "Replacement selection must resolve to one contiguous "
-        "batch-source region."
+        "Replacement selection must resolve to one contiguous batch-source region."
     ):
         return _(
-            "Replacement selection must resolve to one contiguous "
-            "batch-source region."
+            "Replacement selection must resolve to one contiguous batch-source region."
         )
     return None
 
@@ -74,11 +71,7 @@ def _format_presence_range(start_line: int, line_count: int) -> list[str]:
     if line_count <= 0:
         return []
     end_line = start_line + line_count - 1
-    return [
-        str(start_line)
-        if start_line == end_line
-        else f"{start_line}-{end_line}"
-    ]
+    return [str(start_line) if start_line == end_line else f"{start_line}-{end_line}"]
 
 
 def build_replacement_batch_view_from_lines(
@@ -146,16 +139,19 @@ def _build_replacement_batch_view(
             else:
                 new_anchor = None
 
-            new_deletions.append(AbsenceClaim(
-                anchor_line=new_anchor,
-                content_lines=deletion.content_lines,
-                baseline_reference=(
-                    deletion.baseline_reference
-                    if deletion.source_alternative
-                    else None
-                ),
-                source_alternative=deletion.source_alternative,
-            ))
+            new_deletions.append(
+                AbsenceClaim(
+                    anchor_line=new_anchor,
+                    content_lines=deletion.content_lines,
+                    baseline_reference=(
+                        deletion.baseline_reference
+                        if deletion.source_alternative
+                        else None
+                    ),
+                    source_alternative=deletion.source_alternative,
+                    complete_file_pair=deletion.complete_file_pair,
+                )
+            )
 
         return ReplacementBatchView(
             source_buffer=LineBuffer.from_chunks(
@@ -175,15 +171,16 @@ def _build_replacement_batch_view(
                         presence_lines=new_presence_lines,
                         deletion_indices=list(range(len(new_deletions))),
                     )
-                ] if new_presence_lines and new_deletions else [],
+                ]
+                if new_presence_lines and new_deletions
+                else [],
             ),
         )
 
     distinct_anchors = {deletion.anchor_line for deletion in ownership.deletions}
     if len(distinct_anchors) > 1:
         raise ValueError(
-            "Replacement selection must resolve to one contiguous "
-            "batch-source region."
+            "Replacement selection must resolve to one contiguous batch-source region."
         )
 
     anchor_line = next(iter(distinct_anchors), None)
@@ -204,16 +201,17 @@ def _build_replacement_batch_view(
         else:
             new_anchor = deletion.anchor_line + added_count
 
-        new_deletions.append(AbsenceClaim(
-            anchor_line=new_anchor,
-            content_lines=deletion.content_lines,
-            baseline_reference=(
-                deletion.baseline_reference
-                if deletion.source_alternative
-                else None
-            ),
-            source_alternative=deletion.source_alternative,
-        ))
+        new_deletions.append(
+            AbsenceClaim(
+                anchor_line=new_anchor,
+                content_lines=deletion.content_lines,
+                baseline_reference=(
+                    deletion.baseline_reference if deletion.source_alternative else None
+                ),
+                source_alternative=deletion.source_alternative,
+                complete_file_pair=deletion.complete_file_pair,
+            )
+        )
 
     return ReplacementBatchView(
         source_buffer=LineBuffer.from_chunks(
@@ -233,7 +231,9 @@ def _build_replacement_batch_view(
                     presence_lines=new_presence_lines,
                     deletion_indices=list(range(len(new_deletions))),
                 )
-            ] if new_presence_lines and new_deletions else [],
+            ]
+            if new_presence_lines and new_deletions
+            else [],
         ),
     )
 

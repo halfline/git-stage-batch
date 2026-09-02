@@ -115,6 +115,7 @@ def discard_lines_as_to_batch(
     replacement = None
     try:
         with _discard_line_replacement.prepare_discard_line_replacement_selection(
+            batch_name,
             line_id_specification,
             replacement_text,
             no_edge_overlap=no_edge_overlap,
@@ -176,6 +177,10 @@ def discard_file_lines_to_batch(
         line_changes,
         line_id_specification,
     )
+    selection = _batch_line_selection.include_single_line_replacement_peer(
+        line_changes,
+        selection,
+    )
 
     if not selection.selected_lines:
         if not quiet:
@@ -187,10 +192,26 @@ def discard_file_lines_to_batch(
             )
         return 0
 
+    working_file_path = get_git_repository_root_path() / file_path
+    if not os.path.lexists(working_file_path):
+        exit_with_error(
+            _("File not found in working tree: {file}").format(
+                file=display_path(file_path)
+            )
+        )
+    with load_working_tree_file_as_buffer(file_path) as working_lines:
+        selection = (
+            _batch_line_selection.include_redundant_blank_in_batch_selection(
+                line_changes,
+                selection,
+                working_lines,
+            )
+        )
+
     _insertion_references.record_baseline_references_for_additions(
         line_changes,
     )
-    _batch_line_updates.add_selected_lines_to_batch(
+    source_selection = _batch_line_updates.add_selected_lines_to_batch(
         batch_name=batch_name,
         file_path=file_path,
         selected_lines=selection.selected_lines,
@@ -199,18 +220,16 @@ def discard_file_lines_to_batch(
         snapshot_untracked=True,
     )
 
-    working_file_path = get_git_repository_root_path() / file_path
-    if not os.path.lexists(working_file_path):
-        exit_with_error(
-            _("File not found in working tree: {file}").format(
-                file=display_path(file_path)
-            )
-        )
-
     with load_working_tree_file_as_buffer(file_path) as working_lines:
-        target_working_buffer = build_target_working_tree_buffer_from_lines(
+        worktree_discard_ids = _batch_line_selection.build_worktree_discard_selection(
             line_changes,
             selection.requested_ids,
+            working_lines,
+            source_selection,
+        )
+        target_working_buffer = build_target_working_tree_buffer_from_lines(
+            line_changes,
+            worktree_discard_ids,
             working_lines,
         )
 
@@ -262,11 +281,31 @@ def discard_selected_lines_to_batch(
             line_changes,
             line_id_specification,
         )
+        selection = _batch_line_selection.include_single_line_replacement_peer(
+            line_changes,
+            selection,
+        )
 
         if not selection.selected_lines:
             exit_with_error(
                 _("No matching lines found for selection: {ids}").format(
                     ids=line_id_specification,
+                )
+            )
+
+        working_file_path = get_git_repository_root_path() / line_changes.path
+        if not os.path.lexists(working_file_path):
+            exit_with_error(
+                _("File not found in working tree: {file}").format(
+                    file=display_path(line_changes.path),
+                )
+            )
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+            selection = (
+                _batch_line_selection.include_redundant_blank_in_batch_selection(
+                    line_changes,
+                    selection,
+                    working_lines,
                 )
             )
 
@@ -284,7 +323,7 @@ def discard_selected_lines_to_batch(
                 file_path=line_changes.path,
             )
 
-        _batch_line_updates.add_selected_lines_to_batch(
+        source_selection = _batch_line_updates.add_selected_lines_to_batch(
             batch_name=batch_name,
             file_path=line_changes.path,
             selected_lines=selection.selected_lines,
@@ -302,18 +341,18 @@ def discard_selected_lines_to_batch(
         )
 
         journal_state.stage = "worktree-publication"
-        working_file_path = get_git_repository_root_path() / line_changes.path
-        if not os.path.lexists(working_file_path):
-            exit_with_error(
-                _("File not found in working tree: {file}").format(
-                    file=display_path(line_changes.path),
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+            worktree_discard_ids = (
+                _batch_line_selection.build_worktree_discard_selection(
+                    line_changes,
+                    selection.requested_ids,
+                    working_lines,
+                    source_selection,
                 )
             )
-
-        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
             target_working_buffer = build_target_working_tree_buffer_from_lines(
                 line_changes,
-                selection.requested_ids,
+                worktree_discard_ids,
                 working_lines,
             )
 

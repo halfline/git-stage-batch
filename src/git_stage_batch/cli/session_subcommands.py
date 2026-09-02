@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+
 from ..commands.abort import command_abort
 from ..commands.again import command_again
 from ..commands.check_unstaged import command_check_unstaged
@@ -193,9 +195,17 @@ def add_status_subcommand(subparsers: Subparsers) -> None:
         metavar="FORMAT",
         help=_("Print FORMAT only when a session is active, for shell prompts"),
     )
+    status_output.add_argument(
+        "--refresh-cache",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser_status.set_defaults(
+        refresh_prompt_cache_after_command=False,
         func=lambda args: command_status(
             porcelain=args.porcelain,
             prompt_format=args.prompt_format,
+            refresh_cache=args.refresh_cache,
+            schedule_prompt_cache_refresh=True,
         )
     )

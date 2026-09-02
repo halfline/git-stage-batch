@@ -1,4 +1,4 @@
-"""Versioned batch metadata parsing and canonical serialization."""
+"""Read, validate, and write versioned batch metadata."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ _LINE_RANGE_RE = re.compile(r"^(?P<start>[1-9][0-9]*)(?:-(?P<end>[1-9][0-9]*))?$
 _FILE_METADATA_KEYS = frozenset(
     {
         "batch_source_commit",
+        "batch_source_is_target",
         "change_type",
         "claimed_lines",
         "deletions",
@@ -495,6 +496,23 @@ def _decode_file_metadata(
                 "file entry for {path!r} has an invalid legacy source-alternative flag"
             ).format(path=path),
         )
+    if (
+        "batch_source_is_target" in values
+        and type(values["batch_source_is_target"]) is not bool
+    ):
+        _invalid(
+            batch_name,
+            _(
+                "file entry for {path!r} has an invalid batch-source target flag"
+            ).format(path=path),
+        )
+    if "batch_source_is_target" in values and file_type is not None:
+        _invalid(
+            batch_name,
+            _(
+                "non-text file entry for {path!r} has a batch-source target flag"
+            ).format(path=path),
+        )
     if "legacy_unmarked_source_alternatives" in values and file_type is not None:
         _invalid(
             batch_name,
@@ -630,6 +648,7 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                 "blob",
                 "baseline_reference",
                 "source_alternative",
+                "complete_file_pair",
             },
             batch_name,
             f"files[{path!r}].deletions",
@@ -652,6 +671,27 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                 _("files[{path!r}] has an invalid source-alternative flag").format(
                     path=path
                 ),
+            )
+        if (
+            "complete_file_pair" in deletion
+            and type(deletion["complete_file_pair"]) is not bool
+        ):
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has an invalid complete-file-pair flag").format(
+                    path=path
+                ),
+            )
+        if (
+            deletion.get("complete_file_pair") is True
+            and deletion.get("source_alternative") is not True
+        ):
+            _invalid(
+                batch_name,
+                _(
+                    "files[{path!r}] has a complete file pair without a "
+                    "source alternative"
+                ).format(path=path),
             )
         if "baseline_reference" in deletion:
             _validate_baseline_reference(

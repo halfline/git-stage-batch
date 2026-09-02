@@ -54,11 +54,16 @@ class ProgressSummary(TypedDict):
     remaining: int
 
 
-class StatusSummary(TypedDict):
-    """Complete machine-readable status response."""
+class PromptStatusSummary(TypedDict):
+    """Small status response used by shell prompts."""
 
     session: SessionSummary
     selected_change: ChangeSummary | None
     file_review: FileReviewSummary | None
     progress: ProgressSummary
+
+
+class StatusSummary(PromptStatusSummary):
+    """Complete machine-readable status response."""
+
     skipped_hunks: list[ChangeSummary]

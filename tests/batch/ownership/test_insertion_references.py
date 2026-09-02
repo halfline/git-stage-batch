@@ -1,8 +1,11 @@
 """Tests for persistent insertion-reference metadata."""
 
+from dataclasses import replace
+
 import git_stage_batch.batch.ownership.insertion_references as insertion_references
 from git_stage_batch.batch.ownership.insertion_references import (
     record_baseline_references_for_additions,
+    reanchor_selected_additions_after_relocated_context_boundary,
 )
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 
@@ -173,6 +176,7 @@ def test_snapshot_reference_order_avoids_python_line_collections(
     monkeypatch,
 ) -> None:
     """Source-order indexing should stay in storage-backed records."""
+
     def fail_sorted(*_args, **_kwargs):
         raise AssertionError("addition lines must not be collected on the heap")
 
@@ -208,3 +212,157 @@ def test_snapshot_reference_order_avoids_python_line_collections(
     addition = changes.lines[0]
 
     assert addition.baseline_reference_before_line == 1
+
+
+def _relocated_fence_hunk() -> list[LineEntry]:
+    additions = [
+        (1, b"transition one", 13),
+        (2, b"transition two", 14),
+        (3, b"", None),
+        (4, b"", None),
+        (5, b"desktop prose", 17),
+        (6, b"```sh", 18),
+        (7, b"desktop-test", 19),
+    ]
+    return [
+        LineEntry(8, "-", 31, None, text_bytes=b"```text"),
+        *[
+            LineEntry(
+                line_id,
+                "+",
+                None,
+                source_line,
+                text_bytes=text,
+                source_line=source_line,
+                baseline_reference_before_line=33,
+                baseline_reference_before_text_bytes=b"```",
+                has_baseline_reference_before=True,
+            )
+            for line_id, text, source_line in additions
+        ],
+        LineEntry(None, " ", 33, 20, text_bytes=b"```", source_line=20),
+        LineEntry(None, " ", 34, 21, text_bytes=b"", source_line=21),
+        LineEntry(9, "-", 35, None, text_bytes=b"Useful commands:"),
+    ]
+
+
+def test_relocated_fence_reanchors_external_paragraph_with_separator() -> None:
+    """A paragraph before a new fence remains outside the completed old fence."""
+    hunk = _relocated_fence_hunk()
+
+    selected = reanchor_selected_additions_after_relocated_context_boundary(
+        hunk,
+        hunk[1:3],
+        [b"unrelated\n"] * 12 + [b"transition one\n", b"transition two\n", b"\n"],
+    )
+
+    assert [line.text_bytes for line in selected] == [
+        b"transition one",
+        b"transition two",
+        b"",
+    ]
+    assert [line.source_line for line in selected] == [13, 14, 15]
+    assert all(line.baseline_reference_after_line == 34 for line in selected)
+    assert all(line.baseline_reference_before_line == 35 for line in selected)
+
+
+def test_relocated_fence_does_not_reanchor_content_inside_new_fence() -> None:
+    """Selected content after the new opener keeps its ordinary boundary."""
+    hunk = _relocated_fence_hunk()
+
+    selected = reanchor_selected_additions_after_relocated_context_boundary(
+        hunk,
+        [hunk[7]],
+        [],
+    )
+
+    assert selected == [hunk[7]]
+
+
+def test_relocated_fence_does_not_absorb_one_unselected_blank() -> None:
+    """An ordinary adjacent separator remains outside the explicit selection."""
+    hunk = _relocated_fence_hunk()
+    del hunk[4]
+
+    selected = reanchor_selected_additions_after_relocated_context_boundary(
+        hunk,
+        hunk[1:3],
+        [b"unrelated\n"] * 12 + [b"transition one\n", b"transition two\n", b"\n"],
+    )
+
+    assert [line.text_bytes for line in selected] == [
+        b"transition one",
+        b"transition two",
+    ]
+
+
+def test_relocated_fence_requires_separator_in_source_snapshot() -> None:
+    """A display-adjacent blank cannot cross a batch-source coordinate gap."""
+    hunk = _relocated_fence_hunk()
+
+    selected = reanchor_selected_additions_after_relocated_context_boundary(
+        hunk,
+        hunk[1:3],
+        [b"unrelated\n"] * 12
+        + [b"transition one\n", b"transition two\n", b"owned content\n"],
+    )
+
+    assert [line.text_bytes for line in selected] == [
+        b"transition one",
+        b"transition two",
+    ]
+
+
+def test_relocated_context_boundary_is_not_markdown_specific() -> None:
+    """Changed variants around shared context work for arbitrary formats."""
+    hunk = _relocated_fence_hunk()
+    hunk[0] = replace(hunk[0], text_bytes=b"BOUNDARY old")
+    hunk[6] = replace(hunk[6], text_bytes=b"BOUNDARY new")
+    hunk[8] = replace(hunk[8], text_bytes=b"BOUNDARY")
+
+    selected = reanchor_selected_additions_after_relocated_context_boundary(
+        hunk,
+        hunk[1:3],
+        [b"unrelated\n"] * 12 + [b"transition one\n", b"transition two\n", b"\n"],
+    )
+
+    assert all(line.baseline_reference_after_line == 34 for line in selected)
+    assert all(line.baseline_reference_before_line == 35 for line in selected)
+
+
+def test_relocated_context_boundary_does_not_copy_hunk_suffixes() -> None:
+    """Each boundary scan stays lazy instead of slicing the remaining hunk."""
+
+    class NoSliceLineEntries(list[LineEntry]):
+        def __getitem__(self, index):
+            if isinstance(index, slice):
+                raise AssertionError("hunk suffix must not be copied")
+            return super().__getitem__(index)
+
+    hunk = NoSliceLineEntries(_relocated_fence_hunk())
+
+    selected = reanchor_selected_additions_after_relocated_context_boundary(
+        hunk,
+        [hunk[1], hunk[2]],
+        [b"unrelated\n"] * 12 + [b"transition one\n", b"transition two\n", b"\n"],
+    )
+
+    assert [line.text_bytes for line in selected] == [
+        b"transition one",
+        b"transition two",
+        b"",
+    ]
+
+
+def test_relocated_boundary_requires_changed_old_and_new_variants() -> None:
+    """A coincidental addition prefix cannot relocate selected content."""
+    hunk = _relocated_fence_hunk()
+    hunk[0] = replace(hunk[0], text_bytes=b"unrelated old line")
+
+    selected = reanchor_selected_additions_after_relocated_context_boundary(
+        hunk,
+        hunk[1:3],
+        [],
+    )
+
+    assert selected == hunk[1:3]

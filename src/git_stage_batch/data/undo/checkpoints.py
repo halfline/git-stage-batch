@@ -348,7 +348,10 @@ def _create_undo_checkpoint(
         tracked_worktree_paths,
         index_paths=tracked_index_paths,
     )
-    session_files = _undo_snapshots.filesystem_directory_state(session_dir)
+    session_files = _undo_snapshots.filesystem_directory_state(
+        session_dir,
+        excluded_relative_paths=_undo_snapshots.DISPOSABLE_SESSION_PATHS,
+    )
     batches_files = _undo_snapshots.filesystem_directory_state(
         get_batches_directory_path()
     )
@@ -1018,7 +1021,14 @@ def finalize_pending_checkpoint() -> None:
             if isinstance(saved_files, dict)
             else _undo_restore.tree_prefix_state(checkpoint, prefix)
         )
-        after_files = _undo_snapshots.filesystem_directory_state(source_dir)
+        after_files = _undo_snapshots.filesystem_directory_state(
+            source_dir,
+            excluded_relative_paths=(
+                _undo_snapshots.DISPOSABLE_SESSION_PATHS
+                if prefix == "session"
+                else ()
+            ),
+        )
         metadata_tracked_paths = sorted(
             relative_path
             for relative_path in set(before_files) | set(after_files)

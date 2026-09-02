@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Container, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
+import hashlib
 from typing import TYPE_CHECKING, cast
 
 from .merge.baseline_correspondence import (
@@ -16,7 +18,16 @@ from .merge.baseline_replacement_ranges import (
     collect_replacement_source_ranges as _collect_replacement_source_ranges,
     replacement_source_range_capacity as _replacement_source_range_capacity,
 )
+from .merge.baseline_reference_positions import (
+    baseline_reference_insertion_position,
+)
+from .merge.presence_reference_index import EffectivePresenceReferenceIndex
+from .merge.presence_mapping import match_lines_preserving_unowned_context
 from .ownership.replacement_units import replacement_counts_cover_origin
+from .ownership.resolved_presence_alternatives import (
+    ResolvedPresenceSourceAlternative,
+    resolve_presence_source_alternatives,
+)
 from .discard_reversal import (
     reverse_presence_constraints as _reverse_batch_presence_constraints,
 )
@@ -24,7 +35,11 @@ from .line_matching.line_mapping import LineMapping
 from .line_matching.line_range_view import LineRangeView
 from .line_matching.match import match_lines
 from .line_matching.match_workspace import MatcherWorkspace
-from .line_matching.occurrence_index import LinePayloadOccurrenceIndex
+from .line_matching.occurrence_index import (
+    LinePayloadOccurrenceIndex,
+    normalized_line_payload,
+)
+from .line_matching.sequence_equality import line_slice_equals
 from .realization.entries import RealizedEntry as _RealizedEntry
 from .realization.entry_storage import (
     RealizedEntries,
@@ -37,13 +52,20 @@ from ..core.buffer import (
     buffer_has_data,
 )
 from ..core.coordinates import (
+    BatchSourceSpace,
     FileSnapshot,
+    LineBoundary,
+    LineSpan,
     WorktreeSpace,
     content_snapshot,
     require_same_snapshot,
 )
-from ..core.line_selection import LineRanges
-from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
+from ..core.line_selection import LineRangeBuilder, LineRanges
+from ..core.mapped_storage import (
+    MappedIntVector,
+    MappedRecordVector,
+    sort_mapped_records,
+)
 from ..core.resource_cleanup import close_resources_preserving_first
 from ..core.text_lines import (
     AcquirableLineSequence,
@@ -67,6 +89,44 @@ if TYPE_CHECKING:
     from .ownership.absence_claims import AbsenceClaim
 
 
+@dataclass(frozen=True, slots=True)
+class _RealizedPresenceSourceAlternative:
+    """A saved section and where the same text appears in the worktree."""
+
+    source: ResolvedPresenceSourceAlternative
+    target_separator: LineSpan[WorktreeSpace]
+    target_prefix: LineSpan[WorktreeSpace]
+    target_suffix: LineSpan[WorktreeSpace]
+
+    def __post_init__(self) -> None:
+        if self.target_separator.end != self.target_prefix.start:
+            raise ValueError("realized presence separator is not adjacent")
+        if self.target_prefix.end != self.target_suffix.start:
+            raise ValueError("realized presence suffix is not adjacent")
+        if len(self.target_separator) != len(self.source.leading_separator):
+            raise ValueError("realized presence separator has the wrong length")
+        if len(self.target_prefix) != len(self.source.claimed_prefix):
+            raise ValueError("realized presence prefix has the wrong length")
+        if len(self.target_suffix) != len(self.source.claimed_suffix):
+            raise ValueError("realized presence suffix has the wrong length")
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedPresenceAlternativeReversal:
+    """The anchors and lines needed to restore earlier text."""
+
+    anchor_pairs: Sequence[tuple[int, int]]
+    introduced_presence_lines: LineRanges
+    structural_lines: LineRanges
+
+    @classmethod
+    def empty(cls) -> _PreparedPresenceAlternativeReversal:
+        return cls((), LineRanges.empty(), LineRanges.empty())
+
+    def __bool__(self) -> bool:
+        return bool(self.introduced_presence_lines)
+
+
 def _discard_result_line_ending_from_lines(
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
@@ -81,6 +141,268 @@ def _discard_result_line_ending_from_lines(
     return choose_line_ending(source_lines)
 
 
+def _mapped_worktree_span(
+    mapping: LineMapping,
+    source_span: LineSpan[BatchSourceSpace],
+) -> LineSpan[WorktreeSpace] | None:
+    """Find where a consecutive source section appears in the worktree."""
+    first_source_line = source_span.start.offset + 1
+    first_target_line = mapping.get_target_line_from_source_line(first_source_line)
+    if first_target_line is None:
+        return None
+    for source_offset in range(source_span.start.offset, source_span.end.offset):
+        expected_target_line = (
+            first_target_line + source_offset - source_span.start.offset
+        )
+        if (
+            mapping.get_target_line_from_source_line(source_offset + 1)
+            != expected_target_line
+        ):
+            return None
+    target_start: LineBoundary[WorktreeSpace] = LineBoundary(first_target_line - 1)
+    return LineSpan(
+        target_start,
+        LineBoundary(target_start.offset + len(source_span)),
+    )
+
+
+def _realize_presence_source_alternative(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    mapping: LineMapping,
+    alternative: ResolvedPresenceSourceAlternative,
+) -> _RealizedPresenceSourceAlternative | None:
+    """Find the prefix, separator, and suffix in the worktree."""
+    target_prefix = _mapped_worktree_span(mapping, alternative.claimed_prefix)
+    if target_prefix is None or target_prefix.start.offset == 0:
+        return None
+
+    target_separator = LineSpan(
+        LineBoundary(target_prefix.start.offset - 1),
+        target_prefix.start,
+    )
+    if (
+        working_lines[target_separator.start.offset]
+        != source_lines[alternative.leading_separator.start.offset]
+    ):
+        return None
+
+    target_suffix = LineSpan(
+        target_prefix.end,
+        LineBoundary(target_prefix.end.offset + len(alternative.claimed_suffix)),
+    )
+    if target_suffix.end.offset > len(working_lines) or not line_slice_equals(
+        working_lines,
+        target_suffix.start.offset,
+        LineRangeView(
+            source_lines,
+            alternative.claimed_suffix.start.offset,
+            alternative.claimed_suffix.end.offset,
+        ),
+    ):
+        return None
+    return _RealizedPresenceSourceAlternative(
+        source=alternative,
+        target_separator=target_separator,
+        target_prefix=target_prefix,
+        target_suffix=target_suffix,
+    )
+
+
+def _source_line_is_inherited_through_trusted_target(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    trusted_target_lines: Sequence[bytes],
+    source_line: int,
+    source_to_working: LineMapping,
+    source_to_trusted_target: LineMapping,
+    trusted_target_to_working: LineMapping,
+) -> bool:
+    """Check that both maps place this source line at the same worktree line."""
+    trusted_line = source_to_trusted_target.get_target_line_from_source_line(
+        source_line
+    )
+    working_line = source_to_working.get_target_line_from_source_line(source_line)
+    return (
+        trusted_line is not None
+        and working_line is not None
+        and trusted_target_to_working.get_target_line_from_source_line(trusted_line)
+        == working_line
+        and source_lines[source_line - 1]
+        == trusted_target_lines[trusted_line - 1]
+        == working_lines[working_line - 1]
+    )
+
+
+def _prepare_presence_alternative_reversal(
+    workspace: MatcherWorkspace,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    alternatives: Sequence[ResolvedPresenceSourceAlternative],
+    trusted_anchor_pairs: Sequence[tuple[int, int]],
+    applied_presence_lines: LineRanges | None,
+    source_to_working: LineMapping,
+    source_to_trusted_target: LineMapping | None,
+    trusted_target_to_working: LineMapping | None,
+    trusted_target_lines: Sequence[bytes] | None,
+) -> _PreparedPresenceAlternativeReversal:
+    """Collect the anchors and lines needed to restore earlier text."""
+    if (
+        not alternatives
+        or not applied_presence_lines
+        or source_to_trusted_target is None
+        or trusted_target_to_working is None
+        or trusted_target_lines is None
+    ):
+        return _PreparedPresenceAlternativeReversal.empty()
+
+    anchors = workspace.record_vector(
+        len(trusted_anchor_pairs)
+        + sum(
+            len(alternative.leading_separator)
+            + len(alternative.claimed_prefix)
+            + len(alternative.claimed_suffix)
+            for alternative in alternatives
+        ),
+        "QQ",
+    )
+    for source_line, target_line in trusted_anchor_pairs:
+        anchors.append((source_line, target_line))
+    introduced_presence = LineRangeBuilder()
+    structural_lines = LineRangeBuilder()
+    has_realized_alternative = False
+
+    for alternative in alternatives:
+        if any(
+            not applied_presence_lines.contains_range(range_start, range_end)
+            for range_start, range_end in alternative.claimed_ranges
+        ):
+            continue
+        realized = _realize_presence_source_alternative(
+            source_lines,
+            working_lines,
+            source_to_working,
+            alternative,
+        )
+        if realized is None:
+            continue
+        if all(
+            _source_line_is_inherited_through_trusted_target(
+                source_lines,
+                working_lines,
+                trusted_target_lines,
+                source_offset + 1,
+                source_to_working,
+                source_to_trusted_target,
+                trusted_target_to_working,
+            )
+            for source_offset in range(
+                alternative.claimed_prefix.start.offset,
+                alternative.claimed_prefix.end.offset,
+            )
+        ):
+            continue
+
+        has_realized_alternative = True
+        for source_span, target_span in (
+            (alternative.leading_separator, realized.target_separator),
+            (alternative.claimed_prefix, realized.target_prefix),
+            (alternative.claimed_suffix, realized.target_suffix),
+        ):
+            for offset in range(len(source_span)):
+                anchors.append(
+                    (
+                        source_span.start.offset + offset + 1,
+                        target_span.start.offset + offset + 1,
+                    )
+                )
+        for range_start, range_end in alternative.claimed_ranges:
+            introduced_presence.add_range(range_start, range_end)
+
+        separator_line = alternative.leading_separator_line
+        if not _source_line_is_inherited_through_trusted_target(
+            source_lines,
+            working_lines,
+            trusted_target_lines,
+            separator_line,
+            source_to_working,
+            source_to_trusted_target,
+            trusted_target_to_working,
+        ):
+            structural_lines.add_line(separator_line)
+
+    if not has_realized_alternative:
+        return _PreparedPresenceAlternativeReversal.empty()
+
+    sort_mapped_records(anchors)
+    retained_count = 0
+    previous_source = 0
+    previous_target = 0
+    for source_line, target_line in anchors:
+        if (source_line, target_line) == (previous_source, previous_target):
+            continue
+        if source_line <= previous_source or target_line <= previous_target:
+            return _PreparedPresenceAlternativeReversal.empty()
+        anchors[retained_count] = (source_line, target_line)
+        retained_count += 1
+        previous_source = source_line
+        previous_target = target_line
+    anchors.truncate(retained_count)
+    return _PreparedPresenceAlternativeReversal(
+        cast(Sequence[tuple[int, int]], anchors),
+        introduced_presence.finish(),
+        structural_lines.finish(),
+    )
+
+
+@contextmanager
+def _acquire_discard_presence_mapping(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_lines: LineRanges,
+    ownership: BatchOwnership,
+    *,
+    anchor_pairs: Sequence[tuple[int, int]],
+    anchor_lines: LineRanges,
+) -> Iterator[LineMapping]:
+    """Use surrounding text to choose the right copy of repeated lines."""
+    result = match_lines_preserving_unowned_context(
+        source_lines,
+        working_lines,
+        presence_lines,
+        ownership=ownership,
+        presence_lines=presence_lines,
+        anchor_pairs=anchor_pairs,
+        anchor_authorized_source_lines=anchor_lines,
+    )
+    try:
+        yield result.mapping
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
+def _validated_added_presence_separators(
+    source_lines: Sequence[bytes],
+    presence_lines: LineRanges,
+    added_separator_lines: LineRanges | None,
+) -> LineRanges:
+    """Check that each recorded blank directly precedes selected text."""
+    if not added_separator_lines:
+        return LineRanges.empty()
+
+    separators = LineRangeBuilder()
+    for separator_line in added_separator_lines:
+        if (
+            separator_line >= len(source_lines)
+            or normalized_line_payload(source_lines[separator_line - 1])
+            or separator_line + 1 not in presence_lines
+        ):
+            raise ValueError("recorded replay separator does not precede selected text")
+        separators.add_line(separator_line)
+    return separators.finish()
+
+
 def discard_batch_file_state_as_buffer(
     batch_file: BatchFileState,
     target_snapshot: FileSnapshot[WorktreeSpace],
@@ -90,6 +412,7 @@ def discard_batch_file_state_as_buffer(
     trusted_target_lines: Sequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> LineBuffer:
     """Discard a source-bound batch state from one exact target snapshot."""
     if batch_file.path != target_snapshot.path:
@@ -110,6 +433,7 @@ def discard_batch_file_state_as_buffer(
         trusted_target_lines=trusted_target_lines,
         applied_presence_lines=applied_presence_lines,
         index_preimage_presence_lines=index_preimage_presence_lines,
+        added_separator_lines=added_separator_lines,
     )
 
 
@@ -123,6 +447,7 @@ def discard_batch_from_line_sequences_as_buffer(
     trusted_target_lines: Sequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> LineBuffer:
     """Discard ownership and return a buffer with destination line endings."""
     result_line_ending = _discard_result_line_ending_from_lines(
@@ -149,6 +474,7 @@ def discard_batch_from_line_sequences_as_buffer(
                 trusted_target_lines=normalized_trusted_target_lines,
                 applied_presence_lines=applied_presence_lines,
                 index_preimage_presence_lines=(index_preimage_presence_lines),
+                added_separator_lines=added_separator_lines,
             ),
             result_line_ending,
         ),
@@ -165,6 +491,7 @@ def _discard_batch_line_chunks(
     trusted_target_lines: AcquirableLineSequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> Iterator[bytes]:
     """Discard ownership from normalized byte-line sequences."""
     with ExitStack() as stack:
@@ -185,6 +512,7 @@ def _discard_batch_line_chunks(
             trusted_target_lines=acquired_trusted_target_lines,
             applied_presence_lines=applied_presence_lines,
             index_preimage_presence_lines=(index_preimage_presence_lines),
+            added_separator_lines=added_separator_lines,
         )
 
 
@@ -198,14 +526,32 @@ def _discard_batch_acquired_line_chunks(
     trusted_target_lines: Sequence[bytes] | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
 ) -> Iterator[bytes]:
     """Discard ownership from acquired normalized byte-line sequences."""
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
+    presence_alternatives = (
+        resolve_presence_source_alternatives(
+            presence_line_set,
+            source_lines,
+        )
+        if applied_presence_lines and trusted_target_lines is not None
+        else ()
+    )
 
     with ExitStack() as stack:
         discard_workspace = stack.enter_context(MatcherWorkspace())
+        anchor_candidate_lines = (
+            LineRanges.empty()
+            if trusted_presence_lines is None
+            else trusted_presence_lines
+        )
+        if applied_presence_lines is not None:
+            anchor_candidate_lines = anchor_candidate_lines.union(
+                applied_presence_lines
+            )
         source_to_trusted_target = (
             None
             if trusted_target_lines is None
@@ -221,17 +567,58 @@ def _discard_batch_acquired_line_chunks(
                 source_lines,
                 working_lines,
                 presence_line_set,
-                trusted_presence_lines,
+                anchor_candidate_lines,
                 trusted_target_to_working=trusted_target_to_working,
                 index_preimage_presence_lines=(index_preimage_presence_lines),
             )
         )
         source_to_working = stack.enter_context(
-            match_lines(
+            _acquire_discard_presence_mapping(
                 source_lines,
                 working_lines,
+                presence_line_set,
+                ownership,
                 anchor_pairs=trusted_anchor_result[0],
+                anchor_lines=trusted_anchor_result[1],
             )
+        )
+        alternative_reversal = _prepare_presence_alternative_reversal(
+            discard_workspace,
+            source_lines,
+            working_lines,
+            presence_alternatives,
+            trusted_anchor_result[0],
+            applied_presence_lines,
+            source_to_working,
+            source_to_trusted_target,
+            trusted_target_to_working,
+            trusted_target_lines,
+        )
+        if alternative_reversal:
+            source_to_working = stack.enter_context(
+                match_lines(
+                    source_lines,
+                    working_lines,
+                    anchor_pairs=alternative_reversal.anchor_pairs,
+                )
+            )
+        independent_insertion_lines = _trusted_independent_insertion_lines(
+            discard_workspace,
+            ownership,
+            source_lines,
+            working_lines,
+            baseline_lines,
+            source_to_working,
+            applied_presence_lines,
+            trusted_anchor_result[1],
+        )
+        trusted_insertion_lines = trusted_anchor_result[1].union(
+            independent_insertion_lines
+        )
+        introduced_separators = _validated_added_presence_separators(
+            source_lines,
+            presence_line_set,
+            added_separator_lines,
         )
         preexisting_applied_presence = _trusted_preexisting_applied_presence(
             source_lines,
@@ -242,6 +629,7 @@ def _discard_batch_acquired_line_chunks(
             source_to_working,
             source_to_trusted_target,
             trusted_target_to_working,
+            introduced_presence_lines=(alternative_reversal.introduced_presence_lines),
         )
         with _acquire_discard_baseline_anchor_pairs(
             source_lines,
@@ -249,6 +637,7 @@ def _discard_batch_acquired_line_chunks(
             ownership,
             source_to_working_mapping=source_to_working,
             working_lines=working_lines,
+            trusted_presence_lines=trusted_insertion_lines,
         ) as baseline_anchor_pairs:
             correspondence = _build_discard_baseline_correspondence(
                 baseline_lines,
@@ -286,9 +675,13 @@ def _discard_batch_acquired_line_chunks(
                 presence_line_set,
                 correspondence,
                 indexed_content_lines=working_lines,
-                trusted_insertion_lines=trusted_anchor_result[1],
+                trusted_insertion_lines=trusted_insertion_lines,
                 preserved_presence_lines=(preexisting_applied_presence),
                 separately_restored_ranges=(separately_restored_presence_ranges),
+                introduced_structural_lines=(
+                    alternative_reversal.structural_lines.union(introduced_separators)
+                ),
+                independent_insertion_lines=independent_insertion_lines,
             )
             if updated_entries is not realized_entries:
                 try:
@@ -407,6 +800,90 @@ def _acquire_trusted_discard_presence_anchors(
         )
 
 
+def _trusted_independent_insertion_lines(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    baseline_lines: Sequence[bytes],
+    source_to_working: LineMapping,
+    applied_lines: LineRanges | None,
+    anchored_lines: LineRanges,
+) -> LineRanges:
+    """Find applied additions whose text and surrounding gap match exactly."""
+    if not applied_lines or not anchored_lines:
+        return LineRanges.empty()
+
+    references = EffectivePresenceReferenceIndex(workspace, ownership)
+    replacement_lines = LineRanges.from_specs(
+        line_range
+        for unit in ownership.replacement_units
+        for line_range in unit.presence_lines
+    )
+    eligible_lines = applied_lines.difference(replacement_lines)
+    candidates = workspace.record_vector(eligible_lines.count(), "QQB")
+    insertion_lines = LineRangeBuilder()
+    try:
+        for applied_start, applied_end in eligible_lines.ranges():
+            for source_line in range(applied_start, applied_end + 1):
+                if source_line > len(source_lines):
+                    continue
+                reference = references.reference_for(source_line)
+                if (
+                    reference is None
+                    or not reference.has_after_line
+                    or not reference.has_before_line
+                ):
+                    continue
+                after_position = reference.after_line or 0
+                before_position = (
+                    len(baseline_lines)
+                    if reference.before_line is None
+                    else reference.before_line - 1
+                )
+                if (
+                    after_position != before_position
+                    or baseline_reference_insertion_position(
+                        reference,
+                        baseline_lines,
+                    )
+                    != after_position
+                ):
+                    continue
+                working_line = source_to_working.get_target_line_from_source_line(
+                    source_line
+                )
+                if (
+                    working_line is None
+                    or source_lines[source_line - 1] != working_lines[working_line - 1]
+                ):
+                    continue
+                candidates.append(
+                    (
+                        after_position,
+                        source_line,
+                        int(source_line in anchored_lines),
+                    )
+                )
+
+        sort_mapped_records(candidates)
+        group_start = 0
+        while group_start < len(candidates):
+            position = candidates[group_start][0]
+            group_end = group_start + 1
+            has_anchor = bool(candidates[group_start][2])
+            while group_end < len(candidates) and candidates[group_end][0] == position:
+                has_anchor = has_anchor or bool(candidates[group_end][2])
+                group_end += 1
+            if has_anchor:
+                for candidate_index in range(group_start, group_end):
+                    insertion_lines.add_line(candidates[candidate_index][1])
+            group_start = group_end
+        return insertion_lines.finish()
+    finally:
+        workspace.close_resource(candidates)
+
+
 def _strictly_increasing_anchor_pairs(
     anchors: Sequence[tuple[int, ...]],
 ) -> bool:
@@ -452,6 +929,7 @@ class _TrustedPreexistingAppliedPresence(Container[int]):
         source_to_working: LineMapping,
         source_to_trusted_target: LineMapping,
         trusted_target_to_working: LineMapping,
+        introduced_presence_lines: LineRanges,
     ) -> None:
         self._source_lines = source_lines
         self._working_lines = working_lines
@@ -461,30 +939,24 @@ class _TrustedPreexistingAppliedPresence(Container[int]):
         self._source_to_working = source_to_working
         self._source_to_trusted_target = source_to_trusted_target
         self._trusted_target_to_working = trusted_target_to_working
+        self._introduced_presence_lines = introduced_presence_lines
 
     def __contains__(self, source_line: object) -> bool:
         if (
             type(source_line) is not int
             or source_line not in self._owned_presence_lines
             or source_line not in self._applied_presence_lines
+            or source_line in self._introduced_presence_lines
         ):
             return False
-        trusted_line = self._source_to_trusted_target.get_target_line_from_source_line(
-            source_line
-        )
-        working_line = self._source_to_working.get_target_line_from_source_line(
-            source_line
-        )
-        return (
-            trusted_line is not None
-            and working_line is not None
-            and self._trusted_target_to_working.get_target_line_from_source_line(
-                trusted_line
-            )
-            == working_line
-            and self._source_lines[source_line - 1]
-            == self._trusted_target_lines[trusted_line - 1]
-            == self._working_lines[working_line - 1]
+        return _source_line_is_inherited_through_trusted_target(
+            self._source_lines,
+            self._working_lines,
+            self._trusted_target_lines,
+            source_line,
+            self._source_to_working,
+            self._source_to_trusted_target,
+            self._trusted_target_to_working,
         )
 
 
@@ -497,6 +969,8 @@ def _trusted_preexisting_applied_presence(
     source_to_working: LineMapping,
     source_to_trusted_target: LineMapping | None,
     trusted_target_to_working: LineMapping | None,
+    *,
+    introduced_presence_lines: LineRanges,
 ) -> Container[int] | None:
     """Return a storage-bounded proof for presence inherited from the index."""
     if (
@@ -515,6 +989,7 @@ def _trusted_preexisting_applied_presence(
         source_to_working,
         source_to_trusted_target,
         trusted_target_to_working,
+        introduced_presence_lines,
     )
 
 
@@ -790,11 +1265,15 @@ def _replacement_deletion_restore_records(
     index_preimage_presence_lines: LineRanges | None,
     preserved_presence_lines: Container[int] | None,
 ) -> tuple[Sequence[tuple[int, ...]], Sequence[tuple[int, ...]]]:
-    """Mark replacement old sides whose selected new side is realized.
+    """Record what undo should do with each deleted version.
 
-    Zero denotes a non-replacement claim, one a replacement that is not live,
-    two a replacement whose historical old side should be restored, and three
-    a freshly applied replacement whose exact index preimage should be restored.
+    The first field has these values:
+
+    * ``0``: not a replacement;
+    * ``1``: the new version is absent;
+    * ``2``: restore an older version between the source lines in the other
+      fields, where zero marks a file edge;
+    * ``3``: restore the index text saved by the latest apply.
     """
     records = workspace.record_vector(
         deletion_count,
@@ -813,6 +1292,19 @@ def _replacement_deletion_restore_records(
         len(ownership.replacement_units),
         "B",
         length=len(ownership.replacement_units),
+    )
+    owned_presence_lines = ownership.presence_line_set()
+    surviving_before, surviving_after = _surviving_source_neighbor_lines(
+        workspace,
+        len(source_lines),
+        source_to_working,
+        owned_presence_lines,
+        preserved_presence_lines,
+    )
+    superseded_deletions = _superseded_replacement_deletions(
+        workspace,
+        ownership,
+        deletion_count,
     )
     unit_index = 0
     while unit_index < len(ownership.replacement_units):
@@ -901,6 +1393,8 @@ def _replacement_deletion_restore_records(
         )
         has_mapped_presence = False
         has_exact_preimage_authorization = False
+        restore_after_source_line = 0
+        restore_before_source_line = 0
         try:
             if claimed_ranges is not None:
                 has_mapped_presence = any(
@@ -913,6 +1407,10 @@ def _replacement_deletion_restore_records(
                     for source_start, source_end in claimed_ranges
                     for source_line in range(source_start, source_end + 1)
                 )
+                if has_mapped_presence and len(claimed_ranges) == 1:
+                    source_start, source_end = claimed_ranges[0]
+                    restore_after_source_line = surviving_before[source_start - 1]
+                    restore_before_source_line = surviving_after[source_end - 1]
                 if (
                     index_preimage_presence_lines
                     and len(claimed_ranges) == 1
@@ -977,10 +1475,21 @@ def _replacement_deletion_restore_records(
                         )
                     )
                 ):
+                    effective_flag = flag
+                    if flag == 2 and superseded_deletions[deletion_index][0]:
+                        effective_flag = 1
                     records[deletion_index] = (
-                        flag,
-                        restore_start,
-                        restore_end,
+                        effective_flag,
+                        (
+                            restore_start
+                            if effective_flag == 3
+                            else restore_after_source_line
+                        ),
+                        (
+                            restore_end
+                            if effective_flag == 3
+                            else restore_before_source_line
+                        ),
                     )
 
             has_restored_deletion = any(
@@ -1009,11 +1518,227 @@ def _replacement_deletion_restore_records(
         separately_restored_ranges,
     )
     _normalize_mapped_line_ranges(separately_restored_ranges)
+    workspace.close_resource(superseded_deletions)
+    workspace.close_resource(surviving_after)
+    workspace.close_resource(surviving_before)
     workspace.close_resource(handled_units)
     return (
         cast(Sequence[tuple[int, ...]], records),
         cast(Sequence[tuple[int, ...]], separately_restored_ranges),
     )
+
+
+def _surviving_source_neighbor_lines(
+    workspace: MatcherWorkspace,
+    source_line_count: int,
+    source_to_working: LineMapping,
+    owned_presence_lines: Container[int],
+    preserved_presence_lines: Container[int] | None,
+) -> tuple[MappedIntVector, MappedIntVector]:
+    """Record the nearest retained source line on each side."""
+    before_lines = workspace.int_vector(
+        source_line_count,
+        width=8,
+        fill=0,
+    )
+    after_lines: MappedIntVector | None = None
+    try:
+        after_lines = workspace.int_vector(
+            source_line_count,
+            width=8,
+            fill=0,
+        )
+
+        def survives(source_line: int) -> bool:
+            return (
+                source_line not in owned_presence_lines
+                or (
+                    preserved_presence_lines is not None
+                    and source_line in preserved_presence_lines
+                )
+            ) and source_to_working.get_target_line_from_source_line(
+                source_line
+            ) is not None
+
+        nearest_line = 0
+        for source_line in range(1, source_line_count + 1):
+            before_lines[source_line - 1] = nearest_line
+            if survives(source_line):
+                nearest_line = source_line
+
+        nearest_line = 0
+        for source_line in range(source_line_count, 0, -1):
+            after_lines[source_line - 1] = nearest_line
+            if survives(source_line):
+                nearest_line = source_line
+    except BaseException:
+        workspace.close_resource(before_lines)
+        raise
+    return before_lines, after_lines
+
+
+def _deletion_content_fingerprint(claim: AbsenceClaim) -> bytes:
+    """Hash a deletion one normalized line at a time."""
+    digest = hashlib.blake2b(digest_size=16)
+    for content in claim.content_lines:
+        normalized = normalize_line_endings(bytes(content))
+        digest.update(len(normalized).to_bytes(8, "big"))
+        digest.update(normalized)
+    return digest.digest()
+
+
+def _cached_deletion_content_fingerprint(
+    fingerprints: MappedRecordVector,
+    ownership: BatchOwnership,
+    deletion_index: int,
+) -> tuple[int, int]:
+    """Return a deletion hash, computing and caching it when needed."""
+    high, low, initialized = fingerprints[deletion_index]
+    if initialized:
+        return high, low
+    digest = _deletion_content_fingerprint(ownership.deletions[deletion_index])
+    high = int.from_bytes(digest[:8], "big")
+    low = int.from_bytes(digest[8:], "big")
+    fingerprints[deletion_index] = (high, low, 1)
+    return high, low
+
+
+def _deletion_contents_equal(left: AbsenceClaim, right: AbsenceClaim) -> bool:
+    """Compare normalized deletion content line by line."""
+    return len(left.content_lines) == len(right.content_lines) and all(
+        normalize_line_endings(bytes(left.content_lines[offset]))
+        == normalize_line_endings(bytes(right.content_lines[offset]))
+        for offset in range(len(left.content_lines))
+    )
+
+
+def _first_alternative_identity_record(
+    alternatives: Sequence[tuple[int, ...]],
+    unit_index: int,
+    reference_hash: int,
+    fingerprint_high: int,
+    fingerprint_low: int,
+) -> int:
+    """Find the first sorted entry for this deletion."""
+    identity = (unit_index, reference_hash, fingerprint_high, fingerprint_low)
+    low = 0
+    high = len(alternatives)
+    while low < high:
+        middle = (low + high) // 2
+        if alternatives[middle][:4] < identity:
+            low = middle + 1
+        else:
+            high = middle
+    return low
+
+
+def _superseded_replacement_deletions(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    deletion_count: int,
+) -> MappedRecordVector:
+    """Mark old deletions that duplicate a stored live version."""
+    superseded = workspace.record_vector(
+        deletion_count,
+        "B",
+        length=deletion_count,
+    )
+    fingerprints = workspace.record_vector(
+        deletion_count,
+        "QQQ",
+        length=deletion_count,
+    )
+    alternative_capacity = sum(
+        len(unit.deletion_indices) for unit in ownership.replacement_units
+    )
+    alternatives = workspace.record_vector(alternative_capacity, "QQQQQ")
+    try:
+        for unit_index, unit in enumerate(ownership.replacement_units):
+            for deletion_index in unit.deletion_indices:
+                if not (
+                    type(deletion_index) is int and 0 <= deletion_index < deletion_count
+                ):
+                    continue
+                claim = ownership.deletions[deletion_index]
+                if not claim.source_alternative:
+                    continue
+                fingerprint_high, fingerprint_low = (
+                    _cached_deletion_content_fingerprint(
+                        fingerprints,
+                        ownership,
+                        deletion_index,
+                    )
+                )
+                alternatives.append(
+                    (
+                        unit_index,
+                        hash(claim.baseline_reference) & ((1 << 64) - 1),
+                        fingerprint_high,
+                        fingerprint_low,
+                        deletion_index,
+                    )
+                )
+
+        if not alternatives:
+            return superseded
+        sort_mapped_records(alternatives)
+
+        for unit_index, unit in enumerate(ownership.replacement_units):
+            for deletion_index in unit.deletion_indices:
+                if not (
+                    type(deletion_index) is int and 0 <= deletion_index < deletion_count
+                ):
+                    continue
+                claim = ownership.deletions[deletion_index]
+                if claim.source_alternative:
+                    continue
+                fingerprint_high, fingerprint_low = (
+                    _cached_deletion_content_fingerprint(
+                        fingerprints,
+                        ownership,
+                        deletion_index,
+                    )
+                )
+                reference_hash = hash(claim.baseline_reference) & ((1 << 64) - 1)
+                record_index = _first_alternative_identity_record(
+                    alternatives,
+                    unit_index,
+                    reference_hash,
+                    fingerprint_high,
+                    fingerprint_low,
+                )
+                while record_index < len(alternatives):
+                    (
+                        candidate_unit,
+                        candidate_reference_hash,
+                        candidate_high,
+                        candidate_low,
+                        candidate_index,
+                    ) = alternatives[record_index]
+                    if (
+                        candidate_unit,
+                        candidate_reference_hash,
+                        candidate_high,
+                        candidate_low,
+                    ) != (
+                        unit_index,
+                        reference_hash,
+                        fingerprint_high,
+                        fingerprint_low,
+                    ):
+                        break
+                    candidate = ownership.deletions[candidate_index]
+                    if (
+                        claim.baseline_reference == candidate.baseline_reference
+                        and _deletion_contents_equal(claim, candidate)
+                    ):
+                        superseded[deletion_index] = (1,)
+                        break
+                    record_index += 1
+    finally:
+        workspace.close_resource(alternatives)
+        workspace.close_resource(fingerprints)
+    return superseded
 
 
 def _append_live_legacy_replacement_restore_records(
@@ -1276,6 +2001,50 @@ def _restore_absence_constraints(
             )
         return normalize_line_sequence_endings(claim.content_lines)
 
+    def replacement_restore_boundary(
+        source_boundaries: Sequence[tuple[int, ...]],
+        claim_index: int,
+    ) -> int | None:
+        if replacement_restore_records is None:
+            return None
+        record = replacement_restore_records[claim_index]
+        if record[0] != 2 or (record[1] == 0 and record[2] == 0):
+            return None
+        candidate_boundaries: list[int] = []
+        if record[1] != 0:
+            try:
+                candidate_boundaries.append(
+                    _indexed_boundary_after_source_line(
+                        source_boundaries,
+                        record[1],
+                    )
+                )
+            except _MissingAnchorError:
+                pass
+        if record[2] != 0:
+            try:
+                candidate_boundaries.append(
+                    _indexed_boundary_after_source_line(
+                        source_boundaries,
+                        record[2],
+                    )
+                    - 1
+                )
+            except _MissingAnchorError:
+                pass
+        if not candidate_boundaries:
+            return None
+        if any(
+            boundary != candidate_boundaries[0] for boundary in candidate_boundaries[1:]
+        ):
+            raise _AmbiguousAnchorError(
+                _(
+                    "Cannot discard an exact applied replacement "
+                    "because its live occurrence is ambiguous"
+                )
+            )
+        return candidate_boundaries[0]
+
     indexed_result_lines: LineBuffer | None = None
     restored_claim_lines: LineBuffer | None = None
     restored: RealizedEntries | None = None
@@ -1297,13 +2066,18 @@ def _restore_absence_constraints(
             ):
                 continue
             content_lines = restored_content_lines(claim_index)
-            try:
-                boundary = _indexed_boundary_after_source_line(
-                    source_boundaries,
-                    claim.anchor_line,
-                )
-            except _MissingAnchorError:
-                continue
+            boundary = replacement_restore_boundary(
+                source_boundaries,
+                claim_index,
+            )
+            if boundary is None:
+                try:
+                    boundary = _indexed_boundary_after_source_line(
+                        source_boundaries,
+                        claim.anchor_line,
+                    )
+                except _MissingAnchorError:
+                    continue
 
             # Split children can share the source line before their old
             # content. Existing children advance within the target;

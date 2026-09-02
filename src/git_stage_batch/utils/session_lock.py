@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,6 +16,7 @@ _LOCK_DEPTH = 0
 _LOCK_WAS_LENT = False
 _LOCK_HANDLE: TextIO | None = None
 _LOCK_GENERATION: int | None = None
+_MAXIMUM_LOCK_GENERATION_CHARACTERS = 64
 
 
 class SessionLockChangedDuringPrompt(RuntimeError):
@@ -24,10 +26,14 @@ class SessionLockChangedDuringPrompt(RuntimeError):
 def _read_lock_generation(lock_handle: TextIO) -> int:
     """Return the generation stored in an acquired lock file."""
     lock_handle.seek(0)
+    value = lock_handle.read(_MAXIMUM_LOCK_GENERATION_CHARACTERS + 1)
+    if len(value) > _MAXIMUM_LOCK_GENERATION_CHARACTERS:
+        return 0
     try:
-        return int(lock_handle.read().strip() or "0")
+        generation = int(value.strip() or "0")
     except ValueError:
         return 0
+    return generation if generation >= 0 else 0
 
 
 def _advance_lock_generation(lock_handle: TextIO) -> int:
@@ -39,6 +45,54 @@ def _advance_lock_generation(lock_handle: TextIO) -> int:
     lock_handle.flush()
     os.fsync(lock_handle.fileno())
     return generation
+
+
+def current_session_lock_generation() -> int | None:
+    """Return the generation held by this process, if it owns the lock."""
+    return _LOCK_GENERATION
+
+
+def read_session_lock_generation_if_available() -> int | None:
+    """Read the generation without waiting for a current lock holder.
+
+    A missing lock file represents generation zero. ``None`` means another
+    process owns the lock, so a lock-free snapshot should be retried later.
+    """
+    lock_path = get_session_lock_file_path()
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(lock_path, flags)
+    except FileNotFoundError:
+        return 0
+    except OSError:
+        return None
+
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(
+            descriptor,
+            "r",
+            encoding="utf-8",
+            closefd=False,
+        ) as lock_handle:
+            try:
+                fcntl.flock(
+                    lock_handle.fileno(),
+                    fcntl.LOCK_SH | fcntl.LOCK_NB,
+                )
+            except BlockingIOError:
+                return None
+            try:
+                return _read_lock_generation(lock_handle)
+            finally:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+    except (OSError, UnicodeError):
+        return None
+    finally:
+        os.close(descriptor)
 
 
 @contextmanager

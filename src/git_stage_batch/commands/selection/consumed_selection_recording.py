@@ -1,4 +1,4 @@
-"""Consumed-selection recording for include replacement commands."""
+"""Remember replacements already handled by an include command."""
 
 from __future__ import annotations
 
@@ -59,8 +59,8 @@ def record_consumed_selection(
         add_ownership_metadata(file_metadata, ownership.to_metadata_dict())
         existing_replacement_masks = (
             existing_file_metadata.get("replacement_masks", [])
-            if existing_file_metadata else
-            []
+            if existing_file_metadata
+            else []
         )
         if replacement_mask is not None:
             replacement_masks = existing_replacement_masks[:]
@@ -89,6 +89,7 @@ def record_consumed_selection(
             with saved_source_buffer as saved_source_lines:
                 mapped_selected_lines = map_selection_to_source(
                     selected_lines,
+                    file_path=file_path,
                     source_lines=saved_source_lines,
                     working_lines=source_buffer,
                     coordinate_lines=coordinate_lines,
@@ -133,6 +134,7 @@ def record_consumed_selection(
     else:
         mapped_selected_lines = map_selection_to_source(
             selected_lines,
+            file_path=file_path,
             source_lines=source_buffer,
             working_lines=source_buffer,
             coordinate_lines=coordinate_lines,

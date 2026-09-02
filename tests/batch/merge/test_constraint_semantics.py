@@ -115,6 +115,32 @@ def test_merge_replaces_recorded_live_source_alternative():
     )
 
 
+def test_merge_replaces_source_alternative_without_other_shared_context():
+    """The complete explicit old side can anchor a wholesale replacement."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=[b"live one\n", b"live two\n"],
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert (
+        merge_batch(
+            b"owned one\nowned two\nlive one\nlive two\n",
+            ownership,
+            b"prefix\nlive one\nlive two\nsuffix\n",
+        )
+        == b"prefix\nowned one\nowned two\nsuffix\n"
+    )
+
+
 @pytest.mark.parametrize("version_count", [2, 8])
 def test_merge_collapses_chained_source_alternatives(version_count):
     """Each superseded intermediate old side is removed exactly once."""
@@ -152,6 +178,84 @@ def test_merge_collapses_chained_source_alternatives(version_count):
             b"head\n" + versions[-1] + b"tail\n",
         )
         == b"head\n" + versions[0] + b"tail\n"
+    )
+
+
+def test_merge_collapses_nested_source_alternatives():
+    """A root replacement removes the latest live form of its nested lineage."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2", "4"],
+        [
+            AbsenceClaim(
+                content_lines=[
+                    b"outer one\n",
+                    b"inner saved\n",
+                    b"outer two\n",
+                ],
+                source_alternative=True,
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b"inner live\n"],
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1-2"], deletion_indices=[0]),
+            ReplacementUnit(presence_lines=["4"], deletion_indices=[1]),
+        ],
+    )
+
+    assert (
+        merge_batch(
+            b"saved one\n"
+            b"saved two\n"
+            b"outer one\n"
+            b"inner saved\n"
+            b"inner live\n"
+            b"outer two\n"
+            b"tail\n",
+            ownership,
+            b"outer one\ninner live\nouter two\ntail\n",
+        )
+        == b"saved one\nsaved two\ntail\n"
+    )
+
+
+def test_merge_projects_referenced_saved_deletion_into_live_alternative():
+    """A later deletion can reuse the saved copy of an old-side line."""
+    edge_reference = BaselineReference(
+        after_line=None,
+        before_line=None,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-3"],
+        [
+            AbsenceClaim(
+                content_lines=[
+                    b"head\n",
+                    b"adopted\n",
+                    b"old\n",
+                    b"tail\n",
+                ],
+                baseline_reference=edge_reference,
+                source_alternative=True,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1-3"], deletion_indices=[0]),
+        ],
+        baseline_references={2: edge_reference},
+    )
+
+    assert (
+        merge_batch(
+            b"head\nadopted\ntail\nhead\nadopted\nold\ntail\n",
+            ownership,
+            b"head\nold\ntail\n",
+        )
+        == b"head\nadopted\ntail\n"
     )
 
 

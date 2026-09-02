@@ -17,6 +17,7 @@ from ...core.text_lines import (
 from ..line_matching.line_range_view import LineRangeView
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
+from ..line_matching.sequence_equality import line_sequences_equal
 from ..ownership.absence_content import build_absence_content_from_range
 from ..ownership.absence_claims import AbsenceClaim
 from ..ownership.model import BatchOwnership
@@ -36,15 +37,11 @@ def _reference_for_insertion(
     before_line = position + 1 if position < len(target_lines) else None
     return BaselineReference(
         after_line=after_line,
-        after_content=(
-            bytes(target_lines[position - 1]) if position > 0 else None
-        ),
+        after_content=(bytes(target_lines[position - 1]) if position > 0 else None),
         has_after_line=True,
         before_line=before_line,
         before_content=(
-            bytes(target_lines[position])
-            if position < len(target_lines)
-            else None
+            bytes(target_lines[position]) if position < len(target_lines) else None
         ),
         has_before_line=True,
     )
@@ -59,14 +56,10 @@ def _reference_for_removal(
     before_position = position + line_count
     return BaselineReference(
         after_line=position or None,
-        after_content=(
-            bytes(target_lines[position - 1]) if position > 0 else None
-        ),
+        after_content=(bytes(target_lines[position - 1]) if position > 0 else None),
         has_after_line=True,
         before_line=(
-            before_position + 1
-            if before_position < len(target_lines)
-            else None
+            before_position + 1 if before_position < len(target_lines) else None
         ),
         before_content=(
             bytes(target_lines[before_position])
@@ -88,9 +81,8 @@ def _reference_content_matches(
     line: bytes,
     reference_content: bytes | None,
 ) -> bool:
-    return (
-        reference_content is not None
-        and _line_payload(line) == _line_payload(reference_content)
+    return reference_content is not None and _line_payload(line) == _line_payload(
+        reference_content
     )
 
 
@@ -147,10 +139,12 @@ def _mapped_removal_position(
     candidates: set[int] = set()
     first_target_line: int | None = None
     content_range_is_contiguous = line_count > 0
-    for offset, source_line in enumerate(range(
-        source_position + 1,
-        source_position + line_count + 1,
-    )):
+    for offset, source_line in enumerate(
+        range(
+            source_position + 1,
+            source_position + line_count + 1,
+        )
+    ):
         target_line = mapping.get_target_line_from_source_line(source_line)
         if target_line is None:
             content_range_is_contiguous = False
@@ -259,8 +253,7 @@ def _translate_presence_references(
     mapping: LineMapping,
 ) -> None:
     reference_count = sum(
-        len(claim.baseline_references)
-        for claim in ownership.presence_claims
+        len(claim.baseline_references) for claim in ownership.presence_claims
     )
     with (
         MappedRecordVector(reference_count, "QQQ") as referenced_lines,
@@ -275,28 +268,35 @@ def _translate_presence_references(
                     source_lines,
                 )
                 if source_position is None:
-                    if baseline_reference_insertion_position(
-                        reference,
-                        target_lines,
-                    ) is None:
-                        dropped_references.append((
-                            claim_index,
-                            claimed_line,
-                        ))
+                    if (
+                        baseline_reference_insertion_position(
+                            reference,
+                            target_lines,
+                        )
+                        is None
+                    ):
+                        dropped_references.append(
+                            (
+                                claim_index,
+                                claimed_line,
+                            )
+                        )
                     continue
                 if source_position < previous_source_position:
                     records_are_sorted = False
-                referenced_lines.append((
-                    source_position,
-                    claim_index,
-                    claimed_line,
-                ))
+                referenced_lines.append(
+                    (
+                        source_position,
+                        claim_index,
+                        claimed_line,
+                    )
+                )
                 previous_source_position = source_position
 
         for claim_index, claimed_line in dropped_references:
-            ownership.presence_claims[
-                claim_index
-            ].baseline_references.pop(claimed_line, None)
+            ownership.presence_claims[claim_index].baseline_references.pop(
+                claimed_line, None
+            )
 
         if not records_are_sorted:
             sort_mapped_records(referenced_lines)
@@ -308,13 +308,9 @@ def _translate_presence_references(
                 previous_pair = next_pair
                 next_pair = next(mapped_pairs, None)
 
-            target_position = (
-                previous_pair[1] if previous_pair is not None else 0
-            )
+            target_position = previous_pair[1] if previous_pair is not None else 0
             target_before_line = (
-                next_pair[1]
-                if next_pair is not None
-                else len(target_lines) + 1
+                next_pair[1] if next_pair is not None else len(target_lines) + 1
             )
             claim = ownership.presence_claims[claim_index]
             if target_before_line != target_position + 1:
@@ -335,10 +331,7 @@ def _mark_origin_backed_deletions(
         if unit.origin is None:
             continue
         for deletion_index in unit.deletion_indices:
-            if (
-                type(deletion_index) is int
-                and 0 <= deletion_index < len(origin_backed)
-            ):
+            if type(deletion_index) is int and 0 <= deletion_index < len(origin_backed):
                 origin_backed[deletion_index] = 1
 
 
@@ -354,9 +347,7 @@ def _translate_deletion_references(
         if deletion_index < 0 or deletion_index >= len(ownership.deletions):
             continue
         deletion = ownership.deletions[deletion_index]
-        content_lines = normalize_line_sequence_endings(
-            deletion.content_lines
-        )
+        content_lines = normalize_line_sequence_endings(deletion.content_lines)
         translated = _translate_removal_reference(
             deletion.baseline_reference,
             content_lines,
@@ -385,6 +376,7 @@ def _translated_deletion(
             content_lines=deletion.content_lines,
             baseline_reference=None,
             source_alternative=deletion.source_alternative,
+            complete_file_pair=deletion.complete_file_pair,
         )
 
     baseline_reference, target_position = translated
@@ -403,6 +395,7 @@ def _translated_deletion(
         content_lines=translated_content,
         baseline_reference=baseline_reference,
         source_alternative=deletion.source_alternative,
+        complete_file_pair=deletion.complete_file_pair,
     )
 
 
@@ -472,9 +465,7 @@ def _translate_origin_backed_deletion_references(
                 continue
 
             deletion = ownership.deletions[deletion_index]
-            content_lines = normalize_line_sequence_endings(
-                deletion.content_lines
-            )
+            content_lines = normalize_line_sequence_endings(deletion.content_lines)
             translated = _translate_removal_reference(
                 deletion.baseline_reference,
                 content_lines,
@@ -544,20 +535,16 @@ def _translate_replacement_origin_references(
                     mapping,
                     allow_content_change=True,
                 )
-                translated_reference = (
-                    translated[0] if translated is not None else None
-                )
-            translated_origin = origin.with_baseline_reference(
-                translated_reference
-            )
+                translated_reference = translated[0] if translated is not None else None
+            translated_origin = origin.with_baseline_reference(translated_reference)
             while (
                 record_index < len(origin_units)
                 and origin_units[record_index][0] == origin_id
             ):
                 _shared_origin_id, shared_index = origin_units[record_index]
                 shared_unit = ownership.replacement_units[shared_index]
-                ownership.replacement_units[shared_index] = (
-                    shared_unit.with_origin(translated_origin)
+                ownership.replacement_units[shared_index] = shared_unit.with_origin(
+                    translated_origin
                 )
                 record_index += 1
 
@@ -567,10 +554,7 @@ def _require_projected_replacement_references(
 ) -> None:
     """Reject replacement ownership that lost its persisted baseline identity."""
     for unit in ownership.replacement_units:
-        if (
-            unit.origin is not None
-            and unit.origin.baseline_reference is None
-        ):
+        if unit.origin is not None and unit.origin.baseline_reference is None:
             raise ValueError(
                 "replacement origin could not be projected onto the batch baseline"
             )
@@ -579,9 +563,7 @@ def _require_projected_replacement_references(
                 type(deletion_index) is not int
                 or deletion_index < 0
                 or deletion_index >= len(ownership.deletions)
-                or ownership.deletions[
-                    deletion_index
-                ].baseline_reference is None
+                or ownership.deletions[deletion_index].baseline_reference is None
             ):
                 raise ValueError(
                     "replacement deletion could not be projected onto "
@@ -602,25 +584,33 @@ def translate_ownership_baseline_references(
     replacement origins use live HEAD coordinates and require their separate
     source sequence when available.
     """
+    baselines_are_identical = line_sequences_equal(
+        source_baseline_lines,
+        target_baseline_lines,
+    )
     with MappedIntVector(
         len(ownership.deletions),
         width=4,
         fill=0,
     ) as origin_backed:
         _mark_origin_backed_deletions(ownership, origin_backed)
-        normalized_source = normalize_line_sequence_endings(
-            source_baseline_lines
-        )
-        normalized_target = normalize_line_sequence_endings(
-            target_baseline_lines
-        )
+        normalized_source = normalize_line_sequence_endings(source_baseline_lines)
+        normalized_target = normalize_line_sequence_endings(target_baseline_lines)
         source_sequence = as_acquirable_line_sequence(normalized_source)
         target_sequence = as_acquirable_line_sequence(normalized_target)
 
         with (
             source_sequence.acquire_lines() as source_lines,
             target_sequence.acquire_lines() as target_lines,
-            match_lines(source_lines, target_lines) as mapping,
+            (
+                LineMapping(
+                    list(range(1, len(source_lines) + 1)),
+                    list(range(1, len(target_lines) + 1)),
+                    may_have_unmapped_equal_lines=False,
+                )
+                if baselines_are_identical
+                else match_lines(source_lines, target_lines)
+            ) as mapping,
         ):
             _translate_presence_references(
                 ownership,
@@ -641,19 +631,14 @@ def translate_ownership_baseline_references(
                 mapping,
             )
 
-        if (
-            replacement_origin_source_lines is None
-            or not ownership.replacement_units
-        ):
+        if replacement_origin_source_lines is None or not ownership.replacement_units:
             _require_projected_replacement_references(ownership)
             return
 
         normalized_origin_source = normalize_line_sequence_endings(
             replacement_origin_source_lines
         )
-        origin_source_sequence = as_acquirable_line_sequence(
-            normalized_origin_source
-        )
+        origin_source_sequence = as_acquirable_line_sequence(normalized_origin_source)
 
         with (
             origin_source_sequence.acquire_lines() as origin_source_lines,

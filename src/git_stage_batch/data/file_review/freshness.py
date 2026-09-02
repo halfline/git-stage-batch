@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...batch.file_display import render_batch_file_display
+from ..applied_batch_overlays import fresh_applied_batch_overlay_for_path
 from . import records as _records
 from .fingerprints import (
     compute_current_file_review_diff_fingerprint as _compute_current_file_review_diff_fingerprint,
@@ -48,6 +49,9 @@ def selected_change_matches_review_state(review_state: _records.FileReviewState)
         rendered = render_batch_file_display(
             review_state.batch_name,
             review_state.file_path,
+            applied_overlay=fresh_applied_batch_overlay_for_path(
+                review_state.file_path
+            ),
         )
         if rendered is None:
             return False
@@ -98,6 +102,9 @@ def selected_batch_review_matches_reset_state(review_state: _records.FileReviewS
     rendered = render_batch_file_display(
         review_state.batch_name,
         review_state.file_path,
+        applied_overlay=fresh_applied_batch_overlay_for_path(
+            review_state.file_path
+        ),
     )
     if rendered is None:
         return False

@@ -1,4 +1,4 @@
-"""Presence-constraint reversal for batch discard."""
+"""Undo selected lines when discarding a batch."""
 
 from __future__ import annotations
 
@@ -44,16 +44,30 @@ def reverse_presence_constraints(
     trusted_insertion_lines: LineSelection | None = None,
     preserved_presence_lines: Container[int] | None = None,
     separately_restored_ranges: Sequence[tuple[int, ...]] = (),
+    introduced_structural_lines: LineSelection | None = None,
+    independent_insertion_lines: LineSelection | None = None,
 ) -> RealizedEntries:
-    """Replace or remove batch-owned claimed lines during discard."""
-    result = RealizedEntries()
+    """Undo selected additions and remove separator lines when proven safe."""
     processed_replace_regions: set[int] = set()
+    structural_lines = (
+        LineRanges.empty()
+        if introduced_structural_lines is None
+        else coerce_line_ranges(introduced_structural_lines)
+    )
     trusted_lines = (
         LineRanges.empty()
         if trusted_insertion_lines is None
         else coerce_line_ranges(trusted_insertion_lines)
     )
     trusted_ranges = trusted_lines.ranges()
+    independent_insertions = (
+        LineRanges.empty()
+        if independent_insertion_lines is None
+        else coerce_line_ranges(independent_insertion_lines)
+    )
+    if not independent_insertions.is_subset_of(trusted_lines):
+        raise ValueError("independent insertions must be trusted applied lines")
+    result = RealizedEntries()
 
     def flush_copy(start: int | None, stop: int) -> None:
         if start is not None and start < stop:
@@ -94,8 +108,7 @@ def reverse_presence_constraints(
             else:
                 raise _MergeError(
                     _(
-                        "Source line {line} offset {offset} "
-                        "outside region bounds"
+                        "Source line {line} offset {offset} outside region bounds"
                     ).format(line=source_line, offset=offset)
                 )
 
@@ -103,6 +116,10 @@ def reverse_presence_constraints(
             pass
 
         elif region.kind == _RegionKind.REPLACE_BY_HUNK:
+            if source_line in independent_insertions:
+                # This line has no baseline counterpart. Remove it without
+                # pulling in the neighboring unselected replacement.
+                return
             if sorted_line_ranges_contain(
                 separately_restored_ranges,
                 source_line,
@@ -164,14 +181,13 @@ def reverse_presence_constraints(
                 processed_replace_regions.add(region.region_id)
 
         else:
-            raise _MergeError(
-                _("Unknown region kind: {kind}").format(kind=region.kind)
-            )
+            raise _MergeError(_("Unknown region kind: {kind}").format(kind=region.kind))
 
     try:
         copy_start: int | None = 0
 
         presence_lines = coerce_line_ranges(presence_line_set)
+        reversed_lines = presence_lines.union(structural_lines)
         if isinstance(entries, RealizedEntries):
             for run in entries.provenance_runs():
                 if run.source_start == 0:
@@ -179,10 +195,8 @@ def reverse_presence_constraints(
 
                 run_length = run.dest_end - run.dest_start
                 run_source_end = run.source_start + run_length - 1
-                selected_lines = presence_lines.intersection(
-                    LineRanges.from_ranges((
-                        (run.source_start, run_source_end),
-                    ))
+                selected_lines = reversed_lines.intersection(
+                    LineRanges.from_ranges(((run.source_start, run_source_end),))
                 )
                 if not selected_lines:
                     continue
@@ -197,14 +211,11 @@ def reverse_presence_constraints(
                             and source_line in preserved_presence_lines
                         ):
                             continue
-                        index = (
-                            run.dest_start
-                            + source_line
-                            - run.source_start
-                        )
+                        index = run.dest_start + source_line - run.source_start
                         flush_copy(copy_start, index)
                         copy_start = None
-                        restore_source_line(source_line)
+                        if source_line not in structural_lines:
+                            restore_source_line(source_line)
                         copy_start = index + 1
 
             if copy_start is not None:
@@ -216,15 +227,17 @@ def reverse_presence_constraints(
             entry_source_line = realized_entry_source_line_at(entries, index)
             if (
                 entry_source_line is not None
-                and entry_source_line in presence_lines
+                and entry_source_line in reversed_lines
                 and (
-                    preserved_presence_lines is None
+                    entry_source_line in structural_lines
+                    or preserved_presence_lines is None
                     or entry_source_line not in preserved_presence_lines
                 )
             ):
                 flush_copy(copy_start, index)
                 copy_start = None
-                restore_source_line(entry_source_line)
+                if entry_source_line not in structural_lines:
+                    restore_source_line(entry_source_line)
                 copy_start = index + 1
             elif copy_start is None:
                 copy_start = index

@@ -1,10 +1,14 @@
-"""Storage-backed target-line occurrence indexing."""
+"""Find repeated lines without building a large Python index."""
 
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterable, Iterator, Sequence, Sized
 
-from ...core.mapped_storage import MappedIntVector, MappedRecordVector
+from ...core.mapped_storage import (
+    MappedIntVector,
+    MappedRecordVector,
+    sort_mapped_records,
+)
 from ...core.text_lines import normalize_line_endings
 from .match_workspace import MatcherWorkspace
 
@@ -24,6 +28,9 @@ _BOUNDARY_HASH = 0
 _BOUNDARY_REPRESENTATIVE_POSITION = 1
 _BOUNDARY_COUNT = 2
 _BOUNDARY_NEXT = 3
+_BOUNDARY_POSITION_RECORD_FORMAT = "QQ"
+_BOUNDARY_POSITION_RECORD = 0
+_BOUNDARY_POSITION_TARGET = 1
 
 
 def normalized_line_payload(content: bytes) -> bytes:
@@ -43,10 +50,12 @@ class LinePayloadOccurrenceIndex:
         target_lines: Sequence[bytes],
         *,
         normalize_payloads: bool = True,
+        ignore_indentation: bool = False,
         target_indexes: Iterable[int] | None = None,
     ) -> None:
         self._target_lines = target_lines
         self._normalize_payloads = normalize_payloads
+        self._ignore_indentation = ignore_indentation
         self._indexes_all_target_lines = target_indexes is None
         index_capacity = (
             len(target_indexes)
@@ -60,6 +69,7 @@ class LinePayloadOccurrenceIndex:
         self._positions: MappedRecordVector
         self._boundary_buckets: MappedIntVector | None = None
         self._boundaries: MappedRecordVector | None = None
+        self._boundary_positions: MappedRecordVector | None = None
         try:
             self._buckets = workspace.int_vector(
                 self._bucket_count,
@@ -89,6 +99,7 @@ class LinePayloadOccurrenceIndex:
             return
         first_error: BaseException | None = None
         for resource in (
+            getattr(self, "_boundary_positions", None),
             getattr(self, "_boundaries", None),
             getattr(self, "_boundary_buckets", None),
             getattr(self, "_positions", None),
@@ -139,6 +150,53 @@ class LinePayloadOccurrenceIndex:
         if record[_BOUNDARY_COUNT] != 1:
             return None
         return record[_BOUNDARY_REPRESENTATIVE_POSITION]
+
+    def first_adjacent_boundary_position(
+        self,
+        after_content: bytes,
+        before_content: bytes,
+        *,
+        start_position: int = 1,
+    ) -> int | None:
+        """Find the first matching boundary at or after ``start_position``.
+
+        Positions are indexed once on disk, so later queries do not scan the
+        remaining lines again.
+        """
+        if not self._indexes_all_target_lines:
+            raise ValueError("adjacent-boundary queries require a full target index")
+        self._ensure_boundary_index()
+        assert self._boundaries is not None
+        assert self._boundary_buckets is not None
+        assert self._boundary_positions is not None
+
+        after_payload = self._payload(after_content)
+        before_payload = self._payload(before_content)
+        record_index = self._find_boundary_record(
+            after_payload,
+            before_payload,
+            _payload_pair_hash(after_payload, before_payload),
+            self._boundaries,
+            self._boundary_buckets,
+        )
+        if record_index is None:
+            return None
+        low = 0
+        high = len(self._boundary_positions)
+        while low < high:
+            middle = (low + high) // 2
+            candidate_record, candidate_position = self._boundary_positions[middle]
+            if (candidate_record, candidate_position) < (
+                record_index,
+                start_position,
+            ):
+                low = middle + 1
+            else:
+                high = middle
+        if low >= len(self._boundary_positions):
+            return None
+        candidate_record, candidate_position = self._boundary_positions[low]
+        return candidate_position if candidate_record == record_index else None
 
     def occurrence_count(self, content: bytes) -> int:
         """Return the number of target lines with this configured payload."""
@@ -222,6 +280,7 @@ class LinePayloadOccurrenceIndex:
         bucket_count = _bucket_capacity(boundary_capacity)
         boundary_buckets: MappedIntVector | None = None
         boundaries: MappedRecordVector | None = None
+        boundary_positions: MappedRecordVector | None = None
         try:
             boundary_buckets = workspace.int_vector(
                 bucket_count,
@@ -231,6 +290,10 @@ class LinePayloadOccurrenceIndex:
             boundaries = workspace.record_vector(
                 boundary_capacity,
                 _BOUNDARY_RECORD_FORMAT,
+            )
+            boundary_positions = workspace.record_vector(
+                boundary_capacity,
+                _BOUNDARY_POSITION_RECORD_FORMAT,
             )
             for position in range(1, len(self._target_lines)):
                 after_payload = self._payload(self._target_lines[position - 1])
@@ -254,6 +317,7 @@ class LinePayloadOccurrenceIndex:
                         )
                     )
                     boundary_buckets[bucket_index] = new_record_index + 1
+                    boundary_positions.append((new_record_index, position))
                     continue
 
                 record = boundaries[record_index]
@@ -264,8 +328,10 @@ class LinePayloadOccurrenceIndex:
                         2,
                         record[_BOUNDARY_NEXT],
                     )
+                boundary_positions.append((record_index, position))
+            sort_mapped_records(boundary_positions)
         except BaseException:
-            for resource in (boundaries, boundary_buckets):
+            for resource in (boundary_positions, boundaries, boundary_buckets):
                 if resource is None:
                     continue
                 try:
@@ -276,8 +342,10 @@ class LinePayloadOccurrenceIndex:
 
         assert boundary_buckets is not None
         assert boundaries is not None
+        assert boundary_positions is not None
         self._boundary_buckets = boundary_buckets
         self._boundaries = boundaries
+        self._boundary_positions = boundary_positions
 
     def _find_boundary_record(
         self,
@@ -287,9 +355,7 @@ class LinePayloadOccurrenceIndex:
         boundaries: Sequence[tuple[int, ...]],
         boundary_buckets: Sequence[int],
     ) -> int | None:
-        record_number = boundary_buckets[
-            payload_hash & (len(boundary_buckets) - 1)
-        ]
+        record_number = boundary_buckets[payload_hash & (len(boundary_buckets) - 1)]
         while record_number != 0:
             record_index = record_number - 1
             record = boundaries[record_index]
@@ -329,9 +395,16 @@ class LinePayloadOccurrenceIndex:
         return payload_hash & (self._bucket_count - 1)
 
     def _payload(self, content: bytes) -> Hashable:
-        if self._normalize_payloads:
-            return normalized_line_payload(content)
-        return content
+        payload: Hashable = (
+            normalized_line_payload(content)
+            if self._normalize_payloads
+            else content
+        )
+        if not self._ignore_indentation:
+            return payload
+        if not isinstance(payload, bytes):
+            raise TypeError("indentation matching requires byte payloads")
+        return payload.lstrip(b" \t")
 
 
 def _bucket_capacity(line_count: int) -> int:

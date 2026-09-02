@@ -188,6 +188,47 @@ def test_sifted_text_result_closes_all_owned_buffers_once(monkeypatch):
     assert close_counts == {id(target): 1, id(deletion): 1}
 
 
+def test_ownership_derivation_records_each_changed_section_boundary():
+    """Sift should retain the old-file location of additions and replacements."""
+    working_lines = [b"head\n", b"/**\n", b"old\n", b"tail\n"]
+    target_lines = [
+        b"head\n",
+        b"inserted\n",
+        b"/**\n",
+        b"new\n",
+        b"tail\n",
+    ]
+
+    ownership = sift_results.build_ownership_from_working_and_target_lines(
+        working_lines,
+        target_lines,
+    )
+
+    assert ownership is not None
+    try:
+        references = ownership.presence_baseline_references()
+        assert references[2].after_line == 1
+        assert references[2].before_line == 2
+        assert references[4].after_line == 2
+        assert references[4].before_line == 4
+
+        assert len(ownership.deletions) == 1
+        assert ownership.deletions[0].baseline_reference == references[4]
+        assert list(ownership.deletions[0].content_lines) == [b"old\n"]
+
+        assert len(ownership.replacement_units) == 1
+        replacement = ownership.replacement_units[0]
+        assert replacement.presence_lines == ["4"]
+        assert replacement.deletion_indices == [0]
+        assert replacement.origin is not None
+        assert replacement.origin.old_start == 3
+        assert replacement.origin.old_end == 3
+        assert replacement.origin.new_start == 4
+        assert replacement.origin.new_end == 4
+    finally:
+        ownership.deletions[0].content_lines.close()
+
+
 def test_ownership_derivation_closes_deletions_on_late_failure(monkeypatch):
     """A failure after deletion construction must release its mapped content."""
     deletion = LineBuffer.from_bytes(b"old\n")

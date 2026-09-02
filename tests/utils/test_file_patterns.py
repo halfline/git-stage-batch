@@ -46,6 +46,16 @@ def test_resolve_gitignore_style_patterns_supports_ordered_exclusion():
     assert resolved == ["dir/keep.py"]
 
 
+def test_resolve_gitignore_style_patterns_excludes_below_broad_wildcard():
+    """A later negation should work even when a wildcard matched its parent."""
+    resolved = resolve_gitignore_style_patterns(
+        ["included.txt", "docs/excluded.md"],
+        ["**", "!docs/excluded.md"],
+    )
+
+    assert resolved == ["included.txt"]
+
+
 def test_resolve_gitignore_style_patterns_supports_character_classes():
     """Character classes should behave like shell-style wildcards."""
     resolved = resolve_gitignore_style_patterns(

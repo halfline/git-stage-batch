@@ -21,6 +21,7 @@ from ...utils.paths import (
     get_working_tree_snapshot_file_path,
 )
 from ...batch.file_display import render_batch_file_display
+from ..applied_batch_overlays import fresh_applied_batch_overlay_for_path
 from ..line_state import convert_line_changes_to_serializable_dict
 from .store import (
     SelectedChangeKind,
@@ -59,7 +60,12 @@ def cache_batch_as_single_hunk(
             )
         )
 
-    rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
+    rendered = render_batch_file_display(
+        batch_name,
+        file_path,
+        metadata=metadata,
+        applied_overlay=fresh_applied_batch_overlay_for_path(file_path),
+    )
     if rendered is None:
         return None
 

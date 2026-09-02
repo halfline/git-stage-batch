@@ -1,4 +1,4 @@
-"""Structural safety validation for batch merge placement."""
+"""Check that a proposed batch merge places text safely."""
 
 from __future__ import annotations
 
@@ -8,7 +8,18 @@ from enum import Enum
 from pathlib import Path
 from typing import AbstractSet, TYPE_CHECKING, cast, overload
 
-from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.coordinates import (
+    BatchSourceSpace,
+    LineBoundary,
+    LineSpan,
+    WorktreeSpace,
+)
+from ...core.line_selection import (
+    LineRangeBuilder,
+    LineRanges,
+    LineSelection,
+    coerce_line_ranges,
+)
 from ...core.mapped_storage import MappedRecordVector
 from ...core.text_lines import normalize_line_sequence_endings
 from ...exceptions import MergeError as _MergeError
@@ -25,7 +36,9 @@ from ..line_matching.sequence_equality import (
     line_slice_equals as _line_slice_matches,
 )
 from .presence_context import (
+    PresencePlacementAmbiguityError,
     PresenceRunPlacement,
+    ReplacementPlacement,
     contextual_presence_placements as _contextual_presence_placements,
     _iter_missing_presence_clusters,
 )
@@ -46,6 +59,7 @@ if TYPE_CHECKING:
 class _ReplacementUnitMappingState:
     """Selected-line realization state for one replacement unit."""
 
+    selected_lines: LineRanges
     range_count: int
     selected_line_count: int
     has_mapped_line: bool
@@ -57,6 +71,8 @@ class ReplacementOldSideState(Enum):
     """Structural state of a replacement unit's coupled old side."""
 
     FULL = "full"
+    FULLY_CLAIMED = "fully-claimed"
+    FULL_WITH_CLAIMED_MATCHES = "full-with-claimed-matches"
     ABSENT = "absent"
     PARTIAL = "partial"
 
@@ -98,6 +114,7 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
         mapping: LineMapping,
         claimed_ranges: Sequence[tuple[int, ...]],
         *,
+        additional_claimed_span: LineSpan[BatchSourceSpace] | None = None,
         masked_start: int | None = None,
         masked_end: int | None = None,
         indices: range | None = None,
@@ -106,6 +123,7 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
         self._indices = range(start, end) if indices is None else indices
         self._mapping = mapping
         self._claimed_ranges = claimed_ranges
+        self._additional_claimed_span = additional_claimed_span
         self._masked_start = masked_start
         self._masked_end = masked_end
 
@@ -126,6 +144,7 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
                 0,
                 self._mapping,
                 self._claimed_ranges,
+                additional_claimed_span=self._additional_claimed_span,
                 masked_start=self._masked_start,
                 masked_end=self._masked_end,
                 indices=self._indices[index],
@@ -141,9 +160,14 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
         ):
             return _CLAIMED_TARGET_LINE
         source_line = self._mapping.get_source_line_from_target_line(target_index + 1)
-        if source_line is not None and _line_is_claimed(
-            self._claimed_ranges,
-            source_line,
+        if source_line is not None and (
+            _line_is_claimed(self._claimed_ranges, source_line)
+            or (
+                self._additional_claimed_span is not None
+                and self._additional_claimed_span.start.offset
+                < source_line
+                <= self._additional_claimed_span.end.offset
+            )
         ):
             return _CLAIMED_TARGET_LINE
         return self._target_lines[target_index]
@@ -165,6 +189,7 @@ def _replacement_unit_mapping_state(
         return None
 
     try:
+        selected_ranges = LineRangeBuilder()
         selected_line_count = 0
         has_mapped_line = False
         has_missing_line = False
@@ -173,6 +198,7 @@ def _replacement_unit_mapping_state(
             claimed_ranges,
             selected_presence,
         ):
+            selected_ranges.add_range(claimed_start, claimed_end)
             selected_line_count += claimed_end - claimed_start + 1
             for claimed_line in range(claimed_start, claimed_end + 1):
                 if claimed_line > source_line_count:
@@ -183,6 +209,7 @@ def _replacement_unit_mapping_state(
                 else:
                     has_mapped_line = True
         return _ReplacementUnitMappingState(
+            selected_lines=selected_ranges.finish(),
             range_count=len(claimed_ranges),
             selected_line_count=selected_line_count,
             has_mapped_line=has_mapped_line,
@@ -273,6 +300,7 @@ def has_missing_origin_replacement_claims(
                     target_lines,
                     mapping,
                     selected_presence,
+                    collision_claimed_lines=state.selected_lines,
                     spool_dir=spool_dir,
                     mapped_source_lines=mapped_source_lines,
                 )
@@ -568,11 +596,205 @@ def has_unsafe_mapped_origin_old_side_claims(
                 target_lines,
                 mapping,
                 selected_presence,
+                collision_claimed_lines=state.selected_lines,
+                spool_dir=spool_dir,
+                mapped_source_lines=mapped_source_lines,
+            )
+            if old_side is None or old_side.state not in (
+                ReplacementOldSideState.FULL,
+                ReplacementOldSideState.FULLY_CLAIMED,
+                ReplacementOldSideState.ABSENT,
+            ):
+                return True
+    return False
+
+
+@dataclass(frozen=True, slots=True)
+class ReplacementMappingExclusions:
+    """Mapping pairs to ignore while rebuilding replacements."""
+
+    source_lines: LineRanges
+    target_spans: tuple[LineSpan[WorktreeSpace], ...]
+
+    def __bool__(self) -> bool:
+        return bool(self.source_lines or self.target_spans)
+
+
+def replacement_mapping_exclusions_for_old_side(
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+    *,
+    max_classifications: int,
+    spool_dir: str | Path | None = None,
+) -> ReplacementMappingExclusions | None:
+    """Return mapping pairs that hide an exact replacement old side.
+
+    ``None`` means the check exceeded its work limit or found malformed data.
+    """
+    if type(max_classifications) is not int or max_classifications < 1:
+        raise ValueError("max_classifications must be positive")
+    if not any(unit.origin is None for unit in ownership.replacement_units):
+        return ReplacementMappingExclusions(LineRanges.empty(), ())
+
+    selected = coerce_line_ranges(presence_line_set)
+    excluded_source_lines = LineRangeBuilder()
+    excluded_target_spans: list[LineSpan[WorktreeSpace]] = []
+    all_source_lines = (
+        LineRanges.from_ranges(((1, len(source_lines)),))
+        if source_lines
+        else LineRanges.empty()
+    )
+    normalized_target = normalize_line_sequence_endings(target_lines)
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        mapped_source_lines = build_mapped_source_line_index(workspace, mapping)
+        classification_count = 0
+        for unit in ownership.replacement_units:
+            # Parent-tracked replacements have stricter review and refusal
+            # rules in the coordinate strategy. Keep that path authoritative.
+            if unit.origin is not None:
+                continue
+            if _unit_has_source_alternative(unit, ownership.deletions):
+                # A source alternative stores both versions in the source.
+                # Its dedicated mapping path decides which version is live.
+                continue
+            source_ranges = _collect_replacement_source_ranges(
+                workspace,
+                unit.presence_lines,
+            )
+            if source_ranges is None:
+                return None
+            try:
+                unit_lines = LineRanges.from_ranges(
+                    _selected_replacement_source_ranges(source_ranges, selected)
+                )
+            finally:
+                workspace.close_resource(source_ranges)
+            if not unit_lines:
+                continue
+            if unit_lines.ranges()[-1][1] > len(source_lines):
+                return None
+            if len(unit.deletion_indices) != 1:
+                return None
+            deletion_index = unit.deletion_indices[0]
+            if (
+                type(deletion_index) is not int
+                or deletion_index < 0
+                or deletion_index >= len(ownership.deletions)
+            ):
+                return None
+            deletion = ownership.deletions[deletion_index]
+            if not deletion.content_lines:
+                return None
+
+            unit_has_mapped_line = _ranges_contain_mapped_source_line(
+                unit_lines.ranges(),
+                mapped_source_lines,
+            )
+            if deletion.anchor_line is None:
+                raw_old_side_position: int | None = 0
+            else:
+                raw_old_side_position = mapping.get_target_line_from_source_line(
+                    deletion.anchor_line
+                )
+            raw_old_side_has_mapping = False
+            if raw_old_side_position is not None and _line_slice_matches(
+                normalized_target,
+                raw_old_side_position,
+                normalize_line_sequence_endings(deletion.content_lines),
+            ):
+                raw_old_side_has_mapping = any(
+                    mapping.get_source_line_from_target_line(target_line) is not None
+                    for target_line in range(
+                        raw_old_side_position + 1,
+                        raw_old_side_position + len(deletion.content_lines) + 1,
+                    )
+                )
+            if not unit_has_mapped_line and not raw_old_side_has_mapping:
+                continue
+            if classification_count >= max_classifications:
+                return None
+            classification_count += 1
+            old_side = _replacement_old_side_realization(
+                unit.deletion_indices,
+                ownership.deletions,
+                target_lines,
+                mapping,
+                unit_lines,
+                collision_claimed_lines=all_source_lines,
                 spool_dir=spool_dir,
                 mapped_source_lines=mapped_source_lines,
             )
             if old_side is None or old_side.state is ReplacementOldSideState.PARTIAL:
-                return True
+                return None
+            if old_side.state not in (
+                ReplacementOldSideState.FULLY_CLAIMED,
+                ReplacementOldSideState.FULL_WITH_CLAIMED_MATCHES,
+            ):
+                continue
+            if old_side.target_position is None:
+                return None
+            target_span: LineSpan[WorktreeSpace] = LineSpan(
+                LineBoundary(old_side.target_position),
+                LineBoundary(old_side.target_position + len(deletion.content_lines)),
+            )
+            excluded_target_spans.append(target_span)
+            if any(
+                (
+                    mapped_source_line := mapping.get_source_line_from_target_line(
+                        target_index + 1
+                    )
+                )
+                is not None
+                and mapped_source_line in unit_lines
+                for target_index in range(
+                    target_span.start.offset,
+                    target_span.end.offset,
+                )
+            ):
+                for source_start, source_end in unit_lines.ranges():
+                    excluded_source_lines.add_range(source_start, source_end)
+
+    normalized_target_spans: list[LineSpan[WorktreeSpace]] = []
+    for span in sorted(
+        excluded_target_spans,
+        key=lambda candidate: (candidate.start.offset, candidate.end.offset),
+    ):
+        if (
+            normalized_target_spans
+            and span.start.offset <= normalized_target_spans[-1].end.offset
+        ):
+            previous = normalized_target_spans[-1]
+            normalized_target_spans[-1] = LineSpan(
+                previous.start,
+                LineBoundary(max(previous.end.offset, span.end.offset)),
+            )
+        else:
+            normalized_target_spans.append(span)
+    return ReplacementMappingExclusions(
+        excluded_source_lines.finish(),
+        tuple(normalized_target_spans),
+    )
+
+
+def _unit_has_source_alternative(
+    unit: ReplacementUnit,
+    deletions: Sequence[AbsenceClaim],
+) -> bool:
+    """Return whether a unit's old version is stored in the batch source."""
+    if not unit.deletion_indices:
+        return False
+    for deletion_index in unit.deletion_indices:
+        if (
+            type(deletion_index) is not int
+            or deletion_index < 0
+            or deletion_index >= len(deletions)
+        ):
+            return False
+        if deletions[deletion_index].source_alternative:
+            return True
     return False
 
 
@@ -606,6 +828,7 @@ def _replacement_old_side_realization(
     mapping: LineMapping,
     claimed_lines: LineSelection | Sequence[tuple[int, ...]],
     *,
+    collision_claimed_lines: (LineSelection | Sequence[tuple[int, ...]] | None) = None,
     spool_dir: str | Path | None,
     mapped_source_lines: Sequence[tuple[int, ...]] | None = None,
 ) -> ReplacementOldSideRealization | None:
@@ -624,6 +847,7 @@ def _replacement_old_side_realization(
         target_lines,
         mapping,
         claimed_lines,
+        collision_claimed_lines=collision_claimed_lines,
         spool_dir=spool_dir,
         mapped_source_lines=mapped_source_lines,
     )
@@ -635,8 +859,10 @@ def classify_replacement_old_side(
     mapping: LineMapping,
     claimed_lines: LineSelection | Sequence[tuple[int, ...]],
     *,
+    collision_claimed_lines: (LineSelection | Sequence[tuple[int, ...]] | None) = None,
     spool_dir: str | Path | None = None,
     mapped_source_lines: Sequence[tuple[int, ...]] | None = None,
+    additional_claimed_span: LineSpan[BatchSourceSpace] | None = None,
 ) -> ReplacementOldSideRealization | None:
     """Classify old-side content in the deletion's mapped structural gap.
 
@@ -645,6 +871,11 @@ def classify_replacement_old_side(
     equal sequence elsewhere may be unrelated working-tree content.
     """
     claimed_ranges = _claimed_range_records(claimed_lines)
+    collision_ranges = (
+        claimed_ranges
+        if collision_claimed_lines is None
+        else _claimed_range_records(collision_claimed_lines)
+    )
     deleted_sequence = normalize_line_sequence_endings(deletion.content_lines)
     if not deleted_sequence:
         return None
@@ -680,7 +911,12 @@ def classify_replacement_old_side(
             continue
         if next_target_line <= target_position:
             return None
-        if _line_is_claimed(claimed_ranges, source_line):
+        if _line_is_claimed(claimed_ranges, source_line) or (
+            additional_claimed_span is not None
+            and additional_claimed_span.start.offset
+            < source_line
+            <= additional_claimed_span.end.offset
+        ):
             continue
         target_end_position = next_target_line - 1
         break
@@ -698,12 +934,47 @@ def classify_replacement_old_side(
             break
         after_claimed_position += 1
 
+    collision_position: int | None = None
+    collision_is_fully_claimed = False
+    collision_candidates = (
+        (target_position, after_claimed_position) if collision_ranges else ()
+    )
+    for candidate_position in collision_candidates:
+        if candidate_position == collision_position or not _line_slice_matches(
+            normalized_target,
+            candidate_position,
+            deleted_sequence,
+        ):
+            continue
+        has_claimed_match = False
+        all_lines_are_claimed = True
+        for target_index in range(
+            candidate_position,
+            candidate_position + len(deleted_sequence),
+        ):
+            mapped_source_line = mapping.get_source_line_from_target_line(
+                target_index + 1
+            )
+            line_is_claimed = mapped_source_line is not None and _line_is_claimed(
+                collision_ranges,
+                mapped_source_line,
+            )
+            has_claimed_match = has_claimed_match or line_is_claimed
+            all_lines_are_claimed = all_lines_are_claimed and line_is_claimed
+        if not has_claimed_match:
+            continue
+        if collision_position is not None:
+            return ReplacementOldSideRealization(ReplacementOldSideState.PARTIAL)
+        collision_position = candidate_position
+        collision_is_fully_claimed = all_lines_are_claimed
+
     target_gap = _UnclaimedTargetGap(
         normalized_target,
         target_position,
         target_end_position,
         mapping,
         claimed_ranges,
+        additional_claimed_span=additional_claimed_span,
     )
 
     def deletion_matches_at(removal_position: int) -> bool:
@@ -722,16 +993,23 @@ def classify_replacement_old_side(
             return ReplacementOldSideRealization(ReplacementOldSideState.PARTIAL)
         matching_position = after_claimed_position
 
+    if matching_position is not None and collision_position is not None:
+        return ReplacementOldSideRealization(ReplacementOldSideState.PARTIAL)
+
     overlap_gap = target_gap
-    if matching_position is not None:
+    known_position = (
+        matching_position if matching_position is not None else collision_position
+    )
+    if known_position is not None:
         overlap_gap = _UnclaimedTargetGap(
             normalized_target,
             target_position,
             target_end_position,
             mapping,
-            claimed_ranges,
-            masked_start=matching_position,
-            masked_end=matching_position + len(deleted_sequence),
+            () if collision_position is not None else claimed_ranges,
+            additional_claimed_span=additional_claimed_span,
+            masked_start=known_position,
+            masked_end=known_position + len(deleted_sequence),
         )
     with match_lines(
         deleted_sequence,
@@ -747,6 +1025,15 @@ def classify_replacement_old_side(
         return ReplacementOldSideRealization(
             ReplacementOldSideState.FULL,
             matching_position,
+        )
+    if collision_position is not None:
+        return ReplacementOldSideRealization(
+            (
+                ReplacementOldSideState.FULLY_CLAIMED
+                if collision_is_fully_claimed
+                else ReplacementOldSideState.FULL_WITH_CLAIMED_MATCHES
+            ),
+            collision_position,
         )
     return ReplacementOldSideRealization(ReplacementOldSideState.ABSENT)
 
@@ -779,6 +1066,24 @@ def _first_mapped_source_record_at_or_after(
     return low
 
 
+def _ranges_contain_mapped_source_line(
+    ranges: Sequence[tuple[int, ...]],
+    mapped_source_lines: Sequence[tuple[int, ...]],
+) -> bool:
+    """Return whether a mapped source line falls inside any sorted range."""
+    for source_start, source_end in ranges:
+        record_index = _first_mapped_source_record_at_or_after(
+            mapped_source_lines,
+            source_start,
+        )
+        if (
+            record_index < len(mapped_source_lines)
+            and mapped_source_lines[record_index][0] <= source_end
+        ):
+            return True
+    return False
+
+
 def _line_is_claimed(
     claimed_ranges: Sequence[tuple[int, ...]],
     source_line: int,
@@ -809,30 +1114,15 @@ def check_structural_validity(
     require_distinctive_presence_context: bool = False,
     distinctive_presence_context_lines: LineSelection | None = None,
     recorded_presence_context_lines: LineSelection | None = None,
+    include_leading_blank_for_line: Callable[[int], bool] | None = None,
+    replacement_units: Sequence[ReplacementUnit] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[PresenceRunPlacement, ...] | None:
-    """Validate that batch can be safely applied given structural alignment.
+    """Check that nearby mapped lines support the proposed result.
 
-    Checks:
-    1. File hasn't been completely rewritten (zero alignment)
-    2. Missing claimed lines have nearby aligned context
-    3. Missing deletion anchors have nearby aligned context
-    4. Claimed runs have structurally coherent surrounding context
-
-    Check #4 prevents corruption when applying partial selections.
-    If claimed lines come from a source region whose surrounding source structure
-    no longer maps coherently into the working tree, inserting those lines may
-    preserve incompatible working-tree content that should have been replaced.
-
-    Args:
-        line_mapping: Alignment between batch source and working tree
-        claimed_lines: Claimed batch source line numbers
-        deletions: List of AbsenceClaim objects
-        source_lines: Batch source file lines (bytes)
-        target_lines: Working tree file lines (bytes)
-
-    Raises:
-        MergeError: If structural requirements aren't met
+    Refuse a fully rewritten file, a missing selection or deletion without a
+    nearby match, and surrounding lines that changed order. The order check
+    prevents a partial selection from keeping text the batch should replace.
     """
     present_count = sum(
         1
@@ -918,36 +1208,139 @@ def check_structural_validity(
     if has_unmapped_deletion_anchor and not has_unmapped_claimed_deletion_anchor:
         return None
 
-    _missing_presence_lines, presence_placements = _contextual_presence_placements(
-        source_lines,
-        target_lines,
-        claimed_lines,
-        line_mapping,
-        trusted_source_lines={
-            deletion.anchor_line
-            for deletion in deletions
-            if deletion.anchor_line is not None and deletion.content_lines
-        },
-        require_distinctive_context=require_distinctive_presence_context,
-        distinctive_context_lines=distinctive_presence_context_lines,
-        recorded_context_lines=recorded_presence_context_lines,
-        spool_dir=spool_dir,
-    )
+    trusted_source_lines = {
+        deletion.anchor_line
+        for deletion in deletions
+        if deletion.anchor_line is not None and deletion.content_lines
+    }
+    replacement_placements: tuple[ReplacementPlacement, ...] = ()
+
+    def place_presence() -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
+        return _contextual_presence_placements(
+            source_lines,
+            target_lines,
+            claimed_lines,
+            line_mapping,
+            replacement_placements=replacement_placements,
+            trusted_source_lines=trusted_source_lines,
+            require_distinctive_context=require_distinctive_presence_context,
+            distinctive_context_lines=distinctive_presence_context_lines,
+            recorded_context_lines=recorded_presence_context_lines,
+            include_leading_blank_for_line=include_leading_blank_for_line,
+            spool_dir=spool_dir,
+        )
+
+    try:
+        _missing_presence_lines, presence_placements = place_presence()
+    except PresencePlacementAmbiguityError:
+        replacement_placements = _verified_replacement_placements(
+            replacement_units,
+            deletions,
+            claimed_lines,
+            target_lines,
+            line_mapping,
+            spool_dir=spool_dir,
+        )
+        if not replacement_placements:
+            raise
+        _missing_presence_lines, presence_placements = place_presence()
     # Let absence realization report its more precise missing-anchor error once
     # nearby mapped context has allowed an unmapped deletion anchor through.
     # Presence placement still has to run first: an unrelated missing anchor
     # must not disable ambiguity refusal for every claimed line in the file.
     if has_unmapped_deletion_anchor:
         return presence_placements
-    _check_unbounded_trailing_context(
-        line_mapping,
-        claimed_lines,
-        deletions,
-        source_lines,
-        target_lines,
-        presence_placements,
-    )
+    try:
+        _check_unbounded_trailing_context(
+            line_mapping,
+            claimed_lines,
+            deletions,
+            source_lines,
+            target_lines,
+            presence_placements,
+        )
+    except _MergeError:
+        if replacement_placements:
+            raise
+        replacement_placements = _verified_replacement_placements(
+            replacement_units,
+            deletions,
+            claimed_lines,
+            target_lines,
+            line_mapping,
+            spool_dir=spool_dir,
+        )
+        if not replacement_placements:
+            raise
+        _missing_presence_lines, presence_placements = place_presence()
+        _check_unbounded_trailing_context(
+            line_mapping,
+            claimed_lines,
+            deletions,
+            source_lines,
+            target_lines,
+            presence_placements,
+        )
     return presence_placements
+
+
+def _verified_replacement_placements(
+    replacement_units: Sequence[ReplacementUnit],
+    deletions: Sequence[AbsenceClaim],
+    selected_lines: LineSelection,
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+    *,
+    spool_dir: str | Path | None,
+) -> tuple[ReplacementPlacement, ...]:
+    """Return split replacements whose old text fixes their target gap."""
+    if not replacement_units:
+        return ()
+
+    selected = coerce_line_ranges(selected_lines)
+    placements: list[ReplacementPlacement] = []
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        mapped_source_lines = build_mapped_source_line_index(workspace, mapping)
+        for unit in replacement_units:
+            source_ranges = _collect_replacement_source_ranges(
+                workspace,
+                unit.presence_lines,
+            )
+            if source_ranges is None:
+                continue
+            try:
+                unit_lines = LineRanges.from_ranges(
+                    _selected_replacement_source_ranges(source_ranges, selected)
+                )
+            finally:
+                workspace.close_resource(source_ranges)
+            if not unit_lines:
+                continue
+
+            old_side = _replacement_old_side_realization(
+                unit.deletion_indices,
+                deletions,
+                target_lines,
+                mapping,
+                unit_lines,
+                spool_dir=spool_dir,
+                mapped_source_lines=mapped_source_lines,
+            )
+            if (
+                old_side is None
+                or old_side.state is not ReplacementOldSideState.FULL
+                or old_side.target_position is None
+            ):
+                continue
+            placements.append(
+                ReplacementPlacement(
+                    unit_lines,
+                    LineBoundary(old_side.target_position),
+                )
+            )
+
+    placements.sort(key=lambda placement: placement.source_lines.ranges()[0])
+    return tuple(placements)
 
 
 def _check_unbounded_trailing_context(
@@ -972,12 +1365,12 @@ def _check_unbounded_trailing_context(
     )
 
     missing_ranges = missing.ranges()
-    exact_context_runs = LineRanges.from_ranges(
+    verified_runs = LineRanges.from_ranges(
         (placement.run_start, placement.run_end)
         for placement in presence_placements
-        if placement.exact_context_gap
+        if placement.exact_context_gap or placement.verified_replacement_gap
     )
-    for cluster in _iter_missing_presence_clusters(missing, line_mapping):
+    for cluster in _iter_missing_presence_clusters(missing_ranges, line_mapping):
         if cluster.has_locally_collapsed_target_gap():
             continue
         before_source_line = None if cluster.before is None else cluster.before[0]
@@ -999,9 +1392,7 @@ def _check_unbounded_trailing_context(
             cluster.run_stop_index,
         ):
             run_start, run_end = missing_ranges[run_index]
-            if exact_context_runs.count(run_start, run_end) == (
-                run_end - run_start + 1
-            ):
+            if verified_runs.count(run_start, run_end) == (run_end - run_start + 1):
                 continue
             trailing_gap = (
                 after_source_line - run_end - 1

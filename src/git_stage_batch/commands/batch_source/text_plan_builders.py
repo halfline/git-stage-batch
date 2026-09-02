@@ -1,4 +1,4 @@
-"""Text action plan builders for batch-source commands."""
+"""Plan text changes for commands that read a batch."""
 
 from __future__ import annotations
 
@@ -11,6 +11,10 @@ from typing import TypedDict, cast
 
 from . import action_plans as _action_plans
 from ...batch.discard import discard_batch_from_line_sequences_as_buffer
+from ...batch.applied_text_replay import (
+    acquire_applied_text_replay_context,
+    load_predecessor_before_trailing_batch,
+)
 from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.merge.legacy_intent import (
     reject_ambiguous_legacy_presence_replay,
@@ -40,12 +44,14 @@ from ...core.text_lifecycle import (
     selected_text_target_change_type,
 )
 from ...core.text_lines import normalize_line_sequence_endings
+from ...batch.merge.presence_separators import find_added_presence_separators
+from ...batch.applied_overlay_view import AppliedBatchOverlayView
 from ...data.file_target_identity import IndexIdentity
 from ...data.applied_batch_overlays import (
-    AppliedBatchOverlayView,
     selected_presence_was_introduced,
 )
 from ...data.file_modes import detect_file_mode_in_commit
+from ...exceptions import MergeError
 from ...utils.repository_buffers import (
     load_git_blob_as_buffer,
     read_git_object_buffer_or_none,
@@ -55,7 +61,7 @@ from ...utils.git_repository import get_git_repository_root_path
 
 
 class _SpoolDirOptions(TypedDict, total=False):
-    """Typed optional arguments for spool-aware helpers."""
+    """An optional temporary directory for large buffers."""
 
     spool_dir: str | Path
 
@@ -68,18 +74,19 @@ def _spool_dir_options(spool_dir: str | Path | None) -> _SpoolDirOptions:
 
 @dataclass(frozen=True)
 class ApplyTextPlanBuildResult:
-    """Result of building one apply-from text action plan."""
+    """The plan or review choices produced for one text apply."""
 
     plan: _action_plans.ApplyTextFileActionPlan | None = None
     missing_source: bool = False
     selected_ownership_metadata: BatchOwnershipMetadata | None = None
     introduced_selected_presence: bool = False
     index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
+    added_separator_source_ranges: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
 class IncludeTextPlanBuildResult:
-    """Result of building one include-from text action plan."""
+    """The plan or review choices produced for one text include."""
 
     plan: _action_plans.IncludeTextFileActionPlan | None = None
     missing_source: bool = False
@@ -87,7 +94,7 @@ class IncludeTextPlanBuildResult:
 
 @dataclass(frozen=True)
 class DiscardTextPlanBuildResult:
-    """Result of building one discard-from text action plan."""
+    """The plan or review choices produced for one text discard."""
 
     plan: _action_plans.DiscardTextFileActionPlan | None = None
     missing_source: bool = False
@@ -126,7 +133,7 @@ def build_apply_text_file_action_plan(
     applied_overlay: AppliedBatchOverlayView | None = None,
     spool_dir: str | Path | None = None,
 ) -> ApplyTextPlanBuildResult:
-    """Build one deferred apply-from text action plan."""
+    """Plan one text apply without changing the repository."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
     if captured_working_tree_exists is None:
@@ -211,6 +218,7 @@ def build_apply_text_file_action_plan(
         spool_options = _spool_dir_options(spool_dir)
         introduced_selected_presence = False
         index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
+        added_separator_source_ranges: tuple[tuple[int, int], ...] = ()
         with acquire_batch_ownership_for_display_ids_from_lines(
             file_meta,
             batch_source_lines,
@@ -228,7 +236,7 @@ def build_apply_text_file_action_plan(
                 ),
                 spool_dir=spool_dir,
             )
-            selected_ownership_metadata = ownership.to_attribution_metadata_dict()
+            selected_ownership_metadata = ownership.to_applied_metadata_dict()
             if applied_overlay is not None and applied_overlay.revealed_owner_names:
                 selected_metadata = cast(
                     BatchFileMetadataDict,
@@ -322,20 +330,39 @@ def build_apply_text_file_action_plan(
                                 **spool_options,
                             )
                         )
-                    merged_buffer = merge_batch_from_line_sequences_as_buffer(
-                        batch_source_lines,
-                        ownership,
-                        working_lines,
-                        trusted_target_lines=trusted_target_lines,
-                        source_to_working_mapping=source_to_working_mapping,
-                        source_to_trusted_target_mapping=(
-                            source_to_trusted_target_mapping
-                        ),
-                        trusted_target_to_working_mapping=(
-                            trusted_target_to_working_mapping
-                        ),
-                        **spool_options,
-                    )
+                    merged_buffer = None
+                    if (
+                        applied_overlay is not None
+                        and applied_overlay.text_applications
+                    ):
+                        try:
+                            with acquire_applied_text_replay_context(
+                                applied_overlay.text_applications,
+                                working_lines,
+                                trusted_target_lines=trusted_target_lines,
+                                **spool_options,
+                            ) as replay_context:
+                                merged_buffer = replay_context.merge(
+                                    batch_source_lines,
+                                    ownership,
+                                )
+                        except MergeError:
+                            merged_buffer = None
+                    if merged_buffer is None:
+                        merged_buffer = merge_batch_from_line_sequences_as_buffer(
+                            batch_source_lines,
+                            ownership,
+                            working_lines,
+                            trusted_target_lines=trusted_target_lines,
+                            source_to_working_mapping=source_to_working_mapping,
+                            source_to_trusted_target_mapping=(
+                                source_to_trusted_target_mapping
+                            ),
+                            trusted_target_to_working_mapping=(
+                                trusted_target_to_working_mapping
+                            ),
+                            **spool_options,
+                        )
                     if (
                         trusted_target_lines is not None
                         and source_to_working_mapping is not None
@@ -363,6 +390,13 @@ def build_apply_text_file_action_plan(
                     working_lines,
                     merged_buffer,
                 )
+                added_separator_source_ranges = find_added_presence_separators(
+                    batch_source_lines,
+                    ownership.presence_line_set(),
+                    working_lines,
+                    merged_buffer,
+                    spool_dir=spool_dir,
+                ).ranges()
                 effective_change_type = selected_text_target_change_type(
                     text_change_type,
                     selected_ids,
@@ -375,10 +409,12 @@ def build_apply_text_file_action_plan(
                         file_mode,
                         effective_change_type,
                         expected_index_identity=captured_index_identity,
+                        added_separator_source_ranges=(added_separator_source_ranges),
                     ),
                     selected_ownership_metadata=selected_ownership_metadata,
                     introduced_selected_presence=introduced_selected_presence,
                     index_preimage_source_ranges=index_preimage_source_ranges,
+                    added_separator_source_ranges=(added_separator_source_ranges),
                 )
             except BaseException:
                 if merged_buffer is not None:
@@ -405,7 +441,7 @@ def build_include_text_file_action_plan(
     captured_working_tree_exists: bool | None = None,
     spool_dir: str | Path | None = None,
 ) -> IncludeTextPlanBuildResult:
-    """Build one deferred include-from text action plan."""
+    """Plan one text include without changing the repository."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
     if captured_index_identity is None:
@@ -617,15 +653,18 @@ def build_discard_text_file_action_plan(
     baseline_commit: str,
     selected_ids: set[int] | None,
     selection_ids_to_discard: set[int] | None,
+    batch_name: str | None = None,
+    applied_overlay: AppliedBatchOverlayView | None = None,
     trusted_presence_lines: LineRanges | None = None,
     applied_presence_lines: LineRanges | None = None,
     index_preimage_presence_lines: LineRanges | None = None,
+    added_separator_lines: LineRanges | None = None,
     captured_index_identity: IndexIdentity | None = None,
     working_tree_artifact_path: str | Path | None = None,
     captured_working_tree_exists: bool | None = None,
     spool_dir: str | Path | None = None,
 ) -> DiscardTextPlanBuildResult:
-    """Build one deferred discard-from text action plan."""
+    """Plan one text discard without changing the repository."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
     if selected_ids is None and text_change_type in {
         TextFileChangeType.ADDED,
@@ -712,31 +751,56 @@ def build_discard_text_file_action_plan(
                 if trusted_target_buffer is None
                 else stack.enter_context(trusted_target_buffer)
             )
-            with acquire_batch_ownership_for_display_ids_from_lines(
-                file_meta,
-                batch_source_lines,
-                selection_ids_to_discard,
-                **_spool_dir_options(spool_dir),
-            ) as ownership:
-                if ownership.is_empty():
-                    return DiscardTextPlanBuildResult()
-
-                discard_options = (
-                    {}
-                    if not trusted_presence_lines
-                    else {"trusted_presence_lines": trusted_presence_lines}
+            replay_applications = (
+                () if applied_overlay is None else applied_overlay.text_applications
+            )
+            saved_predecessor = (
+                load_predecessor_before_trailing_batch(
+                    replay_applications,
+                    batch_name,
+                    **_spool_dir_options(spool_dir),
                 )
-                if applied_presence_lines:
-                    discard_options["applied_presence_lines"] = applied_presence_lines
-                discarded_buffer = discard_batch_from_line_sequences_as_buffer(
+                if (
+                    batch_name is not None
+                    and selected_ids is None
+                    and selection_ids_to_discard is None
+                )
+                else None
+            )
+            if saved_predecessor is not None:
+                discarded_buffer = saved_predecessor
+            else:
+                with acquire_batch_ownership_for_display_ids_from_lines(
+                    file_meta,
                     batch_source_lines,
-                    ownership,
-                    working_lines,
-                    baseline_lines,
-                    trusted_target_lines=trusted_target_lines,
-                    index_preimage_presence_lines=(index_preimage_presence_lines),
-                    **discard_options,
-                )
+                    selection_ids_to_discard,
+                    **_spool_dir_options(spool_dir),
+                ) as ownership:
+                    if ownership.is_empty():
+                        return DiscardTextPlanBuildResult()
+
+                    discard_options = (
+                        {}
+                        if not trusted_presence_lines
+                        else {"trusted_presence_lines": trusted_presence_lines}
+                    )
+                    if applied_presence_lines:
+                        discard_options["applied_presence_lines"] = (
+                            applied_presence_lines
+                        )
+                    if added_separator_lines:
+                        discard_options["added_separator_lines"] = (
+                            added_separator_lines
+                        )
+                    discarded_buffer = discard_batch_from_line_sequences_as_buffer(
+                        batch_source_lines,
+                        ownership,
+                        working_lines,
+                        baseline_lines,
+                        trusted_target_lines=trusted_target_lines,
+                        index_preimage_presence_lines=(index_preimage_presence_lines),
+                        **discard_options,
+                    )
 
         effective_change_type = selected_text_discard_change_type(
             text_change_type,

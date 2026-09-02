@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from ...core.actionable_changes import ActionableSelection, ActionableSelectionReason
+from ...core.line_selection import (
+    LineRangeBuilder,
+    LineSelection,
+    coerce_line_ranges,
+)
 from ...core.models import LineEntry
 from .display_ids import display_ids_for_rows
 from .model import FileReviewModel, ReviewChange
@@ -30,20 +37,21 @@ def _change_is_presence_only(change: ReviewChange) -> bool:
 
 def pages_containing_review_display_ids(
     model: FileReviewModel,
-    display_ids: tuple[int, ...],
+    display_ids: LineSelection | Iterable[int],
 ) -> tuple[int, ...]:
     """Return review pages containing all of the requested display IDs."""
-    wanted = set(display_ids)
-    found: set[int] = set()
+    wanted = coerce_line_ranges(display_ids)
+    found = LineRangeBuilder()
     pages: set[int] = set()
     for page in model.pages:
         for fragment in page.changes:
             for row in fragment.rows:
                 display_id = _display_id_for_row(model, row)
                 if display_id in wanted:
-                    found.add(display_id)
+                    assert display_id is not None
+                    found.add_line(display_id)
                     pages.add(page.page)
-    if found != wanted:
+    if not wanted.is_subset_of(found.finish()):
         return tuple()
     return tuple(sorted(pages))
 
@@ -52,7 +60,7 @@ def change_index_containing_review_display_ids(
     model: FileReviewModel,
     display_ids: tuple[int, ...],
 ) -> int:
-    """Return a stable nearby change index for supplemental review selections."""
+    """Return the index of a displayed change containing any requested ID."""
     wanted = set(display_ids)
     for page in model.pages:
         for fragment in page.changes:
@@ -78,7 +86,7 @@ def selection_ids_for_display_ids(
     model: FileReviewModel,
     display_ids: tuple[int, ...],
 ) -> tuple[int, ...]:
-    """Translate review display IDs back to line-selection IDs."""
+    """Translate displayed IDs back to the IDs used by line commands."""
     if model.display_id_by_selection_id is None:
         return display_ids
     selection_id_by_display_id = {
@@ -122,20 +130,19 @@ def shown_line_action_selections(
     *,
     source: ReviewSource,
 ) -> list[ActionableSelection]:
-    """Return line-action selections fully contained by the shown pages."""
+    """Return selectable line groups wholly shown on these pages."""
     shown_page_set = set(shown_pages)
     selections: list[ActionableSelection] = []
     for change in model.changes:
         if not change.display_ids:
             continue
-        can_split_presence = (
-            source != ReviewSource.BATCH
-            and _change_is_presence_only(change)
+        can_split_presence = source != ReviewSource.BATCH and _change_is_presence_only(
+            change
         )
         display_ids = (
             display_ids_for_change_pages(model, change, shown_pages)
-            if can_split_presence else
-            change.display_ids
+            if can_split_presence
+            else change.display_ids
         )
         if not display_ids:
             continue
@@ -147,8 +154,8 @@ def shown_line_action_selections(
                 display_ids=display_ids,
                 selection_ids=(
                     selection_ids_for_display_ids(model, display_ids)
-                    if can_split_presence else
-                    change.selection_ids
+                    if can_split_presence
+                    else change.selection_ids
                 ),
                 reason=change.reason,
                 note=change.note,

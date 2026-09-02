@@ -1,4 +1,4 @@
-"""Artifact-backed per-file counting for remaining live text changes."""
+"""Count remaining text changes in workers, one file at a time."""
 
 from __future__ import annotations
 
@@ -39,10 +39,8 @@ from ..utils.repository_buffers import (
 )
 from ..utils.session_start_point import current_head_commit
 from ..utils.context_lines import get_context_lines
+from ..batch.applied_overlay_view import AppliedBatchOverlayView
 from .consumed_selections import load_consumed_selections_metadata
-from .applied_batch_overlays import (
-    AppliedBatchOverlayView,
-)
 from .live_change_candidates import (
     LiveChangeScanContext,
     prepare_atomic_live_change,
@@ -57,7 +55,7 @@ from .selected_change.hunk_filtering import (
 
 @dataclass(frozen=True, slots=True)
 class WorktreeStatIdentity:
-    """A compact lstat snapshot for one repository worktree path."""
+    """A small ``lstat`` snapshot for one worktree path."""
 
     exists: bool
     mode: int
@@ -70,7 +68,7 @@ class WorktreeStatIdentity:
 
 @dataclass(frozen=True, slots=True)
 class AttributionMetricsSnapshot:
-    """Scalar attribution metrics safe to return through file-job transport."""
+    """Numbers describing how batches were matched to one file."""
 
     candidate_batches: int = 0
     claimed_batches: int = 0
@@ -87,7 +85,7 @@ class AttributionMetricsSnapshot:
         cls,
         metrics: AttributionMetrics,
     ) -> AttributionMetricsSnapshot:
-        """Freeze one mutable metrics accumulator."""
+        """Copy values from a mutable metrics object."""
         return cls(
             candidate_batches=metrics.candidate_batches,
             claimed_batches=metrics.claimed_batches,
@@ -103,7 +101,7 @@ class AttributionMetricsSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class LiveTextFileJob:
-    """Compact transport record for one contiguous live text file group."""
+    """The input files and order for one group of changes to a text file."""
 
     ordinal: int
     file_path: str
@@ -114,7 +112,7 @@ class LiveTextFileJob:
 
 @dataclass(frozen=True, slots=True)
 class LiveTextFileCountResult:
-    """Scalar remaining-change counts for one live text file group."""
+    """The number of changes left in one text file."""
 
     ordinal: int
     file_path: str
@@ -126,7 +124,7 @@ class LiveTextFileCountResult:
 
 @dataclass(frozen=True, slots=True)
 class LiveChangeCountPlan:
-    """One invocation's compact jobs and parent-counted atomic changes."""
+    """Worker jobs plus changes already counted by the main process."""
 
     jobs: tuple[OrderedFileJob[LiveTextFileJob], ...]
     atomic_count: int
@@ -134,7 +132,7 @@ class LiveChangeCountPlan:
 
 
 class _LiveInputManifest(TypedDict):
-    """Artifact manifest consumed by one live text-file worker."""
+    """Input files used by one worker."""
 
     file_path: str
     baseline_path: str
@@ -151,7 +149,7 @@ class _LiveInputManifest(TypedDict):
 
 
 class _LiveHunkRecord(TypedDict):
-    """One patch artifact row in a live text-file job."""
+    """One saved patch entry for a text file."""
 
     ordinal: int
     old_path: str
@@ -165,7 +163,7 @@ def capture_worktree_stat_identity(
     *,
     repository_root: Path | None = None,
 ) -> WorktreeStatIdentity:
-    """Capture the current lstat identity of one repository-relative path."""
+    """Read the current ``lstat`` identity of one worktree path."""
     full_path = (repository_root or Path.cwd()) / file_path
     try:
         metadata = full_path.lstat()
@@ -192,7 +190,7 @@ def capture_worktree_stat_identity(
 
 @contextmanager
 def acquire_live_change_count_plan() -> Iterator[LiveChangeCountPlan]:
-    """Build one artifact plan whose workspace outlives execution/reduction."""
+    """Build worker jobs and keep their temporary files until they finish."""
     with FileJobWorkspace() as workspace:
         yield _build_live_change_count_plan(workspace)
 
@@ -200,7 +198,7 @@ def acquire_live_change_count_plan() -> Iterator[LiveChangeCountPlan]:
 def count_eligible_live_text_file(
     job: LiveTextFileJob,
 ) -> LiveTextFileCountResult:
-    """Count eligible hunks using one prepared attribution pass for a file."""
+    """Prepare the batch claims once, then count eligible changes in one file."""
     input_manifest = _read_json_manifest(job.input_manifest_path)
     initial_identity = capture_worktree_stat_identity(job.file_path)
     metrics = AttributionMetrics()
@@ -224,17 +222,13 @@ def count_eligible_live_text_file(
             annotation_mapping = stack.enter_context(
                 acquire_batch_source_mapping(
                     job.file_path,
-                    batch_source_commit=input_manifest.get(
-                        "batch_source_commit"
-                    ),
+                    batch_source_commit=input_manifest.get("batch_source_commit"),
                     working_lines=working_tree_lines,
                     spool_dir=spool_dir,
                 )
             )
             batch_metadata_by_name = input_manifest["batch_metadata_by_name"]
-            consumed_file_metadata = input_manifest.get(
-                "consumed_file_metadata"
-            )
+            consumed_file_metadata = input_manifest.get("consumed_file_metadata")
             applied_overlay = AppliedBatchOverlayView(
                 metadata_by_owner=input_manifest.get(
                     "applied_batch_metadata_by_owner",
@@ -254,6 +248,7 @@ def count_eligible_live_text_file(
                 applied_source_line_ranges_by_batch={},
                 source_line_ranges_by_batch={},
                 index_preimage_source_line_ranges_by_batch={},
+                added_separator_source_line_ranges_by_batch={},
             )
             attribution = build_file_attribution_from_lines(
                 job.file_path,
@@ -268,9 +263,7 @@ def count_eligible_live_text_file(
                 supplemental_source_object_by_name=(
                     applied_overlay.source_object_by_owner
                 ),
-                batch_state_commit_by_name=input_manifest[
-                    "batch_state_commit_by_name"
-                ],
+                batch_state_commit_by_name=input_manifest["batch_state_commit_by_name"],
                 spool_dir=spool_dir,
                 metrics=metrics,
             )
@@ -280,12 +273,10 @@ def count_eligible_live_text_file(
                 working_exists=initial_identity.exists,
                 working_tree_lines=working_tree_lines,
             )
-            captured_empty_lifecycle_is_batched = (
-                _captured_empty_lifecycle_is_batched(
-                    job.file_path,
-                    change_type=empty_lifecycle_change_type,
-                    batch_metadata_by_name=batch_metadata_by_name,
-                )
+            captured_empty_lifecycle_is_batched = _captured_empty_lifecycle_is_batched(
+                job.file_path,
+                change_type=empty_lifecycle_change_type,
+                batch_metadata_by_name=batch_metadata_by_name,
             )
             if (
                 empty_lifecycle_change_type is not None
@@ -334,10 +325,7 @@ def count_eligible_live_text_file(
             return _stale_result(job, metrics)
         raise
 
-    if (
-        capture_worktree_stat_identity(job.file_path)
-        != job.expected_worktree_identity
-    ):
+    if capture_worktree_stat_identity(job.file_path) != job.expected_worktree_identity:
         return _stale_result(job, metrics)
     return LiveTextFileCountResult(
         ordinal=job.ordinal,
@@ -391,9 +379,7 @@ def _build_live_change_count_plan(
                         jobs.append(active_group.finish())
                         active_group = None
 
-                    stable_hash = compute_stable_hunk_hash_from_lines(
-                        item.lines
-                    )
+                    stable_hash = compute_stable_hunk_hash_from_lines(item.lines)
                     if (
                         text_hunk_block_reason(
                             item,
@@ -418,17 +404,13 @@ def _build_live_change_count_plan(
                             new_path=item.new_path,
                             repository_root=repository_root,
                             head_commit=head_commit,
-                            batch_source_commit=batch_source_by_path.get(
-                                file_path
-                            ),
+                            batch_source_commit=batch_source_by_path.get(file_path),
                             batch_metadata_by_name=file_batch_metadata,
                             consumed_file_metadata=consumed_metadata_by_path.get(
                                 file_path
                             ),
                             batch_state_commit_by_name={
-                                batch_name: batch_state_commit_by_name[
-                                    batch_name
-                                ]
+                                batch_name: batch_state_commit_by_name[batch_name]
                                 for batch_name in file_batch_metadata
                                 if batch_name in batch_state_commit_by_name
                             },
@@ -467,7 +449,7 @@ def _build_live_change_count_plan(
 
 
 class _LiveTextFileGroup:
-    """Stream artifacts for one contiguous repository text-file group."""
+    """Write worker inputs for one group of changes to a text file."""
 
     def __init__(
         self,
@@ -512,7 +494,7 @@ class _LiveTextFileGroup:
 
     @property
     def grouping_key(self) -> tuple[str, str, str]:
-        """Return the contiguous grouping identity for this file."""
+        """Return the fields that identify this file group."""
         return self.file_path, self.old_path, self.new_path
 
     def append_hunk(
@@ -522,7 +504,7 @@ class _LiveTextFileGroup:
         *,
         stable_hash: str,
     ) -> None:
-        """Stream one parser-owned hunk to an artifact and manifest record."""
+        """Write one parsed hunk and add it to the input list."""
         if self._hunk_manifest is None:
             raise ValueError("live text file group is closed")
         if (
@@ -554,7 +536,7 @@ class _LiveTextFileGroup:
         self._hunk_manifest.write("\n")
 
     def finish(self) -> OrderedFileJob[LiveTextFileJob]:
-        """Close manifests and return the compact ordered file job."""
+        """Close the input files and return the ordered worker job."""
         self._close_hunk_manifest()
         scratch_directory = self.workspace.scratch_directory(self.ordinal)
         input_manifest_path = _write_json_artifact(
@@ -580,9 +562,7 @@ class _LiveTextFileGroup:
                 "applied_lifecycle_change_types": sorted(
                     self.applied_overlay.lifecycle_change_types
                 ),
-                "batch_state_commit_by_name": (
-                    self.batch_state_commit_by_name
-                ),
+                "batch_state_commit_by_name": (self.batch_state_commit_by_name),
                 "scratch_directory": str(scratch_directory),
             },
         )
@@ -607,7 +587,7 @@ class _LiveTextFileGroup:
         )
 
     def abort(self) -> None:
-        """Close the manifest writer after an interrupted plan build."""
+        """Close the input list after planning is interrupted."""
         self._close_hunk_manifest()
 
     def _close_hunk_manifest(self) -> None:
@@ -674,11 +654,7 @@ def _empty_lifecycle_change_type(
 ) -> TextFileChangeType | None:
     if working_exists and working_tree_lines.byte_count == 0 and not baseline_exists:
         return TextFileChangeType.ADDED
-    if (
-        not working_exists
-        and baseline_exists
-        and baseline_lines.byte_count == 0
-    ):
+    if not working_exists and baseline_exists and baseline_lines.byte_count == 0:
         return TextFileChangeType.DELETED
     return None
 
@@ -692,10 +668,7 @@ def _captured_empty_lifecycle_is_batched(
     if change_type is None:
         return False
     return any(
-        metadata.get("files", {})
-        .get(file_path, {})
-        .get("change_type")
-        == change_type
+        metadata.get("files", {}).get(file_path, {}).get("change_type") == change_type
         for metadata in batch_metadata_by_name.values()
     )
 
@@ -734,18 +707,14 @@ def _optional_manifest_string(
 ) -> str | None:
     value = values.get(key)
     if value is not None and not isinstance(value, str):
-        raise ValueError(
-            f"live-change manifest field {key!r} must be a string or null"
-        )
+        raise ValueError(f"live-change manifest field {key!r} must be a string or null")
     return value
 
 
 def _read_json_manifest(path: str) -> _LiveInputManifest:
     with Path(path).open(encoding="utf-8") as source:
         value: object = json.load(source)
-    if not isinstance(value, dict) or not all(
-        isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise ValueError("live-change manifest must be a JSON object")
     values = cast(dict[str, object], value)
     batch_metadata = values.get("batch_metadata_by_name")
@@ -848,9 +817,7 @@ def _stream_hunk_manifest(path: str) -> Iterator[_LiveHunkRecord]:
             values = cast(dict[str, object], value)
             ordinal = values.get("ordinal")
             if type(ordinal) is not int:
-                raise ValueError(
-                    "hunk manifest field 'ordinal' must be an integer"
-                )
+                raise ValueError("hunk manifest field 'ordinal' must be an integer")
             yield {
                 "ordinal": ordinal,
                 "old_path": _required_manifest_string(values, "old_path"),

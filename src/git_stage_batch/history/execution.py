@@ -772,6 +772,10 @@ def _require_start_facts_unchanged(
         final_tree=snapshot.final_tree,
         branch_ref=current_branch,
         source_commits=tuple(commit.commit_id for commit in snapshot.commits),
+        publication_source_commits=tuple(
+            commit.commit_id
+            for commit in snapshot.commits[snapshot.movable_commit_start :]
+        ),
         allowed_remote_refs=allowed_remote_refs,
     )
     blockers = list(safety.blockers)

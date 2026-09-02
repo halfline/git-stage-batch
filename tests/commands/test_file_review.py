@@ -2147,8 +2147,18 @@ def test_pathless_include_from_batch_refuses_when_rerendered_batch_diff_changes(
 
     original_render = file_display_module.render_batch_file_display
 
-    def changed_render(batch_name, file_path, metadata=None):
-        rendered = original_render(batch_name, file_path, metadata=metadata)
+    def changed_render(
+        batch_name,
+        file_path,
+        metadata=None,
+        applied_overlay=None,
+    ):
+        rendered = original_render(
+            batch_name,
+            file_path,
+            metadata=metadata,
+            applied_overlay=applied_overlay,
+        )
         assert rendered is not None
         changed_lines = [
             replace(
@@ -2893,8 +2903,18 @@ def test_show_from_batch_line_after_review_uses_review_id_space(
 
     original_render = file_display_module.render_batch_file_display
 
-    def render_with_review_only_first_line(batch_name, file_path, metadata=None):
-        rendered = original_render(batch_name, file_path, metadata=metadata)
+    def render_with_review_only_first_line(
+        batch_name,
+        file_path,
+        metadata=None,
+        applied_overlay=None,
+    ):
+        rendered = original_render(
+            batch_name,
+            file_path,
+            metadata=metadata,
+            applied_overlay=applied_overlay,
+        )
         assert rendered is not None
         return RenderedBatchDisplay(
             line_changes=rendered.line_changes,
@@ -2981,7 +3001,12 @@ def test_show_from_batch_line_without_review_uses_printed_review_id_space(
     test_file.write_text("one\ntwo\n")
     capsys.readouterr()
 
-    def render_with_review_only_second_line(batch_name, file_path, metadata=None):
+    def render_with_review_only_second_line(
+        batch_name,
+        file_path,
+        metadata=None,
+        applied_overlay=None,
+    ):
         line_changes = LineLevelChange(
             path=file_path,
             header=HunkHeader(old_start=0, old_len=0, new_start=1, new_len=2),

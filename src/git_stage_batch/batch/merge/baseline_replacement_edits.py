@@ -1,4 +1,4 @@
-"""Replacement edits for baseline-coordinate merge planning."""
+"""Plan replacements from their locations in the original file."""
 
 from __future__ import annotations
 
@@ -21,6 +21,9 @@ from .baseline_anchor_matching import (
     unique_live_removal_edit as _unique_live_removal_edit,
 )
 from .baseline_edit_plan import BaselineEditPlan
+from .baseline_reference_positions import (
+    baseline_reference_insertion_position as _baseline_reference_insertion_position,
+)
 from .baseline_replacement_choices import (
     replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
 )
@@ -52,6 +55,7 @@ if TYPE_CHECKING:
         ReplacementUnit,
         ReplacementUnitOrigin,
     )
+    from .presence_reference_index import EffectivePresenceReferenceIndex
 
 
 def _record_mapped_replacement_lines(
@@ -936,6 +940,87 @@ def _replacement_baseline_edit(
     return reviewed_edit, True
 
 
+def _plan_relocated_replacement_from_presence_reference(
+    plan: BaselineEditPlan,
+    claim: AbsenceClaim,
+    unit: ReplacementUnit,
+    claimed_ranges: Sequence[tuple[int, ...]],
+    working_lines: Sequence[bytes],
+    presence_references: EffectivePresenceReferenceIndex | None,
+) -> _BaselineRemovalEdit | None:
+    """Move a replacement when every saved line records one newer boundary."""
+    if unit.origin is None or presence_references is None:
+        return None
+    reference = presence_references.common_reference_for_ranges(claimed_ranges)
+    insertion_position = _baseline_reference_insertion_position(
+        reference,
+        working_lines,
+    )
+    removal_edit = _replacement_edit_with_origin_guard(
+        claim,
+        unit.origin,
+        working_lines,
+    )
+    if insertion_position is None or removal_edit is None:
+        return None
+
+    removal_start, removal_end = removal_edit
+    if (
+        insertion_position == removal_start
+        or removal_start < insertion_position < removal_end
+    ):
+        return None
+    plan.add_removal(removal_start, removal_end)
+    plan.add_source_ranges(
+        insertion_position,
+        insertion_position,
+        (
+            (source_start, source_end)
+            for source_start, source_end in claimed_ranges
+        ),
+    )
+    return removal_edit
+
+
+def _mapped_source_alternative_edit(
+    claim: AbsenceClaim,
+    claimed_ranges: Sequence[tuple[int, ...]],
+    source_lines: Sequence[bytes] | None,
+    mapping: LineMapping | None,
+) -> _BaselineRemovalEdit | None:
+    """Find the target span for the neighboring live version."""
+    if (
+        not claim.source_alternative
+        or source_lines is None
+        or mapping is None
+        or len(claimed_ranges) != 1
+    ):
+        return None
+    alternative_lines = normalize_line_sequence_endings(claim.content_lines)
+    if not alternative_lines:
+        return None
+    alternative_source_start = claimed_ranges[0][1] + 1
+    alternative_source_end = alternative_source_start + len(alternative_lines) - 1
+    if alternative_source_end > len(source_lines):
+        return None
+
+    target_start: int | None = None
+    for offset, expected_line in enumerate(alternative_lines):
+        source_line = alternative_source_start + offset
+        target_line = mapping.get_target_line_from_source_line(source_line)
+        if (
+            source_lines[source_line - 1] != expected_line
+            or target_line is None
+            or mapping.get_source_line_from_target_line(target_line) != source_line
+            or (target_start is not None and target_line != target_start + offset + 1)
+        ):
+            return None
+        if target_start is None:
+            target_start = target_line - 1
+    assert target_start is not None
+    return target_start, target_start + len(alternative_lines)
+
+
 def _replacement_edit_fits_mapped_source_neighbors(
     edit: _BaselineRemovalEdit,
     claim: AbsenceClaim,
@@ -1523,6 +1608,7 @@ def plan_replacement_unit_edits(
     trust_baseline_coordinates: bool = False,
     allow_mixed_mapped_replacement_islands: bool = False,
     mapped_source_lines: Sequence[tuple[int, ...]] | None = None,
+    presence_references: EffectivePresenceReferenceIndex | None = None,
 ) -> bool:
     """Plan coupled replacement units and record their claimed source ranges."""
     if isinstance(source_lines, int):
@@ -1726,12 +1812,20 @@ def plan_replacement_unit_edits(
                 )
                 if (
                     old_side is None
-                    or old_side.state is _ReplacementOldSideState.PARTIAL
+                    or old_side.state
+                    not in (
+                        _ReplacementOldSideState.FULL,
+                        _ReplacementOldSideState.FULLY_CLAIMED,
+                        _ReplacementOldSideState.ABSENT,
+                    )
                 ):
                     return False
 
                 target_position = old_side.target_position
-                if old_side.state is _ReplacementOldSideState.ABSENT:
+                if old_side.state in (
+                    _ReplacementOldSideState.FULLY_CLAIMED,
+                    _ReplacementOldSideState.ABSENT,
+                ):
                     target_position = _deletion_target_position(
                         claim,
                         source_to_working_mapping,
@@ -1749,6 +1843,32 @@ def plan_replacement_unit_edits(
                     1,
                     target_position,
                     target_end,
+                    1,
+                )
+                continue
+
+            relocated_bounds = (
+                _plan_relocated_replacement_from_presence_reference(
+                    plan,
+                    claim,
+                    unit,
+                    claimed_ranges,
+                    working_lines,
+                    presence_references,
+                )
+                if trust_baseline_coordinates
+                else None
+            )
+            if relocated_bounds is not None:
+                removal_start, removal_end = relocated_bounds
+                for source_start, source_end in claimed_ranges:
+                    replacement_source_ranges.append(
+                        (source_start, source_end)
+                    )
+                deletion_edit_bounds[deletion_index] = (
+                    1,
+                    removal_start,
+                    removal_end,
                     1,
                 )
                 continue
@@ -1823,21 +1943,31 @@ def plan_replacement_unit_edits(
                 )
                 continue
 
-            replacement_edit = _replacement_baseline_edit(
+            mapped_alternative_edit = _mapped_source_alternative_edit(
                 claim,
-                unit_index,
-                unit,
                 claimed_ranges,
-                source_line_count,
                 source_sequence,
-                working_lines,
-                trusted_target_lines,
                 source_to_working_mapping,
-                source_to_trusted_target_mapping,
-                trusted_target_to_working_mapping,
-                resolution,
-                max_resolution_choices=max_resolution_choices,
-                allow_mapped_source_predecessor=(len(replacement_units) == 1),
+            )
+            replacement_edit = (
+                (mapped_alternative_edit, True)
+                if mapped_alternative_edit is not None
+                else _replacement_baseline_edit(
+                    claim,
+                    unit_index,
+                    unit,
+                    claimed_ranges,
+                    source_line_count,
+                    source_sequence,
+                    working_lines,
+                    trusted_target_lines,
+                    source_to_working_mapping,
+                    source_to_trusted_target_mapping,
+                    trusted_target_to_working_mapping,
+                    resolution,
+                    max_resolution_choices=max_resolution_choices,
+                    allow_mapped_source_predecessor=(len(replacement_units) == 1),
+                )
             )
             if (
                 replacement_edit is None

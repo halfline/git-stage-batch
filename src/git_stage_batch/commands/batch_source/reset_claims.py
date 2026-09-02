@@ -25,7 +25,7 @@ from ...batch.state.metadata_types import (
     BatchMetadataDict,
 )
 from ...batch.selection import require_display_ids_available
-from ...batch.state.references import sync_batch_state_refs
+from ...batch.state.content_commits import restore_batch_commit_to_baseline
 from ...batch.text_file_storage import (
     add_source_bound_file_to_batch,
 )
@@ -81,19 +81,20 @@ def move_claims_between_batches(
         return
 
     for file_path, file_meta in files.items():
-        if file_meta.get("file_type") in {"binary", "mode"} or is_batch_submodule_pointer(
-            file_meta
-        ):
-            dest_file_meta = (
-                read_batch_metadata(dest_batch).get("files", {}).get(file_path)
-            )
-            if dest_file_meta is not None:
-                exit_with_error(
-                    _("Destination batch already has file '{file}'").format(
-                        file=display_path(file_path),
-                    )
-                )
+        dest_file_meta = read_batch_metadata(dest_batch).get("files", {}).get(
+            file_path
+        )
+        if dest_file_meta is None:
             copy_file_from_batch_to_batch(source_batch, dest_batch, file_path)
+        elif (
+            file_meta.get("file_type") in {"binary", "mode"}
+            or is_batch_submodule_pointer(file_meta)
+        ):
+            exit_with_error(
+                _("Destination batch already has file '{file}'").format(
+                    file=display_path(file_path),
+                )
+            )
         else:
             with acquire_ownership_for_metadata_dict(file_meta) as ownership:
                 _add_ownership_to_destination(
@@ -270,7 +271,7 @@ def reset_all_claims_from_batch(batch_name: str) -> None:
     metadata = read_batch_metadata(batch_name)
     metadata["files"] = {}
     metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
-    sync_batch_state_refs(batch_name, metadata_model)
+    restore_batch_commit_to_baseline(batch_name, metadata=metadata_model)
 
 
 def _ensure_destination_batch(

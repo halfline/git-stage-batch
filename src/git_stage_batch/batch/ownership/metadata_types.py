@@ -1,4 +1,4 @@
-"""Typed shapes for serialized batch-ownership metadata."""
+"""Types for serialized batch claims."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ class AbsenceClaimMetadata(TypedDict, total=False):
     blob: str
     baseline_reference: BaselineReferenceMetadata
     source_alternative: bool
+    complete_file_pair: bool
 
 
 class ReplacementUnitOriginMetadata(TypedDict, total=False):

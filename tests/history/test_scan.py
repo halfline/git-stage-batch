@@ -983,6 +983,30 @@ def test_scan_reports_publication_of_an_older_range_commit(
     assert "published-range" in document.safety.blockers
 
 
+def test_scan_onto_ignores_publication_of_the_pinned_prefix(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    git("update-ref", "refs/remotes/origin/review", repo.first)
+
+    document = acquire_history_plan_document(
+        repo.first,
+        onto_boundary=repo.base,
+    )
+
+    assert document.snapshot.movable_base == repo.first
+    assert [commit.commit_id for commit in document.snapshot.commits] == [
+        repo.first,
+        repo.tip,
+    ]
+    assert document.safety.remote_containment[0].remote_refs == (
+        "refs/remotes/origin/review",
+    )
+    assert document.safety.remote_containment[1].remote_refs == ()
+    assert "published-range" not in document.safety.blockers
+    assert document.safety.mutation_ready is True
+
+
 def test_scan_rejects_merge_topology(linear_history_repo):
     repo = linear_history_repo
     git("checkout", "-b", "side", repo.first)

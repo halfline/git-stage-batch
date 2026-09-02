@@ -1,10 +1,10 @@
-"""Storage-backed execution plans for baseline-coordinate edits."""
+"""Plan edits from exact locations in the original file."""
 
 from __future__ import annotations
 
 from collections.abc import Generator, Iterable, Iterator, Sequence
 
-from ...core.mapped_storage import sort_mapped_records
+from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ..line_matching.match_workspace import MatcherWorkspace
 
 
@@ -104,6 +104,25 @@ class BaselineEditPlan:
         if not self.sort_target_spans_and_validate():
             return None
         return self._target_spans
+
+    def source_ordered_payload_ranges(
+        self,
+        workspace: MatcherWorkspace,
+    ) -> MappedRecordVector:
+        """Build an index of edits by source position.
+
+        The main records remain in output order so they can be streamed. This
+        index is stored in temporary mapped files and supports lookups beside a
+        source line. It must be released through ``workspace``.
+        """
+        source_ranges = workspace.record_vector(
+            len(self._payload_ranges),
+            "QQQ",
+        )
+        for target_position, source_start, source_end in self._payload_ranges:
+            source_ranges.append((source_start, source_end, target_position))
+        sort_mapped_records(source_ranges)
+        return source_ranges
 
     def sort_target_spans_and_validate(self) -> bool:
         """Sort target spans and reject overlaps or empty reversals."""

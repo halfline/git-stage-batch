@@ -228,6 +228,9 @@ class TestResetFromBatch:
         # Verify batch metadata files section is cleared
         metadata_after = read_batch_metadata("mybatch")
         assert metadata_after["files"] == {}
+        assert read_file_from_batch("mybatch", "test.py") == (
+            "line 1\nline 2\nline 3\n"
+        )
 
     def test_reset_line_claims(self, temp_git_repo):
         """Test resetting specific line claims from a batch."""
@@ -280,8 +283,18 @@ class TestResetFromBatch:
 
         original_render = batch_review_selection_module.render_batch_file_display
 
-        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_shifted_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 2, 2: 1}
             selection_id_to_gutter = {2: 1, 1: 2}
@@ -338,8 +351,18 @@ class TestResetFromBatch:
 
         original_render = batch_review_selection_module.render_batch_file_display
 
-        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_shifted_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 2, 2: 1}
             selection_id_to_gutter = {2: 1, 1: 2}
@@ -397,8 +420,18 @@ class TestResetFromBatch:
 
         original_render = batch_review_selection_module.render_batch_file_display
 
-        def render_with_shifted_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_shifted_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 2, 2: 1}
             selection_id_to_gutter = {2: 1, 1: 2}
@@ -412,8 +445,18 @@ class TestResetFromBatch:
                 review_action_groups=_review_action_groups_from_map(gutter_to_selection_id),
             )
 
-        def render_with_raw_gutter(batch_name, file_path, metadata=None):
-            rendered = original_render(batch_name, file_path, metadata=metadata)
+        def render_with_raw_gutter(
+            batch_name,
+            file_path,
+            metadata=None,
+            applied_overlay=None,
+        ):
+            rendered = original_render(
+                batch_name,
+                file_path,
+                metadata=metadata,
+                applied_overlay=applied_overlay,
+            )
             assert rendered is not None
             gutter_to_selection_id = {1: 1, 2: 2}
             selection_id_to_gutter = {1: 1, 2: 2}
@@ -693,7 +736,7 @@ class TestResetFromBatch:
         metadata_after = read_batch_metadata("mybatch")
         assert "file1.txt" not in metadata_after["files"]
         assert "file2.txt" in metadata_after["files"]
-        assert read_file_from_batch("mybatch", "file1.txt") is None
+        assert read_file_from_batch("mybatch", "file1.txt") == "one\n"
         assert read_file_from_batch("mybatch", "file2.txt") is not None
 
     def test_reset_line_with_explicit_file_uses_metadata_batch_source(self, temp_git_repo):
@@ -851,7 +894,7 @@ class TestResetFromBatch:
         assert "file2.txt" in source_after["files"]
         assert "file1.txt" in dest_after["files"]
         assert "file2.txt" not in dest_after["files"]
-        assert read_file_from_batch("source", "file1.txt") is None
+        assert read_file_from_batch("source", "file1.txt") == "one\n"
         assert read_file_from_batch("dest", "file1.txt") is not None
 
     def test_reset_to_merges_file_ownership_with_scoped_metadata(

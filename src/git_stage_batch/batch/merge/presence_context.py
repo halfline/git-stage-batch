@@ -1,17 +1,18 @@
-"""Context-sensitive placement for missing presence claims."""
+"""Place missing selected lines using nearby text."""
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...core.coordinates import LineBoundary, WorktreeSpace
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match_workspace import MatcherWorkspace
 from ..line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from .presence_missing_claims import mapped_missing_source_lines
 from ...core.line_selection import LineRanges, LineSelection
-from ...core.mapped_storage import MappedIntVector
+from ...core.mapped_storage import MappedIntVector, MappedRecordVector
 from ...core.resource_cleanup import close_resources_preserving_first
 from ...exceptions import MergeError
 from ...i18n import _
@@ -33,6 +34,20 @@ class PresenceRunPlacement:
     before_target_line: int | None
     after_target_line: int | None
     exact_context_gap: bool = False
+    verified_replacement_gap: bool = False
+    include_leading_blank: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ReplacementPlacement:
+    """Source ranges that replace old text at one worktree gap."""
+
+    source_lines: LineRanges
+    target_gap: LineBoundary[WorktreeSpace]
+
+    def __post_init__(self) -> None:
+        if not self.source_lines:
+            raise ValueError("replacement placement has no source lines")
 
 
 @dataclass(frozen=True)
@@ -59,6 +74,7 @@ class _PresenceRunAnalysis:
     after: tuple[int, int] | None
     gap_index: int | None
     exact_context_gap: bool = False
+    verified_replacement_gap: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,7 +354,7 @@ def _nearest_mapped_after(
 
 
 def _iter_missing_presence_clusters(
-    missing: LineRanges,
+    missing_ranges: Sequence[tuple[int, ...]],
     mapping: LineMapping,
 ) -> Iterator[_MissingPresenceCluster]:
     """Yield missing runs grouped by their nearest mapped source boundaries.
@@ -346,7 +362,6 @@ def _iter_missing_presence_clusters(
     The compact range input and monotonic cluster scan keep this proportional
     to the number of selected ranges.  No per-line Python collection is built.
     """
-    missing_ranges = missing.ranges()
     source_line_count = len(mapping.source_to_target)
     run_index = 0
     while run_index < len(missing_ranges):
@@ -378,6 +393,70 @@ def _iter_missing_presence_clusters(
             unclaimed_source_line_count=(source_gap_line_count - selected_line_count),
         )
         run_index = run_stop_index
+
+
+def _next_context_role_boundary(
+    context_ranges: Sequence[tuple[int, int]],
+    range_index: int,
+    source_line: int,
+    stop: int,
+) -> tuple[int, int]:
+    """Find the next line where the available context changes."""
+    while (
+        range_index < len(context_ranges)
+        and context_ranges[range_index][1] < source_line
+    ):
+        range_index += 1
+    if range_index >= len(context_ranges):
+        return stop, range_index
+    range_start, range_end = context_ranges[range_index]
+    if source_line < range_start:
+        return min(stop, range_start), range_index
+    return min(stop, range_end + 1), range_index
+
+
+def _partition_missing_ranges_by_context_role(
+    missing: LineRanges,
+    distinctive_context_lines: LineSelection | None,
+    recorded_context_lines: LineSelection | None,
+    workspace: MatcherWorkspace,
+) -> Sequence[tuple[int, ...]]:
+    """Split missing ranges whenever their available context changes."""
+    distinctive_ranges = (
+        () if distinctive_context_lines is None else distinctive_context_lines.ranges()
+    )
+    recorded_ranges = (
+        () if recorded_context_lines is None else recorded_context_lines.ranges()
+    )
+    if not distinctive_ranges and not recorded_ranges:
+        return missing.ranges()
+
+    partitioned: MappedRecordVector = workspace.record_vector(
+        len(missing.ranges()) + 2 * (len(distinctive_ranges) + len(recorded_ranges)),
+        "QQ",
+    )
+    distinctive_index = 0
+    recorded_index = 0
+    for missing_start, missing_end in missing.ranges():
+        source_line = missing_start
+        stop = missing_end + 1
+        while source_line < stop:
+            distinctive_boundary, distinctive_index = _next_context_role_boundary(
+                distinctive_ranges,
+                distinctive_index,
+                source_line,
+                stop,
+            )
+            recorded_boundary, recorded_index = _next_context_role_boundary(
+                recorded_ranges,
+                recorded_index,
+                source_line,
+                stop,
+            )
+            next_boundary = min(distinctive_boundary, recorded_boundary)
+            partitioned.append((source_line, next_boundary - 1))
+            source_line = next_boundary
+    return partitioned
 
 
 def _choose_insertion_gap(
@@ -503,6 +582,7 @@ def _analyze_presence_runs(
     distinctive_context_lines: LineSelection | None = None,
     recorded_context_lines: LineSelection | None = None,
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
+    replacement_placements: Sequence[ReplacementPlacement] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[_PresenceRunAnalysis, ...]]:
     missing = mapped_missing_source_lines(
@@ -510,13 +590,19 @@ def _analyze_presence_runs(
         len(source_lines),
         mapping,
     )
+    analysis_workspace = MatcherWorkspace(spool_dir=spool_dir)
     distinctive_context: _DistinctiveContextResolver | None = None
     analyses: list[_PresenceRunAnalysis] = []
     analysis_completed = False
 
     try:
-        missing_ranges = missing.ranges()
-        for cluster in _iter_missing_presence_clusters(missing, mapping):
+        missing_ranges = _partition_missing_ranges_by_context_role(
+            missing,
+            distinctive_context_lines,
+            recorded_context_lines,
+            analysis_workspace,
+        )
+        for cluster in _iter_missing_presence_clusters(missing_ranges, mapping):
             locally_collapsed = cluster.has_locally_collapsed_target_gap()
             exact_before, exact_after = _extend_exact_cluster_context(
                 source_lines,
@@ -559,14 +645,7 @@ def _analyze_presence_runs(
                     after = mapped_after
                     assert before is not None
                     gap_index = before[1]
-                elif (
-                    run_has_recorded_context
-                    and exact_target_gap_collapsed
-                    and (
-                        (exact_before is not None and exact_before[0] == run_start - 1)
-                        or (exact_after is not None and exact_after[0] == run_end + 1)
-                    )
-                ):
+                elif run_has_recorded_context and exact_target_gap_collapsed:
                     before = exact_before
                     after = exact_after
                     gap_index = _choose_insertion_gap(
@@ -634,13 +713,18 @@ def _analyze_presence_runs(
         analysis_completed = True
     finally:
         close_resources_preserving_first(
-            (distinctive_context,),
+            (distinctive_context, analysis_workspace),
             suppress_errors=not analysis_completed,
         )
 
     _resolve_collapsing_target_spans(
         analyses,
         collapsing_target_spans,
+        len(target_lines),
+    )
+    _resolve_replacement_placements(
+        analyses,
+        replacement_placements,
         len(target_lines),
     )
     return missing, tuple(analyses)
@@ -674,7 +758,78 @@ def _resolve_collapsing_target_spans(
                 after=analysis.after,
                 gap_index=span_start,
                 exact_context_gap=analysis.exact_context_gap,
+                verified_replacement_gap=analysis.verified_replacement_gap,
             )
+
+
+def _resolve_replacement_placements(
+    analyses: list[_PresenceRunAnalysis],
+    placements: Sequence[ReplacementPlacement],
+    target_line_count: int,
+) -> None:
+    """Use a verified replacement gap for ambiguous ranges in that replacement."""
+    if not placements:
+        return
+
+    placement_ranges = sorted(
+        (
+            source_start,
+            source_end,
+            placement.target_gap.offset,
+            len(placement.source_lines.ranges()) > 1,
+        )
+        for placement in placements
+        for source_start, source_end in placement.source_lines.ranges()
+    )
+    previous_end = 0
+    for source_start, source_end, target_gap, _shares_target_gap in placement_ranges:
+        if source_start <= previous_end:
+            raise ValueError("replacement placement ranges must not overlap")
+        if target_gap > target_line_count:
+            raise ValueError("replacement placement gap is outside the target")
+        previous_end = source_end
+
+    range_index = 0
+    for analysis_index, analysis in enumerate(analyses):
+        while (
+            range_index < len(placement_ranges)
+            and placement_ranges[range_index][1] < analysis.run_start
+        ):
+            range_index += 1
+        if range_index >= len(placement_ranges):
+            return
+
+        source_start, source_end, target_gap, shares_target_gap = placement_ranges[
+            range_index
+        ]
+        if not (
+            source_start <= analysis.run_start
+            and analysis.run_end <= source_end
+        ):
+            continue
+        before_gap = analysis.before[1] if analysis.before is not None else 0
+        after_gap = (
+            analysis.after[1] - 1
+            if analysis.after is not None
+            else target_line_count
+        )
+        if not before_gap <= target_gap <= after_gap:
+            continue
+        if (
+            not shares_target_gap
+            and analysis.gap_index is not None
+            and analysis.gap_index != target_gap
+        ):
+            continue
+        analyses[analysis_index] = _PresenceRunAnalysis(
+            run_start=analysis.run_start,
+            run_end=analysis.run_end,
+            before=analysis.before,
+            after=analysis.after,
+            gap_index=target_gap,
+            exact_context_gap=analysis.exact_context_gap,
+            verified_replacement_gap=True,
+        )
 
 
 def _iter_collapsing_target_spans(
@@ -754,16 +909,15 @@ def contextual_presence_placements(
     distinctive_context_lines: LineSelection | None = None,
     recorded_context_lines: LineSelection | None = None,
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
+    replacement_placements: Sequence[ReplacementPlacement] = (),
+    include_leading_blank_for_line: Callable[[int], bool] | None = None,
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
-    """Return missing claims and their context-supported insertion gaps.
+    """Find where each missing selected run belongs.
 
-    Ordinary missing runs retain their established placement immediately after
-    the nearest preceding mapping.  When a substantial source-only region
-    separates that mapping from the claim, globally distinctive mappings must
-    instead identify which side of target-only content owns the insertion.
-    This prevents a repeated brace or blank line from deciding how competing
-    unmatched source and target regions should be interleaved.
+    A run usually follows the nearest preceding mapped line. If unmatched text
+    separates them, unique nearby lines must show which side of that text the
+    run belongs on. Repeated braces and blank lines are not enough evidence.
     """
     missing, analyses = _analyze_presence_runs(
         source_lines,
@@ -775,6 +929,7 @@ def contextual_presence_placements(
         distinctive_context_lines=distinctive_context_lines,
         recorded_context_lines=recorded_context_lines,
         collapsing_target_spans=collapsing_target_spans,
+        replacement_placements=replacement_placements,
         spool_dir=spool_dir,
     )
     if not missing:
@@ -805,6 +960,12 @@ def contextual_presence_placements(
                     analysis.after[1] if analysis.after is not None else None
                 ),
                 exact_context_gap=analysis.exact_context_gap,
+                verified_replacement_gap=analysis.verified_replacement_gap,
+                include_leading_blank=(
+                    include_leading_blank_for_line(analysis.run_start)
+                    if include_leading_blank_for_line is not None
+                    else False
+                ),
             )
         )
 

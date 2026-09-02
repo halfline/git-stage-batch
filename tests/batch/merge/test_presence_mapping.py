@@ -14,11 +14,18 @@ from git_stage_batch.batch.line_matching.line_mapping import (
 from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.batch.merge.presence_mapping import (
+    PresenceMappingAmbiguity,
+    PresenceMappingCorrection,
     match_lines_preserving_unowned_context,
 )
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.resolved_replacement_alternatives import (
+    ResolvedReplacementAlternative,
+)
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.coordinates import LineBoundary, LineSpan
 from git_stage_batch.core.line_selection import LineRanges
 
 
@@ -86,6 +93,8 @@ def test_distinctive_unowned_run_displaces_claimed_duplicate() -> None:
         LineRanges.from_ranges([(2, 3)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.CORRECTED
+        assert result.ambiguity is PresenceMappingAmbiguity.NONE
         assert result.corrected
         assert not result.ambiguous
         assert list(result.mapping.mapped_line_pairs()) == [
@@ -94,6 +103,50 @@ def test_distinctive_unowned_run_displaces_claimed_duplicate() -> None:
             (5, 3),
             (6, 4),
         ]
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
+def test_unique_context_keeps_its_repeated_closing_line() -> None:
+    """A later sibling must not take a closing line from a unique function."""
+    source = [
+        b"head\n",
+        b"saved heading\n",
+        b"\n",
+        b"keep(void)\n",
+        b"{\n",
+        b"\treturn 1;\n",
+        b"}\n",
+        b"\n",
+        b"saved(void)\n",
+        b"{\n",
+        b"\treturn 2;\n",
+        b"}\n",
+        b"\n",
+        b"later(void)\n",
+        b"{\n",
+        b"\treturn 3;\n",
+        b"}\n",
+    ]
+    target = [
+        b"head\n",
+        b"\n",
+        b"keep(void)\n",
+        b"{\n",
+        b"\treturn 1;\n",
+        b"}\n",
+    ]
+
+    result = match_lines_preserving_unowned_context(
+        source,
+        target,
+        LineRanges.from_ranges(((2, 2), (9, 12))),
+    )
+    try:
+        assert result.corrected
+        assert result.mapping.get_target_line_from_source_line(7) == 6
+        assert result.mapping.get_target_line_from_source_line(17) is None
     finally:
         if result.owned:
             result.mapping.close()
@@ -162,6 +215,8 @@ def test_repeated_unanchored_context_does_not_displace_claimed_line() -> None:
         LineRanges.from_ranges([(2, 2), (4, 4)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
         assert not result.corrected
         assert result.ambiguous
         assert list(result.mapping.mapped_line_pairs()) == [
@@ -185,6 +240,8 @@ def test_unmapped_repeated_context_remains_ambiguous() -> None:
         LineRanges.from_ranges([(1, 1)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.UNRESOLVED
         assert not result.corrected
         assert result.ambiguous
         assert not result.competing_context
@@ -192,6 +249,45 @@ def test_unmapped_repeated_context_remains_ambiguous() -> None:
     finally:
         if result.owned:
             result.mapping.close()
+
+
+def test_mapping_anchor_alone_does_not_authorize_controlled_duplicate() -> None:
+    """An alignment constraint is not automatically presence authority."""
+    source = [b"shared\n", b"shared\n"]
+    target = [b"shared\n"]
+    anchor_pairs = ((1, 1),)
+    with match_lines(source, target, anchor_pairs=anchor_pairs) as ordinary_mapping:
+        result = match_lines_preserving_unowned_context(
+            source,
+            target,
+            LineRanges.from_lines([1]),
+            ordinary_mapping=ordinary_mapping,
+            anchor_pairs=anchor_pairs,
+        )
+        assert not result.owned
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
+        assert list(result.mapping.mapped_line_pairs()) == [(1, 1)]
+
+
+def test_validated_presence_anchor_authorizes_controlled_duplicate() -> None:
+    """Independent anchor evidence decides which repeated line owns its target."""
+    source = [b"shared\n", b"shared\n"]
+    target = [b"shared\n"]
+    anchor_pairs = ((1, 1),)
+    with match_lines(source, target, anchor_pairs=anchor_pairs) as ordinary_mapping:
+        result = match_lines_preserving_unowned_context(
+            source,
+            target,
+            LineRanges.from_lines([1]),
+            ordinary_mapping=ordinary_mapping,
+            anchor_pairs=anchor_pairs,
+            anchor_authorized_source_lines=LineRanges.from_lines([1]),
+        )
+        assert not result.owned
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.NONE
+        assert list(result.mapping.mapped_line_pairs()) == [(1, 1)]
 
 
 def test_two_distinctive_spans_competing_for_one_line_are_ambiguous() -> None:
@@ -210,6 +306,8 @@ def test_two_distinctive_spans_competing_for_one_line_are_ambiguous() -> None:
         LineRanges.from_ranges([(1, 2)]),
     )
     try:
+        assert result.correction is PresenceMappingCorrection.ORDINARY
+        assert result.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
         assert not result.corrected
         assert result.ambiguous
         assert result.competing_context
@@ -248,6 +346,220 @@ def test_unique_selected_span_beats_unanchored_repeated_context() -> None:
             result.mapping.close()
 
 
+def test_missing_claim_anchor_keeps_adjacent_unowned_duplicate() -> None:
+    """A missing claimed line identifies its repeated suffix as absent too."""
+    source = [
+        b"head\n",
+        b"earlier missing one\n",
+        b"earlier missing two\n",
+        b"\n",
+        b"owned declaration\n",
+        b"\n",
+        b"tail\n",
+    ]
+    target = [b"head\n", b"\n", b"tail\n"]
+
+    result = match_lines_preserving_unowned_context(
+        source,
+        target,
+        LineRanges.from_ranges([(5, 6)]),
+    )
+    try:
+        assert result.corrected
+        assert not result.ambiguous
+        assert list(result.mapping.mapped_line_pairs()) == [
+            (1, 1),
+            (4, 2),
+            (7, 3),
+        ]
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
+def test_distinctive_controlled_run_recovers_tail_from_stale_sibling() -> None:
+    """An adjacent owned tail beats an unowned duplicate from a removed sibling."""
+    source = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tbefore\n",
+        b"\tmissing adoption\n",
+        b"\tafter\n",
+        b"}\n",
+        b"\n",
+        b"helper()\n",
+        b"{\n",
+        b"\tunique helper body\n",
+        b"}\n",
+        b"\n",
+        b"stale sibling()\n",
+        b"{\n",
+        b"\tstale body\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    target = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tbefore\n",
+        b"\tafter\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    controlled = LineRanges.from_ranges(((2, 13),))
+
+    result = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+    )
+    try:
+        assert result.corrected
+        assert result.mapping.get_target_line_from_source_line(7) == 6
+        assert result.mapping.get_target_line_from_source_line(8) == 7
+        assert result.mapping.get_target_line_from_source_line(17) is None
+        assert result.mapping.get_target_line_from_source_line(18) is None
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
+def test_nondistinctive_stale_tail_does_not_compete_with_owned_run() -> None:
+    """Recorded adjacency cannot challenge a distinctive owned mapping."""
+    source = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tunique outer body\n",
+        b"}\n",
+        b"\n",
+        b"helper()\n",
+        b"{\n",
+        b"\tunique helper body\n",
+        b"}\n",
+        b"\n",
+        b"stale sibling()\n",
+        b"{\n",
+        b"\tstale body\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    target = [
+        b"head\n",
+        b"outer()\n",
+        b"{\n",
+        b"\tunique outer body\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    controlled = LineRanges.from_ranges(((2, 11),))
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"\n",
+        has_after_line=True,
+        before_line=2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-11"],
+        baseline_references={line: reference for line in range(2, 12)},
+    )
+
+    result = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+        ownership=ownership,
+        presence_lines=controlled,
+    )
+    try:
+        assert not result.ambiguous
+        assert not result.competing_context
+        assert result.mapping.get_target_line_from_source_line(5) == 5
+        assert result.mapping.get_target_line_from_source_line(6) == 6
+        assert result.mapping.get_target_line_from_source_line(15) is None
+        assert result.mapping.get_target_line_from_source_line(16) is None
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
+def test_recorded_owned_run_recovers_suffix_across_missing_line() -> None:
+    """A relocated owned predecessor must not map to a peeled sibling tail."""
+    source = [
+        b"\n",
+        b"owned()\n",
+        b"{\n",
+        b"\tunique owned body\n",
+        b"\tmissing adoption\n",
+        b"\tshared tail\n",
+        b"}\n",
+        b"\n",
+        b"helper()\n",
+        b"{\n",
+        b"\tmissing helper body\n",
+        b"}\n",
+        b"\n",
+        b"peeled sibling()\n",
+        b"{\n",
+        b"\tpeeled body\n",
+        b"\tshared tail\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    target = [
+        b"\n",
+        b"owned()\n",
+        b"{\n",
+        b"\tunique owned body\n",
+        b"\tshared tail\n",
+        b"}\n",
+        b"\n",
+        b"tail\n",
+    ]
+    controlled = LineRanges.from_ranges(((2, 13),))
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"\n",
+        has_after_line=True,
+        before_line=2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-13"],
+        baseline_references={line: reference for line in range(2, 14)},
+    )
+
+    result = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+        ownership=ownership,
+        presence_lines=controlled,
+    )
+    try:
+        assert result.corrected
+        assert not result.ambiguous
+        assert result.mapping.get_target_line_from_source_line(6) == 5
+        assert result.mapping.get_target_line_from_source_line(7) == 6
+        assert result.mapping.get_target_line_from_source_line(8) == 7
+        assert result.mapping.get_target_line_from_source_line(17) is None
+        assert result.mapping.get_target_line_from_source_line(18) is None
+        assert result.mapping.get_target_line_from_source_line(19) is None
+    finally:
+        if result.owned:
+            result.mapping.close()
+
+
 def test_explicit_alternative_authorizes_repeated_context() -> None:
     """Verified adjacent old-side metadata may anchor repeated context."""
     source = [
@@ -276,6 +588,92 @@ def test_explicit_alternative_authorizes_repeated_context() -> None:
     finally:
         if result.owned:
             result.mapping.close()
+
+
+def test_resolved_live_alternative_displaces_only_its_saved_side() -> None:
+    """A complete typed live side outranks its own anchored saved duplicate."""
+    source = [
+        b"head\n",
+        b"shared\n",
+        b"saved only\n",
+        b"shared\n",
+        b"live only\n",
+        b"tail\n",
+    ]
+    target = [b"head\n", b"shared\n", b"live only\n", b"tail\n"]
+    controlled = LineRanges.from_ranges(((1, 3),))
+    preferred = LineRanges.from_ranges(((4, 5),))
+
+    unpaired = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+        preferred_context_lines=preferred,
+    )
+    try:
+        assert unpaired.ambiguity is PresenceMappingAmbiguity.COMPETING_CONTEXT
+        assert not unpaired.corrected
+    finally:
+        if unpaired.owned:
+            unpaired.mapping.close()
+
+    absence_claim = AbsenceClaim(
+        anchor_line=3,
+        content_lines=source[3:5],
+        source_alternative=True,
+    )
+    alternative = ResolvedReplacementAlternative(
+        unit_index=0,
+        deletion_index=0,
+        saved=LineSpan(LineBoundary(1), LineBoundary(3)),
+        live_payload=(LineSpan(LineBoundary(3), LineBoundary(5)),),
+        live_envelope=LineSpan(LineBoundary(3), LineBoundary(5)),
+        absence_claim=absence_claim,
+    )
+    paired = match_lines_preserving_unowned_context(
+        source,
+        target,
+        controlled,
+        preferred_context_lines=preferred,
+        replacement_alternatives=(alternative,),
+    )
+    try:
+        assert paired.corrected
+        assert not paired.ambiguous
+        assert list(paired.mapping.mapped_line_pairs()) == [
+            (1, 1),
+            (4, 2),
+            (5, 3),
+            (6, 4),
+        ]
+    finally:
+        if paired.owned:
+            paired.mapping.close()
+
+
+def test_explicit_alternative_seeds_an_empty_ordinary_mapping() -> None:
+    """A complete old side can anchor replay when selected content shares none."""
+    source = [b"owned one\n", b"owned two\n", b"live one\n", b"live two\n"]
+    target = [b"prefix\n", b"live one\n", b"live two\n", b"suffix\n"]
+
+    with LineMapping(
+        source_to_target=[0, 0, 0, 0],
+        target_to_source=[0, 0, 0, 0],
+    ) as ordinary_mapping:
+        result = match_lines_preserving_unowned_context(
+            source,
+            target,
+            LineRanges.from_ranges([(1, 2)]),
+            preferred_context_lines=LineRanges.from_ranges([(3, 4)]),
+            ordinary_mapping=ordinary_mapping,
+        )
+        try:
+            assert result.corrected
+            assert not result.ambiguous
+            assert list(result.mapping.mapped_line_pairs()) == [(3, 2), (4, 3)]
+        finally:
+            if result.owned:
+                result.mapping.close()
 
 
 def test_explicit_alternative_does_not_authorize_repeated_neighbor() -> None:
@@ -587,6 +985,83 @@ def test_no_collision_uses_only_the_ordinary_matcher() -> None:
             result.mapping.close()
 
 
+def test_unmapped_controlled_duplicate_uses_recorded_boundary_recovery() -> None:
+    """An unmapped duplicate must not bypass coordinate-bounded recovery."""
+    source = [
+        b"boundary\n",
+        b"owned anchor\n",
+        b"missing adoption\n",
+        b"shared tail\n",
+        b"shared tail\n",
+        b"tail\n",
+    ]
+    target = [
+        b"boundary\n",
+        b"owned anchor\n",
+        b"shared tail\n",
+        b"tail\n",
+    ]
+    controlled = LineRanges.from_ranges(((2, 4),))
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"shared tail\n",
+        has_after_line=True,
+        before_line=2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-4"],
+        baseline_references={line: reference for line in range(2, 5)},
+    )
+    ordinary_mapping = allocate_line_mapping(len(source), len(target))
+    for source_line, target_line in ((1, 1), (2, 2), (5, 3), (6, 4)):
+        ordinary_mapping.source_to_target[source_line - 1] = target_line
+        ordinary_mapping.target_to_source[target_line - 1] = source_line
+
+    try:
+        result = match_lines_preserving_unowned_context(
+            source,
+            target,
+            controlled,
+            ownership=ownership,
+            presence_lines=controlled,
+            ordinary_mapping=ordinary_mapping,
+        )
+        try:
+            assert result.corrected
+            assert not result.ambiguous
+            assert result.mapping.get_target_line_from_source_line(4) == 3
+            assert result.mapping.get_target_line_from_source_line(5) is None
+        finally:
+            if result.owned:
+                result.mapping.close()
+    finally:
+        ordinary_mapping.close()
+
+
+@pytest.mark.parametrize(
+    "corrections",
+    (
+        ((2, 1), (2, 3)),
+        ((1, 2), (3, 2)),
+    ),
+)
+def test_conflicting_correction_proofs_are_rejected(corrections) -> None:
+    """Correction evidence must remain a bijective source/target mapping."""
+    with MatcherWorkspace() as workspace:
+        records = workspace.record_vector(len(corrections), "QQ")
+        for correction in corrections:
+            records.append(correction)
+        presence_mapping_module.sort_mapped_records(records)
+
+        assert presence_mapping_module._corrections_have_conflicting_assignments(
+            workspace,
+            records,
+            3,
+        )
+
+
 def test_mapping_cleanup_catches_cancellation(monkeypatch) -> None:
     """Both owned mappings close if context authorization is cancelled."""
     mappings = []
@@ -682,12 +1157,9 @@ def test_context_correction_avoids_line_scale_python_heap() -> None:
     heap_peaks = []
     for filler_count in (512, 8192):
         prefix = b"".join(
-            f"filler {line_index}\n".encode()
-            for line_index in range(filler_count)
+            f"filler {line_index}\n".encode() for line_index in range(filler_count)
         )
-        source_content = (
-            prefix + b"shared\nnew tail\nshared\nprior tail\ntail\n"
-        )
+        source_content = prefix + b"shared\nnew tail\nshared\nprior tail\ntail\n"
         target_content = prefix + b"shared\nprior tail\ntail\n"
 
         with (
@@ -702,9 +1174,7 @@ def test_context_correction_avoids_line_scale_python_heap() -> None:
                 result = match_lines_preserving_unowned_context(
                     source_lines,
                     target_lines,
-                    LineRanges.from_ranges(
-                        [(filler_count + 1, filler_count + 2)]
-                    ),
+                    LineRanges.from_ranges([(filler_count + 1, filler_count + 2)]),
                 )
                 try:
                     _current_heap, peak_heap = tracemalloc.get_traced_memory()
@@ -734,9 +1204,7 @@ def test_recorded_boundary_correction_avoids_line_scale_python_heap() -> None:
         target = [b"head\n"] + [b"\n"] * line_count + [b"tail\n"]
         presence_start = line_count + 2
         presence_end = line_count * 2 + 2
-        presence_lines = LineRanges.from_ranges(
-            [(presence_start, presence_end)]
-        )
+        presence_lines = LineRanges.from_ranges([(presence_start, presence_end)])
         reference = BaselineReference(
             after_line=1,
             after_content=b"\n",
@@ -748,40 +1216,26 @@ def test_recorded_boundary_correction_avoids_line_scale_python_heap() -> None:
             [f"{presence_start}-{presence_end}"],
             baseline_references={
                 source_line: reference
-                for source_line in range(
-                    presence_start, presence_end + 1
-                )
+                for source_line in range(presence_start, presence_end + 1)
             },
         )
-        ordinary_mapping = allocate_line_mapping(
-            len(source), len(target)
-        )
+        ordinary_mapping = allocate_line_mapping(len(source), len(target))
         ordinary_mapping.source_to_target[0] = 1
         ordinary_mapping.target_to_source[0] = 1
         for offset in range(line_count):
             source_line = presence_start + 1 + offset
             target_line = 2 + offset
-            ordinary_mapping.source_to_target[source_line - 1] = (
-                target_line
-            )
-            ordinary_mapping.target_to_source[target_line - 1] = (
-                source_line
-            )
+            ordinary_mapping.source_to_target[source_line - 1] = target_line
+            ordinary_mapping.target_to_source[target_line - 1] = source_line
         ordinary_mapping.source_to_target[-1] = len(target)
         ordinary_mapping.target_to_source[-1] = len(source)
 
-        context_mapping = allocate_line_mapping(
-            len(source), len(target)
-        )
+        context_mapping = allocate_line_mapping(len(source), len(target))
         for offset in range(line_count):
             source_line = 2 + offset
             target_line = 2 + offset
-            context_mapping.source_to_target[source_line - 1] = (
-                target_line
-            )
-            context_mapping.target_to_source[target_line - 1] = (
-                source_line
-            )
+            context_mapping.source_to_target[source_line - 1] = target_line
+            context_mapping.target_to_source[target_line - 1] = source_line
         context_mapping.source_to_target[-1] = len(target)
         context_mapping.target_to_source[-1] = len(source)
 

@@ -14,7 +14,7 @@ from ...data.file_change_status import (
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.line_id_files import write_line_ids_file
 from ...data.file_review.state import clear_last_file_review_state_if_file_matches
-from ...data.file_tracking import auto_add_untracked_files
+from ...data.file_tracking import auto_add_untracked_files, list_tracked_files
 from ...data.line_state import load_line_changes_from_state
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.selected_change.store import (
@@ -68,7 +68,11 @@ def include_file_as_replacement(
 
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
-            if line_changes is None and not file_has_staged_changes(target_file):
+            if (
+                line_changes is None
+                and not file_has_staged_changes(target_file)
+                and not list_tracked_files([target_file])
+            ):
                 exit_with_error(
                     _("No changes in file '{file}'.").format(
                         file=display_path(target_file)

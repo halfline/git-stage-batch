@@ -1,9 +1,11 @@
-"""Live single-file display action orchestration."""
+"""Show live changes for one file."""
 
 from __future__ import annotations
 
 import sys
 
+from ...batch.selection import require_display_ids_available
+from ...core.line_selection import LineRanges
 from ...data.change_freshness import text_deletion_change_is_batched
 from ...core.models import LineLevelChange
 from ...data.file_change_display import (
@@ -16,6 +18,9 @@ from ...data.file_change_display import (
 from ...data.file_hunk_display import render_file_as_single_hunk
 from ...data.selected_change.file_hunk_cache import cache_file_as_single_hunk
 from ...data.file_review.pages import normalize_page_spec
+from ...data.file_review.action_selections import (
+    pages_containing_review_display_ids,
+)
 from ...data.file_review.records import ReviewSource
 from ...data.file_review.state import (
     clear_last_file_review_state,
@@ -62,6 +67,7 @@ def _load_previous_selection_for_review() -> LineLevelChange | None:
 def show_live_file_display(
     file_arg: str,
     *,
+    selected_ids: LineRanges | None,
     page: str | None,
     porcelain: bool,
     selectable: bool,
@@ -72,7 +78,9 @@ def show_live_file_display(
     if file_arg == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
-            exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            exit_with_error(
+                _("No selected hunk. Run 'show' first or specify file path.")
+            )
     else:
         target_file = file_arg
 
@@ -81,9 +89,7 @@ def show_live_file_display(
     deletion_change = (
         render_text_deletion_change(target_file) if preview_lines is None else None
     )
-    if deletion_change is not None and text_deletion_change_is_batched(
-        deletion_change
-    ):
+    if deletion_change is not None and text_deletion_change_is_batched(deletion_change):
         deletion_change = None
     binary_change = (
         render_binary_file_change(target_file, base=comparison_base)
@@ -92,9 +98,7 @@ def show_live_file_display(
     )
     gitlink_change = (
         render_gitlink_change(target_file, base=comparison_base)
-        if preview_lines is None
-        and deletion_change is None
-        and binary_change is None
+        if preview_lines is None and deletion_change is None and binary_change is None
         else None
     )
     rename_change = (
@@ -108,6 +112,8 @@ def show_live_file_display(
     mode_change = render_mode_change(target_file) if preview_lines is None else None
 
     if deletion_change is not None:
+        if selected_ids is not None:
+            exit_with_error(_("Cannot use --lines with whole-file deletions."))
         if page is not None:
             exit_with_error(_("File review pages are only available for text changes."))
         if selectable:
@@ -119,6 +125,8 @@ def show_live_file_display(
         return
 
     if rename_change is not None:
+        if selected_ids is not None:
+            exit_with_error(_("Cannot use --lines with file renames."))
         if page is not None:
             exit_with_error(_("File review pages are only available for text changes."))
         if selectable:
@@ -130,6 +138,8 @@ def show_live_file_display(
         return
 
     if mode_change is not None:
+        if selected_ids is not None:
+            exit_with_error(_("Cannot use --lines with file mode actions."))
         if page is not None:
             exit_with_error(_("File review pages are only available for text changes."))
         if selectable:
@@ -141,6 +151,8 @@ def show_live_file_display(
         return
 
     if gitlink_change is not None:
+        if selected_ids is not None:
+            exit_with_error(_("Cannot use --lines with submodule pointers."))
         if page is not None:
             exit_with_error(_("File review pages are only available for text changes."))
         if selectable:
@@ -155,6 +167,8 @@ def show_live_file_display(
         return
 
     if binary_change is not None:
+        if selected_ids is not None:
+            exit_with_error(_("Cannot use --lines with binary files."))
         if page is not None:
             exit_with_error(_("File review pages are only available for text changes."))
         if selectable:
@@ -181,9 +195,7 @@ def show_live_file_display(
         if porcelain:
             sys.exit(1)
         print(
-            _("No changes in file '{file}'.").format(
-                file=display_path(target_file)
-            ),
+            _("No changes in file '{file}'.").format(file=display_path(target_file)),
             file=sys.stderr,
         )
         return
@@ -192,6 +204,44 @@ def show_live_file_display(
         clear_last_file_review_state()
 
     if porcelain:
+        return
+
+    if selected_ids is not None:
+        available_ids = LineRanges.from_lines(
+            line.id for line in file_lines.lines if line.id is not None
+        )
+        require_display_ids_available(
+            selected_ids,
+            available_ids,
+            line_id_specification=selected_ids.to_line_spec(),
+            file_path=file_lines.path,
+        )
+        if selectable:
+            review_model = build_file_review_model(file_lines)
+            shown_pages = pages_containing_review_display_ids(
+                review_model,
+                selected_ids,
+            )
+            write_last_file_review_state(
+                make_file_review_state(
+                    review_model,
+                    source=ReviewSource.FILE_VS_HEAD,
+                    batch_name=None,
+                    shown_pages=shown_pages,
+                    selected_change_kind=SelectedChangeKind.FILE,
+                    visible_display_ids=selected_ids,
+                    entire_file_shown=False,
+                )
+            )
+        filtered_line_changes = LineLevelChange(
+            path=file_lines.path,
+            lines=[line for line in file_lines.lines if line.id in selected_ids],
+            header=file_lines.header,
+        )
+        print_line_level_changes(
+            filtered_line_changes,
+            gutter_to_selection_id=None if selectable else {},
+        )
         return
 
     if selectable:

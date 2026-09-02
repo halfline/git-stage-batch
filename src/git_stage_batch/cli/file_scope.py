@@ -14,7 +14,7 @@ from ..data.batch_file_scope import (
     resolve_batch_file_scope as resolve_stored_batch_file_scope,
     resolve_current_batch_atomic_file_scope,
 )
-from ..data.file_tracking import list_untracked_files
+from ..data.file_tracking import list_tracked_files, list_untracked_files
 from ..data.file_review.action_refusals import (
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
@@ -278,6 +278,7 @@ def resolve_live_file_scope(
     file_patterns: list[str] | None,
     *,
     include_staged: bool = False,
+    include_unchanged_explicit_files: bool = False,
     selected_action: FileReviewAction | None = None,
     line_ids: str | None = None,
 ) -> FileScope:
@@ -294,6 +295,8 @@ def resolve_live_file_scope(
     candidate_files = [*list_changed_files(), *list_untracked_files()]
     if include_staged:
         candidate_files.extend(list_staged_files())
+    if include_unchanged_explicit_files:
+        candidate_files.extend(list_tracked_files(_file_arg_values(file_arg)))
     candidate_files = list(dict.fromkeys(candidate_files))
     selected_file = (
         _resolve_live_selected_file(selected_action, line_ids)

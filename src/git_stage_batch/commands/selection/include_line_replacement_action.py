@@ -9,14 +9,84 @@ from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.file_review.records import FileReviewState
 from ...data.selected_change.paths import get_selected_change_file_path
+from ...data.selected_change.loading import require_selected_hunk
 from ...data.line_id_files import write_line_ids_file
-from ...data.selected_change.store import restore_selected_change_state
+from ...data.selected_change.store import (
+    restore_selected_change_state,
+    snapshot_selected_change_state,
+)
 from ...data.undo.checkpoints import undo_checkpoint
 from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ...utils.paths import get_processed_include_ids_file_path
 from . import include_line_replacement as _include_line_replacement
+from . import discard_file_selection as _discard_file_selection
+from . import discard_line_replacement as _discard_line_replacement
 from .selected_hunk_refresh import refresh_selected_hunk_after_line_action
+
+
+def include_live_line_replacement_to_batch(
+    batch_name: str,
+    line_id_specification: str,
+    replacement_text: str | ReplacementPayload,
+    file: str | None = None,
+    *,
+    review_state: FileReviewState | None,
+    no_edge_overlap: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
+    """Save replacement text to a batch without changing the live file."""
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    operation_parts = [
+        "include",
+        "--to",
+        batch_name,
+        "--line",
+        line_id_specification,
+        "--as",
+        replacement_payload.display_text or "<stdin>",
+    ]
+    if no_edge_overlap:
+        operation_parts.append("--no-edge-overlap")
+    if file is not None:
+        operation_parts.extend(["--file", file])
+
+    target_file = file if file not in (None, "") else get_selected_change_file_path()
+    with (
+        undo_checkpoint(
+            terminal_safe_shell_join(operation_parts),
+            worktree_paths=[target_file] if target_file is not None else [],
+            rollback_on_error=True,
+        ),
+        snapshot_selected_change_state() as saved_selected_state,
+    ):
+        if file is None:
+            require_selected_hunk()
+        else:
+            target_file = _discard_file_selection.load_explicit_file_selection(file).path
+
+        with _discard_line_replacement.prepare_discard_line_replacement_selection(
+            batch_name,
+            line_id_specification,
+            replacement_text,
+            no_edge_overlap=no_edge_overlap,
+        ) as replacement:
+            _discard_line_replacement.add_discard_line_replacement_to_batch(
+                batch_name,
+                replacement,
+            )
+            target_file = replacement.file_path
+
+        restore_selected_change_state(saved_selected_state)
+
+    print(
+        _("✓ Included selection as replacement to batch '{name}': {lines}").format(
+            name=batch_name,
+            lines=line_id_specification,
+        ),
+        file=sys.stderr,
+    )
+    finish_review_scoped_line_action(review_state, file_path=target_file)
 
 
 def include_live_line_replacement(

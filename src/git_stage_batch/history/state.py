@@ -1032,13 +1032,14 @@ def _persisted_plan_facts(
     tuple[tuple[HistoryPlanOperation, int], ...],
     bool | None,
     str | None,
+    tuple[str, ...] | None,
 ]:
     plan_path = history_operation_plan_path(state.operation_id)
     try:
         payload, plan_sha256 = read_required_text_file_contents_and_sha256(plan_path)
         if plan_sha256 != state.plan_sha256:
-            return False, (), None, None
-        snapshot, _base_commit, _movable_base, plan = (
+            return False, (), None, None, None
+        snapshot, base_commit, movable_base, plan = (
             decode_frozen_history_plan_payload(payload)
         )
         range_record = require_object(snapshot["range"], "snapshot.range")
@@ -1050,6 +1051,11 @@ def _persisted_plan_facts(
         source_commits = tuple(
             value for value in source_values if isinstance(value, str)
         )
+        if movable_base == base_commit:
+            publication_source_commits = source_commits
+        else:
+            movable_base_index = source_commits.index(movable_base)
+            publication_source_commits = source_commits[movable_base_index + 1 :]
         outputs = plan.outputs
         operation_counts = dict.fromkeys(HISTORY_PLAN_OPERATIONS, 0)
         for output in outputs:
@@ -1069,7 +1075,7 @@ def _persisted_plan_facts(
             and len(outputs) == state.planned_output_count
         )
         if not matches:
-            return False, (), None, None
+            return False, (), None, None, None
         return (
             True,
             tuple(
@@ -1079,6 +1085,7 @@ def _persisted_plan_facts(
             ),
             has_resolved_outputs,
             payload,
+            publication_source_commits,
         )
     except (
         CommandError,
@@ -1088,7 +1095,7 @@ def _persisted_plan_facts(
         UnicodeError,
         ValueError,
     ):
-        return False, (), None, None
+        return False, (), None, None, None
 
 
 def _operation_resolution_matches(
@@ -1146,23 +1153,29 @@ def inspect_history_operation(
     _validate_state(state)
     current_branch = _symbolic_head()
     current_tip = _resolved_commit("HEAD")
+    (
+        plan_matches,
+        plan_operation_counts,
+        has_resolved_outputs,
+        plan_payload,
+        publication_source_commits,
+    ) = _persisted_plan_facts(state)
     safety = collect_history_safety_facts(
         tip=current_tip or state.expected_branch_tip,
         final_tree=state.original_final_tree,
         branch_ref=current_branch,
         source_commits=state.source_commits,
+        publication_source_commits=(
+            publication_source_commits
+            if publication_source_commits is not None
+            else state.source_commits
+        ),
         allowed_remote_refs=state.allowed_remote_refs,
     )
     recovery_matches = (
         not _ref_is_symbolic(state.recovery_ref)
         and _resolved_commit(state.recovery_ref) == state.original_tip
     )
-    (
-        plan_matches,
-        plan_operation_counts,
-        has_resolved_outputs,
-        plan_payload,
-    ) = _persisted_plan_facts(state)
     resolution_matches = _operation_resolution_matches(
         state,
         has_resolved_outputs,

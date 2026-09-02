@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Iterator, Sequence
+from dataclasses import dataclass
 
 from ...batch.line_matching.comparison import derive_display_id_run_sets_from_lines
 from ...batch.ownership.replacement_line_runs import (
     ReplacementLineRun,
     derive_replacement_line_runs_from_lines,
 )
-from ...exceptions import exit_with_error
+from ...core.line_selection import LineRangeBuilder, LineRanges
+from ...core.mapped_storage import MappedIntVector
 from ...core.models import LineEntry, LineLevelChange
+from ...exceptions import exit_with_error
 from ...i18n import _
 
 
@@ -33,6 +36,151 @@ def require_contiguous_display_selection(selected_ids: set[int]) -> None:
 
     if len(selected_ids) != max(selected_ids) - min(selected_ids) + 1:
         exit_with_error(_("Replacement selection must be one contiguous line range."))
+
+
+def _same_display_content(left: LineEntry, right: LineEntry) -> bool:
+    return (
+        left.text_bytes == right.text_bytes
+        and left.has_trailing_newline == right.has_trailing_newline
+    )
+
+
+def _repeated_context_before_selection(
+    lines: Sequence[LineEntry],
+    *,
+    addition_start: int,
+    selection_start: int,
+    context_start: int,
+) -> int:
+    """Count added lines repeated by the retained lines that follow the run."""
+    available_additions = selection_start - addition_start
+    context_count = 0
+    while (
+        context_count < available_additions
+        and context_start + context_count < len(lines)
+        and lines[context_start + context_count].kind == " "
+    ):
+        context_count += 1
+    if context_count == 0:
+        return 0
+
+    width = 4 if context_count <= (1 << 32) - 1 else 8
+    with MappedIntVector(context_count, width=width) as prefix_lengths:
+        matched = 0
+        for context_offset in range(1, context_count):
+            current = lines[context_start + context_offset]
+            while matched and not _same_display_content(
+                current,
+                lines[context_start + matched],
+            ):
+                matched = prefix_lengths[matched - 1]
+            if _same_display_content(
+                current,
+                lines[context_start + matched],
+            ):
+                matched += 1
+            prefix_lengths[context_offset] = matched
+
+        matched = 0
+        for addition_index in range(addition_start, selection_start):
+            if matched == context_count:
+                matched = prefix_lengths[matched - 1]
+            current = lines[addition_index]
+            while matched and not _same_display_content(
+                current,
+                lines[context_start + matched],
+            ):
+                matched = prefix_lengths[matched - 1]
+            if _same_display_content(
+                current,
+                lines[context_start + matched],
+            ):
+                matched += 1
+        return matched
+
+
+@dataclass(frozen=True, slots=True)
+class _SelectionWithAddedRanges(Collection[int]):
+    """A selection extended by disjoint numeric ranges."""
+
+    original: Collection[int]
+    added: LineRanges
+
+    def __contains__(self, line_id: object) -> bool:
+        return line_id in self.original or line_id in self.added
+
+    def __iter__(self) -> Iterator[int]:
+        yield from self.original
+        yield from self.added
+
+    def __len__(self) -> int:
+        return len(self.original) + len(self.added)
+
+
+def expand_addition_selection_to_keep_repeated_context(
+    line_changes: LineLevelChange,
+    selected_ids: Collection[int],
+) -> Collection[int]:
+    """Include copied context immediately before selected new lines.
+
+    A diff can use the later copy of a repeated line as unchanged context. If
+    selected new lines follow the earlier copy, that copy is needed to keep the
+    selected text in its target position.
+    """
+    added_ranges: LineRangeBuilder | None = None
+    line_index = 0
+    while line_index < len(line_changes.lines):
+        if line_changes.lines[line_index].kind not in {"+", "-"}:
+            line_index += 1
+            continue
+
+        first_addition: int | None = None
+        first_selected_addition: int | None = None
+        while (
+            line_index < len(line_changes.lines)
+            and line_changes.lines[line_index].kind in {"+", "-"}
+        ):
+            line = line_changes.lines[line_index]
+            if line.kind == "+":
+                if first_addition is None:
+                    first_addition = line_index
+                if line.id in selected_ids and first_selected_addition is None:
+                    first_selected_addition = line_index
+            line_index += 1
+
+        if (
+            first_addition is None
+            or first_selected_addition is None
+            or first_selected_addition == first_addition
+            or any(
+                line_changes.lines[index].kind == "+"
+                and line_changes.lines[index].id not in selected_ids
+                for index in range(first_selected_addition, line_index)
+            )
+        ):
+            continue
+        repeated_count = _repeated_context_before_selection(
+            line_changes.lines,
+            addition_start=first_addition,
+            selection_start=first_selected_addition,
+            context_start=line_index,
+        )
+        repeated_start = first_selected_addition - repeated_count
+        if repeated_count == 0 or any(
+            line_changes.lines[index].id is None
+            for index in range(repeated_start, first_selected_addition)
+        ):
+            continue
+        if added_ranges is None:
+            added_ranges = LineRangeBuilder()
+        for index in range(repeated_start, first_selected_addition):
+            line_id = line_changes.lines[index].id
+            assert line_id is not None
+            added_ranges.add_line(line_id)
+
+    if added_ranges is None:
+        return selected_ids
+    return _SelectionWithAddedRanges(selected_ids, added_ranges.finish())
 
 
 def build_leading_replacement_addition_selection_error(
@@ -146,6 +294,7 @@ def expand_replacement_selection_ids(
     *,
     preserve_partial_addition_prefix: bool = False,
     preserve_explicit_addition_span: bool = False,
+    preserve_explicit_deletion_span: bool = False,
 ) -> set[int]:
     """Expand selected rows to every adjacent mixed replacement core.
 
@@ -158,6 +307,7 @@ def expand_replacement_selection_ids(
             requested_ids,
             preserve_partial_addition_prefix=preserve_partial_addition_prefix,
             preserve_explicit_addition_span=preserve_explicit_addition_span,
+            preserve_explicit_deletion_span=preserve_explicit_deletion_span,
         )
     )
     return expanded_ids
@@ -175,6 +325,7 @@ def expand_replacement_selection_ids_with_explicit_span_status(
         requested_ids,
         preserve_partial_addition_prefix=preserve_partial_addition_prefix,
         preserve_explicit_addition_span=True,
+        preserve_explicit_deletion_span=False,
     )
 
 
@@ -184,6 +335,7 @@ def _expand_replacement_selection_ids(
     *,
     preserve_partial_addition_prefix: bool,
     preserve_explicit_addition_span: bool,
+    preserve_explicit_deletion_span: bool,
 ) -> tuple[set[int], bool]:
     """Return effective IDs and whether an explicit addition span was kept."""
     expanded_ids: set[int] | None = None
@@ -250,6 +402,15 @@ def _expand_replacement_selection_ids(
             and requested_count_in_run == len(requested_ids)
             and requested_indices_are_contiguous
         )
+        selects_contiguous_deletion_span = (
+            deletion_count > addition_count
+            and first_requested_index is not None
+            and first_requested_index < first_addition
+            and last_requested_index is not None
+            and last_requested_index < first_addition
+            and requested_count_in_run == len(requested_ids)
+            and requested_indices_are_contiguous
+        )
         selected_addition_count = 0
         for run_index in range(first_addition, run_stop):
             line_id = line_changes.lines[run_index].id
@@ -276,6 +437,8 @@ def _expand_replacement_selection_ids(
             and selects_contiguous_addition_span
         ):
             preserved_explicit_addition_span = True
+            continue
+        if preserve_explicit_deletion_span and selects_contiguous_deletion_span:
             continue
         if (
             preserve_partial_addition_prefix

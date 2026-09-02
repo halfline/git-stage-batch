@@ -174,6 +174,11 @@ def require_single_file_context_for_line_selection_ranges(
         return None
 
     assert line_ids is not None
+    return parse_command_line_selection_ranges(line_ids)
+
+
+def parse_command_line_selection_ranges(line_ids: str) -> LineRanges:
+    """Parse command-line line IDs as ranges without exposing tracebacks."""
     try:
         return parse_line_selection_ranges(line_ids)
     except ValueError as error:

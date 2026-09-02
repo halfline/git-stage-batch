@@ -35,6 +35,7 @@ from .session import get_iteration_count
 from .status_types import (
     ChangeSummary,
     FileReviewSummary,
+    PromptStatusSummary,
     StatusSummary,
 )
 from ..utils.file_io import count_nonblank_text_file_lines, stream_text_file_lines
@@ -49,16 +50,53 @@ from ..utils.paths import (
 
 def read_status_summary() -> StatusSummary:
     """Read the complete machine-readable status summary for an active session."""
+    skipped_hunks = _read_skipped_hunks()
+    prompt_summary = _read_prompt_status_summary(
+        remaining_estimate=_estimate_remaining_hunks(),
+        skipped_count=len(skipped_hunks),
+    )
+    return {
+        **prompt_summary,
+        "skipped_hunks": skipped_hunks,
+    }
+
+
+def read_prompt_status_summary() -> PromptStatusSummary:
+    """Read the exact status fields exposed to a shell prompt."""
+    return _read_prompt_status_summary(
+        remaining_estimate=_estimate_remaining_hunks(),
+    )
+
+
+def read_prompt_status_cache_seed() -> PromptStatusSummary:
+    """Read prompt fields without scanning every remaining change.
+
+    This is used only until the background refresh publishes an exact count.
+    A selected change proves that at least one change remains.
+    """
+    return _read_prompt_status_summary(remaining_estimate=None)
+
+
+def _read_prompt_status_summary(
+    *,
+    remaining_estimate: int | None,
+    skipped_count: int | None = None,
+) -> PromptStatusSummary:
+    """Assemble prompt fields from session state and one remaining count."""
     iteration = get_iteration_count()
 
     included_count = count_nonblank_text_file_lines(get_included_hunks_file_path())
     discarded_count = count_nonblank_text_file_lines(get_discarded_hunks_file_path())
-    skipped_hunks = _read_skipped_hunks()
+    if skipped_count is None:
+        skipped_count = count_nonblank_text_file_lines(
+            get_skipped_hunks_jsonl_file_path()
+        )
 
     has_selected, selected_summary = _read_selected_change_summary()
     file_review_summary = _read_file_review_summary()
 
-    remaining_estimate = _estimate_remaining_hunks()
+    if remaining_estimate is None:
+        remaining_estimate = 1 if has_selected else 0
     status_value = "in_progress" if has_selected or remaining_estimate > 0 else "complete"
 
     return {
@@ -72,11 +110,10 @@ def read_status_summary() -> StatusSummary:
         "file_review": file_review_summary,
         "progress": {
             "included": included_count,
-            "skipped": len(skipped_hunks),
+            "skipped": skipped_count,
             "discarded": discarded_count,
             "remaining": remaining_estimate,
         },
-        "skipped_hunks": skipped_hunks,
     }
 
 

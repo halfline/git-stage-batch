@@ -331,9 +331,19 @@ When no session is active, `--for-prompt` prints nothing, so any spacing or
 brackets included in `FORMAT` are hidden too. Without `FORMAT`, it prints
 `STAGING`. In prompt output, `{status}` is the operation name `STAGING`;
 `{progress_status}` exposes the underlying `in_progress` or `complete` state.
-Prompt rendering is lock-free and read-only so shell startup never waits for an
-in-progress staging operation. A prompt may briefly reflect either side of a
-concurrent update, but it does not modify or clean up session state.
+Rich prompt fields come from a small cache in the active session. The first
+rich prompt records the current counters and selected change without counting
+every remaining change, then starts an exact refresh in the background. Later
+prompts read that one cache file. Regular `status` still calculates current
+values directly.
+
+Neither the prompt nor its background refresh waits for the session lock. The
+refresh compares the lock generation and active-session marker before and after
+its scan, and publishes the result atomically only when both stayed unchanged.
+A prompt may therefore show the prior snapshot while another command runs, but
+it never receives a result assembled across that command. Prompt cache files
+are disposable and do not change the index, worktree, batches, or recovery
+state.
 Format fields include `{status}`, `{status_label}`, `{progress_status}`,
 `{progress_label}`, `{iteration}`, `{processed}`, `{total}`, `{included}`,
 `{skipped}`, `{discarded}`, `{remaining}`, `{selected_file}`,

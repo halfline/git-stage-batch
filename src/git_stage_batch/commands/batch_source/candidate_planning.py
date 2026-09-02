@@ -1,4 +1,4 @@
-"""Shared operation-candidate planning for batch-source commands."""
+"""Plan possible merge results for commands that read a batch."""
 
 from __future__ import annotations
 
@@ -62,9 +62,7 @@ def plan_apply_candidate_previews(
             spool_dir=spool_dir,
         )
         if capture_selected_ownership is not None:
-            capture_selected_ownership(
-                ownership.to_attribution_metadata_dict()
-            )
+            capture_selected_ownership(ownership.to_applied_metadata_dict())
         return _build_apply_candidate_previews(
             batch_name=batch_name,
             file_path=file_path,
@@ -133,9 +131,7 @@ def plan_include_candidate_previews(
             source_for_candidates,
             candidate_ownership,
             index_lines,
-            legacy_unmarked_source_alternatives=(
-                legacy_unmarked_source_alternatives
-            ),
+            legacy_unmarked_source_alternatives=(legacy_unmarked_source_alternatives),
             spool_dir=spool_dir,
         )
         reject_ambiguous_legacy_presence_replay(
@@ -143,9 +139,7 @@ def plan_include_candidate_previews(
             source_for_candidates,
             candidate_ownership,
             worktree_lines,
-            legacy_unmarked_source_alternatives=(
-                legacy_unmarked_source_alternatives
-            ),
+            legacy_unmarked_source_alternatives=(legacy_unmarked_source_alternatives),
             spool_dir=spool_dir,
         )
 

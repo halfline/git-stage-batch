@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 import json
 import os
-import shutil
 from pathlib import Path
+import shutil
 
 from . import worktree as _undo_worktree
 from ..recovery_types import (
@@ -43,6 +44,14 @@ from ...utils.session_start_point import current_head_commit
 from ...exceptions import CommandError
 from ...git_paths import display_path
 from ...i18n import _
+
+
+DISPOSABLE_SESSION_PATHS = frozenset(
+    {
+        "status-summary.json",
+        "status-summary-prompt",
+    }
+)
 
 
 def snapshot_current_state(
@@ -139,16 +148,24 @@ def filesystem_directory_state(
     source_dir: Path,
     *,
     relative_paths: list[str] | None = None,
+    excluded_relative_paths: Collection[str] = (),
 ) -> FilesystemState:
     """Return content identities for application-state files."""
+    excluded = frozenset(excluded_relative_paths)
     if not source_dir.exists():
         return {}
     if relative_paths is None:
-        file_paths = sorted(path for path in source_dir.rglob("*") if path.is_file())
+        file_paths = sorted(
+            path
+            for path in source_dir.rglob("*")
+            if path.is_file()
+            and path.relative_to(source_dir).as_posix() not in excluded
+        )
     else:
         file_paths = sorted(
             source_dir / relative_path
             for relative_path in relative_paths
+            if relative_path not in excluded
             if (source_dir / relative_path).is_file()
         )
     normal_file_blobs = create_git_blobs_from_paths(

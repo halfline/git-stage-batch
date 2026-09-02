@@ -202,6 +202,58 @@ def test_multi_line_replacement_addition_uses_digest_for_projection(line_sequenc
     assert {line_changes.lines[index].id for index in display_to_unit} == {1, 2, 3, 4}
 
 
+def test_owned_deletion_is_visible_beneath_unowned_replacement() -> None:
+    """Project ownership separately for the old and new replacement rows."""
+    deletion_fingerprint = attribution_module._attribution_fingerprints.fingerprint_bytes(
+        b"old\n"
+    )
+    assert deletion_fingerprint is not None
+    replacement = attribution_units_module.AttributionUnit(
+        unit_id="replacement",
+        kind=AttributionUnitKind.REPLACEMENT,
+        file_path="test.txt",
+        claimed_line_in_working_tree=2,
+        claimed_content=b"live\n",
+        deletion_anchor_in_working_tree=1,
+        deletion_content=None,
+        deletion_fingerprint=deletion_fingerprint,
+    )
+    deletion = attribution_units_module.AttributionUnit(
+        unit_id="deletion",
+        kind=AttributionUnitKind.DELETION_ONLY,
+        file_path="test.txt",
+        claimed_line_in_working_tree=None,
+        claimed_content=None,
+        deletion_anchor_in_working_tree=1,
+        deletion_content=None,
+        deletion_fingerprint=deletion_fingerprint,
+    )
+    attribution = FileAttribution(
+        file_path="test.txt",
+        units=[
+            AttributedUnit(replacement, set()),
+            AttributedUnit(deletion, {"saved"}),
+        ],
+    )
+    line_changes = build_line_changes_from_patch_lines(
+        (
+            b"diff --git a/test.txt b/test.txt\n"
+            b"--- a/test.txt\n"
+            b"+++ b/test.txt\n"
+            b"@@ -1,3 +1,3 @@\n"
+            b" keep\n"
+            b"-old\n"
+            b"+live\n"
+            b" tail\n"
+        ).splitlines(keepends=True)
+    )
+
+    display_to_unit = project_attribution_to_diff(attribution, line_changes)
+
+    assert display_to_unit[1] is attribution.units[1]
+    assert display_to_unit[2] is attribution.units[0]
+
+
 def test_legacy_claimed_lines_metadata_owns_presence_units(temp_repo, monkeypatch):
     """Attribution should treat old claimed_lines as presence ownership."""
     test_file = temp_repo / "test.txt"

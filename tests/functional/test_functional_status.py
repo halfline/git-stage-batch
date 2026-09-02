@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -141,6 +142,48 @@ class TestStatusCommand:
         result = git_stage_batch("status")
         assert result.returncode == 0
         # Should show multiple files
+
+    def test_rich_prompt_cache_refreshes_in_background(self, repo_with_changes):
+        """A rich prompt should return its seed, then publish the exact count."""
+        git_stage_batch("start")
+
+        first = git_stage_batch(
+            "status",
+            "--for-prompt={processed}/{total}",
+        )
+        assert first.returncode == 0
+        assert "/" in first.stdout
+
+        git_directory = Path(
+            _git_output(repo_with_changes, "rev-parse", "--absolute-git-dir").strip()
+        )
+        cache_path = (
+            git_directory
+            / "git-stage-batch"
+            / "session"
+            / "status-summary.json"
+        )
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                cache = json.loads(cache_path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                cache = None
+            if cache is not None and cache.get("exact") is True:
+                break
+            if time.monotonic() >= deadline:
+                pytest.fail("prompt status cache did not finish refreshing")
+            time.sleep(0.02)
+
+        progress = cache["summary"]["progress"]
+        processed = progress["included"] + progress["skipped"] + progress["discarded"]
+        expected = f"{processed}/{processed + progress['remaining']}"
+
+        second = git_stage_batch(
+            "status",
+            "--for-prompt={processed}/{total}",
+        )
+        assert second.stdout == expected
 
     def test_status_outside_repo(self, tmp_path, monkeypatch):
         """Test status outside a git repo."""

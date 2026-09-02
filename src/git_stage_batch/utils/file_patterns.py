@@ -45,6 +45,10 @@ def resolve_gitignore_style_patterns(
     if not normalized_candidates:
         return []
 
+    selected: set[str] = set()
+    payload = b"".join(
+        encode_path(candidate) + b"\0" for candidate in normalized_candidates
+    )
     with tempfile.TemporaryDirectory(prefix="git-stage-batch-patterns-") as temp_dir:
         temp_root = Path(temp_dir)
         run_git_command(
@@ -53,36 +57,45 @@ def resolve_gitignore_style_patterns(
             text_output=False,
             requires_index_lock=False,
         )
-        write_text_file_contents(temp_root / ".gitignore", "".join(f"{pattern}\n" for pattern in normalized_patterns))
-
-        payload = b"".join(encode_path(candidate) + b"\0" for candidate in normalized_candidates)
-        result = run_git_command(
-            ["check-ignore", "--no-index", "--stdin", "-z", "-v", "-n"],
-            stdin_chunks=[payload],
-            cwd=str(temp_root),
-            check=False,
-            text_output=False,
-            requires_index_lock=False,
-        )
-        if result.returncode not in (0, 1):
-            raise subprocess.CalledProcessError(
-                result.returncode,
-                result.args,
-                output=result.stdout,
-                stderr=result.stderr,
+        for pattern in normalized_patterns:
+            excludes = pattern.startswith("!")
+            matching_pattern = pattern[1:] if excludes else pattern
+            if not matching_pattern:
+                continue
+            write_text_file_contents(
+                temp_root / ".gitignore",
+                f"{matching_pattern}\n",
             )
+            result = run_git_command(
+                ["check-ignore", "--no-index", "--stdin", "-z", "-v", "-n"],
+                stdin_chunks=[payload],
+                cwd=str(temp_root),
+                check=False,
+                text_output=False,
+                requires_index_lock=False,
+            )
+            if result.returncode not in (0, 1):
+                raise subprocess.CalledProcessError(
+                    result.returncode,
+                    result.args,
+                    output=result.stdout,
+                    stderr=result.stderr,
+                )
 
-    fields = nul_records(result.stdout)
-    resolved_status: dict[str, bool] = {}
-    for index in range(0, len(fields) - 1, 4):
-        _source, _line_number, pattern, candidate = fields[index:index + 4]
-        if not candidate:
-            continue
-        candidate_text = decode_path(candidate)
-        pattern_text = decode_path(pattern)
-        resolved_status[candidate_text] = bool(pattern_text) and not pattern_text.startswith("!")
+            fields = nul_records(result.stdout)
+            matched: set[str] = set()
+            for index in range(0, len(fields) - 1, 4):
+                _source, _line_number, matched_pattern, candidate = fields[
+                    index : index + 4
+                ]
+                if candidate and matched_pattern:
+                    matched.add(decode_path(candidate))
+            if excludes:
+                selected.difference_update(matched)
+            else:
+                selected.update(matched)
 
-    return [candidate for candidate in normalized_candidates if resolved_status.get(candidate, False)]
+    return [candidate for candidate in normalized_candidates if candidate in selected]
 
 
 def _paths_from_name_status_z(output: bytes) -> list[str]:

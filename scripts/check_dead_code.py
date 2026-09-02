@@ -95,6 +95,12 @@ ALLOWED_FINDINGS = (
         "TypedDict key read from persisted metadata by string name.",
     ),
     _allowed(
+        "src/git_stage_batch/batch/state/metadata_types.py",
+        "variable",
+        "batch_source_is_target",
+        "TypedDict key read from persisted metadata by string name.",
+    ),
+    _allowed(
         "src/git_stage_batch/commands/batch_source/text_plan_jobs.py",
         "variable",
         "replacement_display_text",
@@ -199,12 +205,6 @@ ALLOWED_FINDINGS = (
     _allowed(
         "src/git_stage_batch/data/status_types.py",
         "variable",
-        "in_progress",
-        "TypedDict key read from a status response by string name.",
-    ),
-    _allowed(
-        "src/git_stage_batch/data/status_types.py",
-        "variable",
         "skipped",
         "TypedDict key read from a status response by string name.",
     ),
@@ -245,12 +245,6 @@ ALLOWED_FINDINGS = (
         "TypedDict key consumed through str.format_map.",
     ),
     _allowed(
-        "src/git_stage_batch/output/status_prompt.py",
-        "variable",
-        "in_progress",
-        "TypedDict key consumed through str.format_map.",
-    ),
-    _allowed(
         "src/git_stage_batch/utils/journal.py",
         "variable",
         "oldest_timestamp",
@@ -274,18 +268,6 @@ ALLOWED_FINDINGS = (
         "variable",
         "change_index",
         "Field is persisted through dataclasses.asdict.",
-    ),
-    _allowed(
-        "src/git_stage_batch/data/live_change_jobs.py",
-        "variable",
-        "mtime_ns",
-        "Field contributes to whole-dataclass equality.",
-    ),
-    _allowed(
-        "src/git_stage_batch/data/live_change_jobs.py",
-        "variable",
-        "ctime_ns",
-        "Field contributes to whole-dataclass equality.",
     ),
     # Protocol surface used indirectly by the standard library.
     _allowed(
@@ -338,12 +320,6 @@ ALLOWED_FINDINGS = (
         "function",
         "build_target_index_buffer_with_replaced_lines",
         "Compatibility staging adapter remains available during edit-plan migration.",
-    ),
-    _allowed(
-        "src/git_stage_batch/staging/content_buffers.py",
-        "function",
-        "build_target_working_tree_buffer_with_edit_plan",
-        "Snapshot-bound worktree adapter remains available during edit-plan migration.",
     ),
 )
 

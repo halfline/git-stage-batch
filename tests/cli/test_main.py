@@ -193,6 +193,52 @@ def test_main_skips_session_lock_for_rich_prompt_status():
     assert events == [("dispatch", "{processed}/{total}")]
 
 
+def test_main_requests_prompt_refresh_after_other_commands():
+    """A completed non-status command should maintain an enabled cache."""
+    args = _parse_args("list")
+
+    @contextmanager
+    def fake_lock():
+        yield
+
+    with patch.object(sys, "argv", ["git-stage-batch", "list"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "require_git_repository"):
+                with patch.object(main_module, "should_page_output", return_value=False):
+                    with patch.object(main_module, "acquire_session_lock", fake_lock):
+                        with patch.object(main_module, "dispatch_cli_mode"):
+                            with patch.object(
+                                main_module,
+                                "_request_status_cache_refresh",
+                            ) as request_refresh:
+                                main_module.main()
+
+    request_refresh.assert_called_once_with()
+
+
+def test_main_leaves_status_cache_scheduling_to_status_command():
+    """Status reads and its hidden worker should not trigger the completion hook."""
+    args = _parse_args("status")
+
+    @contextmanager
+    def fake_lock():
+        yield
+
+    with patch.object(sys, "argv", ["git-stage-batch", "status"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "require_git_repository"):
+                with patch.object(main_module, "should_page_output", return_value=False):
+                    with patch.object(main_module, "acquire_session_lock", fake_lock):
+                        with patch.object(main_module, "dispatch_cli_mode"):
+                            with patch.object(
+                                main_module,
+                                "_request_status_cache_refresh",
+                            ) as request_refresh:
+                                main_module.main()
+
+    request_refresh.assert_not_called()
+
+
 def test_main_handles_keyboard_interrupt_without_traceback(capsys):
     """Ctrl-C should exit cleanly without Python's KeyboardInterrupt traceback."""
     args = Namespace(working_directory=None)

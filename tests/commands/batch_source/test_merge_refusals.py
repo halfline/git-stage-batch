@@ -26,7 +26,9 @@ def test_refuse_batch_source_merge_failures_suggests_line_selection(
     monkeypatch.setattr(
         merge_refusals,
         "render_batch_file_display",
-        lambda batch_name, file_path: SimpleNamespace(gutter_to_selection_id={1: 10}),
+        lambda batch_name, file_path, **_kwargs: SimpleNamespace(
+            gutter_to_selection_id={1: 10}
+        ),
     )
 
     message = _refusal_message(["notes.txt"])
@@ -42,7 +44,7 @@ def test_refuse_batch_source_merge_failures_omits_line_hint_without_mapping(
     monkeypatch.setattr(
         merge_refusals,
         "render_batch_file_display",
-        lambda batch_name, file_path: None,
+        lambda batch_name, file_path, **_kwargs: None,
     )
 
     message = _refusal_message(["notes.txt"])
@@ -56,7 +58,7 @@ def test_refuse_batch_source_merge_failures_reports_multiple_files(monkeypatch):
     monkeypatch.setattr(
         merge_refusals,
         "render_batch_file_display",
-        lambda batch_name, file_path: pytest.fail("should not render files"),
+        lambda batch_name, file_path, **_kwargs: pytest.fail("should not render files"),
     )
 
     message = _refusal_message(["a.txt", "b.txt"])

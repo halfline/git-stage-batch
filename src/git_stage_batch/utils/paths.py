@@ -50,6 +50,31 @@ def get_session_directory_path() -> Path:
     return get_state_directory_path() / "session"
 
 
+def get_status_summary_cache_file_path(git_dir: Path | None = None) -> Path:
+    """Get the worktree-local prompt status cache path."""
+    session_directory = (
+        git_dir / "git-stage-batch" / "session"
+        if git_dir is not None
+        else get_session_directory_path()
+    )
+    return session_directory / "status-summary.json"
+
+
+def get_status_summary_prompt_marker_file_path(git_dir: Path | None = None) -> Path:
+    """Get the marker that enables prompt status cache refreshes."""
+    session_directory = (
+        git_dir / "git-stage-batch" / "session"
+        if git_dir is not None
+        else get_session_directory_path()
+    )
+    return session_directory / "status-summary-prompt"
+
+
+def get_status_summary_refresh_lock_file_path() -> Path:
+    """Get the shared lock used only to combine cache refresh requests."""
+    return get_common_state_directory_path() / "status-summary-refresh.lock"
+
+
 def get_selected_state_directory_path() -> Path:
     """Get the directory containing the selected change cache."""
     return get_session_directory_path() / "selected"
@@ -415,6 +440,11 @@ def get_batches_directory_path() -> Path:
 def get_applied_batch_overlays_file_path() -> Path:
     """Get durable worktree-local provenance for explicit batch applications."""
     return get_state_directory_path() / "applied-batch-overlays.json"
+
+
+def get_applied_batch_preimages_directory_path() -> Path:
+    """Get the directory containing text saved before a batch is applied."""
+    return get_state_directory_path() / "applied-batch-preimages"
 
 
 def get_session_applied_batch_overlay_paths_file_path() -> Path:

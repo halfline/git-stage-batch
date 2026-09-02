@@ -1,4 +1,4 @@
-"""Validate baseline-coordinate anchors against merge targets."""
+"""Check saved deletion locations against a merge target."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ...core.line_selection import LineRanges
+from ...core.line_selection import LineRanges, LineSelection
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...core.text_lines import normalize_line_sequence_endings
 from ...exceptions import MergeError as _MergeError
@@ -288,6 +288,7 @@ def _append_pure_insertion_anchor_pairs(
     replacement_presence_lines: LineRanges,
     source_to_working_mapping: LineMapping | None,
     working_lines: Sequence[bytes] | None,
+    trusted_presence_lines: LineRanges | None,
 ) -> None:
     """Append anchors around complete, live independent insertion runs."""
     if source_to_working_mapping is None or working_lines is None:
@@ -373,14 +374,24 @@ def _append_pure_insertion_anchor_pairs(
                         working_lines,
                         normalize_payloads=False,
                     )
-                if not _source_run_has_distinctive_working_placement(
-                    source_lines,
-                    working_lines,
-                    source_to_working_mapping,
-                    source_occurrences,
-                    working_occurrences,
-                    source_start,
-                    source_end,
+                placement_is_recorded = (
+                    trusted_presence_lines is not None
+                    and trusted_presence_lines.contains_range(
+                        source_start,
+                        source_end,
+                    )
+                )
+                if (
+                    not placement_is_recorded
+                    and not _source_run_has_distinctive_working_placement(
+                        source_lines,
+                        working_lines,
+                        source_to_working_mapping,
+                        source_occurrences,
+                        working_occurrences,
+                        source_start,
+                        source_end,
+                    )
                 ):
                     raise _MergeError(
                         _("Batch was created from a different version of the file")
@@ -401,15 +412,22 @@ def acquire_deletion_anchor_pairs_for_target(
     target_lines: Sequence[bytes],
     deletion_claims: Sequence[AbsenceClaim],
     *,
+    compatible_mapping: LineMapping | None = None,
+    protected_source_lines: LineSelection | None = None,
     trust_baseline_coordinates: bool = False,
     spool_dir: str | Path | None = None,
 ) -> Iterator[Sequence[tuple[int, int]]]:
-    """Return coherent source-to-target anchors recorded by deletion claims.
+    """Return deletion locations that are safe to use for this target.
 
-    Exact baseline realization may trust recorded coordinates after checking
-    the deleted bytes. Live targets additionally require the stored boundary
-    identity to match before a coordinate can constrain structural alignment.
+    In the original file, the deleted text must match. In a live file, the
+    neighboring line must match too. An existing line map may not move protected
+    source lines; by default, every mapped source line is protected.
     """
+    if compatible_mapping is not None and (
+        len(compatible_mapping.source_to_target) != len(source_lines)
+        or len(compatible_mapping.target_to_source) != len(target_lines)
+    ):
+        raise ValueError("compatible line mapping has incompatible dimensions")
     with MatcherWorkspace(spool_dir=spool_dir) as workspace:
         anchor_pairs = workspace.record_vector(
             len(deletion_claims),
@@ -466,6 +484,27 @@ def acquire_deletion_anchor_pairs_for_target(
                 continue
             if source_lines[source_line - 1] != target_lines[target_line - 1]:
                 continue
+            if compatible_mapping is not None:
+                mapped_target = compatible_mapping.get_target_line_from_source_line(
+                    source_line
+                )
+                mapped_source = compatible_mapping.get_source_line_from_target_line(
+                    target_line
+                )
+                if (
+                    mapped_target not in (None, target_line)
+                    and (
+                        protected_source_lines is None
+                        or source_line in protected_source_lines
+                    )
+                ) or (
+                    mapped_source not in (None, source_line)
+                    and (
+                        protected_source_lines is None
+                        or mapped_source in protected_source_lines
+                    )
+                ):
+                    continue
 
             anchor_pairs.append((source_line, target_line))
 
@@ -481,6 +520,7 @@ def acquire_discard_baseline_anchor_pairs(
     *,
     source_to_working_mapping: LineMapping | None = None,
     working_lines: Sequence[bytes] | None = None,
+    trusted_presence_lines: LineRanges | None = None,
     spool_dir: str | Path | None = None,
 ) -> Iterator[Sequence[tuple[int, int]]]:
     """Return coherent baseline-to-source anchors for discard alignment.
@@ -646,6 +686,7 @@ def acquire_discard_baseline_anchor_pairs(
                 LineRanges.from_ranges(replacement_presence_ranges),
                 source_to_working_mapping,
                 working_lines,
+                trusted_presence_lines,
             )
 
         if not _sort_and_validate_anchor_pairs(anchor_pairs):
@@ -1152,11 +1193,7 @@ def _live_insertion_boundary_is_unique(
     assert reference is not None
     after_line = reference.after_line
     before_line = reference.before_line
-    if (
-        after_line is None
-        or not reference.has_before_line
-        or before_line is None
-    ):
+    if after_line is None or not reference.has_before_line or before_line is None:
         return True
 
     after_content = reference.after_content

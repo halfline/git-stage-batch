@@ -200,6 +200,7 @@ def collect_history_safety_facts(
     final_tree: str,
     branch_ref: str | None,
     source_commits: tuple[str, ...] = (),
+    publication_source_commits: tuple[str, ...] | None = None,
     allowed_remote_refs: tuple[str, ...] = (),
 ) -> HistorySafetyFacts:
     """Capture dynamic preconditions without mutating history state."""
@@ -214,10 +215,16 @@ def collect_history_safety_facts(
     ahead, behind = _ahead_behind(tip, upstream_tip)
     commits = source_commits or (tip,)
     remote_containment = _remote_containment(commits)
+    publication_commits = frozenset(
+        commits
+        if publication_source_commits is None
+        else publication_source_commits
+    )
     allowed_remote_ref_set = frozenset(allowed_remote_refs)
     disallowed_remote_refs = {
         remote_ref
         for containment in remote_containment
+        if containment.commit_id in publication_commits
         for remote_ref in containment.remote_refs
         if remote_ref not in allowed_remote_ref_set
     }

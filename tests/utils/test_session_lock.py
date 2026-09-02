@@ -13,6 +13,8 @@ from git_stage_batch.utils.session_lock import (
     SessionLockChangedDuringPrompt,
     acquire_session_lock,
     acquire_session_lock_descriptor,
+    current_session_lock_generation,
+    read_session_lock_generation_if_available,
     temporarily_release_session_lock,
 )
 from git_stage_batch.utils.paths import get_session_lock_file_path
@@ -31,6 +33,38 @@ def test_prompt_handoff_without_intervening_lock_holder(lock_git_repo):
     with acquire_session_lock():
         with temporarily_release_session_lock():
             pass
+
+
+def test_lock_generation_can_be_probed_without_waiting(lock_git_repo):
+    """Cache readers should distinguish a free lock from a current owner."""
+    assert read_session_lock_generation_if_available() == 0
+
+    with acquire_session_lock():
+        generation = current_session_lock_generation()
+        assert generation == 1
+        assert read_session_lock_generation_if_available() is None
+
+    assert read_session_lock_generation_if_available() == generation
+
+
+def test_lock_generation_probe_bounds_corrupt_input(lock_git_repo):
+    """A corrupt lock file must not cause an unbounded read."""
+    lock_path = get_session_lock_file_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text("9" * 1000)
+
+    assert read_session_lock_generation_if_available() == 0
+    with acquire_session_lock():
+        assert current_session_lock_generation() == 1
+
+
+def test_lock_generation_probe_rejects_non_regular_file(lock_git_repo):
+    """The nonblocking probe must not open a FIFO as session state."""
+    lock_path = get_session_lock_file_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    os.mkfifo(lock_path)
+
+    assert read_session_lock_generation_if_available() is None
 
 
 def test_prompt_handoff_detects_intervening_lock_holder(lock_git_repo):

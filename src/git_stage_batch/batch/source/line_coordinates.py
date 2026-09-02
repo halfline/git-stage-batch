@@ -1,4 +1,4 @@
-"""Source-coordinate translation for combined diff displays."""
+"""Map displayed diff rows back to lines in a batch source."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from ...core.coordinates import BatchSourceSpace, WorktreeSpace
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.lineage import BatchSourceLineage
 from ..line_matching.transforms import BatchSourceExactTransform
+from ..line_matching.transforms import EmbeddedContentSpanProjection
 
 
 class SourceCoordinateTransform(Protocol):
@@ -80,6 +81,25 @@ class ExactTransformSourceCoordinates:
         return self.source_transform.translate_line_number(line_number)
 
 
+@dataclass(frozen=True, slots=True)
+class ExactEmbeddedSourceCoordinates:
+    """Line positions for an exact worktree copy stored in the batch."""
+
+    projection: EmbeddedContentSpanProjection[
+        WorktreeSpace,
+        BatchSourceSpace,
+    ]
+
+    def translate_working_line(self, line_number: int) -> int | None:
+        return self.projection.translate_line_number(line_number)
+
+    def translate_existing_source_line(self, line_number: int) -> None:
+        # This copy verifies current worktree lines only. A deletion can still
+        # refer to an older position recorded when the batch was saved.
+        del line_number
+        return None
+
+
 def translate_display_source_coordinates(
     lines: Iterable[LineEntry],
     transform: SourceCoordinateTransform,
@@ -106,9 +126,7 @@ def translate_display_source_coordinates(
                 if source_line is not None:
                     last_source_line = source_line
                 if line.old_line_number is not None:
-                    coordinate_delta = (
-                        line.new_line_number - line.old_line_number
-                    )
+                    coordinate_delta = line.new_line_number - line.old_line_number
             deletion_run_anchor = None
             previous_deleted_old_line = None
         elif line.kind == "+":
@@ -125,20 +143,12 @@ def translate_display_source_coordinates(
                 and line.old_line_number == previous_deleted_old_line + 1
             ):
                 deletion_run_anchor = last_source_line
-                if (
-                    deletion_run_anchor is None
-                    and line.source_line is not None
-                ):
+                if deletion_run_anchor is None and line.source_line is not None:
                     deletion_run_anchor = transform.translate_existing_source_line(
                         line.source_line
                     )
-                if (
-                    deletion_run_anchor is None
-                    and line.old_line_number is not None
-                ):
-                    working_anchor = (
-                        line.old_line_number - 1 + coordinate_delta
-                    )
+                if deletion_run_anchor is None and line.old_line_number is not None:
+                    working_anchor = line.old_line_number - 1 + coordinate_delta
                     if working_anchor > 0:
                         deletion_run_anchor = transform.translate_working_line(
                             working_anchor

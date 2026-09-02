@@ -245,6 +245,36 @@ def test_discard_refuses_pure_insertion_in_ambiguous_source_clone(working):
             )
 
 
+def test_discard_accepts_recorded_insertion_in_ambiguous_source_clone() -> None:
+    """Fresh apply evidence can identify an otherwise repeated insertion."""
+    baseline = [b"H\n", b"A\n", b"B\n", b"T\n"]
+    source = [b"H\n", b"A\n", b"X\n", b"B\n", b"T\n"]
+    working = [b"P\n", *source, b"U\n", *source]
+    reference = BaselineReference(
+        after_line=2,
+        after_content=b"A\n",
+        before_line=3,
+        before_content=b"B\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        baseline_references={3: reference},
+    )
+
+    with match_lines(source, working) as source_to_working:
+        anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership,
+            source_to_working_mapping=source_to_working,
+            working_lines=working,
+            trusted_presence_lines=LineRanges.from_specs(["3"]),
+        )
+
+    assert anchors == ((2, 2), (3, 4))
+
+
 def test_discard_does_not_anchor_partial_copied_insertion_run():
     """One selected line cannot stand in for its unselected insertion sibling."""
     baseline = [b"A\n", b"B\n"]
@@ -316,11 +346,14 @@ def test_discard_does_not_anchor_malformed_deletion_reference():
         ],
     )
 
-    assert _discard_anchor_pairs(
-        [b"A\n", b"new\n"],
-        [b"A\n", b"old\n"],
-        ownership,
-    ) == ()
+    assert (
+        _discard_anchor_pairs(
+            [b"A\n", b"new\n"],
+            [b"A\n", b"old\n"],
+            ownership,
+        )
+        == ()
+    )
 
 
 def test_discard_anchors_replacement_on_both_equal_edges():
@@ -556,11 +589,14 @@ def test_live_target_anchor_requires_verified_deletion_boundary():
         ),
     )
 
-    assert _deletion_anchor_pairs(
-        source,
-        target,
-        [numeric_claim],
-    ) == ()
+    assert (
+        _deletion_anchor_pairs(
+            source,
+            target,
+            [numeric_claim],
+        )
+        == ()
+    )
     assert _deletion_anchor_pairs(
         source,
         target,
@@ -585,6 +621,43 @@ def test_live_target_anchor_tracks_one_shifted_verified_boundary():
     )
 
     assert _deletion_anchor_pairs(source, target, [claim]) == ((2, 3),)
+
+
+def test_live_target_anchor_does_not_steal_existing_mapped_line():
+    """A removal boundary cannot reassign context owned by an existing mapping."""
+    source = [
+        b"retained\n",
+        b"\n",
+        b"missing\n",
+        b"\n",
+        b"new\n",
+        b"old\n",
+        b"tail\n",
+    ]
+    target = [b"retained\n", b"\n", b"old\n", b"tail\n"]
+    claim = AbsenceClaim(
+        anchor_line=4,
+        content_lines=[b"old\n"],
+        baseline_reference=BaselineReference(
+            after_line=4,
+            after_content=b"\n",
+            before_line=7,
+            before_content=b"tail\n",
+            has_before_line=True,
+        ),
+    )
+
+    assert _deletion_anchor_pairs(source, target, [claim]) == ((4, 2),)
+    with match_lines(source, target) as mapping:
+        assert (
+            _deletion_anchor_pairs(
+                source,
+                target,
+                [claim],
+                compatible_mapping=mapping,
+            )
+            == ()
+        )
 
 
 def test_live_target_rejects_repeated_verified_deletion_boundary():
@@ -669,9 +742,7 @@ def test_live_merge_does_not_apply_ambiguous_baseline_coordinate(supply_mapping)
         ),
     )
     mapping_context = (
-        match_lines(source, target)
-        if supply_mapping
-        else nullcontext(None)
+        match_lines(source, target) if supply_mapping else nullcontext(None)
     )
 
     with mapping_context as mapping:
@@ -907,12 +978,15 @@ def test_bounded_live_removal_refuses_common_candidates(monkeypatch):
     )
     with MatcherWorkspace() as workspace:
         occurrence_index = LinePayloadOccurrenceIndex(workspace, target)
-        assert baseline_anchor_matching.unique_live_removal_edit(
-            claim,
-            target,
-            occurrence_index,
-            candidate_limit=16,
-        ) is None
+        assert (
+            baseline_anchor_matching.unique_live_removal_edit(
+                claim,
+                target,
+                occurrence_index,
+                candidate_limit=16,
+            )
+            is None
+        )
 
 
 def test_live_deletion_anchors_bound_common_candidates(monkeypatch):
@@ -1035,9 +1109,7 @@ def test_live_target_checks_indexed_boundary_candidates(monkeypatch):
         for index in range(1, 1001)
     ]
     identity_checks = 0
-    original_check = (
-        baseline_anchor_matching._removal_boundary_identity_matches_at
-    )
+    original_check = baseline_anchor_matching._removal_boundary_identity_matches_at
 
     def count_identity_checks(*args, **kwargs):
         nonlocal identity_checks

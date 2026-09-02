@@ -10,6 +10,11 @@ import pytest
 
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from git_stage_batch.commands.batch_transform.sift_jobs import (
     SiftTextFileJob,
     SiftTextFileJobResult,
@@ -66,10 +71,36 @@ def _job(workspace: FileJobWorkspace, *, ordinal: int = 0) -> SiftTextFileJob:
 
 def _retained_result() -> SiftedTextFileResult:
     deletion = LineBuffer.from_bytes(b"old\n")
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"base\n",
+        before_line=None,
+        has_before_line=True,
+    )
     return SiftedTextFileResult(
         ownership=BatchOwnership.from_presence_lines(
             ["2-3"],
-            [AbsenceClaim(anchor_line=1, content_lines=deletion)],
+            [
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=deletion,
+                    baseline_reference=reference,
+                )
+            ],
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["2-3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=2,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=reference,
+                    ),
+                )
+            ],
+            baseline_references={2: reference},
         ),
         target_buffer=LineBuffer.from_bytes(b"base\nnew\nmore\n"),
         change_type="modified",
@@ -107,10 +138,39 @@ def test_compute_streams_target_and_deletions_to_manifest(
         assert manifest["deletions"] == [
             {
                 "anchor_line": 1,
+                "baseline_reference": {
+                    "after_content": "YmFzZQo=",
+                    "after_known": True,
+                    "after_line": 1,
+                    "before_content": None,
+                    "before_known": True,
+                    "before_line": None,
+                },
                 "content_path": str(
                     Path(job.deletion_output_directory) / "00000000-content.bin"
                 ),
                 "output_order": 0,
+            }
+        ]
+        assert manifest["presence_references"] == [
+            {
+                "line": 2,
+                "reference": manifest["deletions"][0]["baseline_reference"],
+            }
+        ]
+        assert manifest["replacement_units"] == [
+            {
+                "deletion_indices": [0],
+                "origin": {
+                    "baseline_reference": manifest["deletions"][0][
+                        "baseline_reference"
+                    ],
+                    "new_end": 3,
+                    "new_start": 2,
+                    "old_end": 2,
+                    "old_start": 2,
+                },
+                "presence_lines": ["2-3"],
             }
         ]
         assert Path(manifest["deletions"][0]["content_path"]).read_bytes() == b"old\n"
@@ -124,6 +184,12 @@ def test_compute_streams_target_and_deletions_to_manifest(
             assert loaded.target_buffer.to_bytes() == b"base\nnew\nmore\n"
             assert loaded.ownership.presence_line_set().to_range_strings() == ["2-3"]
             assert loaded.ownership.deletions[0].content_lines.to_bytes() == b"old\n"
+            references = loaded.ownership.presence_baseline_references()
+            assert references[2] == loaded.ownership.deletions[0].baseline_reference
+            assert references[2].after_content == b"base\n"
+            assert len(loaded.ownership.replacement_units) == 1
+            assert loaded.ownership.replacement_units[0].origin is not None
+            assert loaded.ownership.replacement_units[0].origin.new_end == 3
         finally:
             loaded.close()
 
@@ -170,7 +236,7 @@ def test_compute_reports_merge_error_as_ordered_scalar(tmp_path, monkeypatch):
         assert_file_job_transport_value(result)
 
 
-def test_compute_refuses_unrepresented_ownership_fields(tmp_path, monkeypatch):
+def test_compute_refuses_invalid_replacement_unit(tmp_path, monkeypatch):
     with FileJobWorkspace(parent_directory=tmp_path) as workspace:
         job = _job(workspace)
         source_result = _retained_result()
@@ -182,8 +248,8 @@ def test_compute_refuses_unrepresented_ownership_fields(tmp_path, monkeypatch):
         )
 
         with pytest.raises(
-            ValueError,
-            match="do not support replacement units",
+            TypeError,
+            match="require replacement-unit records",
         ):
             compute_sifted_text_file_job(job)
 

@@ -72,6 +72,7 @@ def _mock_live_file_candidates(monkeypatch, changed, untracked=(), staged=()):
     monkeypatch.setattr(file_scope, "list_changed_files", lambda: list(changed))
     monkeypatch.setattr(file_scope, "list_untracked_files", lambda: list(untracked))
     monkeypatch.setattr(file_scope, "list_staged_files", lambda: list(staged))
+    monkeypatch.setattr(file_scope, "list_tracked_files", lambda paths: [])
 
 
 def _mock_batch_files(monkeypatch, files, *, exists=True):
@@ -741,6 +742,7 @@ def test_parse_command_line_status():
     args = parse_command_line(["status"], quiet=True)
     assert args is not None
     assert args.command == "status"
+    assert args.refresh_prompt_cache_after_command is False
     assert hasattr(args, "func")
     assert callable(args.func)
 
@@ -750,6 +752,7 @@ def test_parse_command_line_status_alias():
     args = parse_command_line(["st"], quiet=True)
     assert args is not None
     assert args.command == "st"
+    assert args.refresh_prompt_cache_after_command is False
     assert hasattr(args, "func")
     assert callable(args.func)
 

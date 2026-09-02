@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ...batch.file_display import render_batch_file_display
+from ..applied_batch_overlays import fresh_applied_batch_overlay_for_path
 from ...batch.selection import require_single_file_context_for_line_selection_ranges
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import (
@@ -142,7 +143,11 @@ def translate_batch_file_gutter_ids_to_selection_ids(
         file_path,
         action,
     )
-    rendered = render_batch_file_display(batch_name, file_path)
+    rendered = render_batch_file_display(
+        batch_name,
+        file_path,
+        applied_overlay=fresh_applied_batch_overlay_for_path(file_path),
+    )
     if rendered is None:
         return selected_ids, None
 
@@ -243,7 +248,11 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
         return selected_ids
     validate_review_scoped_line_selection(selected_ids, review_selections)
 
-    rendered = render_batch_file_display(batch_name, file_path)
+    rendered = render_batch_file_display(
+        batch_name,
+        file_path,
+        applied_overlay=fresh_applied_batch_overlay_for_path(file_path),
+    )
     if rendered is None:
         raise CommandError(
             _("No changes for file '{file}' in batch '{name}'.").format(

@@ -15,6 +15,7 @@ from ..commands.include import (
     command_include_file_as,
     command_include_line,
     command_include_line_as,
+    command_include_line_as_to_batch,
     command_include_to_batch,
 )
 from ..commands.include_from import command_include_from_batch
@@ -28,6 +29,25 @@ from .replacement_input import require_replacement_text
 def _dispatch_include_replacement(args: argparse.Namespace) -> None:
     if args.as_text is not None and args.as_stdin:
         raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
+    if args.line_ids is not None and args.to_batch and not args.from_batch:
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.INCLUDE_TO_BATCH,
+            line_ids=args.line_ids,
+        )
+        resolved_file = resolved_live_scope.require_single_line_file(
+            _("Cannot use --lines with multiple files.")
+        )
+        command_include_line_as_to_batch(
+            args.to_batch,
+            args.line_ids,
+            require_replacement_text(args),
+            file=resolved_file,
+            no_edge_overlap=args.no_edge_overlap,
+            auto_advance=args.auto_advance,
+        )
+        return
     if args.line_ids is not None and args.from_batch and not args.to_batch:
         if args.no_edge_overlap:
             raise CommandError(
@@ -83,6 +103,7 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
             args.file,
             args.file_patterns,
             include_staged=True,
+            include_unchanged_explicit_files=True,
             selected_action=FileReviewAction.INCLUDE,
         )
         if resolved_live_scope.is_implicit:

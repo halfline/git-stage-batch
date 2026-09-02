@@ -597,18 +597,20 @@ def test_absence_content_builder_closes_editor_on_finish(monkeypatch):
 
 def test_absence_content_builder_closes_editor_on_exception(monkeypatch):
     """Failing absence construction should close the temporary editor."""
+    builder = AbsenceContentBuilder()
+    editor = builder._check_open()
     close_count = 0
-    original_close = absence_content_module.LineEditor.close
+    original_close = editor.close
 
-    def count_close(self):
+    def count_close():
         nonlocal close_count
         close_count += 1
-        original_close(self)
+        original_close()
 
-    monkeypatch.setattr(absence_content_module.LineEditor, "close", count_close)
+    monkeypatch.setattr(editor, "close", count_close)
 
     with pytest.raises(RuntimeError, match="boom"):
-        with AbsenceContentBuilder() as builder:
+        with builder:
             builder.append_line_range([b"old\n"], 0, 1)
             raise RuntimeError("boom")
 

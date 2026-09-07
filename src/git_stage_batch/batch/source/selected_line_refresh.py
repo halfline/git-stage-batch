@@ -301,16 +301,18 @@ def _validated_addition_run_start(
 
 
 class _WorkingLineRun(Sequence[bytes]):
-    """A view of consecutive worktree lines that does not copy them."""
+    """A view of worktree lines that does not copy them when sliced."""
 
     def __init__(
         self,
         lines: Sequence[bytes],
         start_index: int,
         line_count: int,
+        *,
+        step: int = 1,
     ) -> None:
         self._lines = lines
-        self._indexes = range(start_index, start_index + line_count)
+        self._indexes = range(start_index, start_index + line_count * step, step)
 
     def __len__(self) -> int:
         return len(self._indexes)
@@ -328,6 +330,7 @@ class _WorkingLineRun(Sequence[bytes]):
                 self._lines,
                 indexes.start,
                 len(indexes),
+                step=indexes.step,
             )
         try:
             return self._lines[self._indexes[index]]

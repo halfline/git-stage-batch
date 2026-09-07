@@ -517,6 +517,13 @@ class AppliedTextReplayContext:
                             replacement,
                             spool_dir=self._spool_dir,
                         )
+                        if updated is None:
+                            updated = _compose_overlapping_presence_prefix(
+                                current,
+                                replacement,
+                                application,
+                                spool_dir=self._spool_dir,
+                            )
                     if updated is None:
                         raise
                 assert updated is not None

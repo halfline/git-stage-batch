@@ -84,6 +84,13 @@ def test_compose_prefix_preserves_owned_tail(tmp_path):
             ["2-3"],
             id="unowned-tail",
         ),
+        pytest.param(
+            _CHANGED,
+            _REPLACEMENT,
+            _REPLACEMENT,
+            ["3-4"],
+            id="unowned-shared-context",
+        ),
     ],
 )
 def test_compose_prefix_refuses_unproved_overlap(

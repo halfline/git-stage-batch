@@ -2,6 +2,8 @@
 
 import subprocess
 
+import pytest
+
 from .conftest import git_stage_batch
 
 
@@ -13,7 +15,17 @@ def _changed_ids(view):
     ]
 
 
-def test_apply_transformed_paragraph_after_ownership(functional_repo):
+@pytest.mark.parametrize(
+    "saved_ownership, succeeds",
+    [
+        pytest.param("ownership,", True, id="added-words"),
+        pytest.param("conflicting,", False, id="conflicting-word"),
+        pytest.param("", False, id="missing-word"),
+    ],
+)
+def test_apply_transformed_paragraph_after_ownership(
+    functional_repo, saved_ownership, succeeds
+):
     """A transformed fdinfo layer must compose with ownership wording."""
     path = functional_repo / "contract.md"
     baseline = (
@@ -72,9 +84,7 @@ def test_apply_transformed_paragraph_after_ownership(functional_repo):
     path.write_text(fdinfo)
     git_stage_batch("start", "--no-auto-advance")
     git_stage_batch("new", "fdinfo", "--note", "Record fdinfo wording")
-    view = git_stage_batch(
-        "show", "--file", path.name, "--page", "all"
-    ).stdout
+    view = git_stage_batch("show", "--file", path.name, "--page", "all").stdout
     result = git_stage_batch(
         "discard",
         "--to",
@@ -83,7 +93,9 @@ def test_apply_transformed_paragraph_after_ownership(functional_repo):
         ",".join(_changed_ids(view)),
         "--as-stdin",
         "--no-auto-advance",
-        input_text="".join(expected.splitlines(keepends=True)[2:5]),
+        input_text="".join(expected.splitlines(keepends=True)[2:5]).replace(
+            "ownership,", saved_ownership
+        ),
         check=False,
     )
     assert result.returncode == 0, result.stderr
@@ -91,9 +103,7 @@ def test_apply_transformed_paragraph_after_ownership(functional_repo):
 
     path.write_text(ownership)
     git_stage_batch("new", "ownership", "--note", "Record ownership wording")
-    view = git_stage_batch(
-        "show", "--file", path.name, "--page", "all"
-    ).stdout
+    view = git_stage_batch("show", "--file", path.name, "--page", "all").stdout
     result = git_stage_batch(
         "discard",
         "--to",
@@ -113,5 +123,9 @@ def test_apply_transformed_paragraph_after_ownership(functional_repo):
     second = git_stage_batch(
         "apply", "--from", "fdinfo", "--file", path.name, check=False
     )
+    if not succeeds:
+        assert second.returncode != 0
+        assert path.read_text() == ownership
+        return
     assert second.returncode == 0, second.stderr
     assert path.read_text() == expected

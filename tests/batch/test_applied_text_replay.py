@@ -1,5 +1,7 @@
 """Checks for composing saved paragraph prefixes with applied ownership."""
 
+import pytest
+
 from git_stage_batch.batch.applied_text_replay import _compose_overlapping_presence_prefix
 
 from git_stage_batch.batch.applied_text_replay import AppliedTextApplication, _AcquiredTextApplication
@@ -49,3 +51,30 @@ def test_compose_prefix_preserves_owned_tail(tmp_path):
     assert result is not None
     with result:
         assert b"".join(result) == b"".join((*_CHANGED[:3], *_REPLACEMENT[3:]))
+
+
+@pytest.mark.parametrize(
+    "changed, replacement, source, presence",
+    [
+        pytest.param(
+            (*_REPLACEMENT[:3], *_REPLACEMENT[4:]),
+            _REPLACEMENT,
+            _REPLACEMENT,
+            ["2-4"],
+            id="deletion-without-added-words",
+        ),
+    ],
+)
+def test_compose_prefix_refuses_unproved_overlap(
+    tmp_path, changed, replacement, source, presence
+):
+    """A partial match cannot overwrite conflicts or claim unrelated text."""
+    result = _compose_overlapping_presence_prefix(
+        changed,
+        replacement,
+        _application(source, presence),
+        spool_dir=tmp_path,
+    )
+    if result is not None:
+        result.close()
+    assert result is None

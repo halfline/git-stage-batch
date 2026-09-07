@@ -77,6 +77,13 @@ def test_compose_prefix_preserves_owned_tail(tmp_path):
             ["2-4"],
             id="oversized-composition",
         ),
+        pytest.param(
+            _CHANGED,
+            _REPLACEMENT,
+            _REPLACEMENT,
+            ["2-3"],
+            id="unowned-tail",
+        ),
     ],
 )
 def test_compose_prefix_refuses_unproved_overlap(

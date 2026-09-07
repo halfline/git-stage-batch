@@ -116,6 +116,13 @@ def test_compose_prefix_preserves_owned_tail(tmp_path):
             ["2-4"],
             id="deleted-prefix-word",
         ),
+        pytest.param(
+            _CHANGED,
+            _REPLACEMENT,
+            (*_REPLACEMENT[:3], b"different tail\n", *_REPLACEMENT[4:]),
+            ["2-4"],
+            id="changed-applied-tail",
+        ),
     ],
 )
 def test_compose_prefix_refuses_unproved_overlap(

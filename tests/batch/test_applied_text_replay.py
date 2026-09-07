@@ -123,6 +123,13 @@ def test_compose_prefix_preserves_owned_tail(tmp_path):
             ["2-4"],
             id="changed-applied-tail",
         ),
+        pytest.param(
+            _CHANGED,
+            (*_REPLACEMENT[:3], b"another line including\n", *_REPLACEMENT[3:]),
+            (*_REPLACEMENT[:3], b"another line including\n", *_REPLACEMENT[3:]),
+            ["2-5"],
+            id="ambiguous-prefix-end",
+        ),
     ],
 )
 def test_compose_prefix_refuses_unproved_overlap(

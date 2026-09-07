@@ -98,6 +98,17 @@ def test_compose_prefix_preserves_owned_tail(tmp_path):
             ["2", "4"],
             id="split-ownership",
         ),
+        pytest.param(
+            (
+                *_CHANGED[:2],
+                b"capture conflicting and revocation including\n",
+                *_CHANGED[3:],
+            ),
+            _REPLACEMENT,
+            _REPLACEMENT,
+            ["2-4"],
+            id="conflicting-words",
+        ),
     ],
 )
 def test_compose_prefix_refuses_unproved_overlap(

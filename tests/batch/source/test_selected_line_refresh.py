@@ -32,3 +32,13 @@ def test_working_line_run_slices_match_list(selection):
         assert selected[-1] == expected[-1]
     with pytest.raises(IndexError):
         selected[len(expected)]
+
+
+def test_working_line_run_stepped_slice_remains_a_view():
+    """Stepped slices keep reading the original lines without copying them."""
+    lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
+    selected = _WorkingLineRun(lines, 0, 4)[::2]
+
+    lines[2] = b"updated\n"
+
+    assert list(selected) == [b"one\n", b"updated\n"]

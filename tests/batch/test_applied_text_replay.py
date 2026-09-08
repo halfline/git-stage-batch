@@ -2,9 +2,11 @@
 
 import pytest
 
-from git_stage_batch.batch.applied_text_replay import _compose_overlapping_presence_prefix
-
-from git_stage_batch.batch.applied_text_replay import AppliedTextApplication, _AcquiredTextApplication
+from git_stage_batch.batch.applied_text_replay import (
+    AppliedTextApplication,
+    _AcquiredTextApplication,
+    _compose_overlapping_presence_prefix,
+)
 from git_stage_batch.batch.ownership.model import BatchOwnership
 
 

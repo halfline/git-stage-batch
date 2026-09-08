@@ -10,7 +10,6 @@ from git_stage_batch.batch.applied_text_replay import (
 from git_stage_batch.batch.ownership.model import BatchOwnership
 
 
-
 _REPLACEMENT = (
     b"Heading\n",
     b"Shared paragraph context\n",

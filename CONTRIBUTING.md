@@ -75,6 +75,7 @@ We follow strict commit message conventions to maintain a clear and understandab
 
 - **Write for drive-by readers who are new to the codebase.** Assume the reader does not know the project or underlying technology well. Explain unfamiliar technology and industry acronyms in simple terms, and define terms before using them. Prefer a fuller explanation over shorthand that makes the reader decode the meaning. For a series, expect readers to read the commits together in order, not only as isolated messages.
 - **You are the maintainer; write to a casual reader.** The commit message is you explaining the change to someone unfamiliar with the codebase. Never refer to maintainers in the third person.
+- **Keep explanations within the commit history.** Do not refer to outside development context such as "the plan" or "review results". Explain the motivation directly, using only context available at that point in the series.
 - **Tell the series' story in the commit history.** The series is the larger unit of work. Explain its goal, each commit's contribution, and the useful connections between steps so the history remains understandable on its own.
 - **Separate independent series.** A dirty worktree can contain multiple unrelated commit series. Keep their explanations separate instead of forcing one narrative across all unstaged changes.
 - **Explain groundwork where it matters.** Name the later capability that motivates a preparatory patch, regardless of the patch's position in the series.

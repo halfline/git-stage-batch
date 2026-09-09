@@ -31,6 +31,10 @@ background for someone reading only that commit in isolation.
   unfamiliar technology and industry acronyms in plain language, defining
   terms before using them. Prefer a fuller explanation when shorthand would
   make the reader decode the meaning.
+- Keep explanations within the commit history. Do not refer to outside
+  development context such as "the plan" or "review results". Explain the
+  motivation directly, using only context available at that point in the
+  series.
 - Explain shared context in detail where it first matters. Later messages may
   rely on that explanation. Keep useful repetition, but make it a shorter
   reminder rather than repeating the detail; add new detail where it becomes

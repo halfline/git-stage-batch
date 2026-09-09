@@ -189,6 +189,10 @@ role in the series, a dependency, or deliberately unfinished scope.]
   unfamiliar technology and industry acronyms in plain language, defining
   terms before using them. Prefer a fuller explanation when shorthand would
   make the reader decode the meaning.
+- Keep explanations within the commit history. Do not refer to outside
+  development context such as "the plan" or "review results". Explain the
+  motivation directly, using only context available at that point in the
+  series.
 - Expect a drive-by reader to be new to the codebase but likely to read the
   series together in order. Explain shared context where it first matters;
   later commits may rely on it. Keep useful repetition as a shorter reminder,

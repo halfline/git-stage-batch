@@ -73,7 +73,7 @@ We follow strict commit message conventions to maintain a clear and understandab
 
 ### Key Principles
 
-- **Write for drive-by reviewers with limited context.** Assume the reader does not know the project well.
+- **Write for drive-by readers who are new to the codebase.** For a series, expect them to read the commits together in order, not only as isolated messages.
 - **You are the maintainer; write to a casual reader.** The commit message is you explaining the change to someone unfamiliar with the codebase. Never refer to maintainers in the third person.
 - **Tell a story.** The events in history are connected, and that connection should be considered when crafting messages. Do not treat each commit as an isolated writing exercise. If a series of commits contribute collectively to a goal, each commit message should describe how it helps achieve that goal. Early commits can foreshadow later commits if it helps tell the story.
 - **Separate independent series.** A dirty worktree can contain multiple unrelated commit series. Split them into separate series with separate opening and concluding commits instead of forcing one message thread across all unstaged changes.
@@ -92,7 +92,8 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Wrap body paragraphs at 75 characters.**
 - **Be humble and forward thinking.** Avoid words like "comprehensive" or "crucial", and avoid a tone that could sound like bragging or seem short-sighted.
 - **Do not invent concise self-describing labels for internal ideas and use them casually,** expecting the reader to implicitly know what they should mean. Explain things in a way that reduces cognitive load on the reader.
-- **Define codebase-specific or ambiguous terms at first use in every message.** A reader should not need another commit in the series to learn what a term or identifier means.
+- **Build context across the series.** Give shared background where it first matters. Later commits may rely on that explanation; keep useful repetition, but make it a shorter reminder rather than repeating the detail. Add new detail where it becomes relevant. A standalone commit still needs its own context.
+- **Define codebase-specific or ambiguous terms when first introduced in the series.** Use a concise role reminder later when it helps, rather than repeating the full definition in every message.
 - **Prefer a complete plain-language sentence over compressed shorthand.** Spell out the behavior hidden by noun piles, abstract verbs, or compounds such as `X-backed` and `X-aware` when their meaning is not obvious.
 
 ### Format
@@ -158,11 +159,10 @@ project immediately before this commit is applied. This is the program's
 state, not the user's situation. Focus on what the program has or provides,
 not on what users must do or cannot do.
 
-If this commit is part of a series, the first paragraph must reflect the
-cumulative state after all previous commits in the series. For example, if
-earlier commits added Spanish and French translations, this paragraph should
-state "The program has Spanish and French translations" not "The program only
-has English messages."
+If this commit is part of a series, describe the relevant state after the
+previous commit. Do not claim later work already exists, but do not recap
+unrelated earlier work either. A French translation does not need a list of
+languages added by preceding commits.
 
 If this is the opening commit in a feature series, the later
 paragraphs should name the feature goal directly. Do not describe the commit
@@ -244,7 +244,8 @@ Before finalizing a commit message, check:
 - Does any `already` claim identify an existing capability the patch builds
   on, rather than assume later work?
 - Does the first paragraph describe the program's state (what it has), not the user's situation (what they must do)?
-- If this is part of a series, does the first paragraph accurately reflect the cumulative state after all previous commits?
+- Does the selected state match the previous commit without recapping
+  unrelated earlier work?
 - If the worktree contains multiple independent series, are they split into separate series?
 - If this is the first commit in a series, does the message introduce the whole series goal rather than only the first change?
 - If this is the final commit in a series, does the message conclude the series goal rather than read like another incremental step?
@@ -259,7 +260,8 @@ Before finalizing a commit message, check:
 - If this is the penultimate commit in a series, does the fourth paragraph name what the upcoming final commit will do?
 - If this is an earlier non-final commit in a series, does the fourth paragraph name what subsequent commits will do?
 - Can a newcomer understand the state, limitation, and change without decoding coined shorthand?
-- Are codebase-specific or ambiguous terms defined in this message rather than only in another commit?
+- Are unfamiliar terms introduced where they first matter, with concise reminders where later messages need them?
+- Does repeated context become more concise while retaining what helps explain the current patch?
 - Do body paragraphs wrap at 75 characters?
 
 ### Example: Single Commit
@@ -427,12 +429,12 @@ The application outputs all user-facing text in English.
 Users who speak other languages must work in English...
 ```
 
-✅ **Do reflect the cumulative state after previous commits:**
+✅ **Do describe the relevant state after previous commits:**
 ```
 i18n: Add French translation (fr)
 
-The program has Spanish translation but lacks translations for other
-major languages.
+Currently, the program uses fallback English messages for the French
+locale.
 
 Without French translations, French-speaking users cannot use the
 program in their native language...
@@ -449,7 +451,8 @@ Users must work in English regardless of their preference.
 ```
 i18n: Add French translation (fr)
 
-The program has Spanish translation but lacks French.
+Currently, the program uses fallback English messages for the French
+locale.
 ```
 
 ## Making Changes

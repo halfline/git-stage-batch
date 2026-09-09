@@ -56,7 +56,7 @@ def _record_start_repository_state() -> None:
         start_point.head_commit or "UNBORN",
     )
 
-    index_tree_result = run_git_command(["write-tree"], requires_index_lock=False)
+    index_tree_result = run_git_command(["write-tree"], requires_index_lock=True)
     write_text_file_contents(
         get_start_index_tree_file_path(),
         index_tree_result.stdout.strip(),

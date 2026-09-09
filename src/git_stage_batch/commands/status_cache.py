@@ -146,8 +146,14 @@ def cache_exact_prompt_status_if_requested(
         generation = read_session_lock_generation_if_available()
     if session_marker is None or generation is None:
         return
+    prompt_summary: PromptStatusSummary = {
+        "session": summary["session"],
+        "selected_change": summary["selected_change"],
+        "file_review": summary["file_review"],
+        "progress": summary["progress"],
+    }
     write_cached_prompt_status(
-        summary,
+        prompt_summary,
         lock_generation=generation,
         exact=True,
         session_marker=session_marker,

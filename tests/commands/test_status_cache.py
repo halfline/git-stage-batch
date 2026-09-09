@@ -11,7 +11,7 @@ from git_stage_batch.data.status_summary_cache import (
     read_session_marker_identity,
     write_cached_prompt_status,
 )
-from git_stage_batch.data.status_types import PromptStatusSummary
+from git_stage_batch.data.status_types import PromptStatusSummary, StatusSummary
 from git_stage_batch.utils.paths import get_status_summary_cache_file_path
 from git_stage_batch.utils.session_lock import acquire_session_lock
 
@@ -166,3 +166,16 @@ def test_request_never_waits_for_session_lock(
         status_cache.request_status_summary_cache_refresh()
 
     assert spawned == []
+
+
+def test_exact_cache_accepts_full_status_response(temp_git_repo_with_session):
+    """Regular status must publish a readable prompt subset of its response."""
+    _enable_cache()
+    summary: StatusSummary = {**_summary(), "skipped_hunks": []}
+
+    with acquire_session_lock():
+        status_cache.cache_exact_prompt_status_if_requested(summary)
+
+    cached = read_cached_prompt_status()
+    assert cached is not None
+    assert cached.summary == _summary()

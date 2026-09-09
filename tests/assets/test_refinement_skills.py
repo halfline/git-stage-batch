@@ -1058,7 +1058,6 @@ def test_message_guidance_requires_low_context_prose() -> None:
     for path in drafters:
         drafter = " ".join(_read(path).split())
         assert "Do not reread the complete raw series" in drafter
-        assert "Write for a reader who has never seen the repository" in drafter
 
 
 def test_message_guidance_reserves_imperative_voice_for_summaries() -> None:

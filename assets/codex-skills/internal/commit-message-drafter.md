@@ -85,6 +85,10 @@ of falling back to `git diff --cached`.
   together in order. Prefer a complete plain-language sentence over a coined
   label, compressed noun phrase, or abstract verb that hides what the program
   does.
+- Assume the reader may not know the underlying technology. Explain
+  unfamiliar technology and industry acronyms in plain language, defining
+  terms before using them. Prefer a fuller explanation when shorthand would
+  make the reader decode the meaning.
 - Explain shared context and unfamiliar terms where they first matter in the
   series. Later messages may rely on that explanation. Keep useful repetition
   as a shorter reminder, adding new detail only where it becomes relevant.

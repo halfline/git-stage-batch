@@ -174,11 +174,11 @@ def git_update_index_entries(
 
 
 def git_write_tree(*, env: dict[str, str] | None = None) -> str:
-    """Write the current or provided index as a Git tree."""
+    """Write an index as a tree, waiting for its required Git index lock."""
     return run_git_command(
         ["write-tree"],
         env=env,
-        requires_index_lock=False,
+        requires_index_lock=True,
     ).stdout.strip()
 
 

@@ -116,7 +116,7 @@ def _detect_conflicts_against_state(
         index_result = run_git_command(
             ["write-tree"],
             check=False,
-            requires_index_lock=False,
+            requires_index_lock=True,
         )
         index_changed = (
             index_result.stdout.strip() if index_result.returncode == 0 else None

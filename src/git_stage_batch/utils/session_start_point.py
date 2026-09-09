@@ -47,7 +47,7 @@ def resolve_session_start_point() -> SessionStartPoint:
     index_result = run_git_command(
         ["write-tree"],
         check=False,
-        requires_index_lock=False,
+        requires_index_lock=True,
     )
     if index_result.returncode != 0:
         raise CommandError(

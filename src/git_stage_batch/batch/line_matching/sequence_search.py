@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Iterator, Sequence
 from dataclasses import dataclass
 
 from .match_workspace import MatcherWorkspace
@@ -25,7 +25,7 @@ def iter_exact_sequence_indexes(
     workspace: MatcherWorkspace,
     start_index: int = 0,
     end_index: int | None = None,
-) -> Iterator[int]:
+) -> Generator[int, None, None]:
     """Yield every exact sequence start in linear time."""
     sequence_count = len(sequence)
     if sequence_count == 0:

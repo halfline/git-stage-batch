@@ -108,7 +108,10 @@ this, use:
 ```text
 prefix: Summary under 72 chars
 
-[First paragraph: the program's current state.]
+[First paragraph: the relevant state, using present tense for state
+descriptions. If recent work established that state, briefly recount the
+change in past tense and loosely when it happened. Leave timeless
+background unqualified; use "already" only for a useful contrast.]
 
 [Second paragraph: the underlying problem.]
 
@@ -125,10 +128,29 @@ This commit [addresses|mitigates|resolves] that [problem] by
 - Keep the summary line under 72 characters.
 - The first paragraph describes the project's state immediately before this
   commit is applied.
+- Use a light temporal cue only where it clarifies time-dependent behavior.
+  Timeless background or a lasting contract can stand unqualified; naming
+  the project or component may already establish the context. If the
+  ambiguity is in the problem paragraph, anchor that claim instead. Let
+  `This commit ...` mark the transition, without implying that every
+  background fact changes afterward. Vary naturally; avoid repeated cues.
+- Use `already` for a useful contrast, not merely because a capability
+  exists before the patch. If a recent change established the relevant
+  state, recount it in past tense and attribute it to earlier work:
+  `Recent commits moved ...`. Describing a past change differs from
+  describing the existing state in present tense. Avoid `now` alone,
+  which can imply the current commit made that change. Verify claims
+  against the previous commit, not later work.
+- In message prose, prefer `commit` and `previous commit` to `revision` and
+  `parent commit`.
 - The second paragraph explains the real underlying problem from the right
   perspective.
 - The third paragraph starts with `This commit` and precisely explains what
   this commit changes.
+- Keep present tense for the pre-change state and for the change itself;
+  describe work in later commits in future tense.
+- Make references to future work in the series explicit: `in a later commit`,
+  `later commits will ...`, or `the final commit will ...`, not bare `later`.
 - In a multi-commit series, use the fourth paragraph for what comes next or,
   in the final commit, for the series conclusion.
 - If this is the penultimate commit, refer to the upcoming final commit in the

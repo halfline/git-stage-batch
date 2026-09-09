@@ -168,14 +168,29 @@ Line IDs are shown in the hunk output as `[#N]` markers.
 
 ### Commit Messages
 
-Commit messages should aid **drive-by reviewers with limited context**. Assume
-the reader does not know the project well.
+Commit messages should aid drive-by readers who are new to the codebase.
+For a series, expect them to read the commits together in order. Explain
+shared context and unfamiliar terms where they first matter; later messages
+may rely on that explanation. Keep useful repetition, but make it a shorter
+reminder rather than repeating the detail. Add new detail where it becomes
+relevant. A standalone commit still needs its own context.
+
+Use three body paragraphs for the state, problem, and solution, with a
+distinct fourth paragraph when a series connection needs explaining. The
+series is the larger story: its goal, rationale, and useful connections must
+remain understandable from the commit history alone.
 
 **Format:**
 - **First line**: a concise summary with a lowercase prefix (`module:`, `cli:`, etc.)
-- **First paragraph**: describe the program's **selected state** (what it has or provides)
-  - If part of a series, reflect the cumulative state after previous commits
-  - Don't describe the diff, the change, or future goals
+- **First paragraph**: establish the program's **selected state** (what it has or provides)
+  - If recent work established that state, briefly recount the change in
+    past tense and loosely when it happened
+  - Add a temporal cue only where it clarifies time-dependent behavior;
+    timeless background may already be clear from the project or component
+  - Let "This commit ..." mark the transition
+  - Use "already" selectively for a capability the patch builds on
+  - Match the state after the previous commit without an unrelated recap
+  - Don't describe the current patch or future goals
 - **Second paragraph**: explain the underlying problem
   - Choose perspective: first-person maintainer (internal concerns) or user (external concerns)
   - Focus on **missing capabilities**, not symptoms
@@ -183,14 +198,43 @@ the reader does not know the project well.
 - **Third paragraph**: describe how this commit addresses the problem
   - Be precise about scope (if it only improves one aspect, say so)
   - Use "This commit addresses that by..."
-  - If part of a series, use progression words: "begins", "continues", "completes"
-- **Fourth paragraph**: connect every commit in a multi-commit series
-  - Earlier commits name the remaining work in future tense
-  - The penultimate commit specifically says what the final commit will do
-  - The final commit concludes the series instead of promising more work
+  - Explain the current commit's contribution to the series goal
+  - Let the opening commit introduce the whole series as well as its own patch
+  - Let the final commit close the story with the outcome actually achieved
+- **Optional fourth paragraph**: explain a useful connection in the series,
+  such as the current step's role, a design choice, a dependency, or scope
+  deliberately left unfinished
+  - If removing it makes the progression no harder to understand, omit it
+  - Keep a useful segue separate from the first three paragraphs; do not repeat them
+  - Verify references against actual patches and describe future work as future
+  - Use it for broader opening context or the final outcome when useful
+  - Omit unrelated recaps, next-item announcements, and ceremonial conclusions
+
+A representation change can explain how it enables a later consumer
+simplification. An unused-argument cleanup should not announce an unrelated
+GPU-copy fix merely because that patch comes next.
 
 **Key rules:**
 - Write in **present tense** about the selected state ("has", not "used to have")
+- Use "Right now, ...", "Currently, ...", or "As things stand, ..." when it
+  resolves a temporal ambiguity, not automatically in the first paragraph.
+  Leave timeless background and lasting contracts unqualified. If the
+  ambiguity is in the problem paragraph, anchor that claim instead.
+  Avoid implying that every background fact changes afterward with a
+  before/after clause. Vary naturally without repeating cues throughout.
+- Use "already" for a useful contrast, not merely because a capability
+  exists before the patch. If a recent change established the relevant
+  state, recount it in past tense and attribute it to earlier work:
+  "Recent commits moved ...". Describing that past change differs from
+  describing the existing state in present tense. Avoid "now" alone, which
+  can imply the current commit made that change. Verify claims against
+  the previous commit, not later work.
+- Use "commit" and "previous commit" in message prose, not "revision" or
+  "parent commit".
+- Use present tense for the change ("This commit returns ...") and future
+  tense for work in later commits.
+- Make references to future work in the series explicit: "in a later commit",
+  "later commits will ...", or "the final commit will ...", not bare "later".
 - Use "this" only when referring to the commit itself
 - Don't overstate impact or use words like "comprehensive" or "crucial"
 
@@ -203,7 +247,7 @@ This commit adds verbose output to the CLI...
 
 ✅ First paragraph describes selected state:
 ```
-The CLI currently provides minimal feedback during operation...
+Right now, the CLI provides minimal feedback during operation...
 ```
 
 ❌ Problem is a symptom:
@@ -348,7 +392,7 @@ git-stage-batch skip
 
 git commit -m "auth: Implement OAuth2 authentication
 
-The authentication system currently uses basic auth with password hashing.
+Right now, the authentication system uses basic auth with password hashing.
 
 OAuth2 is required for integration with third-party services and provides
 better security through token-based authentication.
@@ -366,7 +410,7 @@ git-stage-batch skip
 
 git commit -m "database: Add connection pooling
 
-The database module creates a new connection for each query.
+Currently, the database module creates a new connection for each query.
 
 This leads to performance issues under load and exhausts connection limits
 when handling conselected requests.
@@ -423,8 +467,8 @@ echo "$status" | jq '.progress.remaining'
 
 ## Common Patterns
 
-**Note:** Examples below show abbreviated commit messages for brevity. In practice,
-use the full three-paragraph format described in the Commit Messages section.
+**Note:** Examples below abbreviate commit messages. Actual messages should use
+the three-paragraph structure above, adding a fourth only when useful.
 
 ### Pattern 1: Feature Implementation
 

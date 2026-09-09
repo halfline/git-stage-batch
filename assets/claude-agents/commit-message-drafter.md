@@ -34,8 +34,9 @@ Expect the caller to provide:
 - the current commit's one-clause purpose
 - for a series, its overall goal, the selected state at this position, and the
   immediately preceding and following index entries
-- whether this is the final commit in the series
-- whether this is the penultimate commit in the series, when known
+- whether the commit opens or concludes the series
+- the current patch's contribution to the overall goal and any dependency or
+  intentionally incomplete scope that needs a cross-commit explanation
 - any repository-specific commit rules already discovered
 - any known preferred prefixes
 
@@ -64,9 +65,10 @@ For historical mode, leave the index and worktree out of the analysis:
 
 1. `git --no-optional-locks show --stat --patch --find-renames TARGET_SHA`
 2. the caller's series goal, selected-state summary, and adjacent index entries
-   for cumulative narrative and fourth-paragraph transitions
+   for relevant facts from the previous commit and causal relationships
+   between patches
 3. `git --no-optional-locks show TARGET_SHA^:<path>` only when representative
-   parent-state content is needed to verify that summary
+   content from the previous commit is needed to verify that summary
 4. representative path history, repository guidance, and the commit hook as
    needed
 
@@ -86,30 +88,71 @@ one fails.
 
 ## Drafting rules
 
-- Respect the caller's stated split. Do not broaden the story to absorb work
-  outside the selected staged or historical patch.
+- Respect the caller's stated split. Series context can explain the larger
+  goal, but must not attribute another patch's implementation to this one.
 - The summary line must describe one change only.
-- Write for a reader who has never seen the repository. Prefer a complete
-  plain-language sentence over a coined label, compressed noun phrase, or
-  abstract verb that hides what the program does.
-- Define codebase-specific or ambiguous terms at first use in every message.
-  Introduce an identifier by its role when its name does not explain itself,
-  even if an earlier commit already introduced it.
+- Write for a reader new to the codebase who is likely to read a series
+  together in order. Prefer a complete plain-language sentence over a coined
+  label, compressed noun phrase, or abstract verb that hides what the program
+  does.
+- Assume the reader may not know the underlying technology. Explain
+  unfamiliar technology and industry acronyms in plain language, defining
+  terms before using them. Prefer a fuller explanation when shorthand would
+  make the reader decode the meaning.
+- Keep explanations within the commit history. Do not refer to outside
+  development context such as "the plan" or "review results". Explain the
+  motivation directly, using only context available at that point in the
+  series.
+- Explain shared context and unfamiliar terms where they first matter in the
+  series. Later messages may rely on that explanation. Keep useful repetition
+  as a shorter reminder, adding new detail only where it becomes relevant.
+  Introduce an identifier by its role when its name does not explain itself;
+  an established name or concise role reminder can suffice later. A
+  standalone commit still needs its own context.
 - The body must match repository paragraph-count and tense rules when given.
-- The first paragraph describes the selected current state, not the patch.
+- The first paragraph establishes the relevant state, not the current patch.
+  If recent work established that state, briefly recount the past change
+  and loosely when it happened.
+- Use `Right now, ...`, `Currently, ...`, or `As things stand, ...` only
+  where it clarifies time-dependent behavior. Timeless background or a
+  lasting contract can stand unqualified; naming the project or component
+  may already establish the context. If the ambiguity is in the problem
+  paragraph, anchor that claim instead. Let `This commit ...` supply the
+  transition without implying that every background fact changes afterward.
+  Vary naturally and avoid repeated cues; some repetition is fine.
+- Use `already` for a useful contrast, not merely because a capability
+  exists before the patch. If a recent change established the relevant
+  state, recount it in past tense and attribute it to earlier work:
+  `Recent commits moved ...`. Describing a past change differs from
+  describing the existing state in present tense. Avoid `now` alone,
+  which can imply the current commit made that change. Verify claims
+  against the previous commit, not later work.
+- In message prose, use `commit` and `previous commit`, not `revision` or
+  `parent commit`.
+- Use present tense for the change itself (`This commit returns ...`) and
+  future tense for later work.
+- Make references to future work in the series explicit: `in a later commit`,
+  `later commits will ...`, or `the final commit will ...`, not bare `later`.
 - Do not consider uncommitted changes or untracked files as part of the
   project's state. During a multi-commit series the working tree contains
   changes intended for later commits. Use `git show HEAD:<path>` or `git log`
   to verify what exists in the committed history before describing current
-  state in the first paragraph. In historical mode, use the target's parent
+  state in the first paragraph. In historical mode, use the previous commit
   instead of `HEAD`.
 - The second paragraph describes the underlying problem.
 - The third paragraph explains how this commit addresses that problem.
-- For a multi-commit series, include a fourth paragraph. If the caller says
-  this is the final commit, make that paragraph a closing conclusion for the
-  series goal. If the caller says this is the penultimate commit, refer to the
-  upcoming final commit in the singular instead of saying `subsequent commits`.
-  For earlier non-final commits, use future-looking text for what remains.
+- Treat the series as the larger story, understandable from history alone.
+  The opening commit introduces the overall goal and motivation as well as
+  its own patch; the final commit explains the outcome actually achieved.
+  Distinguish the current patch's contribution from work done elsewhere.
+- Preserve cross-commit context that explains the current step's role, a
+  design choice, a dependency, or intentionally incomplete scope. Omit
+  unrelated recaps and announcements that merely name the next item.
+- Keep a useful segue as a distinct fourth paragraph, separate from the
+  current state, problem, and solution. Omit it only when no useful
+  connection remains; do not fold it into the first three paragraphs.
+- Verify any retained reference against the relevant patch and distinguish
+  future work from behavior established by the current commit.
 - If the caller supplied wording bans or line-length limits, obey them.
 
 ## Output format
@@ -123,9 +166,12 @@ Return exactly these sections:
    Flat bullets covering:
    - chosen prefix
    - whether the summary is single-purpose
-   - expected paragraph count
-   - series positioning
-   - whether local terms and identifiers are defined in this message
+   - whether the detail is proportionate to the change
+   - whether the message carries its part of the series' story
+   - whether the status quo is clear without needless temporal cues
+   - whether any `already` claim is supported by the previous commit
+   - why any cross-commit reference is needed, or why none is needed
+   - whether terms are clear in series context and repeated context is concise
    - any repository rule you applied
 
 3. `UNCERTAINTY`

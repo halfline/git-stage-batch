@@ -110,6 +110,8 @@ When the current commit is fully staged, you may use the shared
 - Give it a self-contained briefing that includes:
   - the current commit's one-clause purpose
   - whether this is a single commit or part of a series
+  - the series' overall goal and the current commit's contribution
+  - whether this is the opening commit in the series
   - whether this is the final commit in the series
   - whether this is the penultimate commit in the series, when known
   - the repository-specific message rules already discovered
@@ -134,14 +136,18 @@ this, use:
 ```text
 prefix: Summary under 72 chars
 
-[First paragraph: the program's current state.]
+[First paragraph: the relevant state, using present tense for state
+descriptions. If recent work established that state, briefly recount the
+change in past tense and loosely when it happened. Leave timeless
+background unqualified; use "already" only for a useful contrast.]
 
 [Second paragraph: the underlying problem.]
 
 This commit [addresses|mitigates|resolves] that [problem] by
 [precise description of what this commit changes].
 
-[Optional fourth paragraph: what comes next, or the final series conclusion.]
+[Optional fourth paragraph: a useful connection explaining this patch's
+role in the series, a dependency, or deliberately unfinished scope.]
 ```
 
 ### Message Rules
@@ -151,15 +157,55 @@ This commit [addresses|mitigates|resolves] that [problem] by
 - Keep the summary line under 72 characters.
 - The first paragraph describes the project's state immediately before this
   commit is applied.
+- Use a light temporal cue only where it clarifies time-dependent behavior.
+  Timeless background or a lasting contract can stand unqualified; naming
+  the project or component may already establish the context. If the
+  ambiguity is in the problem paragraph, anchor that claim instead. Let
+  `This commit ...` mark the transition, without implying that every
+  background fact changes afterward. Vary naturally; avoid repeated cues.
+- Use `already` for a useful contrast, not merely because a capability
+  exists before the patch. If a recent change established the relevant
+  state, recount it in past tense and attribute it to earlier work:
+  `Recent commits moved ...`. Describing a past change differs from
+  describing the existing state in present tense. Avoid `now` alone,
+  which can imply the current commit made that change. Verify claims
+  against the previous commit, not later work.
+- In message prose, prefer `commit` and `previous commit` to `revision` and
+  `parent commit`.
 - The second paragraph explains the real underlying problem from the right
   perspective.
 - The third paragraph starts with `This commit` and precisely explains what
   this commit changes.
-- In a multi-commit series, use the fourth paragraph for what comes next or,
-  in the final commit, for the series conclusion.
-- If this is the penultimate commit, refer to the upcoming final commit in the
-  singular, such as `The final commit will ...`, instead of saying
-  `subsequent commits`.
+- Keep present tense for the pre-change state and for the change itself;
+  describe work in later commits in future tense.
+- Make references to future work in the series explicit: `in a later commit`,
+  `later commits will ...`, or `the final commit will ...`, not bare `later`.
+- Match the state after the previous commit without recapping unrelated
+  earlier work.
+- Keep the series' goal, rationale, and useful connections in the history.
+  The opening commit speaks for the series as well as its own patch; the
+  final commit closes the story with the outcome actually achieved.
+- Assume the reader may not know the underlying technology. Explain
+  unfamiliar technology and industry acronyms in plain language, defining
+  terms before using them. Prefer a fuller explanation when shorthand would
+  make the reader decode the meaning.
+- Keep explanations within the commit history. Do not refer to outside
+  development context such as "the plan" or "review results". Explain the
+  motivation directly, using only context available at that point in the
+  series.
+- Expect a drive-by reader to be new to the codebase but likely to read the
+  series together in order. Explain shared context where it first matters;
+  later commits may rely on it. Keep useful repetition as a shorter reminder,
+  adding new detail where relevant. A standalone commit needs its own context.
+- Preserve references that explain the current step's role, a design choice,
+  a dependency, or deliberately unfinished scope. Explain the connection,
+  not just the next commit's subject.
+- Keep a useful segue as a distinct fourth paragraph. Omit it when removing
+  it makes the series' progression no harder to understand; do not fold it
+  into the first three paragraphs or repeat their explanation.
+- Verify retained references against actual patches and distinguish future
+  work from behavior established here. Omit unrelated recaps and next-item
+  announcements.
 - Do not use `this` for anything other than `this commit`.
 - Prefer concrete limitations over vague praise.
 

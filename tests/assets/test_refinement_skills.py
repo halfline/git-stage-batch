@@ -1047,8 +1047,6 @@ def test_message_guidance_requires_low_context_prose() -> None:
         guidance = _read(root / "references" / "message-guidelines.md")
         assert "## Low-context prose" in guidance
         assert "Do not invent a one- or two-word name" in guidance
-        assert "Define a codebase-specific or ambiguous term at first use" in guidance
-        assert "Make each message independently understandable" in guidance
         assert "Apply a read-once test" in guidance
 
     drafters = (
@@ -1058,7 +1056,6 @@ def test_message_guidance_requires_low_context_prose() -> None:
     for path in drafters:
         drafter = " ".join(_read(path).split())
         assert "Do not reread the complete raw series" in drafter
-        assert "Write for a reader who has never seen the repository" in drafter
 
 
 def test_message_guidance_reserves_imperative_voice_for_summaries() -> None:

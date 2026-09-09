@@ -654,6 +654,8 @@ If you spawn a subagent for message drafting:
 3. Give it a self-contained briefing that includes:
    - the current commit's one-clause purpose
    - whether this is a single commit or part of a series
+   - the series' overall goal and the current commit's contribution
+   - whether this is the opening commit in the series
    - which independent series this commit belongs to when the unstaged tree
      contains more than one
    - whether this is the final commit in the series
@@ -669,8 +671,8 @@ If you spawn a subagent for message drafting:
    - `.git/hooks/commit-msg` when present
 5. Require it to return:
    - one proposed commit message
-   - a short checklist confirming prefix, paragraph count, tense, and series
-     narrative requirements
+   - a short checklist confirming prefix, paragraph count, tense, series
+     framing, and the relevance of any fourth-paragraph connection
    - any specific uncertainty if the staged diff does not justify a confident
      draft
 
@@ -908,16 +910,35 @@ For each commit:
 
 ## Message Template
 
-Re-read this template before writing each commit message in a
-multi-commit series. Fill in each bracketed section. Do not merge
-or skip paragraphs.
+Re-read this template before writing each commit message in a multi-commit
+series. Keep the first three paragraphs distinct. Add a separate fourth
+paragraph when it explains a useful connection in the series; otherwise
+omit it. The series' goal and rationale must remain in the history itself.
+
+Assume the reader may not know the underlying technology. Explain
+unfamiliar technology and industry acronyms in plain language, defining
+terms before using them. Prefer a fuller explanation when shorthand would
+make the reader decode the meaning.
+
+Keep explanations within the commit history. Do not refer to outside
+development context such as "the plan" or "review results". Explain the
+motivation directly, using only context available at that point in the
+series.
+
+Expect a drive-by reader to be new to the codebase but likely to read the
+series together in order. Explain shared context and unfamiliar terms where
+they first matter. Later messages may rely on that explanation. Keep useful
+repetition, but make it a shorter reminder rather than repeating the detail;
+add new detail where relevant. A standalone commit needs its own context.
 
 ```text
 prefix: Summary under 68 chars
 
-[Present-tense description of what the project, file, or interface
-currently has or provides. Do not mention the patch or what is
-missing yet.]
+[The relevant state, using present tense for state descriptions. If recent
+work established that state, briefly recount the change in past tense and
+loosely when it happened. Leave timeless background unqualified; use
+"already" only for a useful contrast. Do not describe the current patch or
+limitation yet.]
 
 [Description of what is missing, broken, or insufficient, and why
 that matters. Use first-person maintainer perspective for internal
@@ -928,11 +949,10 @@ This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
 stated above].
 
-[Connect to what comes next, or conclude the series when this is the
-final commit. For the penultimate commit, refer to the upcoming final
-commit in the singular, such as "The final commit will ...", instead
-of saying "subsequent commits". For the final commit, use this
-paragraph to state that the series goal has been reached.]
+[Optional fourth paragraph: explain the current step's role in the series,
+a design choice that enables later work, a dependency, or deliberately
+unfinished scope. The opening can frame the broader goal and the final
+commit can explain the achieved outcome; do not merely list other patches.]
 ```
 
 ### First Line (Summary)
@@ -947,17 +967,51 @@ and see what prefixes were used previously.
 
 Describe the program's current state at this point in history.
 
+Describe the status quo in present tense from the viewpoint of the code
+after the previous commit. Use a light cue such as `Right now, ...`,
+`Currently, ...`, or `As things stand, ...` when it helps distinguish
+time-dependent behavior from the change. The third paragraph's `This
+commit ...` supplies the transition.
+
+Do not add a cue automatically to the first paragraph. Timeless background
+or a lasting contract can stand unqualified; naming the project or component
+may already make the context clear. For example, `Mutter redraws or copies
+damaged regions` does not need `Right now`. If the ambiguity is in the problem
+paragraph, anchor that claim instead: `Currently, buffer repair does not
+consistently follow that rule.`
+
+Avoid routinely attaching `Before this commit is applied, ...` to background
+facts, since that invites a contrast even when those facts remain true
+afterward.
+
+Use `already` selectively to contrast an established capability with an
+extension the patch needs. Verify it against the previous commit; do not
+use the word merely to mean that something exists before the current patch.
+
+When the relevant state comes from a recent change, describe that change
+as a past event and identify it as earlier work: `Recent commits moved
+buffer selection and damage history into the copy tracker.` Present tense
+describes an existing state; past tense can recount the recent change that
+established it. Avoid `now` alone for that transition, since it can make
+the current commit sound responsible. Do not anticipate later work.
+
+When a cue helps, use it where it resolves the ambiguity without repeating
+it throughout the message. Vary the wording naturally; some repetition is
+preferable to forced synonyms. Keep present tense for the change itself,
+such as `This commit returns NULL on failure`, and future tense for later
+work.
+
+In message prose, use `commit`, not `revision`, and `previous commit`, not
+`parent commit`.
+
 Summarize what capabilities, interfaces, or documentation exist in
 the project immediately before this commit is applied. This is the
 program's state, not the user's situation. Focus on what the
 program has or provides, not on what users must do or cannot do.
 
-If this commit is part of a series, the first paragraph must
-reflect the cumulative state after all previous commits in the
-series. For example, if earlier commits added Spanish and French
-translations, this paragraph should state "The program has Spanish
-and French translations" not "The program only has English
-messages."
+Describe the relevant state after the previous commit, without claiming
+later work already exists or recapping unrelated earlier changes. A French
+translation does not need a list of previously added languages.
 
 If this is the opening commit in a feature series, the
 later paragraphs should name the feature goal directly. Do not
@@ -1024,19 +1078,43 @@ Use natural prose such as:
 
 ### Fourth Paragraph
 
-Use it for every commit in a multi-commit series. For non-final commits,
-use future tense because the work has not happened yet, and be specific
-about the next step rather than vague.
+Use a distinct fourth paragraph when it helps explain the current commit's
+place in the series. The series is the larger story, not just a collection of
+isolated patches, and its goal, rationale, and connections belong in the
+commit history itself.
 
-For example:
-- `Subsequent commits will provide ...`
-- `In the future, <behavior> will change to ...`
+A useful segue explains how the current step advances the goal, why a design
+choice enables later work, what a dependent patch needs, or why some scope is
+deliberately left unfinished. Ask whether removing the paragraph would make
+that progression harder to understand. Merely sharing a topic or appearing
+next in the series is not enough.
 
-The final commit should conclude the series goal introduced by the opening
-commit in a fourth paragraph instead of pointing toward more work. For the
-penultimate commit, refer to the upcoming final commit in the singular, such
-as `The final commit will ...`, instead of saying `subsequent commits`.
-Vary the phrasing across a series.
+For example, a full-damage representation change can explain why a later
+shadow-copy patch can use ordinary region operations. An unused-argument
+cleanup should not merely announce that the next commit fixes failed GPU
+copies; it needs a meaningful connection to that work.
+
+Keep a useful segue as a fourth paragraph, separate from the current state,
+problem, and solution. Do not fold it into those paragraphs or repeat their
+explanation. Omit the fourth paragraph when no useful connection remains,
+rather than manufacturing a segue to satisfy a template.
+
+The opening commit speaks for the series as well as its own patch: introduce
+the overall goal and motivation, then distinguish the contribution made
+here. The final commit closes that story by explaining the achieved outcome,
+without claiming more than the series actually establishes. A fourth
+paragraph can carry that broader framing or conclusion when it adds useful
+context instead of merely repeating the solution.
+
+Verify references against actual patches. Describe work in later commits in
+future tense and do not claim it is already implemented. Make references to
+those commits explicit: `in a later commit`, `later commits will ...`, or
+`the final commit will ...`, not bare `later`. For example, write `the
+tracker introduced in a later commit`, not `the tracker introduced later`.
+When a retained segue refers only to the upcoming final commit, use the
+singular. Preserve useful connections; remove unrelated recaps, next-item
+announcements, and repetitive boilerplate. Varying the wording does not make
+an irrelevant segue useful.
 
 The most common errors are opening with the problem, merging the
 first and second paragraphs with `but` or `however`, and using
@@ -1057,13 +1135,16 @@ Every commit message should use this shape:
 ```text
 prefix: Concise summary of the change
 
-First paragraph describing the selected project state.
+First paragraph establishing the relevant state and, if recent work
+established it, briefly describing that past change and loosely when it
+happened. Leave timeless background unqualified.
 
 Second paragraph describing the underlying problem.
 
 Third paragraph describing how this commit addresses that problem.
 
-Fourth paragraph for follow-up or final series conclusion when useful.
+Optional fourth paragraph, kept distinct for a useful series connection
+or conclusion.
 ```
 
 ### Key Principles
@@ -1138,10 +1219,15 @@ Before finalizing a commit message, check:
   characters?
 - Does the first paragraph describe the program's current state,
   not the patch?
+- Is the status quo clear, with temporal cues only where they resolve an
+  ambiguity rather than make lasting background sound temporary?
+- Does any `already` claim identify an existing capability the patch builds
+  on, rather than assume later work?
 - Does the first paragraph describe the program's state (what it
   has), not the user's situation (what they must do)?
 - If this is part of a series, does the first paragraph accurately
-  reflect the cumulative state after all previous commits?
+  reflect the relevant state after the previous commit without an unrelated
+  recap?
 - If the worktree contains multiple independent series, are they
   split into separate series?
 - If this is the first commit in a series, does the message
@@ -1163,13 +1249,13 @@ Before finalizing a commit message, check:
   only the internal machinery?
 - Does the third paragraph open with `This commit` and clearly state
   what this commit does without overstating its impact?
-- If this is part of a series, does it show progression (e.g.,
-  "begins", "continues", "completes")?
+- If this is part of a series, does it explain the current contribution
+  to the goal without forcing progression words into the prose?
 - If this is an incremental step, does it clearly say so?
-- If this is the penultimate commit in a series, does the fourth paragraph
-  name what the upcoming final commit will do?
-- If this is an earlier non-final commit in a series, does the fourth
-  paragraph name what subsequent commits will do?
+- Does each fourth paragraph help explain the current step's role or a
+  meaningful connection in the series, rather than merely name another patch?
+- Is a useful segue kept distinct from the first three paragraphs?
+- Can the goal, rationale, and progression be understood from history alone?
 - Do body paragraphs wrap at 75 characters?
 
 ### Example: Single Commit
@@ -1177,9 +1263,9 @@ Before finalizing a commit message, check:
 ```
 cli: Add --verbose flag for detailed output
 
-The CLI currently provides minimal feedback during operation, only
-showing the selected hunk without any indication of progress or
-internal state.
+Right now, the CLI provides minimal feedback during operation. It only
+shows the selected hunk, without any indication of progress or internal
+state.
 
 Users working with large changesets cannot easily determine how
 much work remains or what has already been processed, making it
@@ -1194,58 +1280,52 @@ preserves the existing terse output when not specified.
 
 ### Example: Commit Series
 
-Notice how the first paragraph evolves to reflect the cumulative
-state, and how each commit shows progression toward the stated
-goal:
+The opening commit explains the series goal and its first step. Its fourth
+paragraph connects the representation change to the consumer that will use
+it. The final commit then closes the story with the resulting behavior.
 
 **Commit 1:**
-```
-i18n: Add Spanish translation (es)
 
-The program has gettext infrastructure in place but only contains
-English messages in the POT template.
+```text
+renderer: Represent full redraws with explicit damage
 
-Without translations, the program cannot serve non-English
-speaking users. Spanish is one of the most widely spoken languages
-globally.
+Right now, full redraws use an empty damage region to mean "copy
+everything". Rendering and shadow-buffer copies each interpret that
+special value.
 
-This commit begins expanding language support by adding a complete
-Spanish translation file (po/es.po) with 219 translated messages
-covering all commands, error messages, and interactive prompts.
+Ordinary region operations instead treat an empty region as containing no
+pixels. The series makes full redraws use ordinary regions throughout
+rendering and copying so both paths agree about which pixels to update.
 
-Subsequent commits will add translations for additional languages.
-```
+This commit represents full redraws with the framebuffer rectangle,
+allowing region operations to describe the complete update directly.
 
-**Commit 2:**
-```
-i18n: Add French translation (fr)
-
-The program has Spanish translation but lacks translations for
-other major languages.
-
-Without French translations, French-speaking users cannot use the
-program in their native language.
-
-This commit continues expanding language support by adding a
-complete French translation file (po/fr.po) with 216 translated
-messages.
+That representation will let the shadow-copy path remove its empty-region
+special case and use the damage supplied by the renderer.
 ```
 
 **Final commit:**
+
+```text
+renderer: Use supplied shadow buffer damage
+
+The preceding commit changed full redraws to supply a region covering the
+framebuffer.
+
+Shadow buffer copies still translate an empty region into a full copy,
+even though the supplied region already describes all pixels to copy.
+
+This commit passes the supplied region directly to the copy operation,
+removing the special case.
+
+Rendering and shadow-buffer copying now describe full updates with the
+same region semantics. Neither path needs an empty region to mean the
+opposite of its ordinary meaning.
 ```
-i18n: Add Arabic translation (ar)
 
-The program has translations for Western European languages, East
-Asian languages, and Eastern European languages but lacks support
-for Arabic-speaking users.
-
-Without Arabic translations, Arabic-speaking users cannot use the
-program in their native language.
-
-This commit completes the initial set of language support by
-adding a complete Arabic translation file (po/ar.po) with 216
-translated messages.
-```
+By contrast, an unused-argument cleanup does not need "The next commit will
+fix failed GPU copies." That sentence announces another patch without
+explaining the cleanup's role, even if both patches touch the same function.
 
 ### Anti-Patterns
 
@@ -1256,7 +1336,7 @@ The code used to only show minimal output...
 
 ✅ **Do write in present tense about the current state:**
 ```
-The code currently provides minimal output...
+Right now, the code provides minimal output...
 ```
 
 ❌ **Don't describe the change in the first paragraph:**
@@ -1264,9 +1344,9 @@ The code currently provides minimal output...
 This commit adds verbose output to the CLI...
 ```
 
-✅ **Do describe what exists today:**
+✅ **Do frame what exists before the commit:**
 ```
-The CLI currently provides minimal feedback during operation...
+As things stand, the CLI provides minimal feedback during operation...
 ```
 
 ❌ **Don't confuse a symptom with the real problem:**
@@ -1320,12 +1400,12 @@ i18n: Add French translation (fr)
 The application outputs all user-facing text in English.
 ```
 
-✅ **Do reflect the cumulative state after previous commits:**
+✅ **Do describe the relevant state after previous commits:**
 ```
 i18n: Add French translation (fr)
 
-The program has Spanish translation but lacks translations for
-other major languages.
+Currently, the program uses fallback English messages for the French
+locale.
 ```
 
 ❌ **Don't describe user situations in the first paragraph:**
@@ -1335,7 +1415,8 @@ Users must work in English regardless of their preference.
 
 ✅ **Do describe the program's state:**
 ```
-The program has Spanish translation but lacks French.
+Currently, the program uses fallback English messages for the French
+locale.
 ```
 
 ## Safety Checks
@@ -1558,8 +1639,8 @@ Before committing, verify:
   not what is missing, broken, or being changed.
 - The first paragraph describes the program's state (what it has), not the
   user's situation (what they must do).
-- If this is part of a series, the first paragraph reflects the cumulative
-  state after all previous commits.
+- If this is part of a series, the first paragraph reflects the relevant
+  state after the previous commit without recapping unrelated changes.
 - The second paragraph explains the broader problem from the right
   perspective (first-person maintainer for internal concerns, user for
   external ones).
@@ -1571,10 +1652,11 @@ Before committing, verify:
   series goal rather than only the first change.
 - If this is the final commit in a series, the message concludes the series
   goal rather than reading like another incremental step.
-- If this is the penultimate commit in the series, the fourth paragraph names
-  what the upcoming final commit will do.
-- If the commit is an earlier non-final step in the series, the fourth
-  paragraph names what subsequent commits will do.
+- Any fourth paragraph explains a useful connection in the series rather
+  than merely naming the next item. Retained segues stay separate from the
+  first three paragraphs and match the actual patches.
+- The series' goal, rationale, and progression are understandable from the
+  commit history alone.
 - Body paragraphs wrap at 75 characters.
 
 The most common errors are:

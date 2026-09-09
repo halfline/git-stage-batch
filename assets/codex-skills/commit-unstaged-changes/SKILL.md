@@ -920,6 +920,11 @@ unfamiliar technology and industry acronyms in plain language, defining
 terms before using them. Prefer a fuller explanation when shorthand would
 make the reader decode the meaning.
 
+Keep explanations within the commit history. Do not refer to outside
+development context such as "the plan" or "review results". Explain the
+motivation directly, using only context available at that point in the
+series.
+
 Expect a drive-by reader to be new to the codebase but likely to read the
 series together in order. Explain shared context and unfamiliar terms where
 they first matter. Later messages may rely on that explanation. Keep useful

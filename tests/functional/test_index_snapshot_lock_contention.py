@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from git_stage_batch.utils import git_index, git_index_lock
+from git_stage_batch.utils import git_index, git_index_lock, session_start_point
 from git_stage_batch.utils.git_command import run_git_command
 
 
 @pytest.mark.parametrize(
     "operation",
-    ["tree", "alternate-tree"],
+    ["tree", "alternate-tree", "start-point"],
 )
 def test_index_snapshot_waits_for_transient_lock(
     functional_repo, monkeypatch, operation
@@ -24,6 +24,7 @@ def test_index_snapshot_waits_for_transient_lock(
     module = {
         "tree": git_index,
         "alternate-tree": git_index,
+        "start-point": session_start_point,
     }[operation]
     index_context = (
         git_index.temp_git_index()
@@ -60,6 +61,9 @@ def test_index_snapshot_waits_for_transient_lock(
         try:
             if operation in {"tree", "alternate-tree"}:
                 assert git_index.git_write_tree(env=environment) == expected_tree
+            elif operation == "start-point":
+                start_point = session_start_point.resolve_session_start_point()
+                assert start_point.index_tree == expected_tree
             assert injected
             assert len(waits) == 1
             assert not lock_path.exists()

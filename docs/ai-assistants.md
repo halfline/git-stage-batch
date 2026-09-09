@@ -175,6 +175,11 @@ may rely on that explanation. Keep useful repetition, but make it a shorter
 reminder rather than repeating the detail. Add new detail where it becomes
 relevant. A standalone commit still needs its own context.
 
+Use three body paragraphs for the state, problem, and solution, with a
+distinct fourth paragraph when a series connection needs explaining. The
+series is the larger story: its goal, rationale, and useful connections must
+remain understandable from the commit history alone.
+
 **Format:**
 - **First line**: a concise summary with a lowercase prefix (`module:`, `cli:`, etc.)
 - **First paragraph**: establish the program's **selected state** (what it has or provides)
@@ -193,11 +198,21 @@ relevant. A standalone commit still needs its own context.
 - **Third paragraph**: describe how this commit addresses the problem
   - Be precise about scope (if it only improves one aspect, say so)
   - Use "This commit addresses that by..."
-  - If part of a series, use progression words: "begins", "continues", "completes"
-- **Fourth paragraph**: connect every commit in a multi-commit series
-  - Earlier commits name the remaining work in future tense
-  - The penultimate commit specifically says what the final commit will do
-  - The final commit concludes the series instead of promising more work
+  - Explain the current commit's contribution to the series goal
+  - Let the opening commit introduce the whole series as well as its own patch
+  - Let the final commit close the story with the outcome actually achieved
+- **Optional fourth paragraph**: explain a useful connection in the series,
+  such as the current step's role, a design choice, a dependency, or scope
+  deliberately left unfinished
+  - If removing it makes the progression no harder to understand, omit it
+  - Keep a useful segue separate from the first three paragraphs; do not repeat them
+  - Verify references against actual patches and describe future work as future
+  - Use it for broader opening context or the final outcome when useful
+  - Omit unrelated recaps, next-item announcements, and ceremonial conclusions
+
+A representation change can explain how it enables a later consumer
+simplification. An unused-argument cleanup should not announce an unrelated
+GPU-copy fix merely because that patch comes next.
 
 **Key rules:**
 - Write in **present tense** about the selected state ("has", not "used to have")
@@ -452,8 +467,8 @@ echo "$status" | jq '.progress.remaining'
 
 ## Common Patterns
 
-**Note:** Examples below show abbreviated commit messages for brevity. In practice,
-use the full three-paragraph format described in the Commit Messages section.
+**Note:** Examples below abbreviate commit messages. Actual messages should use
+the three-paragraph structure above, adding a fourth only when useful.
 
 ### Pattern 1: Feature Implementation
 

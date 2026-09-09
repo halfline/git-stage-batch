@@ -646,6 +646,12 @@ For each commit:
 Re-read this template before writing each commit message in a multi-commit
 series. Fill in each bracketed section. Do not merge or skip paragraphs.
 
+Expect a drive-by reader to be new to the codebase but likely to read the
+series together in order. Explain shared context and unfamiliar terms where
+they first matter. Later messages may rely on that explanation. Keep useful
+repetition, but make it a shorter reminder rather than repeating the detail;
+add new detail where relevant. A standalone commit needs its own context.
+
 ```text
 prefix: Summary under 68 chars
 
@@ -737,8 +743,9 @@ Fourth paragraph for follow-up or final series conclusion when useful.
 - Describe what the program, project, interface, or documentation has or
   provides.
 - Do not describe the patch, the user's situation, or future goals here.
-- If the commit is part of a series, reflect the cumulative state after all
-  earlier commits in that series.
+- If the commit is part of a series, reflect the relevant state after the
+  previous commit without recapping unrelated work or claiming later
+  capabilities.
 - If this is the first commit in a series, later paragraphs should introduce
   the series goal, even if the first change is narrow groundwork.
 

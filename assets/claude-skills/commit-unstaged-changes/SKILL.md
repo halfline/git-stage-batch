@@ -650,6 +650,11 @@ series. Keep the first three paragraphs distinct. Add a separate fourth
 paragraph when it explains a useful connection in the series; otherwise
 omit it. The series' goal and rationale must remain in the history itself.
 
+Assume the reader may not know the underlying technology. Explain
+unfamiliar technology and industry acronyms in plain language, defining
+terms before using them. Prefer a fuller explanation when shorthand would
+make the reader decode the meaning.
+
 Expect a drive-by reader to be new to the codebase but likely to read the
 series together in order. Explain shared context and unfamiliar terms where
 they first matter. Later messages may rely on that explanation. Keep useful

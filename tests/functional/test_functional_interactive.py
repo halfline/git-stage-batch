@@ -479,7 +479,9 @@ class TestInteractiveMultiFile:
 
         # Navigate through multiple hunks
         result = run_interactive("i", "s", "i", "s", "i", "s", "i", "s", "i", "q", "y")
-        assert result.returncode == 0
+        assert result.returncode == 0, (
+            f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        )
         staged = get_staged_files()
         assert len(staged) > 0
 
@@ -564,7 +566,9 @@ class TestInteractiveVsNonInteractive:
 
         # Interactive
         result = run_interactive("i", "q")
-        assert result.returncode == 0
+        assert result.returncode == 0, (
+            f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        )
 
     def test_interactive_starts_session_automatically(self, repo_with_changes):
         """Test that interactive mode starts a session automatically."""

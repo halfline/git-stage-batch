@@ -75,6 +75,8 @@ If you spawn a subagent for message drafting:
 3. Give it a self-contained briefing that includes:
    - the current commit's one-clause purpose
    - whether this is a single commit or part of a series
+   - the series' overall goal and the current commit's contribution
+   - whether this is the opening commit in the series
    - whether this is the final commit in the series
    - whether this is the penultimate commit in the series, when known
    - the repository-specific message rules already discovered
@@ -88,7 +90,8 @@ If you spawn a subagent for message drafting:
    - `.git/hooks/commit-msg` when present
 5. Require it to return:
    - one proposed commit message
-   - a short checklist confirming prefix, paragraph count, and series position
+   - a short checklist confirming prefix, paragraph count, series framing,
+     and the relevance of any fourth-paragraph connection
    - any specific uncertainty if the staged diff does not justify a confident
      draft
 
@@ -118,7 +121,8 @@ background unqualified; use "already" only for a useful contrast.]
 This commit [addresses|mitigates|resolves] that [problem] by
 [precise description of what this commit changes].
 
-[Optional fourth paragraph: what comes next, or the final series conclusion.]
+[Optional fourth paragraph: a useful connection explaining this patch's
+role in the series, a dependency, or deliberately unfinished scope.]
 ```
 
 ### Message Rules
@@ -153,15 +157,22 @@ This commit [addresses|mitigates|resolves] that [problem] by
   `later commits will ...`, or `the final commit will ...`, not bare `later`.
 - Match the state after the previous commit without recapping unrelated
   earlier work.
+- Keep the series' goal, rationale, and useful connections in the history.
+  The opening commit speaks for the series as well as its own patch; the
+  final commit closes the story with the outcome actually achieved.
 - Expect a drive-by reader to be new to the codebase but likely to read the
   series together in order. Explain shared context where it first matters;
   later commits may rely on it. Keep useful repetition as a shorter reminder,
   adding new detail where relevant. A standalone commit needs its own context.
-- In a multi-commit series, use the fourth paragraph for what comes next or,
-  in the final commit, for the series conclusion.
-- If this is the penultimate commit, refer to the upcoming final commit in the
-  singular, such as `The final commit will ...`, instead of saying
-  `subsequent commits`.
+- Preserve references that explain the current step's role, a design choice,
+  a dependency, or deliberately unfinished scope. Explain the connection,
+  not just the next commit's subject.
+- Keep a useful segue as a distinct fourth paragraph. Omit it when removing
+  it makes the series' progression no harder to understand; do not fold it
+  into the first three paragraphs or repeat their explanation.
+- Verify retained references against actual patches and distinguish future
+  work from behavior established here. Omit unrelated recaps and next-item
+  announcements.
 - Do not use `this` for anything other than `this commit`.
 - Prefer concrete limitations over vague praise.
 

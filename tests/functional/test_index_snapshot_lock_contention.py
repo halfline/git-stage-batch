@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from git_stage_batch.data.undo import snapshots, state
 from git_stage_batch.tui import session_startup
 from git_stage_batch.utils import git_index, git_index_lock, session_start_point
 from git_stage_batch.utils.git_command import run_git_command
@@ -12,7 +13,7 @@ from git_stage_batch.utils.git_command import run_git_command
 
 @pytest.mark.parametrize(
     "operation",
-    ["tree", "alternate-tree", "start-point", "interactive-start"],
+    ["tree", "alternate-tree", "start-point", "interactive-start", "undo"],
 )
 def test_index_snapshot_waits_for_transient_lock(
     functional_repo, monkeypatch, operation
@@ -23,12 +24,16 @@ def test_index_snapshot_waits_for_transient_lock(
     ).stdout.strip()
     if operation == "interactive-start":
         (functional_repo / "README.md").write_text("Changed readme\n")
+    legacy_state = snapshots.snapshot_current_state([])
+    legacy_state.pop("index_entries")
+    legacy_state["index_tree"] = expected_tree
 
     module = {
         "tree": git_index,
         "alternate-tree": git_index,
         "start-point": session_start_point,
         "interactive-start": session_startup,
+        "undo": state,
     }[operation]
     index_context = (
         git_index.temp_git_index()
@@ -71,6 +76,8 @@ def test_index_snapshot_waits_for_transient_lock(
             elif operation == "interactive-start":
                 startup = session_startup.prepare_interactive_session()
                 assert not startup.degraded_mode
+            else:
+                assert state._detect_conflicts_against_state(legacy_state) == []
             assert injected
             assert len(waits) == 1
             assert not lock_path.exists()

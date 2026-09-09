@@ -19,13 +19,16 @@ in `refine-history`; do not disguise it with a broader message.
 
 ## Low-context prose
 
-Assume the reader understands ordinary software development and Git, but has
-never seen this repository. The message should let that reader identify the
-selected state, the concrete limitation, and the effect of the patch without
-first decoding local vocabulary.
+Assume the reader understands ordinary software development and Git but is
+new to the codebase. For a series, expect that drive-by reader to read the
+commits together in order. Each message should make its own state,
+limitation, and change clear in that context; it need not rebuild all the
+background for someone reading only that commit in isolation.
 
-- Make each message independently understandable. Do not require the reader to
-  open an earlier commit to recover a definition or remember a local term.
+- Explain shared context in detail where it first matters. Later messages may
+  rely on that explanation. Keep useful repetition, but make it a shorter
+  reminder rather than repeating the detail; add new detail where it becomes
+  relevant. A standalone commit still needs its own context.
 - Prefer a short, complete sentence over a coined label or compressed noun
   phrase. Do not turn a relationship into phrases such as `metadata bridge`,
   `ownership path`, `state seam`, or `typing surface` when plain prose can say
@@ -33,12 +36,12 @@ first decoding local vocabulary.
 - Do not invent a one- or two-word name for an idea solely to shorten the
   message. A memorable label is not automatically a clear explanation.
 - Use an established project term only when it is the clearest name for the
-  concept. Define a codebase-specific or ambiguous term at first use in every
-  message with a brief appositive or plain-language clause.
+  concept. Define a codebase-specific or ambiguous term when it is first
+  introduced in the series; give a concise reminder later when it helps.
 - Introduce a code identifier by its role when the name alone is not
   self-explanatory: `SelectionResult, the object that carries the chosen
-  hunks`, rather than treating `SelectionResult` as prior knowledge. Repeat
-  that brief role in a later message when the identifier appears there again.
+  hunks`, rather than treating `SelectionResult` as prior knowledge. Later
+  messages can use the established name or a short role reminder as needed.
 - Expand uncommon abbreviations on first use. Common terms such as Git, CLI,
   API, and JSON need no definition unless the repository gives them a special
   meaning.
@@ -58,9 +61,11 @@ typed path lacks a metadata bridge` with a sentence such as `Saved selections
 do not carry the file name and object identifier needed to find their source
 files again`.
 
-Apply a read-once test: a newcomer should be able to paraphrase what existed,
-what was missing, and what this commit changes. If the paraphrase depends on
-guessing a local term, define the term or rewrite the sentence.
+Apply a read-once test to the series: a newcomer reading it in order should
+be able to paraphrase what exists, what is missing, and what each commit
+changes. If that requires guessing an unexplained local term, define it or
+rewrite the sentence. If the context is already established, prefer a
+concise reminder over another full explanation.
 
 ## Message shape
 
@@ -133,10 +138,10 @@ In message prose, use `commit`, not `revision`, and `previous commit`, not
 ## Cumulative state
 
 Evaluate each message at its own historical position. The first paragraph must
-describe the state selected by the parent commit, not the final branch and not
-the uncommitted worktree. As the series progresses, the selected-state
-paragraph should evolve to include capabilities established by earlier
-commits, without prematurely claiming later ones.
+describe the state selected by the previous commit, not the final branch or
+the uncommitted worktree. Include only earlier changes needed to explain the
+current limitation or design; do not recap unrelated work or prematurely
+claim later capabilities.
 
 For a series, use progression language in the third paragraph:
 

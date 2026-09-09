@@ -61,8 +61,8 @@ For historical mode, leave the index and worktree out of the analysis:
 1. `git show --stat --patch --find-renames TARGET_SHA` for the exact patch
 2. the caller's series goal, selected-state summary, and adjacent index entries
    for cumulative narrative and fourth-paragraph transitions
-3. `git show TARGET_SHA^:<path>` only when representative parent-state content
-   is needed to verify that summary
+3. `git show TARGET_SHA^:<path>` only when representative content from the
+   previous commit is needed to verify that summary
 4. representative path history, repository guidance, and the commit hook as
    needed
 
@@ -86,10 +86,32 @@ of falling back to `git diff --cached`.
   Introduce an identifier by its role when its name does not explain itself,
   even if an earlier commit already introduced it.
 - The body must match repository paragraph-count and tense rules when given.
-- The first paragraph describes the selected current state, not the patch.
+- The first paragraph establishes the relevant state, not the current patch.
+  If recent work established that state, briefly recount the past change
+  and loosely when it happened.
+- Use `Right now, ...`, `Currently, ...`, or `As things stand, ...` only
+  where it clarifies time-dependent behavior. Timeless background or a
+  lasting contract can stand unqualified; naming the project or component
+  may already establish the context. If the ambiguity is in the problem
+  paragraph, anchor that claim instead. Let `This commit ...` supply the
+  transition without implying that every background fact changes afterward.
+  Vary naturally and avoid repeated cues; some repetition is fine.
+- Use `already` for a useful contrast, not merely because a capability
+  exists before the patch. If a recent change established the relevant
+  state, recount it in past tense and attribute it to earlier work:
+  `Recent commits moved ...`. Describing a past change differs from
+  describing the existing state in present tense. Avoid `now` alone,
+  which can imply the current commit made that change. Verify claims
+  against the previous commit, not later work.
+- In message prose, use `commit` and `previous commit`, not `revision` or
+  `parent commit`.
+- Use present tense for the change itself (`This commit returns ...`) and
+  future tense for later work.
+- Make references to future work in the series explicit: `in a later commit`,
+  `later commits will ...`, or `the final commit will ...`, not bare `later`.
 - Do not consider uncommitted changes or untracked files as part of the
   project's state during a multi-commit series. In historical mode, derive the
-  selected state from the target's parent, not from `HEAD`.
+  selected state from the previous commit, not from `HEAD`.
 - The second paragraph describes the underlying problem.
 - The third paragraph explains how this commit addresses that problem.
 - For a multi-commit series, include a fourth paragraph. If the caller says
@@ -113,6 +135,8 @@ Return exactly these sections:
    - expected paragraph count
    - series positioning
    - whether local terms and identifiers are defined in this message
+   - whether the status quo is clear without needless temporal cues
+   - whether any `already` claim is supported by the previous commit
    - any repository rule you applied
 
 3. `UNCERTAINTY`

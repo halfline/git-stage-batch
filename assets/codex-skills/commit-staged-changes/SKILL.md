@@ -151,6 +151,12 @@ This commit [addresses|mitigates|resolves] that [problem] by
   describe work in later commits in future tense.
 - Make references to future work in the series explicit: `in a later commit`,
   `later commits will ...`, or `the final commit will ...`, not bare `later`.
+- Match the state after the previous commit without recapping unrelated
+  earlier work.
+- Expect a drive-by reader to be new to the codebase but likely to read the
+  series together in order. Explain shared context where it first matters;
+  later commits may rely on it. Keep useful repetition as a shorter reminder,
+  adding new detail where relevant. A standalone commit needs its own context.
 - In a multi-commit series, use the fourth paragraph for what comes next or,
   in the final commit, for the series conclusion.
 - If this is the penultimate commit, refer to the upcoming final commit in the

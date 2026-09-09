@@ -79,12 +79,16 @@ of falling back to `git diff --cached`.
 - Respect the caller's stated split. Do not broaden the story to absorb work
   outside the selected staged or historical patch.
 - The summary line must describe one change only.
-- Write for a reader who has never seen the repository. Prefer a complete
-  plain-language sentence over a coined label, compressed noun phrase, or
-  abstract verb that hides what the program does.
-- Define codebase-specific or ambiguous terms at first use in every message.
-  Introduce an identifier by its role when its name does not explain itself,
-  even if an earlier commit already introduced it.
+- Write for a reader new to the codebase who is likely to read a series
+  together in order. Prefer a complete plain-language sentence over a coined
+  label, compressed noun phrase, or abstract verb that hides what the program
+  does.
+- Explain shared context and unfamiliar terms where they first matter in the
+  series. Later messages may rely on that explanation. Keep useful repetition
+  as a shorter reminder, adding new detail only where it becomes relevant.
+  Introduce an identifier by its role when its name does not explain itself;
+  an established name or concise role reminder can suffice later. A
+  standalone commit still needs its own context.
 - The body must match repository paragraph-count and tense rules when given.
 - The first paragraph establishes the relevant state, not the current patch.
   If recent work established that state, briefly recount the past change
@@ -134,7 +138,7 @@ Return exactly these sections:
    - whether the summary is single-purpose
    - expected paragraph count
    - series positioning
-   - whether local terms and identifiers are defined in this message
+   - whether terms are clear in series context and repeated context is concise
    - whether the status quo is clear without needless temporal cues
    - whether any `already` claim is supported by the previous commit
    - any repository rule you applied

@@ -6,7 +6,7 @@ from ..commands.abort import command_abort
 from ..commands.stop import command_stop
 from ..data.progress import get_hunk_counts
 from ..utils.file_io import read_text_file_contents
-from ..utils.git_command import run_git_command
+from ..utils.git_command import git_diff_reports_changes, run_git_command
 from ..utils.paths import (
     get_start_head_file_path,
     get_start_index_tree_file_path,
@@ -42,17 +42,32 @@ def handle_quit(*, stop_session: bool = True) -> None:
     selected_head_value = (
         selected_head.stdout.strip() if selected_head.returncode == 0 else "UNBORN"
     )
-    selected_index_tree = run_git_command(
-        ["write-tree"],
+    # Compare staged content without writing a tree or waiting on index.lock.
+    # Intent-to-add entries are absent from write-tree's result as well.
+    index_comparison = run_git_command(
+        [
+            "diff-index",
+            "--cached",
+            "--quiet",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            "--ignore-submodules=none",
+            "--ita-invisible-in-index",
+            start_index_tree,
+            "--",
+        ],
+        check=False,
         requires_index_lock=False,
-    ).stdout.strip()
+    )
+    has_index_changes = git_diff_reports_changes(index_comparison)
 
     stats = get_hunk_counts()
     has_discards = stats.get("discarded", 0) > 0
 
     if (
         selected_head_value == start_head
-        and selected_index_tree == start_index_tree
+        and not has_index_changes
         and not has_discards
     ):
         if stop_session:

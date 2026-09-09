@@ -112,7 +112,46 @@ prefix: Concise summary of the change
 
 #### First Paragraph
 
-Describe the program's selected state at this point in history.
+Establish the program's selected state at this point in history. If recent
+work established that state, briefly recount the change in past tense and
+loosely when it happened.
+
+Describe the status quo in present tense from the viewpoint of the code
+after the previous commit. Use a light cue such as `Right now, ...`,
+`Currently, ...`, or `As things stand, ...` when it helps distinguish
+time-dependent behavior from the change. The third paragraph's `This
+commit ...` supplies the transition.
+
+Do not add a cue automatically to the first paragraph. Timeless background
+or a lasting contract can stand unqualified; naming the project or component
+may already make the context clear. For example, `Mutter redraws or copies
+damaged regions` does not need `Right now`. If the ambiguity is in the problem
+paragraph, anchor that claim instead: `Currently, buffer repair does not
+consistently follow that rule.`
+
+Avoid routinely attaching `Before this commit is applied, ...` to background
+facts, since that invites a contrast even when those facts remain true
+afterward.
+
+Use `already` selectively to contrast an established capability with an
+extension the patch needs. Verify it against the previous commit; do not
+use the word merely to mean that something exists before the current patch.
+
+When the relevant state comes from a recent change, describe that change
+as a past event and identify it as earlier work: `Recent commits moved
+buffer selection and damage history into the copy tracker.` Present tense
+describes an existing state; past tense can recount the recent change that
+established it. Avoid `now` alone for that transition, since it can make
+the current commit sound responsible. Do not anticipate later work.
+
+When a cue helps, use it where it resolves the ambiguity without repeating
+it throughout the message. Vary the wording naturally; some repetition is
+preferable to forced synonyms. Keep present tense for the change itself,
+such as `This commit returns NULL on failure`, and future tense for later
+work.
+
+In message prose, use `commit`, not `revision`, and `previous commit`, not
+`parent commit`.
 
 Summarize what capabilities, interfaces, or documentation exist in the
 project immediately before this commit is applied. This is the program's
@@ -200,6 +239,10 @@ Before finalizing a commit message, check:
 
 - Does the summary use a fitting prefix and stay under 68 characters?
 - Does the first paragraph describe the program's selected state, not the patch?
+- Is the status quo clear, with temporal cues only where they resolve an
+  ambiguity rather than make lasting background sound temporary?
+- Does any `already` claim identify an existing capability the patch builds
+  on, rather than assume later work?
 - Does the first paragraph describe the program's state (what it has), not the user's situation (what they must do)?
 - If this is part of a series, does the first paragraph accurately reflect the cumulative state after all previous commits?
 - If the worktree contains multiple independent series, are they split into separate series?
@@ -224,9 +267,9 @@ Before finalizing a commit message, check:
 ```
 cli: Add --verbose flag for detailed output
 
-The command-line interface currently provides minimal feedback during
-operation, only showing the selected hunk without any indication of progress
-or internal state.
+Right now, the command-line interface provides minimal feedback during
+operation. It only shows the selected hunk, without any indication of
+progress or internal state.
 
 Users working with large changesets cannot easily determine how much work
 remains or what has already been processed, making it difficult to gauge
@@ -314,7 +357,7 @@ The code used to only show minimal output...
 
 ✅ **Do write in present tense about the selected state:**
 ```
-The code currently provides minimal output...
+Right now, the code provides minimal output...
 ```
 
 ❌ **Don't describe the change in the first paragraph:**
@@ -322,10 +365,10 @@ The code currently provides minimal output...
 This commit adds verbose output to the command-line interface...
 ```
 
-✅ **Do describe what exists today:**
+✅ **Do frame what exists before the commit:**
 ```
-The command-line interface currently provides minimal feedback during
-operation...
+As things stand, the command-line interface provides minimal feedback
+during operation...
 ```
 
 ❌ **Don't confuse a symptom with the real problem:**

@@ -34,8 +34,9 @@ Expect the caller to provide:
 - the current commit's one-clause purpose
 - for a series, its overall goal, the selected state at this position, and the
   immediately preceding and following index entries
-- whether this is the final commit in the series
-- whether this is the penultimate commit in the series, when known
+- whether the commit opens or concludes the series
+- the current patch's contribution to the overall goal and any dependency or
+  intentionally incomplete scope that needs a cross-commit explanation
 - any repository-specific commit rules already discovered
 - any known preferred prefixes
 
@@ -64,7 +65,8 @@ For historical mode, leave the index and worktree out of the analysis:
 
 1. `git --no-optional-locks show --stat --patch --find-renames TARGET_SHA`
 2. the caller's series goal, selected-state summary, and adjacent index entries
-   for cumulative narrative and fourth-paragraph transitions
+   for relevant facts from the previous commit and causal relationships
+   between patches
 3. `git --no-optional-locks show TARGET_SHA^:<path>` only when representative
    content from the previous commit is needed to verify that summary
 4. representative path history, repository guidance, and the commit hook as
@@ -86,8 +88,8 @@ one fails.
 
 ## Drafting rules
 
-- Respect the caller's stated split. Do not broaden the story to absorb work
-  outside the selected staged or historical patch.
+- Respect the caller's stated split. Series context can explain the larger
+  goal, but must not attribute another patch's implementation to this one.
 - The summary line must describe one change only.
 - Write for a reader new to the codebase who is likely to read a series
   together in order. Prefer a complete plain-language sentence over a coined
@@ -131,11 +133,18 @@ one fails.
   instead of `HEAD`.
 - The second paragraph describes the underlying problem.
 - The third paragraph explains how this commit addresses that problem.
-- For a multi-commit series, include a fourth paragraph. If the caller says
-  this is the final commit, make that paragraph a closing conclusion for the
-  series goal. If the caller says this is the penultimate commit, refer to the
-  upcoming final commit in the singular instead of saying `subsequent commits`.
-  For earlier non-final commits, use future-looking text for what remains.
+- Treat the series as the larger story, understandable from history alone.
+  The opening commit introduces the overall goal and motivation as well as
+  its own patch; the final commit explains the outcome actually achieved.
+  Distinguish the current patch's contribution from work done elsewhere.
+- Preserve cross-commit context that explains the current step's role, a
+  design choice, a dependency, or intentionally incomplete scope. Omit
+  unrelated recaps and announcements that merely name the next item.
+- Keep a useful segue as a distinct fourth paragraph, separate from the
+  current state, problem, and solution. Omit it only when no useful
+  connection remains; do not fold it into the first three paragraphs.
+- Verify any retained reference against the relevant patch and distinguish
+  future work from behavior established by the current commit.
 - If the caller supplied wording bans or line-length limits, obey them.
 
 ## Output format
@@ -149,11 +158,12 @@ Return exactly these sections:
    Flat bullets covering:
    - chosen prefix
    - whether the summary is single-purpose
-   - expected paragraph count
-   - series positioning
-   - whether terms are clear in series context and repeated context is concise
+   - whether the detail is proportionate to the change
+   - whether the message carries its part of the series' story
    - whether the status quo is clear without needless temporal cues
    - whether any `already` claim is supported by the previous commit
+   - why any cross-commit reference is needed, or why none is needed
+   - whether terms are clear in series context and repeated context is concise
    - any repository rule you applied
 
 3. `UNCERTAINTY`

@@ -27,6 +27,10 @@ commits together in order. Each message should make its own state,
 limitation, and change clear in that context; it need not rebuild all the
 background for someone reading only that commit in isolation.
 
+- Assume the reader may not know the underlying technology. Explain
+  unfamiliar technology and industry acronyms in plain language, defining
+  terms before using them. Prefer a fuller explanation when shorthand would
+  make the reader decode the meaning.
 - Explain shared context in detail where it first matters. Later messages may
   rely on that explanation. Keep useful repetition, but make it a shorter
   reminder rather than repeating the detail; add new detail where it becomes

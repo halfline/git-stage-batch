@@ -450,6 +450,8 @@ owned only by this skill.
   prior conversation.
 - The briefing should include:
   - the planned position of this commit in the series
+  - the series' overall goal and the current commit's contribution
+  - whether this is the opening commit in the series
   - which independent series this commit belongs to when the unstaged tree
     contains more than one
   - the one-clause purpose of the current commit
@@ -461,8 +463,8 @@ owned only by this skill.
     `CONTRIBUTING.md`, and `.git/hooks/commit-msg` if present
 - Require the agent to return:
   - one proposed commit message
-  - a short checklist confirming prefix, paragraph count, tense, and series
-    narrative requirements
+  - a short checklist confirming prefix, paragraph count, tense, series
+    framing, and the relevance of any fourth-paragraph connection
   - any specific uncertainty if the staged diff does not support a confident
     draft
 - Review the draft before committing. If it violates the rules below or no
@@ -644,7 +646,9 @@ For each commit:
 ### Message template
 
 Re-read this template before writing each commit message in a multi-commit
-series. Fill in each bracketed section. Do not merge or skip paragraphs.
+series. Keep the first three paragraphs distinct. Add a separate fourth
+paragraph when it explains a useful connection in the series; otherwise
+omit it. The series' goal and rationale must remain in the history itself.
 
 Expect a drive-by reader to be new to the codebase but likely to read the
 series together in order. Explain shared context and unfamiliar terms where
@@ -670,11 +674,10 @@ This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
 stated above].
 
-[Connect to what comes next, or conclude the series when this is the final
-commit. For the penultimate commit, refer to the upcoming final commit in the
-singular, such as "The final commit will ...", instead of saying "subsequent
-commits". For the final commit, use this paragraph to state that the series
-goal has been reached.]
+[Optional fourth paragraph: explain the current step's role in the series,
+a design choice that enables later work, a dependency, or deliberately
+unfinished scope. The opening can frame the broader goal and the final
+commit can explain the achieved outcome; do not merely list other patches.]
 ```
 
 The most common errors are:
@@ -706,7 +709,8 @@ Second paragraph describing the underlying problem.
 
 Third paragraph describing how this commit addresses that problem.
 
-Fourth paragraph for follow-up or final series conclusion when useful.
+Optional fourth paragraph, kept distinct for a useful series connection
+or conclusion.
 ```
 
 ### Summary line
@@ -779,14 +783,43 @@ Fourth paragraph for follow-up or final series conclusion when useful.
 
 ### Fourth paragraph
 
-- Use it for every commit in a multi-commit series.
-- For non-final commits, use future tense since the work has not happened yet.
-- Be specific about what comes next rather than vague.
-- For the penultimate commit, refer to the upcoming final commit in the
-  singular, such as `The final commit will ...`, instead of saying
-  `subsequent commits`.
-- The final commit should conclude the series goal introduced by the opening
-  commit in a fourth paragraph instead of pointing toward more work.
+Use a distinct fourth paragraph when it helps explain the current commit's
+place in the series. The series is the larger story, not just a collection of
+isolated patches, and its goal, rationale, and connections belong in the
+commit history itself.
+
+A useful segue explains how the current step advances the goal, why a design
+choice enables later work, what a dependent patch needs, or why some scope is
+deliberately left unfinished. Ask whether removing the paragraph would make
+that progression harder to understand. Merely sharing a topic or appearing
+next in the series is not enough.
+
+For example, a full-damage representation change can explain why a later
+shadow-copy patch can use ordinary region operations. An unused-argument
+cleanup should not merely announce that the next commit fixes failed GPU
+copies; it needs a meaningful connection to that work.
+
+Keep a useful segue as a fourth paragraph, separate from the current state,
+problem, and solution. Do not fold it into those paragraphs or repeat their
+explanation. Omit the fourth paragraph when no useful connection remains,
+rather than manufacturing a segue to satisfy a template.
+
+The opening commit speaks for the series as well as its own patch: introduce
+the overall goal and motivation, then distinguish the contribution made
+here. The final commit closes that story by explaining the achieved outcome,
+without claiming more than the series actually establishes. A fourth
+paragraph can carry that broader framing or conclusion when it adds useful
+context instead of merely repeating the solution.
+
+Verify references against actual patches. Describe work in later commits in
+future tense and do not claim it is already implemented. Make references to
+those commits explicit: `in a later commit`, `later commits will ...`, or
+`the final commit will ...`, not bare `later`. For example, write `the
+tracker introduced in a later commit`, not `the tracker introduced later`.
+When a retained segue refers only to the upcoming final commit, use the
+singular. Preserve useful connections; remove unrelated recaps, next-item
+announcements, and repetitive boilerplate. Varying the wording does not make
+an irrelevant segue useful.
 
 ## Required principles
 
@@ -862,10 +895,11 @@ Before committing, verify:
   series goal rather than only the first change.
 - If this is the final commit in a series, the message concludes the series
   goal rather than reading like another incremental step.
-- If this is the penultimate commit in the series, the fourth paragraph names
-  what the upcoming final commit will do.
-- If the commit is an earlier non-final step in the series, the fourth
-  paragraph names what subsequent commits will do.
+- Any fourth paragraph explains a useful connection in the series rather
+  than merely naming the next item. Retained segues stay separate from the
+  first three paragraphs and match the actual patches.
+- The series' goal, rationale, and progression are understandable from the
+  commit history alone.
 - Body paragraphs wrap at 75 characters.
 
 ## Completion

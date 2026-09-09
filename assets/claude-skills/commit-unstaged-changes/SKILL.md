@@ -649,9 +649,11 @@ series. Fill in each bracketed section. Do not merge or skip paragraphs.
 ```text
 prefix: Summary under 68 chars
 
-[Present-tense description of what the project, file, or interface
-currently has or provides. Do not mention the patch or what is
-missing yet.]
+[The relevant state, using present tense for state descriptions. If recent
+work established that state, briefly recount the change in past tense and
+loosely when it happened. Leave timeless background unqualified; use
+"already" only for a useful contrast. Do not describe the current patch or
+limitation yet.]
 
 [Description of what is missing, broken, or insufficient — and why
 that matters. Use first-person maintainer perspective for internal
@@ -690,7 +692,9 @@ Every commit message should use this shape:
 ```text
 prefix: Concise summary of the change
 
-First paragraph describing the selected project state.
+First paragraph establishing the relevant state and, if recent work
+established it, briefly describing that past change and loosely when it
+happened. Leave timeless background unqualified.
 
 Second paragraph describing the underlying problem.
 
@@ -712,7 +716,24 @@ Fourth paragraph for follow-up or final series conclusion when useful.
 
 - Describe the project's selected state immediately before the commit is
   applied.
-- Use present tense.
+- Use present tense for state descriptions and past tense when recounting
+  recent changes that established the state.
+- Use `Right now, ...`, `Currently, ...`, or `As things stand, ...` only
+  where it clarifies time-dependent behavior. Timeless background or a
+  lasting contract can stand unqualified; naming the project or component
+  may already establish the context. If the ambiguity is in the problem
+  paragraph, anchor that claim instead. Let `This commit ...` supply the
+  transition without implying that every background fact changes afterward.
+  Vary naturally and avoid repeated cues; some repetition is fine.
+- Use `already` for a useful contrast, not merely because a capability
+  exists before the patch. If a recent change established the relevant
+  state, recount it in past tense and attribute it to earlier work:
+  `Recent commits moved ...`. Describing a past change differs from
+  describing the existing state in present tense. Avoid `now` alone,
+  which can imply the current commit made that change. Verify claims
+  against the previous commit, not later work.
+- In message prose, use `commit` and `previous commit`, not `revision` or
+  `parent commit`.
 - Describe what the program, project, interface, or documentation has or
   provides.
 - Do not describe the patch, the user's situation, or future goals here.
@@ -735,6 +756,8 @@ Fourth paragraph for follow-up or final series conclusion when useful.
 ### Third paragraph
 
 - Describe exactly how this commit addresses one part of the problem.
+- Use present tense for the change itself, such as `This commit returns ...`.
+  Work in later commits remains future tense.
 - Be precise about scope.
 - If the commit is an early step toward a larger goal, say so directly.
 - When a commit series is building toward one goal, make that goal explicit
@@ -820,6 +843,8 @@ Before committing, verify:
 - The summary uses a fitting prefix and stays under 68 characters.
 - The first paragraph describes what the project currently has or provides,
   not what is missing, broken, or being changed.
+- The status quo is clear without needless temporal cues; any `already`
+  claim describes an existing capability the patch builds on.
 - The second paragraph explains the broader problem from the right
   perspective.
 - The third paragraph opens with `This commit` and describes how it addresses

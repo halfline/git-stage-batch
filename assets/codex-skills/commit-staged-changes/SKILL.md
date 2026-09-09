@@ -160,6 +160,10 @@ role in the series, a dependency, or deliberately unfinished scope.]
 - Keep the series' goal, rationale, and useful connections in the history.
   The opening commit speaks for the series as well as its own patch; the
   final commit closes the story with the outcome actually achieved.
+- Assume the reader may not know the underlying technology. Explain
+  unfamiliar technology and industry acronyms in plain language, defining
+  terms before using them. Prefer a fuller explanation when shorthand would
+  make the reader decode the meaning.
 - Expect a drive-by reader to be new to the codebase but likely to read the
   series together in order. Explain shared context where it first matters;
   later commits may rely on it. Keep useful repetition as a shorter reminder,

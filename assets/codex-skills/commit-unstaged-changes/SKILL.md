@@ -912,6 +912,12 @@ Re-read this template before writing each commit message in a
 multi-commit series. Fill in each bracketed section. Do not merge
 or skip paragraphs.
 
+Expect a drive-by reader to be new to the codebase but likely to read the
+series together in order. Explain shared context and unfamiliar terms where
+they first matter. Later messages may rely on that explanation. Keep useful
+repetition, but make it a shorter reminder rather than repeating the detail;
+add new detail where relevant. A standalone commit needs its own context.
+
 ```text
 prefix: Summary under 68 chars
 
@@ -991,12 +997,9 @@ the project immediately before this commit is applied. This is the
 program's state, not the user's situation. Focus on what the
 program has or provides, not on what users must do or cannot do.
 
-If this commit is part of a series, the first paragraph must
-reflect the cumulative state after all previous commits in the
-series. For example, if earlier commits added Spanish and French
-translations, this paragraph should state "The program has Spanish
-and French translations" not "The program only has English
-messages."
+Describe the relevant state after the previous commit, without claiming
+later work already exists or recapping unrelated earlier changes. A French
+translation does not need a list of previously added languages.
 
 If this is the opening commit in a feature series, the
 later paragraphs should name the feature goal directly. Do not
@@ -1186,7 +1189,8 @@ Before finalizing a commit message, check:
 - Does the first paragraph describe the program's state (what it
   has), not the user's situation (what they must do)?
 - If this is part of a series, does the first paragraph accurately
-  reflect the cumulative state after all previous commits?
+  reflect the relevant state after the previous commit without an unrelated
+  recap?
 - If the worktree contains multiple independent series, are they
   split into separate series?
 - If this is the first commit in a series, does the message
@@ -1365,12 +1369,12 @@ i18n: Add French translation (fr)
 The application outputs all user-facing text in English.
 ```
 
-✅ **Do reflect the cumulative state after previous commits:**
+✅ **Do describe the relevant state after previous commits:**
 ```
 i18n: Add French translation (fr)
 
-The program has Spanish translation but lacks translations for
-other major languages.
+Currently, the program uses fallback English messages for the French
+locale.
 ```
 
 ❌ **Don't describe user situations in the first paragraph:**
@@ -1380,7 +1384,8 @@ Users must work in English regardless of their preference.
 
 ✅ **Do describe the program's state:**
 ```
-The program has Spanish translation but lacks French.
+Currently, the program uses fallback English messages for the French
+locale.
 ```
 
 ## Safety Checks
@@ -1603,8 +1608,8 @@ Before committing, verify:
   not what is missing, broken, or being changed.
 - The first paragraph describes the program's state (what it has), not the
   user's situation (what they must do).
-- If this is part of a series, the first paragraph reflects the cumulative
-  state after all previous commits.
+- If this is part of a series, the first paragraph reflects the relevant
+  state after the previous commit without recapping unrelated changes.
 - The second paragraph explains the broader problem from the right
   perspective (first-person maintainer for internal concerns, user for
   external ones).

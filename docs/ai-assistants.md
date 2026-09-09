@@ -173,9 +173,15 @@ the reader does not know the project well.
 
 **Format:**
 - **First line**: a concise summary with a lowercase prefix (`module:`, `cli:`, etc.)
-- **First paragraph**: describe the program's **selected state** (what it has or provides)
+- **First paragraph**: establish the program's **selected state** (what it has or provides)
+  - If recent work established that state, briefly recount the change in
+    past tense and loosely when it happened
+  - Add a temporal cue only where it clarifies time-dependent behavior;
+    timeless background may already be clear from the project or component
+  - Let "This commit ..." mark the transition
+  - Use "already" selectively for a capability the patch builds on
   - If part of a series, reflect the cumulative state after previous commits
-  - Don't describe the diff, the change, or future goals
+  - Don't describe the current patch or future goals
 - **Second paragraph**: explain the underlying problem
   - Choose perspective: first-person maintainer (internal concerns) or user (external concerns)
   - Focus on **missing capabilities**, not symptoms
@@ -191,6 +197,25 @@ the reader does not know the project well.
 
 **Key rules:**
 - Write in **present tense** about the selected state ("has", not "used to have")
+- Use "Right now, ...", "Currently, ...", or "As things stand, ..." when it
+  resolves a temporal ambiguity, not automatically in the first paragraph.
+  Leave timeless background and lasting contracts unqualified. If the
+  ambiguity is in the problem paragraph, anchor that claim instead.
+  Avoid implying that every background fact changes afterward with a
+  before/after clause. Vary naturally without repeating cues throughout.
+- Use "already" for a useful contrast, not merely because a capability
+  exists before the patch. If a recent change established the relevant
+  state, recount it in past tense and attribute it to earlier work:
+  "Recent commits moved ...". Describing that past change differs from
+  describing the existing state in present tense. Avoid "now" alone, which
+  can imply the current commit made that change. Verify claims against
+  the previous commit, not later work.
+- Use "commit" and "previous commit" in message prose, not "revision" or
+  "parent commit".
+- Use present tense for the change ("This commit returns ...") and future
+  tense for work in later commits.
+- Make references to future work in the series explicit: "in a later commit",
+  "later commits will ...", or "the final commit will ...", not bare "later".
 - Use "this" only when referring to the commit itself
 - Don't overstate impact or use words like "comprehensive" or "crucial"
 
@@ -203,7 +228,7 @@ This commit adds verbose output to the CLI...
 
 ✅ First paragraph describes selected state:
 ```
-The CLI currently provides minimal feedback during operation...
+Right now, the CLI provides minimal feedback during operation...
 ```
 
 ❌ Problem is a symptom:
@@ -348,7 +373,7 @@ git-stage-batch skip
 
 git commit -m "auth: Implement OAuth2 authentication
 
-The authentication system currently uses basic auth with password hashing.
+Right now, the authentication system uses basic auth with password hashing.
 
 OAuth2 is required for integration with third-party services and provides
 better security through token-based authentication.
@@ -366,7 +391,7 @@ git-stage-batch skip
 
 git commit -m "database: Add connection pooling
 
-The database module creates a new connection for each query.
+Currently, the database module creates a new connection for each query.
 
 This leads to performance issues under load and exhausts connection limits
 when handling conselected requests.

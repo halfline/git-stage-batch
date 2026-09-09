@@ -168,8 +168,12 @@ Line IDs are shown in the hunk output as `[#N]` markers.
 
 ### Commit Messages
 
-Commit messages should aid **drive-by reviewers with limited context**. Assume
-the reader does not know the project well.
+Commit messages should aid drive-by readers who are new to the codebase.
+For a series, expect them to read the commits together in order. Explain
+shared context and unfamiliar terms where they first matter; later messages
+may rely on that explanation. Keep useful repetition, but make it a shorter
+reminder rather than repeating the detail. Add new detail where it becomes
+relevant. A standalone commit still needs its own context.
 
 **Format:**
 - **First line**: a concise summary with a lowercase prefix (`module:`, `cli:`, etc.)
@@ -180,7 +184,7 @@ the reader does not know the project well.
     timeless background may already be clear from the project or component
   - Let "This commit ..." mark the transition
   - Use "already" selectively for a capability the patch builds on
-  - If part of a series, reflect the cumulative state after previous commits
+  - Match the state after the previous commit without an unrelated recap
   - Don't describe the current patch or future goals
 - **Second paragraph**: explain the underlying problem
   - Choose perspective: first-person maintainer (internal concerns) or user (external concerns)

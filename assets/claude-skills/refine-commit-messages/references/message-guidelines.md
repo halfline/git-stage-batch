@@ -8,8 +8,10 @@ as the series-level checks when local guidance is silent.
 1. Read the complete patch and identify the one state or outcome it establishes.
 2. Read the message as prose for a drive-by reviewer with limited context.
 3. Check the subject and each body paragraph against the patch.
-4. Check the cumulative story against preceding commits.
-5. Check the fourth paragraph against the next commit and the series goal.
+4. Check the relevant state after the previous commit against earlier work.
+5. Check the series goal, each commit's contribution, and the closing
+   outcome. Check whether cross-commit references explain useful connections
+   and verify them against the referenced patches.
 
 Never approve prose merely because its nouns occur in the diff. Every
 meaningful helper, result field, API surface, CLI branch, fixture family,
@@ -73,7 +75,7 @@ Use a concise, single-outcome subject with the repository's normal lowercase
 prefix when it has one. Keep body lines at or below 75 characters unless an
 unbreakable token or explicit repository rule requires otherwise.
 
-Use three body paragraphs for one standalone commit:
+Use three body paragraphs for the selected state, problem, and solution:
 
 1. Establish the relevant project state after the previous commit. Use
    present tense for state descriptions. If recent work established that
@@ -85,12 +87,13 @@ Use three body paragraphs for one standalone commit:
 3. Begin with `This commit` and explain precisely how this patch addresses the
    limitation. Do not claim work that appears only in another commit.
 
-Use a fourth body paragraph for every commit in a multi-commit series. It
-connects this commit to the series rather than restating the third paragraph.
+Use a distinct fourth paragraph when it helps explain the current commit's
+role in the series. Otherwise omit it; do not fold a useful segue into the
+first three paragraphs or repeat their explanation.
 
-Avoid merging the selected state and problem with `but` or `however`. Use
-imperative voice only in the commit summary. Write every commit-body sentence
-as an indicative, declarative statement, including the selected-state,
+Keep the selected state and problem in separate paragraphs. Use imperative
+voice only in the commit summary. Write every commit-body sentence as an
+indicative, declarative statement, including the selected-state,
 problem, `This commit`, and series-transition paragraphs. Never use a body
 sentence to instruct the reader. Avoid reconstruction mechanics such as
 `fixup`, `squash`, `rebase`, `split`, `cleanup`, `decomposition`, or
@@ -143,29 +146,52 @@ the uncommitted worktree. Include only earlier changes needed to explain the
 current limitation or design; do not recap unrelated work or prematurely
 claim later capabilities.
 
-For a series, use progression language in the third paragraph:
-
-- the opening commit begins or lays groundwork for the larger goal;
-- middle commits continue or advance it; and
-- the final commit completes or concludes it.
-
-The exact word may vary when the meaning remains unambiguous.
+Read the series as the larger unit of work, not as unrelated writing
+exercises. The opening commit introduces the overall goal and motivation as
+well as its own patch. Each later message explains its contribution, and the
+final commit closes that story with the outcome actually achieved. Keep the
+series understandable from the history alone, while distinguishing each
+patch's effect from work established elsewhere in the series.
 
 ## Fourth-paragraph transitions
 
-Check transitions against the actual next patches, not only against prose.
+Use a distinct fourth paragraph when it helps explain the current commit's
+place in the series. The series is the larger story, not just a collection of
+isolated patches, and its goal, rationale, and connections belong in the
+commit history itself.
 
-- Earlier non-final commits use future tense and name the remaining capability
-  specifically. `Subsequent commits will ...` is acceptable; vague statements
-  such as `More work will follow` are not.
-- The penultimate commit refers to `the final commit` in the singular and says
-  what that commit will establish. Do not say `subsequent commits`.
-- The final commit concludes the goal introduced by the opening message. It
-  describes the resulting series-level state and does not promise future
-  commits.
+A useful segue explains how the current step advances the goal, why a design
+choice enables later work, what a dependent patch needs, or why some scope is
+deliberately left unfinished. Ask whether removing the paragraph would make
+that progression harder to understand. Merely sharing a topic or appearing
+next in the series is not enough.
 
-Vary the phrasing across the series. Repeated boilerplate can be structurally
-correct while still producing a poor narrative.
+For example, a full-damage representation change can explain why a later
+shadow-copy patch can use ordinary region operations. An unused-argument
+cleanup should not merely announce that the next commit fixes failed GPU
+copies; it needs a meaningful connection to that work.
+
+Keep a useful segue as a fourth paragraph, separate from the current state,
+problem, and solution. Do not fold it into those paragraphs or repeat their
+explanation. Omit the fourth paragraph when no useful connection remains,
+rather than manufacturing a segue to satisfy a template.
+
+The opening commit speaks for the series as well as its own patch: introduce
+the overall goal and motivation, then distinguish the contribution made
+here. The final commit closes that story by explaining the achieved outcome,
+without claiming more than the series actually establishes. A fourth
+paragraph can carry that broader framing or conclusion when it adds useful
+context instead of merely repeating the solution.
+
+Verify references against actual patches. Describe work in later commits in
+future tense and do not claim it is already implemented. Make references to
+those commits explicit: `in a later commit`, `later commits will ...`, or
+`the final commit will ...`, not bare `later`. For example, write `the
+tracker introduced in a later commit`, not `the tracker introduced later`.
+When a retained segue refers only to the upcoming final commit, use the
+singular. Preserve useful connections; remove unrelated recaps, next-item
+announcements, and repetitive boilerplate. Varying the wording does not make
+an irrelevant segue useful.
 
 ## Verdicts
 

@@ -7,6 +7,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import hashlib
+from itertools import chain
 from pathlib import Path
 import re
 import stat
@@ -358,6 +359,96 @@ def _compose_word_insertions(
     return LineBuffer.from_chunks(chunks, spool_dir=spool_dir)
 
 
+def _compose_overlapping_presence_prefix(
+    changed: Sequence[bytes],
+    replacement: Sequence[bytes],
+    application: _AcquiredTextApplication,
+    *,
+    spool_dir: str | Path | None,
+) -> LineBuffer | None:
+    """Keep an applied run's tail when a saved prefix adds only words.
+
+    The differing region must follow an exact shared line in one applied
+    presence run. Every replacement line in that region must still match
+    that run, and the saved text must retain a whole-line prefix of it.
+    """
+    if _bounded_content(changed) is None or _bounded_content(replacement) is None:
+        return None
+    start = 0
+    while (
+        start < min(len(changed), len(replacement))
+        and changed[start] == replacement[start]
+    ):
+        start += 1
+    changed_end = len(changed)
+    replacement_end = len(replacement)
+    while (
+        changed_end > start
+        and replacement_end > start
+        and changed[changed_end - 1] == replacement[replacement_end - 1]
+    ):
+        changed_end -= 1
+        replacement_end -= 1
+    if start == 0 or changed_end == start or replacement_end - start < 2:
+        return None
+
+    presence = application.ownership.presence_line_set()
+    with match_lines(
+        application.source_lines, replacement, spool_dir=spool_dir
+    ) as mapping:
+        source_start = mapping.target_to_source[start - 1]
+        if not source_start or not any(
+            first <= source_start
+            and source_start + replacement_end - start <= last
+            for first, last in presence.ranges()
+        ):
+            return None
+        for offset in range(replacement_end - start + 1):
+            target_index = start - 1 + offset
+            source_line = source_start + offset
+            if (
+                mapping.target_to_source[target_index] != source_line
+                or application.source_lines[source_line - 1]
+                != replacement[target_index]
+            ):
+                return None
+
+    changed_block = changed[start:changed_end]
+    changed_content = _bounded_content(changed_block)
+    assert changed_content is not None
+    changed_tokens = _word_tokens(changed_content)
+    if not changed_tokens:
+        return None
+    # A whole-line prefix must end at the saved text's last word. Require
+    # a unique candidate instead of trying multiple plausible truncations.
+    prefix_end: int | None = None
+    for index in range(start, replacement_end - 1):
+        words = replacement[index].split()
+        if words and words[-1] == changed_tokens[-1].value:
+            if prefix_end is not None:
+                return None
+            prefix_end = index + 1
+    if prefix_end is None or not any(
+        replacement[index].strip() for index in range(prefix_end, replacement_end)
+    ):
+        return None
+
+    composed = _compose_word_insertions(
+        replacement[start:prefix_end],
+        changed_block,
+        replacement[start:replacement_end],
+        spool_dir=spool_dir,
+    )
+    if composed is None:
+        return None
+    with composed:
+        return LineBuffer.from_chunks(
+            chain(replacement[:start], composed, replacement[replacement_end:]),
+            spool_dir=spool_dir,
+        )
+
+
+
 class AppliedTextReplayContext:
     """The worktree text before the recorded batches were applied."""
 
@@ -426,6 +517,13 @@ class AppliedTextReplayContext:
                             replacement,
                             spool_dir=self._spool_dir,
                         )
+                        if updated is None:
+                            updated = _compose_overlapping_presence_prefix(
+                                current,
+                                replacement,
+                                application,
+                                spool_dir=self._spool_dir,
+                            )
                     if updated is None:
                         raise
                 assert updated is not None

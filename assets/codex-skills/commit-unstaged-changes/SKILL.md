@@ -654,6 +654,8 @@ If you spawn a subagent for message drafting:
 3. Give it a self-contained briefing that includes:
    - the current commit's one-clause purpose
    - whether this is a single commit or part of a series
+   - the series' overall goal and the current commit's contribution
+   - whether this is the opening commit in the series
    - which independent series this commit belongs to when the unstaged tree
      contains more than one
    - whether this is the final commit in the series
@@ -669,8 +671,8 @@ If you spawn a subagent for message drafting:
    - `.git/hooks/commit-msg` when present
 5. Require it to return:
    - one proposed commit message
-   - a short checklist confirming prefix, paragraph count, tense, and series
-     narrative requirements
+   - a short checklist confirming prefix, paragraph count, tense, series
+     framing, and the relevance of any fourth-paragraph connection
    - any specific uncertainty if the staged diff does not justify a confident
      draft
 
@@ -908,9 +910,10 @@ For each commit:
 
 ## Message Template
 
-Re-read this template before writing each commit message in a
-multi-commit series. Fill in each bracketed section. Do not merge
-or skip paragraphs.
+Re-read this template before writing each commit message in a multi-commit
+series. Keep the first three paragraphs distinct. Add a separate fourth
+paragraph when it explains a useful connection in the series; otherwise
+omit it. The series' goal and rationale must remain in the history itself.
 
 Expect a drive-by reader to be new to the codebase but likely to read the
 series together in order. Explain shared context and unfamiliar terms where
@@ -936,11 +939,10 @@ This commit [addresses|mitigates|resolves] that [problem] by [precise
 description of what this commit changes and how it solves the problem
 stated above].
 
-[Connect to what comes next, or conclude the series when this is the
-final commit. For the penultimate commit, refer to the upcoming final
-commit in the singular, such as "The final commit will ...", instead
-of saying "subsequent commits". For the final commit, use this
-paragraph to state that the series goal has been reached.]
+[Optional fourth paragraph: explain the current step's role in the series,
+a design choice that enables later work, a dependency, or deliberately
+unfinished scope. The opening can frame the broader goal and the final
+commit can explain the achieved outcome; do not merely list other patches.]
 ```
 
 ### First Line (Summary)
@@ -1066,19 +1068,43 @@ Use natural prose such as:
 
 ### Fourth Paragraph
 
-Use it for every commit in a multi-commit series. For non-final commits,
-use future tense because the work has not happened yet, and be specific
-about the next step rather than vague.
+Use a distinct fourth paragraph when it helps explain the current commit's
+place in the series. The series is the larger story, not just a collection of
+isolated patches, and its goal, rationale, and connections belong in the
+commit history itself.
 
-For example:
-- `Subsequent commits will provide ...`
-- `In the future, <behavior> will change to ...`
+A useful segue explains how the current step advances the goal, why a design
+choice enables later work, what a dependent patch needs, or why some scope is
+deliberately left unfinished. Ask whether removing the paragraph would make
+that progression harder to understand. Merely sharing a topic or appearing
+next in the series is not enough.
 
-The final commit should conclude the series goal introduced by the opening
-commit in a fourth paragraph instead of pointing toward more work. For the
-penultimate commit, refer to the upcoming final commit in the singular, such
-as `The final commit will ...`, instead of saying `subsequent commits`.
-Vary the phrasing across a series.
+For example, a full-damage representation change can explain why a later
+shadow-copy patch can use ordinary region operations. An unused-argument
+cleanup should not merely announce that the next commit fixes failed GPU
+copies; it needs a meaningful connection to that work.
+
+Keep a useful segue as a fourth paragraph, separate from the current state,
+problem, and solution. Do not fold it into those paragraphs or repeat their
+explanation. Omit the fourth paragraph when no useful connection remains,
+rather than manufacturing a segue to satisfy a template.
+
+The opening commit speaks for the series as well as its own patch: introduce
+the overall goal and motivation, then distinguish the contribution made
+here. The final commit closes that story by explaining the achieved outcome,
+without claiming more than the series actually establishes. A fourth
+paragraph can carry that broader framing or conclusion when it adds useful
+context instead of merely repeating the solution.
+
+Verify references against actual patches. Describe work in later commits in
+future tense and do not claim it is already implemented. Make references to
+those commits explicit: `in a later commit`, `later commits will ...`, or
+`the final commit will ...`, not bare `later`. For example, write `the
+tracker introduced in a later commit`, not `the tracker introduced later`.
+When a retained segue refers only to the upcoming final commit, use the
+singular. Preserve useful connections; remove unrelated recaps, next-item
+announcements, and repetitive boilerplate. Varying the wording does not make
+an irrelevant segue useful.
 
 The most common errors are opening with the problem, merging the
 first and second paragraphs with `but` or `however`, and using
@@ -1107,7 +1133,8 @@ Second paragraph describing the underlying problem.
 
 Third paragraph describing how this commit addresses that problem.
 
-Fourth paragraph for follow-up or final series conclusion when useful.
+Optional fourth paragraph, kept distinct for a useful series connection
+or conclusion.
 ```
 
 ### Key Principles
@@ -1212,13 +1239,13 @@ Before finalizing a commit message, check:
   only the internal machinery?
 - Does the third paragraph open with `This commit` and clearly state
   what this commit does without overstating its impact?
-- If this is part of a series, does it show progression (e.g.,
-  "begins", "continues", "completes")?
+- If this is part of a series, does it explain the current contribution
+  to the goal without forcing progression words into the prose?
 - If this is an incremental step, does it clearly say so?
-- If this is the penultimate commit in a series, does the fourth paragraph
-  name what the upcoming final commit will do?
-- If this is an earlier non-final commit in a series, does the fourth
-  paragraph name what subsequent commits will do?
+- Does each fourth paragraph help explain the current step's role or a
+  meaningful connection in the series, rather than merely name another patch?
+- Is a useful segue kept distinct from the first three paragraphs?
+- Can the goal, rationale, and progression be understood from history alone?
 - Do body paragraphs wrap at 75 characters?
 
 ### Example: Single Commit
@@ -1243,58 +1270,52 @@ preserves the existing terse output when not specified.
 
 ### Example: Commit Series
 
-Notice how the first paragraph evolves to reflect the cumulative
-state, and how each commit shows progression toward the stated
-goal:
+The opening commit explains the series goal and its first step. Its fourth
+paragraph connects the representation change to the consumer that will use
+it. The final commit then closes the story with the resulting behavior.
 
 **Commit 1:**
-```
-i18n: Add Spanish translation (es)
 
-The program has gettext infrastructure in place but only contains
-English messages in the POT template.
+```text
+renderer: Represent full redraws with explicit damage
 
-Without translations, the program cannot serve non-English
-speaking users. Spanish is one of the most widely spoken languages
-globally.
+Right now, full redraws use an empty damage region to mean "copy
+everything". Rendering and shadow-buffer copies each interpret that
+special value.
 
-This commit begins expanding language support by adding a complete
-Spanish translation file (po/es.po) with 219 translated messages
-covering all commands, error messages, and interactive prompts.
+Ordinary region operations instead treat an empty region as containing no
+pixels. The series makes full redraws use ordinary regions throughout
+rendering and copying so both paths agree about which pixels to update.
 
-Subsequent commits will add translations for additional languages.
-```
+This commit represents full redraws with the framebuffer rectangle,
+allowing region operations to describe the complete update directly.
 
-**Commit 2:**
-```
-i18n: Add French translation (fr)
-
-The program has Spanish translation but lacks translations for
-other major languages.
-
-Without French translations, French-speaking users cannot use the
-program in their native language.
-
-This commit continues expanding language support by adding a
-complete French translation file (po/fr.po) with 216 translated
-messages.
+That representation will let the shadow-copy path remove its empty-region
+special case and use the damage supplied by the renderer.
 ```
 
 **Final commit:**
+
+```text
+renderer: Use supplied shadow buffer damage
+
+The preceding commit changed full redraws to supply a region covering the
+framebuffer.
+
+Shadow buffer copies still translate an empty region into a full copy,
+even though the supplied region already describes all pixels to copy.
+
+This commit passes the supplied region directly to the copy operation,
+removing the special case.
+
+Rendering and shadow-buffer copying now describe full updates with the
+same region semantics. Neither path needs an empty region to mean the
+opposite of its ordinary meaning.
 ```
-i18n: Add Arabic translation (ar)
 
-The program has translations for Western European languages, East
-Asian languages, and Eastern European languages but lacks support
-for Arabic-speaking users.
-
-Without Arabic translations, Arabic-speaking users cannot use the
-program in their native language.
-
-This commit completes the initial set of language support by
-adding a complete Arabic translation file (po/ar.po) with 216
-translated messages.
-```
+By contrast, an unused-argument cleanup does not need "The next commit will
+fix failed GPU copies." That sentence announces another patch without
+explaining the cleanup's role, even if both patches touch the same function.
 
 ### Anti-Patterns
 
@@ -1621,10 +1642,11 @@ Before committing, verify:
   series goal rather than only the first change.
 - If this is the final commit in a series, the message concludes the series
   goal rather than reading like another incremental step.
-- If this is the penultimate commit in the series, the fourth paragraph names
-  what the upcoming final commit will do.
-- If the commit is an earlier non-final step in the series, the fourth
-  paragraph names what subsequent commits will do.
+- Any fourth paragraph explains a useful connection in the series rather
+  than merely naming the next item. Retained segues stay separate from the
+  first three paragraphs and match the actual patches.
+- The series' goal, rationale, and progression are understandable from the
+  commit history alone.
 - Body paragraphs wrap at 75 characters.
 
 The most common errors are:

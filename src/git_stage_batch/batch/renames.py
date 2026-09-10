@@ -73,3 +73,13 @@ def require_complete_rename_selection(
                     partner=display_path(partner),
                 )
             )
+
+
+def refuse_rename_rewrite(files: dict[str, BatchFileMetadataDict]) -> None:
+    """Keep per-file ownership rewrites from dropping a saved path relationship."""
+    if any("rename_from" in meta or "rename_to" in meta for meta in files.values()):
+        raise CommandError(
+            _(
+                "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+            )
+        )

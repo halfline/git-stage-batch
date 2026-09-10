@@ -255,6 +255,37 @@ def test_discard_saved_rename_preserves_later_destination_edit(functional_repo, 
     assert not new.exists()
     assert old.read_text() == baseline + later_edit
     assert _git("diff", "--cached", "--exit-code") == ""
+
+@pytest.mark.parametrize("operation", ["apply", "include", "discard"])
+def test_saved_rename_conflict_preserves_all_files_and_refs(functional_repo, operation):
+    old, new, baseline, target = _start_rename(functional_repo, True)
+    other = functional_repo / "README.md"
+    other_baseline = other.read_text()
+    other.write_text(other_baseline + "An unrelated saved change.\n")
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    if operation == "discard":
+        git_stage_batch("apply", "--from", "output-rename")
+        changed_path = new
+        conflicting = target.replace("test_outputs", "test_later")
+    else:
+        changed_path = old
+        conflicting = baseline.replace("test_scope", "test_later")
+    changed_path.write_text(conflicting)
+    other_before = other.read_text()
+    refs = _persistent_refs()
+    status = _git("status", "--porcelain")
+    index = _git("ls-files", "--stage")
+
+    result = git_stage_batch(operation, "--from", "output-rename", check=False)
+
+    assert result.returncode != 0
+    assert "conflict" in result.stderr
+    assert changed_path.read_text() == conflicting
+    assert old.exists() != new.exists()
+    assert other.read_text() == other_before
+    assert _persistent_refs() == refs
+    assert _git("status", "--porcelain") == status
+    assert _git("ls-files", "--stage") == index
 def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     old, new, baseline, target = _start_rename(functional_repo, True)
     git_stage_batch("discard", "--to", "output-rename", "--files", "**")
@@ -271,3 +302,17 @@ def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     assert (
         _git("show", f"{state}:objects/{destination['rename_target_blob']}") == target
     )
+@pytest.mark.parametrize("operation", ["apply", "include"])
+def test_saved_rename_refuses_destination_collision(functional_repo, operation):
+    old, new, baseline, _target = _start_rename(functional_repo, True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    new.write_text("An independently created destination.\n")
+    refs = _persistent_refs()
+
+    result = git_stage_batch(operation, "--from", "output-rename", check=False)
+
+    assert result.returncode != 0
+    assert "both paths exist" in result.stderr
+    assert old.read_text() == baseline
+    assert new.read_text() == "An independently created destination.\n"
+    assert _persistent_refs() == refs

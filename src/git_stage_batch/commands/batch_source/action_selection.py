@@ -9,6 +9,7 @@ from ...batch.selection import (
     require_single_file_context_for_line_selection,
 )
 from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.renames import require_complete_rename_selection
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
@@ -197,6 +198,7 @@ def _resolve_batch_source_action_files(
         patterns,
         resolved_file_paths=context.resolved_file_paths,
     )
+    require_complete_rename_selection(files, selected_lines=line_ids is not None)
     selected_ids = require_single_file_context_for_line_selection(
         context.batch_name,
         files,

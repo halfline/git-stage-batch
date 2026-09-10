@@ -27,6 +27,7 @@ import sys
 from ..exceptions import MergeError
 from ..git_paths import display_path
 from ..batch.state.validation import read_validated_batch_metadata
+from ..batch.renames import refuse_rename_rewrite
 from ..batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ..batch.state.reference_names import (
     format_batch_content_ref_name,
@@ -108,6 +109,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
     source_metadata = source_snapshot.metadata
 
     source_files = source_metadata.get("files", {})
+    refuse_rename_rewrite(source_files)
     repo_root = get_git_repository_root_path()
     if not source_files:
         _require_unchanged_sift_inputs(

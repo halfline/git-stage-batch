@@ -26,6 +26,7 @@ import sys
 
 from ..exceptions import MergeError
 from ..git_paths import display_path
+from ..batch.applied_text_replay import load_predecessor_before_trailing_batch
 from ..batch.state.validation import read_validated_batch_metadata
 from ..batch.renames import refuse_rename_rewrite
 from ..batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
@@ -45,6 +46,7 @@ from ..data.file_target_identity import (
     capture_worktree_identities,
     capture_worktree_identity,
 )
+from ..data.applied_batch_overlays import fresh_applied_batch_overlay_for_path
 from ..data.file_modes import detect_file_mode_from_root
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _, ngettext
@@ -74,6 +76,7 @@ class _TextSiftInput:
     file_meta: BatchFileMetadataDict
     worktree_identity: WorktreeIdentity
     worktree_artifact_path: Path
+    applied_predecessor_artifact_path: Path | None
     scratch_directory: Path
 
 
@@ -147,6 +150,7 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                 expected_worktree_identities,
                 expected_worktree_modes,
             ) = _build_sifted_files(
+                source_batch=source_batch,
                 source_metadata=source_metadata,
                 repository_root=repo_root,
                 workspace=workspace,
@@ -253,6 +257,7 @@ def _print_sift_summary(
 
 def _build_sifted_files(
     *,
+    source_batch: str,
     source_metadata: BatchMetadataDict,
     repository_root: Path,
     workspace: FileJobWorkspace,
@@ -263,6 +268,7 @@ def _build_sifted_files(
 ]:
     source_files = source_metadata.get("files", {})
     capture = _capture_sift_inputs(
+        source_batch=source_batch,
         source_files=source_files,
         repository_root=repository_root,
         workspace=workspace,
@@ -292,6 +298,7 @@ def _build_sifted_files(
 
 def _capture_sift_inputs(
     *,
+    source_batch: str,
     source_files: dict[str, BatchFileMetadataDict],
     repository_root: Path,
     workspace: FileJobWorkspace,
@@ -322,6 +329,24 @@ def _capture_sift_inputs(
                 identity,
             )
         if is_text:
+            applied_overlay = fresh_applied_batch_overlay_for_path(
+                file_path,
+                worktree_identity=identity,
+            )
+            applied_predecessor = load_predecessor_before_trailing_batch(
+                applied_overlay.text_applications,
+                source_batch,
+                spool_dir=workspace.scratch_directory(ordinal),
+            )
+            if applied_predecessor is None:
+                applied_predecessor_artifact_path = None
+            else:
+                with applied_predecessor:
+                    applied_predecessor_artifact_path = workspace.write_buffer(
+                        ordinal,
+                        "applied-predecessor",
+                        applied_predecessor,
+                    )
             text_inputs.append(
                 _TextSiftInput(
                     ordinal=ordinal,
@@ -329,6 +354,9 @@ def _capture_sift_inputs(
                     file_meta=file_meta,
                     worktree_identity=identity,
                     worktree_artifact_path=worktree_artifact,
+                    applied_predecessor_artifact_path=(
+                        applied_predecessor_artifact_path
+                    ),
                     scratch_directory=workspace.scratch_directory(ordinal),
                 )
             )
@@ -373,6 +401,11 @@ def _build_sift_text_jobs(
             "file_meta": text_input.file_meta,
             "working_tree_artifact_path": str(
                 text_input.worktree_artifact_path
+            ),
+            "applied_predecessor_artifact_path": (
+                None
+                if text_input.applied_predecessor_artifact_path is None
+                else str(text_input.applied_predecessor_artifact_path)
             ),
         }
         input_artifact = workspace.write_pickle(

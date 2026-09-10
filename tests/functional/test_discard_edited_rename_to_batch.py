@@ -161,6 +161,8 @@ def test_saved_binary_rename_preserves_crlf_bytes(functional_repo, operation):
         assert not old.exists()
         if operation == "include":
             assert subprocess.check_output(["git", "show", f":{new.name}"]) == target
+
+
 @pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
 @pytest.mark.parametrize(
     "paths",
@@ -220,6 +222,8 @@ def test_apply_saved_rename_preserves_later_source_edit(functional_repo, edited)
     new.write_text(target + later_edit + "// Another destination edit.\n")
     git_stage_batch("apply", "--from", "output-rename")
     assert new.read_text() == target + later_edit + "// Another destination edit.\n"
+
+
 @pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
 @pytest.mark.parametrize(
     "later_staged_edit", [False, True], ids=["index-unchanged", "index-edited"]
@@ -242,6 +246,8 @@ def test_include_saved_rename_leaves_later_source_edit_unstaged(
     assert new.read_text() == target + staged_edit + later_edit
     assert _git("show", f":{new.name}") == target + staged_edit
     assert _git("ls-files", "--", old.name) == ""
+
+
 @pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
 def test_discard_saved_rename_preserves_later_destination_edit(functional_repo, edited):
     old, new, baseline, target = _start_rename(functional_repo, edited)
@@ -255,6 +261,7 @@ def test_discard_saved_rename_preserves_later_destination_edit(functional_repo, 
     assert not new.exists()
     assert old.read_text() == baseline + later_edit
     assert _git("diff", "--cached", "--exit-code") == ""
+
 
 @pytest.mark.parametrize("operation", ["apply", "include", "discard"])
 def test_saved_rename_conflict_preserves_all_files_and_refs(functional_repo, operation):
@@ -286,6 +293,8 @@ def test_saved_rename_conflict_preserves_all_files_and_refs(functional_repo, ope
     assert _persistent_refs() == refs
     assert _git("status", "--porcelain") == status
     assert _git("ls-files", "--stage") == index
+
+
 @pytest.mark.parametrize("operation", ["apply", "include", "discard"])
 @pytest.mark.parametrize("path", ["scope_test.c", "outputs_test.c"])
 def test_saved_rename_requires_both_paths(functional_repo, operation, path):
@@ -302,6 +311,8 @@ def test_saved_rename_requires_both_paths(functional_repo, operation, path):
     assert old.read_text() == baseline
     assert not new.exists()
     assert _persistent_refs() == refs
+
+
 def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     old, new, baseline, target = _start_rename(functional_repo, True)
     git_stage_batch("discard", "--to", "output-rename", "--files", "**")
@@ -318,6 +329,8 @@ def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     assert (
         _git("show", f"{state}:objects/{destination['rename_target_blob']}") == target
     )
+
+
 def _remove_saved_rename_provenance():
     from git_stage_batch.batch.state.metadata_schema import (
         metadata_from_application_dict,
@@ -387,6 +400,8 @@ def test_reviewed_legacy_source_deletions_preserve_later_lines(
         assert _git("diff", "--cached", "--exit-code") == ""
     else:
         assert _git("ls-files", "--", old.name) == ""
+
+
 @pytest.mark.parametrize("operation", ["apply", "include"])
 def test_saved_rename_refuses_destination_collision(functional_repo, operation):
     old, new, baseline, _target = _start_rename(functional_repo, True)
@@ -400,4 +415,26 @@ def test_saved_rename_refuses_destination_collision(functional_repo, operation):
     assert "both paths exist" in result.stderr
     assert old.read_text() == baseline
     assert new.read_text() == "An independently created destination.\n"
+    assert _persistent_refs() == refs
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("sift", "--from", "output-rename", "--to", "remaining"),
+        ("reset", "--from", "output-rename", "--file", "outputs_test.c"),
+        ("reset", "--from", "output-rename", "--to", "moved"),
+    ],
+)
+def test_rewriting_saved_rename_refuses_without_changing_refs(
+    functional_repo, arguments
+):
+    _start_rename(functional_repo, True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    refs = _persistent_refs()
+
+    result = git_stage_batch(*arguments, check=False)
+
+    assert result.returncode != 0
+    assert "cannot be split or rewritten" in result.stderr
     assert _persistent_refs() == refs

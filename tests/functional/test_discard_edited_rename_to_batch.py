@@ -318,6 +318,75 @@ def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     assert (
         _git("show", f"{state}:objects/{destination['rename_target_blob']}") == target
     )
+def _remove_saved_rename_provenance():
+    from git_stage_batch.batch.state.metadata_schema import (
+        metadata_from_application_dict,
+    )
+    from git_stage_batch.batch.state.query import read_batch_metadata
+    from git_stage_batch.batch.state.references import sync_batch_state_refs
+
+    metadata = read_batch_metadata("output-rename")
+    for entry in metadata["files"].values():
+        for field in (
+            "rename_from",
+            "rename_to",
+            "rename_base_blob",
+            "rename_target_blob",
+        ):
+            entry.pop(field, None)
+    sync_batch_state_refs(
+        "output-rename",
+        metadata_from_application_dict("output-rename", metadata),
+    )
+
+
+@pytest.mark.parametrize("operation", ["apply", "include"])
+def test_legacy_saved_rename_refuses_later_source_edit(functional_repo, operation):
+    old, new, baseline, _target = _start_rename(functional_repo, True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    _remove_saved_rename_provenance()
+    later_content = baseline + "// An edit made after saving this legacy batch.\n"
+    old.write_text(later_content)
+    refs = _persistent_refs()
+
+    result = git_stage_batch(operation, "--from", "output-rename", check=False)
+
+    assert result.returncode != 0
+    assert "changed since the batch was saved" in result.stderr
+    assert old.read_text() == later_content
+    assert not new.exists()
+    assert _persistent_refs() == refs
+    assert _git("diff", "--cached", "--exit-code") == ""
+
+
+@pytest.mark.parametrize("operation", ["apply", "include"])
+def test_reviewed_legacy_source_deletions_preserve_later_lines(
+    functional_repo, operation
+):
+    old, new, baseline, _target = _start_rename(functional_repo, True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    _remove_saved_rename_provenance()
+    later_content = "// This later line is outside the reviewed deletion.\n"
+    old.write_text(baseline + later_content)
+
+    result = git_stage_batch(
+        operation,
+        "--from",
+        "output-rename",
+        "--file",
+        old.name,
+        "--line",
+        "1-11",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert old.read_text() == later_content
+    assert not new.exists()
+    if operation == "apply":
+        assert _git("diff", "--cached", "--exit-code") == ""
+    else:
+        assert _git("ls-files", "--", old.name) == ""
 @pytest.mark.parametrize("operation", ["apply", "include"])
 def test_saved_rename_refuses_destination_collision(functional_repo, operation):
     old, new, baseline, _target = _start_rename(functional_repo, True)

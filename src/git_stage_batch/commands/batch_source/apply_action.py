@@ -22,6 +22,7 @@ from . import text_file_actions as _text_file_actions
 from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
 from . import rename_plans as _rename_plans
+from .deletion_validation import require_unchanged_deletion_targets
 from ...batch.operation_candidate_types import CandidatePreviewCount
 from ...batch.state.metadata_types import (
     BatchFileMetadataDict,
@@ -171,6 +172,11 @@ def execute_apply_action(
             workspace=workspace,
         )
         with _action_plans.resource_cleanup(apply_plans) as close_apply_plans:
+            if selected_ids is None:
+                require_unchanged_deletion_targets(
+                    batch_name, files, expected_worktree_identities,
+                    workspace=workspace,
+                )
             expected_index_identities = {
                 plan.file_path: plan.expected_index_identity
                 for plan in apply_plans

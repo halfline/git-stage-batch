@@ -979,6 +979,25 @@ Text line ownership does not represent every Git change.
 
 Line options cannot select part of these changes.
 
+Multi-file `discard --to` also retains detected regular-file renames when both
+paths are selected. The source entry has `rename_to`; the destination has
+`rename_from`, `rename_base_blob`, and `rename_target_blob`. Both content blobs are embedded
+under `objects/` in the state commit, so the relationship and exact capture
+contents survive garbage collection. The two file entries remain a single
+selection for replay.
+
+Apply and include merge the saved content change with the current source
+before moving it to the destination. Include prepares the index and worktree
+separately, leaving later unstaged edits unstaged. Discard uses the inverse
+merge and move. Each command plans both paths before publishing anything and
+refuses conflicting edits or occupied destinations. Single-path and line
+selections, sift, and partial reset cannot split or rewrite a saved rename.
+Resetting the entire batch and dropping it remain available.
+
+Text rename merges normalize line endings for comparison and preserve the
+current worktree's line-ending style. Include applies Git's clean conversion
+to the destination before staging it. Binary rename contents remain exact
+bytes. Raw worktree and index identities still guard publication.
 ## Where to make a batch change
 
 | Change | Owning code |

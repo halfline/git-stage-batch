@@ -121,6 +121,28 @@ def test_apply_saved_rename_preserves_later_source_edit(functional_repo, edited)
     new.write_text(target + later_edit + "// Another destination edit.\n")
     git_stage_batch("apply", "--from", "output-rename")
     assert new.read_text() == target + later_edit + "// Another destination edit.\n"
+@pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
+@pytest.mark.parametrize(
+    "later_staged_edit", [False, True], ids=["index-unchanged", "index-edited"]
+)
+def test_include_saved_rename_leaves_later_source_edit_unstaged(
+    functional_repo, edited, later_staged_edit
+):
+    old, new, baseline, target = _start_rename(functional_repo, edited)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    staged_edit = "// An independent staged edit.\n" if later_staged_edit else ""
+    if staged_edit:
+        old.write_text(baseline + staged_edit)
+        _git("add", "--", old.name)
+    later_edit = "// This edit is not part of the saved batch.\n"
+    old.write_text(baseline + staged_edit + later_edit)
+
+    git_stage_batch("include", "--from", "output-rename")
+
+    assert not old.exists()
+    assert new.read_text() == target + staged_edit + later_edit
+    assert _git("show", f":{new.name}") == target + staged_edit
+    assert _git("ls-files", "--", old.name) == ""
 def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     old, new, baseline, target = _start_rename(functional_repo, True)
     git_stage_batch("discard", "--to", "output-rename", "--files", "**")

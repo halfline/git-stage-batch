@@ -5,10 +5,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from .state.compatibility_metadata import write_file_backed_batch_metadata
+from .state.metadata_types import BatchFileMetadataDict
 from .state.query import get_batch_commit_sha, read_batch_metadata
 from .state.references import sync_batch_state_refs
 from ..core.models import RenameChange
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_object_io import create_git_blob
 from ..utils.repository_buffers import read_git_object_buffer_or_none
@@ -52,3 +54,22 @@ def record_batch_renames(
         destination["rename_target_blob"] = target_blob
     model = write_file_backed_batch_metadata(batch_name, metadata)
     sync_batch_state_refs(batch_name, model)
+
+
+def require_complete_rename_selection(
+    files: dict[str, BatchFileMetadataDict],
+    *,
+    selected_lines: bool = False,
+) -> None:
+    """Refuse selections that would separate a rename's paired paths."""
+    for path, metadata in files.items():
+        partner = metadata.get("rename_from", metadata.get("rename_to"))
+        if partner is not None and (partner not in files or selected_lines):
+            raise CommandError(
+                _(
+                    "Select both complete paths of the saved rename: {file} and {partner}."
+                ).format(
+                    file=display_path(path),
+                    partner=display_path(partner),
+                )
+            )

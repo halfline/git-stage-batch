@@ -62,6 +62,75 @@ def _start_rename(functional_repo, edited, *, crlf=False):
     return old, new, baseline, target
 
 
+@pytest.mark.parametrize("operation", ["apply", "include"])
+@pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
+@pytest.mark.parametrize("later_edit", [False, True], ids=["unchanged", "later-edit"])
+def test_replay_saved_crlf_rename(functional_repo, operation, edited, later_edit):
+    old, new, baseline, target = _start_rename(functional_repo, edited, crlf=True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    assert old.read_bytes() == baseline.encode()
+    staged = "// A later staged edit.\r\n" if later_edit else ""
+    unstaged = "// A later unstaged edit.\r\n" if later_edit else ""
+    old.write_bytes((baseline + staged).encode())
+    _git("add", "--", old.name)
+    old.write_bytes((baseline + staged + unstaged).encode())
+    index_before = _git("ls-files", "--stage")
+
+    git_stage_batch(operation, "--from", "output-rename")
+
+    assert not old.exists()
+    assert new.read_bytes() == (target + staged + unstaged).encode()
+    if operation == "include":
+        indexed = subprocess.check_output(["git", "show", f":{new.name}"])
+        assert indexed == (target + staged).replace("\r\n", "\n").encode()
+        assert _git("ls-files", "--", old.name) == ""
+    else:
+        assert _git("ls-files", "--stage") == index_before
+
+
+@pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
+@pytest.mark.parametrize("later_edit", [False, True], ids=["unchanged", "later-edit"])
+def test_discard_saved_crlf_rename_preserves_line_endings(
+    functional_repo, edited, later_edit
+):
+    old, new, baseline, target = _start_rename(functional_repo, edited, crlf=True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    suffix = "// A later independent edit.\r\n" if later_edit else ""
+    old.rename(new)
+    new.write_bytes((target + suffix).encode())
+
+    git_stage_batch("discard", "--from", "output-rename")
+
+    assert not new.exists()
+    assert old.read_bytes() == (baseline + suffix).encode()
+    assert _git("diff", "--cached", "--exit-code") == ""
+
+
+@pytest.mark.parametrize("operation", ["apply", "include", "discard"])
+def test_saved_crlf_rename_conflict_preserves_contents(functional_repo, operation):
+    old, new, baseline, target = _start_rename(functional_repo, True, crlf=True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    if operation == "discard":
+        old.rename(new)
+        changed_path = new
+        conflicting = target.replace("test_outputs", "test_later").encode()
+    else:
+        changed_path = old
+        conflicting = baseline.replace("test_scope", "test_later").encode()
+    changed_path.write_bytes(conflicting)
+    refs = _persistent_refs()
+    index = _git("ls-files", "--stage")
+
+    result = git_stage_batch(operation, "--from", "output-rename", check=False)
+
+    assert result.returncode != 0
+    assert "conflict" in result.stderr
+    assert changed_path.read_bytes() == conflicting
+    assert old.exists() != new.exists()
+    assert _git("ls-files", "--stage") == index
+    assert _persistent_refs() == refs
+
+
 @pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
 @pytest.mark.parametrize(
     "paths",

@@ -998,6 +998,19 @@ Text rename merges normalize line endings for comparison and preserve the
 current worktree's line-ending style. Include applies Git's clean conversion
 to the destination before staging it. Binary rename contents remain exact
 bytes. Raw worktree and index identities still guard publication.
+
+Older batches have no explicit rename relationship. Migration does not infer
+one from content similarity. Applying or including an unlinked whole-file
+text deletion checks the worktree against the removed content reconstructed
+from its ownership claims, including content recorded by sift. Text comparison
+ignores line-ending differences. Include accepts the unchanged baseline in
+the index, or requires each index line to belong to the recorded deletion in
+its original order; unstaged preimage lines may be absent from the index.
+Binary deletions require exact baseline bytes. Later
+unowned edits stop the command. Reviewed line selections still use the
+ordinary text merge, which can remove saved lines while preserving later
+additions.
+
 ## Where to make a batch change
 
 | Change | Owning code |

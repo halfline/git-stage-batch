@@ -143,6 +143,19 @@ def test_include_saved_rename_leaves_later_source_edit_unstaged(
     assert new.read_text() == target + staged_edit + later_edit
     assert _git("show", f":{new.name}") == target + staged_edit
     assert _git("ls-files", "--", old.name) == ""
+@pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
+def test_discard_saved_rename_preserves_later_destination_edit(functional_repo, edited):
+    old, new, baseline, target = _start_rename(functional_repo, edited)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    git_stage_batch("apply", "--from", "output-rename")
+    later_edit = "// This later edit must survive reversal.\n"
+    new.write_text(target + later_edit)
+
+    git_stage_batch("discard", "--from", "output-rename")
+
+    assert not new.exists()
+    assert old.read_text() == baseline + later_edit
+    assert _git("diff", "--cached", "--exit-code") == ""
 def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     old, new, baseline, target = _start_rename(functional_repo, True)
     git_stage_batch("discard", "--to", "output-rename", "--files", "**")

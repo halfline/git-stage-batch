@@ -41,6 +41,7 @@ class SiftTextJobInput(TypedDict):
     batch_source_object_id: str | None
     file_meta: BatchFileMetadataDict
     working_tree_artifact_path: str
+    applied_predecessor_artifact_path: str | None
 
 
 class _SiftDeletionRecord(TypedDict):
@@ -93,6 +94,9 @@ def compute_sifted_text_file_job(
             working_tree_artifact_path=input_metadata[
                 "working_tree_artifact_path"
             ],
+            applied_predecessor_artifact_path=input_metadata.get(
+                "applied_predecessor_artifact_path"
+            ),
             captured_working_tree_exists=(
                 job.expected_worktree_identity.exists
             ),

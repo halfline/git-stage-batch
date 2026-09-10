@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, TypedDict
@@ -199,6 +200,7 @@ def compute_sifted_text_file(
     baseline_object_id: str | None,
     batch_source_object_id: str | None,
     working_tree_artifact_path: str | Path,
+    applied_predecessor_artifact_path: str | Path | None = None,
     captured_working_tree_exists: bool,
     spool_dir: str | Path,
 ) -> Optional[SiftedTextFileResult]:
@@ -216,6 +218,14 @@ def compute_sifted_text_file(
         working_tree_artifact_path,
         spool_dir=spool_dir,
     )
+    applied_predecessor_context = (
+        nullcontext(None)
+        if applied_predecessor_artifact_path is None
+        else LineBuffer.from_path(
+            applied_predecessor_artifact_path,
+            spool_dir=spool_dir,
+        )
+    )
     target_buffer: LineBuffer | None = None
     new_ownership: BatchOwnership | None = None
 
@@ -223,30 +233,42 @@ def compute_sifted_text_file(
         batch_source_buffer,
         baseline_buffer,
         working_buffer,
+        applied_predecessor_context as applied_predecessor_buffer,
         acquire_ownership_for_metadata_dict(
             file_meta,
             spool_dir=spool_dir,
         ) as source_ownership,
     ):
-        target_buffer = (
-            batch_source_buffer.clone(spool_dir=spool_dir)
-            if file_meta.get("batch_source_is_target") is True
-            else build_realized_buffer_from_lines(
+        if file_meta.get("batch_source_is_target") is True:
+            target_buffer = batch_source_buffer.clone(spool_dir=spool_dir)
+        elif applied_predecessor_buffer is not None:
+            target_buffer = merge_batch_from_line_sequences_as_buffer(
+                batch_source_buffer,
+                source_ownership,
+                applied_predecessor_buffer,
+                spool_dir=spool_dir,
+            )
+        else:
+            target_buffer = build_realized_buffer_from_lines(
                 baseline_buffer,
                 batch_source_buffer,
                 source_ownership,
                 spool_dir=spool_dir,
             )
-        )
         try:
+            sift_working_buffer = (
+                working_buffer
+                if applied_predecessor_buffer is None
+                else applied_predecessor_buffer
+            )
             target_exists = change_type != TextFileChangeType.DELETED
             if target_exists == captured_working_tree_exists and buffer_matches(
-                working_buffer,
+                sift_working_buffer,
                 target_buffer,
             ):
                 return None
 
-            working_lines = normalize_line_sequence_endings(working_buffer)
+            working_lines = normalize_line_sequence_endings(sift_working_buffer)
             target_lines = normalize_line_sequence_endings(target_buffer)
 
             new_ownership = build_ownership_from_working_and_target_lines(

@@ -21,6 +21,7 @@ from . import merge_refusals as _merge_refusals
 from . import text_file_actions as _text_file_actions
 from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
+from . import rename_plans as _rename_plans
 from ...batch.operation_candidate_types import CandidatePreviewCount
 from ...batch.state.metadata_types import (
     BatchFileMetadataDict,
@@ -387,10 +388,13 @@ def _build_apply_action_plans(
     list[tuple[str, BatchFileMetadataDict]],
     dict[str, WorktreeIdentity],
 ]:
+    ordinary_files = {
+        path: meta for path, meta in files.items() if not _rename_plans.is_rename_file(meta)
+    }
     capture = _capture_apply_plan_inputs(
         batch_name=batch_name,
         batch_metadata=({"files": files} if batch_metadata is None else batch_metadata),
-        files=files,
+        files=ordinary_files,
         selected_ids=selected_ids,
         workspace=workspace,
     )
@@ -408,12 +412,31 @@ def _build_apply_action_plans(
         )
         plans = _reduce_apply_action_plans(
             batch_name=batch_name,
-            files=files,
+            files=ordinary_files,
             rendered=rendered,
             capture=capture,
             text_results_by_ordinal=text_results_by_ordinal,
             workspace=workspace,
         )
+        try:
+            renames = _rename_plans.prepare_rename_plans(
+                files,
+                workspace=workspace,
+            )
+        except BaseException:
+            _action_plans.close_action_plans(plans)
+            raise
+        plans.extend(
+            _action_plans.ApplyTextFileActionPlan(
+                target.file_path,
+                target.buffer,
+                target.file_mode,
+                target.change_type,
+                expected_index_identity=renames.index_identities[target.file_path],
+            )
+            for target in renames.worktree_targets.values()
+        )
+        capture.worktree_identities.update(renames.worktree_identities)
         return plans, capture.mode_actions, capture.worktree_identities
     except BaseException:
         _action_plans.close_action_plans(capture.plans_by_ordinal.values())

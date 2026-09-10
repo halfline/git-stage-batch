@@ -131,6 +131,36 @@ def test_saved_crlf_rename_conflict_preserves_contents(functional_repo, operatio
     assert _persistent_refs() == refs
 
 
+@pytest.mark.parametrize("operation", ["apply", "include", "discard"])
+def test_saved_binary_rename_preserves_crlf_bytes(functional_repo, operation):
+    old = functional_repo / "old.bin"
+    new = functional_repo / "new.bin"
+    _git("config", "core.autocrlf", "true")
+    baseline = b"\x00binary\r\n" * 100
+    target = baseline + b"saved edit\r\n"
+    old.write_bytes(baseline)
+    _git("add", "--", old.name)
+    _git("commit", "-m", "Add binary file")
+    old.rename(new)
+    new.write_bytes(target)
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("discard", "--to", "binary-rename", "--files", "**")
+    metadata = json.loads(_git("show", "refs/git-stage-batch/state/binary-rename:batch.json"))
+    assert metadata["files"][new.name]["rename_from"] == old.name
+    if operation == "discard":
+        old.rename(new)
+        new.write_bytes(target)
+
+    git_stage_batch(operation, "--from", "binary-rename")
+
+    if operation == "discard":
+        assert old.read_bytes() == baseline
+        assert not new.exists()
+    else:
+        assert new.read_bytes() == target
+        assert not old.exists()
+        if operation == "include":
+            assert subprocess.check_output(["git", "show", f":{new.name}"]) == target
 @pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
 @pytest.mark.parametrize(
     "paths",

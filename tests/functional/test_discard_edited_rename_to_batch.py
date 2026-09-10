@@ -98,6 +98,29 @@ def test_discard_rename_to_batch_round_trip(functional_repo, edited, paths):
     assert _git("diff", "--cached", "--exit-code") == ""
 
 
+@pytest.mark.parametrize("edited", [False, True], ids=["rename", "edited-rename"])
+def test_apply_saved_rename_preserves_later_source_edit(functional_repo, edited):
+    old, new, baseline, target = _start_rename(functional_repo, edited)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    later_edit = "// A later independent edit must follow the rename.\n"
+    old.write_text(baseline + later_edit)
+
+    git_stage_batch("apply", "--from", "output-rename")
+
+    assert not old.exists()
+    assert new.read_text() == target + later_edit
+    assert _git("diff", "--cached", "--exit-code") == ""
+
+    git_stage_batch("undo")
+    assert old.read_text() == baseline + later_edit
+    assert not new.exists()
+    git_stage_batch("redo")
+    assert not old.exists()
+    assert new.read_text() == target + later_edit
+
+    new.write_text(target + later_edit + "// Another destination edit.\n")
+    git_stage_batch("apply", "--from", "output-rename")
+    assert new.read_text() == target + later_edit + "// Another destination edit.\n"
 def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     old, new, baseline, target = _start_rename(functional_repo, True)
     git_stage_batch("discard", "--to", "output-rename", "--files", "**")

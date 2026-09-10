@@ -139,3 +139,17 @@ def test_saved_deletion_refuses_later_index_edit(functional_repo, sifted):
     assert path.read_bytes() == baseline
     assert _git("for-each-ref", "refs/git-stage-batch/") == refs
     assert _git("ls-files", "--stage") == index
+
+
+@pytest.mark.parametrize("operation", ["apply", "include"])
+def test_binary_deletion_refuses_changed_line_ending_bytes(functional_repo, operation):
+    path, baseline = _save_deletion(functional_repo, crlf=True, binary=True)
+    later = baseline.replace(b"\r\n", b"\n")
+    path.write_bytes(later)
+
+    result = git_stage_batch(operation, "--from", "deleted", check=False)
+
+    assert result.returncode != 0
+    assert "changed since the batch was saved" in result.stderr
+    assert path.read_bytes() == later
+    assert _git("diff", "--cached", "--exit-code") == b""

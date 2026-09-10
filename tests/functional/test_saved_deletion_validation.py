@@ -91,3 +91,51 @@ def test_sifted_deletion_accepts_staged_subset_of_recorded_preimage(functional_r
     git_stage_batch("undo")
     assert path.read_bytes() == captured
     assert _git("show", f":{path.name}") == staged.replace(b"\r\n", b"\n")
+
+
+@pytest.mark.parametrize("operation", ["apply", "include"])
+@pytest.mark.parametrize("sifted", [False, True], ids=["saved", "sifted"])
+def test_saved_deletion_refuses_later_worktree_edit(functional_repo, operation, sifted):
+    path, baseline = _save_deletion(functional_repo, crlf=True)
+    batch = "deleted"
+    if sifted:
+        baseline += b"An edit captured by sift.\r\n"
+        path.write_bytes(baseline)
+        git_stage_batch("sift", "--from", batch, "--to", "rebuilt")
+        batch = "rebuilt"
+    later = baseline + b"An edit made after saving.\r\n"
+    path.write_bytes(later)
+    refs = _git("for-each-ref", "refs/git-stage-batch/")
+    index = _git("ls-files", "--stage")
+
+    result = git_stage_batch(operation, "--from", batch, check=False)
+
+    assert result.returncode != 0
+    assert "changed since the batch was saved" in result.stderr
+    assert path.read_bytes() == later
+    assert _git("for-each-ref", "refs/git-stage-batch/") == refs
+    assert _git("ls-files", "--stage") == index
+
+
+@pytest.mark.parametrize("sifted", [False, True], ids=["saved", "sifted"])
+def test_saved_deletion_refuses_later_index_edit(functional_repo, sifted):
+    path, baseline = _save_deletion(functional_repo, crlf=True)
+    batch = "deleted"
+    if sifted:
+        baseline += b"An edit captured by sift.\r\n"
+        path.write_bytes(baseline)
+        git_stage_batch("sift", "--from", batch, "--to", "rebuilt")
+        batch = "rebuilt"
+    path.write_bytes(baseline + b"An independent staged edit.\r\n")
+    _git("add", "--", path.name)
+    path.write_bytes(baseline)
+    refs = _git("for-each-ref", "refs/git-stage-batch/")
+    index = _git("ls-files", "--stage")
+
+    result = git_stage_batch("include", "--from", batch, check=False)
+
+    assert result.returncode != 0
+    assert "changed since the batch was saved" in result.stderr
+    assert path.read_bytes() == baseline
+    assert _git("for-each-ref", "refs/git-stage-batch/") == refs
+    assert _git("ls-files", "--stage") == index

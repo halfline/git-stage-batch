@@ -26,6 +26,10 @@ class BatchFileMetadataDict(BatchOwnershipMetadata, total=False):
     old_oid: str | None
     new_oid: str | None
     source_path: str
+    rename_from: str
+    rename_to: str
+    rename_base_blob: str
+    rename_target_blob: str
     batch_source_is_target: bool
     replacement_masks: list[ReplacementMaskMetadata]
     legacy_unmarked_source_alternatives: bool

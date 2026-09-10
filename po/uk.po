@@ -8641,3 +8641,42 @@ msgstr "Метадані початкової точки сеансу відсу
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Для цієї команди потрібен хоча б один коміт; HEAD ще не створено."
+
+msgid "A saved rename must contain both paths."
+msgstr "Збережене перейменування має містити обидва шляхи."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "Неможливо видалити {file}: файл змінився після збереження набору."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Неможливо повторно застосувати збережене перейменування до запису індексу, який не є звичайним файлом."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Неможливо повторно застосувати збережене перейменування до шляху, який не є звичайним файлом: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Неможливо повторно застосувати збережене перейменування за наявності незлитих записів індексу: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Неможливо повторно застосувати збережене перейменування {old} -> {new}: обидва шляхи відсутні."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Неможливо повторно застосувати збережене перейменування {old} -> {new}: обидва шляхи існують."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Неможливо повторно застосувати збережене перейменування {old} -> {new}: зміни вмісту конфліктують."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Збережені перейменування не можна розділяти чи переписувати. Застосуйте або відкиньте зміни для обох шляхів чи видаліть набір."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Виберіть обидва шляхи збереженого перейменування повністю: {file} і {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Початковий вміст перейменованого файлу відсутній."
+
+msgid "The saved rename destination content is missing."
+msgstr "Цільовий вміст збереженого перейменування відсутній."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "запис файлу {path!r} містить суперечливі відомості про походження перейменування"

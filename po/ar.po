@@ -8691,3 +8691,42 @@ msgstr "البيانات الوصفية لنقطة بدء الجلسة مفقو�
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "يتطلب هذا الأمر إيداعًا واحدًا على الأقل؛ ما زال ⁦HEAD⁩ بلا أي إيداع."
+
+msgid "A saved rename must contain both paths."
+msgstr "يجب أن تحتوي إعادة التسمية المحفوظة على كلا المسارين."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "لا يمكن حذف ⁨{file}⁩: لقد تغير منذ حفظ الدفعة."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "لا يمكن إعادة تطبيق إعادة تسمية محفوظة على إدخال فهرس ليس ملفًا عاديًا."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "لا يمكن إعادة تطبيق إعادة تسمية محفوظة على مسار ليس ملفًا عاديًا: ⁨{file}⁩."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "لا يمكن إعادة تطبيق إعادة تسمية محفوظة مع وجود إدخالات فهرس غير مدمجة: ⁨{file}⁩."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "لا يمكن إعادة تطبيق إعادة التسمية المحفوظة ⁨{old} -> {new}⁩: كلا المسارين مفقودان."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "لا يمكن إعادة تطبيق إعادة التسمية المحفوظة ⁨{old} -> {new}⁩: كلا المسارين موجودان."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "لا يمكن إعادة تطبيق إعادة التسمية المحفوظة ⁨{old} -> {new}⁩: تعديلات المحتوى متعارضة."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "لا يمكن تقسيم عمليات إعادة التسمية المحفوظة أو إعادة كتابتها. طبّق التغييرات على كلا المسارين أو تجاهلها، أو احذف الدفعة."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "حدد كلا المسارين الكاملين لإعادة التسمية المحفوظة: ⁨{file}⁩ و⁨{partner}⁩."
+
+msgid "The original content of the renamed file is missing."
+msgstr "المحتوى الأصلي للملف المعاد تسميته مفقود."
+
+msgid "The saved rename destination content is missing."
+msgstr "محتوى وجهة إعادة التسمية المحفوظة مفقود."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "إدخال الملف ⁨{path!r}⁩ يحتوي على معلومات غير متسقة عن أصل إعادة التسمية"

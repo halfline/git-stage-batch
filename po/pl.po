@@ -8688,3 +8688,42 @@ msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr ""
 "To polecenie wymaga co najmniej jednego zatwierdzenia; gałąź HEAD jeszcze "
 "nie istnieje."
+
+msgid "A saved rename must contain both paths."
+msgstr "Zapisana zmiana nazwy musi zawierać obie ścieżki."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "Nie można usunąć {file}: plik zmienił się od zapisania partii."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Nie można ponownie zastosować zapisanej zmiany nazwy do wpisu indeksu, który nie jest zwykłym plikiem."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Nie można ponownie zastosować zapisanej zmiany nazwy do ścieżki, która nie jest zwykłym plikiem: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Nie można ponownie zastosować zapisanej zmiany nazwy przy niescalonych wpisach indeksu: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Nie można ponownie zastosować zapisanej zmiany nazwy {old} -> {new}: brakuje obu ścieżek."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Nie można ponownie zastosować zapisanej zmiany nazwy {old} -> {new}: obie ścieżki istnieją."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Nie można ponownie zastosować zapisanej zmiany nazwy {old} -> {new}: zmiany zawartości są w konflikcie."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Zapisanych zmian nazw nie można dzielić ani przepisywać. Zastosuj lub odrzuć obie ścieżki albo usuń partię."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Wybierz obie pełne ścieżki zapisanej zmiany nazwy: {file} i {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Brakuje pierwotnej zawartości pliku, którego nazwę zmieniono."
+
+msgid "The saved rename destination content is missing."
+msgstr "Brakuje docelowej zawartości zapisanej zmiany nazwy."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "wpis pliku {path!r} zawiera niespójne informacje o pochodzeniu zmiany nazwy"

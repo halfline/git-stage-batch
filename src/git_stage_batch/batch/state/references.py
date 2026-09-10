@@ -296,9 +296,12 @@ def sync_batch_state_refs(
                 dict.fromkeys(
                     blob_id
                     for file_metadata in metadata.files
-                    for blob_id in ownership_metadata_blob_ids(
-                        file_metadata.to_dict()
-                    )
+                    for blob_id in [
+                        *ownership_metadata_blob_ids(file_metadata.to_dict()),
+                        file_metadata.values.get("rename_base_blob"),
+                        file_metadata.values.get("rename_target_blob"),
+                    ]
+                    if isinstance(blob_id, str)
                 )
             )
             git_update_index_entries(

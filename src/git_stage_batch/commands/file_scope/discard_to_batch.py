@@ -16,6 +16,7 @@ from ...batch.ownership_update import acquire_batch_ownership_update_for_selecti
 from ...batch.state.query import read_batch_metadata
 from ...batch.text_file_storage import BatchFileUpdate, add_files_to_batch
 from ...batch.state.batch_names import batch_exists
+from ...batch.renames import record_batch_renames
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import (
     acquire_unified_diff,
@@ -85,6 +86,8 @@ class _CollectedTextFileDiscards:
 
     inputs_by_file: dict[str, _TextFileDiscardInput]
     files_with_text_patches: set[str]
+    renames: tuple[RenameChange, ...]
+    comparison_base: str
 
 
 @dataclass(frozen=True)
@@ -240,16 +243,20 @@ def _collect_text_file_discard_inputs(
     patch_stack: ExitStack,
 ) -> _CollectedTextFileDiscards:
     """Collect normal text file discard inputs from one Git diff."""
+    comparison_base = session_comparison_base()
     if not files:
         return _CollectedTextFileDiscards(
             inputs_by_file={},
             files_with_text_patches=set(),
+            renames=(),
+            comparison_base=comparison_base,
         )
 
     repo_root = get_git_repository_root_path()
     inputs_by_file: dict[str, _TextFileDiscardInput] = {}
     files_with_text_patches: set[str] = set()
-    comparison_base = session_comparison_base()
+    renames: list[RenameChange] = []
+    renamed_paths: set[str] = set()
 
     with acquire_unified_diff(
         stream_live_git_diff(
@@ -262,6 +269,8 @@ def _collect_text_file_discard_inputs(
             if isinstance(patch, FileModeChange):
                 continue
             if isinstance(patch, RenameChange):
+                renames.append(patch)
+                renamed_paths.update((patch.old_path, patch.new_path))
                 continue
 
             if isinstance(patch, TextFileDeletionChange):
@@ -276,6 +285,10 @@ def _collect_text_file_discard_inputs(
                 continue
 
             file_path = patch.path()
+            if file_path in renamed_paths:
+                # Capture each complete path through the single-file fallback,
+                # then persist their relationship after both have been saved.
+                continue
             files_with_text_patches.add(file_path)
 
             patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
@@ -313,6 +326,8 @@ def _collect_text_file_discard_inputs(
     return _CollectedTextFileDiscards(
         inputs_by_file=inputs_by_file,
         files_with_text_patches=files_with_text_patches,
+        renames=tuple(renames),
+        comparison_base=comparison_base,
     )
 
 
@@ -501,6 +516,11 @@ def discard_files_to_batch(
                 )
 
         session.flush()
+        record_batch_renames(
+            batch_name,
+            collected_discards.renames,
+            collected_discards.comparison_base,
+        )
     finally:
         session.close()
         patch_stack.close()

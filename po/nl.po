@@ -8680,3 +8680,42 @@ msgstr "Metadata van het beginpunt van de sessie ontbreekt."
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr ""
 "Deze opdracht vereist minstens één commit; HEAD is nog niet aangemaakt."
+
+msgid "A saved rename must contain both paths."
+msgstr "Een opgeslagen hernoeming moet beide paden bevatten."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "Kan {file} niet verwijderen: het bestand is gewijzigd sinds de batch is opgeslagen."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Kan een opgeslagen hernoeming niet opnieuw toepassen op een indexvermelding die geen gewoon bestand is."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Kan een opgeslagen hernoeming niet opnieuw toepassen op een pad dat geen gewoon bestand is: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Kan een opgeslagen hernoeming niet opnieuw toepassen met niet-samengevoegde indexvermeldingen: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Kan de opgeslagen hernoeming {old} -> {new} niet opnieuw toepassen: beide paden ontbreken."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Kan de opgeslagen hernoeming {old} -> {new} niet opnieuw toepassen: beide paden bestaan."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Kan de opgeslagen hernoeming {old} -> {new} niet opnieuw toepassen: de inhoudswijzigingen conflicteren."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Opgeslagen hernoemingen kunnen niet worden gesplitst of herschreven. Pas beide paden toe of verwerp ze, of verwijder de batch."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Selecteer beide volledige paden van de opgeslagen hernoeming: {file} en {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "De oorspronkelijke inhoud van het hernoemde bestand ontbreekt."
+
+msgid "The saved rename destination content is missing."
+msgstr "De doelinhoud van de opgeslagen hernoeming ontbreekt."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "de bestandsvermelding voor {path!r} bevat inconsistente herkomstgegevens voor de hernoeming"

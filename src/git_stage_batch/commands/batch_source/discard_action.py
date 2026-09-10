@@ -14,6 +14,7 @@ from . import binary_file_actions as _binary_file_actions
 from . import file_mode_actions as _file_mode_actions
 from . import text_file_actions as _text_file_actions
 from . import text_plan_builders as _text_plan_builders
+from . import rename_plans as _rename_plans
 from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.state.query import read_batch_metadata_for_batches
 from ...batch.submodule_pointer import (
@@ -309,7 +310,10 @@ def _build_discard_action_plans(
     workspace: FileJobWorkspace,
 ) -> _DiscardPlanCapture:
     """Plan every selected discard before opening its transaction."""
-    files = selection.files
+    files = {
+        path: meta for path, meta in selection.files.items()
+        if not _rename_plans.is_rename_file(meta)
+    }
     (
         text_inputs,
         worktree_identities,
@@ -466,6 +470,18 @@ def _build_discard_action_plans(
                     files=", ".join(display_path(path) for path in failed_files),
                 )
             )
+        renames = _rename_plans.prepare_rename_plans(
+            selection.files, workspace=workspace, reverse=True,
+        )
+        plans.extend(
+            _action_plans.DiscardTextFileActionPlan(
+                target.file_path, target.buffer, target.file_mode, target.change_type,
+            )
+            for target in renames.worktree_targets.values()
+        )
+        worktree_identities.update(renames.worktree_identities)
+        index_identities.update(renames.index_identities)
+        index_validation_paths.extend(renames.index_identities)
         return _DiscardPlanCapture(
             plans=plans,
             worktree_identities=worktree_identities,

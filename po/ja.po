@@ -8347,3 +8347,42 @@ msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr ""
 "このコマンドには少なくとも 1 つのコミットが必要です。HEAD はまだ作成されてい"
 "ません。"
+
+msgid "A saved rename must contain both paths."
+msgstr "保存済みの名前変更には両方のパスが必要です。"
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "{file} を削除できません。バッチの保存後に変更されています。"
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "通常のファイルではないインデックスエントリに、保存済みの名前変更を再適用することはできません。"
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "通常のファイルではないパスに、保存済みの名前変更を再適用することはできません: {file}。"
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "未マージのインデックスエントリがあるため、保存済みの名前変更を再適用できません: {file}。"
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "保存済みの名前変更 {old} -> {new} を再適用できません。両方のパスが存在しません。"
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "保存済みの名前変更 {old} -> {new} を再適用できません。両方のパスが存在します。"
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "保存済みの名前変更 {old} -> {new} を再適用できません。内容の変更が競合しています。"
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "保存済みの名前変更は分割や書き換えができません。両方のパスを適用または破棄するか、バッチを削除してください。"
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "保存済みの名前変更の両方のパス全体を選択してください: {file} と {partner}。"
+
+msgid "The original content of the renamed file is missing."
+msgstr "名前変更されたファイルの元の内容がありません。"
+
+msgid "The saved rename destination content is missing."
+msgstr "保存済みの名前変更の変更先の内容がありません。"
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "{path!r} のファイルエントリにある名前変更の由来情報に不整合があります"

@@ -8641,3 +8641,42 @@ msgstr "Os metadados do ponto inicial da sessão estão ausentes."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Este comando requer pelo menos um commit; HEAD ainda não foi criado."
+
+msgid "A saved rename must contain both paths."
+msgstr "Uma renomeação salva deve conter ambos os caminhos."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "Não é possível excluir {file}: o arquivo foi alterado desde que o lote foi salvo."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Não é possível reaplicar uma renomeação salva sobre uma entrada do índice que não seja um arquivo regular."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Não é possível reaplicar uma renomeação salva sobre um caminho que não seja um arquivo regular: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Não é possível reaplicar uma renomeação salva com entradas do índice não mescladas: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Não é possível reaplicar a renomeação salva {old} -> {new}: ambos os caminhos estão ausentes."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Não é possível reaplicar a renomeação salva {old} -> {new}: ambos os caminhos existem."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Não é possível reaplicar a renomeação salva {old} -> {new}: as alterações de conteúdo estão em conflito."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Renomeações salvas não podem ser divididas nem reescritas. Aplique ou descarte ambos os caminhos, ou exclua o lote."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Selecione ambos os caminhos completos da renomeação salva: {file} e {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "O conteúdo original do arquivo renomeado está ausente."
+
+msgid "The saved rename destination content is missing."
+msgstr "O conteúdo de destino da renomeação salva está ausente."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "a entrada de arquivo de {path!r} contém informações inconsistentes de proveniência da renomeação"

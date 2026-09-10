@@ -6,6 +6,7 @@ import shlex
 from dataclasses import dataclass
 
 from ...batch.state.query import read_batch_metadata
+from ...batch.renames import refuse_rename_rewrite
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.source.selector import require_plain_batch_name
 from ...batch.state.batch_names import batch_exists, validate_batch_name
@@ -92,6 +93,8 @@ def resolve_reset_claim_selection(
     affected_files = set(
         resolve_batch_file_scope(batch_name, all_files, file, patterns).keys()
     )
+    if to_batch is not None or line_ids is not None or file is not None or patterns is not None:
+        refuse_rename_rewrite({path: all_files[path] for path in affected_files})
     return ResetClaimSelection(
         batch_name=batch_name,
         file=file,

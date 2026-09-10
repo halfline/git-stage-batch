@@ -8800,3 +8800,42 @@ msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr ""
 "Dieser Befehl benötigt mindestens einen Commit; HEAD wurde noch nicht "
 "erstellt."
+
+msgid "A saved rename must contain both paths."
+msgstr "Eine gespeicherte Umbenennung muss beide Pfade enthalten."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "{file} kann nicht gelöscht werden: Die Datei wurde seit dem Speichern des Batches geändert."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Eine gespeicherte Umbenennung kann nicht auf einen Indexeintrag angewendet werden, der keine reguläre Datei ist."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Eine gespeicherte Umbenennung kann nicht auf einen Pfad angewendet werden, der keine reguläre Datei ist: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Eine gespeicherte Umbenennung kann bei nicht zusammengeführten Indexeinträgen nicht angewendet werden: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Die gespeicherte Umbenennung {old} -> {new} kann nicht angewendet werden: Beide Pfade fehlen."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Die gespeicherte Umbenennung {old} -> {new} kann nicht angewendet werden: Beide Pfade existieren."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Die gespeicherte Umbenennung {old} -> {new} kann nicht angewendet werden: Die Inhaltsänderungen stehen im Konflikt."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Gespeicherte Umbenennungen können nicht aufgeteilt oder umgeschrieben werden. Beide Pfade anwenden oder verwerfen oder den Batch löschen."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Beide vollständigen Pfade der gespeicherten Umbenennung auswählen: {file} und {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Der ursprüngliche Inhalt der umbenannten Datei fehlt."
+
+msgid "The saved rename destination content is missing."
+msgstr "Der Zielinhalt der gespeicherten Umbenennung fehlt."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "der Dateieintrag für {path!r} enthält widersprüchliche Herkunftsdaten zur Umbenennung"

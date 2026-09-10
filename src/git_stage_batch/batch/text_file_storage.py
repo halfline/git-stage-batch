@@ -9,6 +9,7 @@ from .state.validation import get_validated_baseline_commit
 from .state.compatibility_metadata import write_file_backed_batch_metadata
 from .state.lifecycle import create_batch
 from .state.query import get_batch_commit_sha, read_batch_metadata
+from .renames import refuse_rename_rewrite
 from .state.metadata_types import BatchFileMetadataDict, add_ownership_metadata
 from .state.batch_names import batch_exists, validate_batch_name
 from ..core.text_lifecycle import (
@@ -259,6 +260,10 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
         metadata = read_batch_metadata(batch_name)
         if "files" not in metadata:
             metadata["files"] = {}
+        refuse_rename_rewrite({
+            update.file_path: metadata["files"][update.file_path]
+            for update in updates if update.file_path in metadata["files"]
+        })
         metadata_revision = metadata.get("revision")
         if not isinstance(metadata_revision, str) or not metadata_revision:
             raise ValueError("batch metadata has no durable revision")

@@ -19,6 +19,8 @@ from . import merge_refusals as _merge_refusals
 from . import text_file_actions as _text_file_actions
 from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
+from . import rename_plans as _rename_plans
+from .deletion_validation import require_unchanged_deletion_targets
 from ...batch.binary_file_content import read_binary_file_from_batch
 from ...batch.operation_candidate_types import CandidatePreviewCount
 from ...batch.state.metadata_types import BatchFileMetadataDict
@@ -105,6 +107,12 @@ def execute_include_action(
             workspace=workspace,
         )
         with _action_plans.resource_cleanup(include_plans) as close_include_plans:
+            if selection.selected_ids is None:
+                require_unchanged_deletion_targets(
+                    batch_name, files, expected_worktree_identities,
+                    workspace=workspace,
+                    index_identities=expected_index_identities,
+                )
             _require_unchanged_include_targets(
                 expected_index_identities,
                 expected_worktree_identities,
@@ -204,8 +212,11 @@ def _build_include_action_plans(
     dict[str, IndexIdentity],
     dict[str, WorktreeIdentity],
 ]:
+    ordinary_files = {
+        path: meta for path, meta in files.items() if not _rename_plans.is_rename_file(meta)
+    }
     capture = _capture_include_plan_inputs(
-        files=files,
+        files=ordinary_files,
         selected_ids=selected_ids,
         workspace=workspace,
     )
@@ -224,12 +235,35 @@ def _build_include_action_plans(
         )
         plans = _reduce_include_action_plans(
             batch_name=batch_name,
-            files=files,
+            files=ordinary_files,
             rendered=rendered,
             capture=capture,
             text_results_by_ordinal=text_results_by_ordinal,
             workspace=workspace,
         )
+        try:
+            renames = _rename_plans.prepare_rename_plans(
+                files, workspace=workspace, include_index=True,
+            )
+        except BaseException:
+            _action_plans.close_action_plans(plans)
+            raise
+        for path in renames.worktree_identities:
+            working = renames.worktree_targets.get(path)
+            staged = renames.index_targets.get(path)
+            plans.append(
+                _action_plans.IncludeTextFileActionPlan(
+                    path,
+                    staged.buffer if staged else None,
+                    working.buffer if working else None,
+                    staged.file_mode if staged else None,
+                    working.file_mode if working else None,
+                    staged.change_type if staged else TextFileChangeType.DELETED,
+                    working.change_type if working else TextFileChangeType.DELETED,
+                )
+            )
+        capture.index_identities.update(renames.index_identities)
+        capture.worktree_identities.update(renames.worktree_identities)
         return (
             plans,
             capture.mode_actions,

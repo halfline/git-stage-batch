@@ -49,6 +49,14 @@ bulk update rolls back the planned session manifest.
 
 Live session diffs render renames as atomic `old -> new` choices. A selected
 rename can be included, skipped, or discarded with the rest of the workflow.
+To save a rename and its content edits in a batch, select both paths with
+`discard --to <batch> --files <old> <new>`. Applying the batch carries later
+source edits to the destination; conflicting edits stop the command before it
+changes files. Include keeps later unstaged edits unstaged, and discard from
+the batch reverses the rename while preserving later edits. Both complete
+paths must be selected together. Saved renames currently cannot be sifted,
+split, or moved between batches with reset. Text replay preserves the working
+file's line-ending style, including CRLF when `core.autocrlf` is enabled.
 At session start, staged renames and regular text deletions are temporarily
 normalized into that same live workflow; if a normalized start-time change is
 left untouched, `stop` or `abort` restores the original staged change.

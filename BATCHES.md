@@ -186,9 +186,10 @@ references and removes the historical storage for that batch.
 
 [`batch/state/metadata_schema.py`](src/git_stage_batch/batch/state/metadata_schema.py)
 validates stored fields before the rest of the program uses them.
-Schema version 2 adds source-alternative absence claims. Version 1 and
-historical unversioned metadata are migrated in memory; the next successful
-publication writes the current schema.
+Schema version 3 adds explicit saved-rename relationships and their original
+and destination content blobs. Version 2 added source-alternative absence
+claims. Older versioned and historical unversioned metadata are migrated in
+memory; the next successful publication writes the current schema.
 Because older schemas did not record whether an unowned source suffix was the
 other side of an explicit transformed replacement, migration marks text
 ownership with that uncertainty. Whole-file replay refuses a legacy claimed
@@ -977,6 +978,38 @@ Text line ownership does not represent every Git change.
   copies and removes generic stored entries.
 
 Line options cannot select part of these changes.
+
+Multi-file `discard --to` also retains detected regular-file renames when both
+paths are selected. The source entry has `rename_to`; the destination has
+`rename_from`, `rename_base_blob`, and `rename_target_blob`. Both content blobs are embedded
+under `objects/` in the state commit, so the relationship and exact capture
+contents survive garbage collection. The two file entries remain a single
+selection for replay.
+
+Apply and include merge the saved content change with the current source
+before moving it to the destination. Include prepares the index and worktree
+separately, leaving later unstaged edits unstaged. Discard uses the inverse
+merge and move. Each command plans both paths before publishing anything and
+refuses conflicting edits or occupied destinations. Single-path and line
+selections, sift, and partial reset cannot split or rewrite a saved rename.
+Resetting the entire batch and dropping it remain available.
+
+Text rename merges normalize line endings for comparison and preserve the
+current worktree's line-ending style. Include applies Git's clean conversion
+to the destination before staging it. Binary rename contents remain exact
+bytes. Raw worktree and index identities still guard publication.
+
+Older batches have no explicit rename relationship. Migration does not infer
+one from content similarity. Applying or including an unlinked whole-file
+text deletion checks the worktree against the removed content reconstructed
+from its ownership claims, including content recorded by sift. Text comparison
+ignores line-ending differences. Include accepts the unchanged baseline in
+the index, or requires each index line to belong to the recorded deletion in
+its original order; unstaged preimage lines may be absent from the index.
+Binary deletions require exact baseline bytes. Later
+unowned edits stop the command. Reviewed line selections still use the
+ordinary text merge, which can remove saved lines while preserving later
+additions.
 
 ## Where to make a batch change
 

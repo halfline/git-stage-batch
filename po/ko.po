@@ -8244,3 +8244,42 @@ msgstr "세션 시작점 메타데이터가 없습니다."
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr ""
 "이 명령에는 커밋이 하나 이상 필요합니다. HEAD가 아직 생성되지 않았습니다."
+
+msgid "A saved rename must contain both paths."
+msgstr "저장된 이름 변경에는 두 경로가 모두 포함되어야 합니다."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "{file}을(를) 삭제할 수 없습니다. 배치를 저장한 후 변경되었습니다."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "일반 파일이 아닌 인덱스 항목에는 저장된 이름 변경을 다시 적용할 수 없습니다."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "일반 파일이 아닌 경로에는 저장된 이름 변경을 다시 적용할 수 없습니다: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "병합되지 않은 인덱스 항목이 있어 저장된 이름 변경을 다시 적용할 수 없습니다: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "저장된 이름 변경 {old} -> {new}을(를) 다시 적용할 수 없습니다. 두 경로가 모두 없습니다."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "저장된 이름 변경 {old} -> {new}을(를) 다시 적용할 수 없습니다. 두 경로가 모두 존재합니다."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "저장된 이름 변경 {old} -> {new}을(를) 다시 적용할 수 없습니다. 내용 변경이 충돌합니다."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "저장된 이름 변경은 분할하거나 다시 작성할 수 없습니다. 두 경로를 모두 적용하거나 버리거나 배치를 삭제하세요."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "저장된 이름 변경의 두 경로 전체를 선택하세요: {file} 및 {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "이름이 변경된 파일의 원래 내용이 없습니다."
+
+msgid "The saved rename destination content is missing."
+msgstr "저장된 이름 변경의 대상 내용이 없습니다."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "{path!r}의 파일 항목에 일관되지 않은 이름 변경 출처 정보가 있습니다"

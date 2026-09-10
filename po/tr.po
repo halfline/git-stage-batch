@@ -8512,3 +8512,42 @@ msgstr "Oturum başlangıç noktası üst verisi eksik."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Bu komut en az bir commit gerektirir; HEAD henüz doğmamış."
+
+msgid "A saved rename must contain both paths."
+msgstr "Kaydedilmiş bir yeniden adlandırma her iki yolu da içermelidir."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "{file} silinemiyor: toplu değişiklik kaydedildikten sonra dosya değişmiş."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Kaydedilmiş bir yeniden adlandırma, normal dosya olmayan bir indeks girdisine yeniden uygulanamaz."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Kaydedilmiş bir yeniden adlandırma, normal dosya olmayan bir yola yeniden uygulanamaz: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Birleştirilmemiş indeks girdileri varken kaydedilmiş bir yeniden adlandırma yeniden uygulanamaz: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Kaydedilmiş {old} -> {new} yeniden adlandırması uygulanamıyor: her iki yol da eksik."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Kaydedilmiş {old} -> {new} yeniden adlandırması uygulanamıyor: her iki yol da mevcut."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Kaydedilmiş {old} -> {new} yeniden adlandırması uygulanamıyor: içerik değişiklikleri çakışıyor."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Kaydedilmiş yeniden adlandırmalar bölünemez veya yeniden yazılamaz. Her iki yolu da uygulayın veya geri alın ya da toplu değişikliği kaldırın."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Kaydedilmiş yeniden adlandırmanın her iki yolunu da bütünüyle seçin: {file} ve {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Yeniden adlandırılan dosyanın özgün içeriği eksik."
+
+msgid "The saved rename destination content is missing."
+msgstr "Kaydedilmiş yeniden adlandırmanın hedef içeriği eksik."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "{path!r} dosya girdisinde tutarsız yeniden adlandırma kökeni bilgisi var"

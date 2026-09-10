@@ -8716,3 +8716,42 @@ msgstr "Faltan los metadatos del punto de inicio de la sesión."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Este comando requiere al menos un commit; HEAD aún no ha nacido."
+
+msgid "A saved rename must contain both paths."
+msgstr "Un cambio de nombre guardado debe contener ambas rutas."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "No se puede eliminar {file}: ha cambiado desde que se guardó el lote."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "No se puede volver a aplicar un cambio de nombre guardado sobre una entrada del índice que no sea un archivo normal."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "No se puede volver a aplicar un cambio de nombre guardado sobre una ruta que no sea un archivo normal: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "No se puede volver a aplicar un cambio de nombre guardado con entradas del índice sin fusionar: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "No se puede volver a aplicar el cambio de nombre guardado {old} -> {new}: faltan ambas rutas."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "No se puede volver a aplicar el cambio de nombre guardado {old} -> {new}: ambas rutas existen."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "No se puede volver a aplicar el cambio de nombre guardado {old} -> {new}: las modificaciones del contenido entran en conflicto."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Los cambios de nombre guardados no se pueden dividir ni reescribir. Aplique o descarte ambas rutas, o elimine el lote."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Seleccione ambas rutas completas del cambio de nombre guardado: {file} y {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Falta el contenido original del archivo cuyo nombre se cambió."
+
+msgid "The saved rename destination content is missing."
+msgstr "Falta el contenido de destino del cambio de nombre guardado."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "la entrada de archivo de {path!r} contiene información de procedencia incoherente sobre el cambio de nombre"

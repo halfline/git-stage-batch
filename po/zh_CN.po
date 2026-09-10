@@ -7977,3 +7977,42 @@ msgstr "会话起点元数据缺失。"
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "此命令至少需要一个提交；HEAD 尚未创建。"
+
+msgid "A saved rename must contain both paths."
+msgstr "保存的重命名必须包含两个路径。"
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "无法删除 {file}：它在批次保存后已发生变化。"
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "无法对非普通文件的索引条目重新应用已保存的重命名。"
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "无法对非普通文件的路径重新应用已保存的重命名：{file}。"
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "存在未合并的索引条目，无法重新应用已保存的重命名：{file}。"
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "无法重新应用已保存的重命名 {old} -> {new}：两个路径均不存在。"
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "无法重新应用已保存的重命名 {old} -> {new}：两个路径均已存在。"
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "无法重新应用已保存的重命名 {old} -> {new}：内容修改存在冲突。"
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "无法拆分或重写已保存的重命名。请对两个路径一起应用或丢弃更改，或者删除该批次。"
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "请选择已保存重命名的两个完整路径：{file} 和 {partner}。"
+
+msgid "The original content of the renamed file is missing."
+msgstr "重命名文件的原始内容缺失。"
+
+msgid "The saved rename destination content is missing."
+msgstr "已保存重命名的目标内容缺失。"
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "{path!r} 的文件条目包含不一致的重命名来源信息"

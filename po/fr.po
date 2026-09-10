@@ -8770,3 +8770,42 @@ msgstr "Les métadonnées du point de départ de la session sont absentes."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Cette commande exige au moins un commit ; HEAD n'est pas encore créé."
+
+msgid "A saved rename must contain both paths."
+msgstr "Un renommage enregistré doit contenir les deux chemins."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "Impossible de supprimer {file} : le fichier a changé depuis l’enregistrement du lot."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Impossible de réappliquer un renommage enregistré sur une entrée d’index qui n’est pas un fichier ordinaire."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Impossible de réappliquer un renommage enregistré sur un chemin qui n’est pas un fichier ordinaire : {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Impossible de réappliquer un renommage enregistré avec des entrées d’index non fusionnées : {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Impossible de réappliquer le renommage enregistré {old} -> {new} : les deux chemins sont absents."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Impossible de réappliquer le renommage enregistré {old} -> {new} : les deux chemins existent."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Impossible de réappliquer le renommage enregistré {old} -> {new} : les modifications du contenu sont en conflit."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Les renommages enregistrés ne peuvent pas être divisés ou réécrits. Appliquez ou annulez les deux chemins, ou supprimez le lot."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Sélectionnez les deux chemins complets du renommage enregistré : {file} et {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Le contenu d’origine du fichier renommé est absent."
+
+msgid "The saved rename destination content is missing."
+msgstr "Le contenu de destination du renommage enregistré est absent."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "l’entrée de fichier pour {path!r} contient des informations de provenance du renommage incohérentes"

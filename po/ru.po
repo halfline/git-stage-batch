@@ -8711,3 +8711,42 @@ msgstr "Метаданные начальной точки сеанса отсу
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Для этой команды требуется хотя бы один коммит; HEAD ещё не создан."
+
+msgid "A saved rename must contain both paths."
+msgstr "Сохранённое переименование должно содержать оба пути."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "Невозможно удалить {file}: файл изменился после сохранения набора."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Невозможно повторно применить сохранённое переименование к записи индекса, которая не является обычным файлом."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Невозможно повторно применить сохранённое переименование к пути, который не является обычным файлом: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Невозможно повторно применить сохранённое переименование при наличии неслитых записей индекса: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Невозможно повторно применить сохранённое переименование {old} -> {new}: оба пути отсутствуют."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Невозможно повторно применить сохранённое переименование {old} -> {new}: оба пути существуют."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Невозможно повторно применить сохранённое переименование {old} -> {new}: изменения содержимого конфликтуют."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Сохранённые переименования нельзя разделять или переписывать. Примените или отмените изменения для обоих путей либо удалите набор."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Выберите оба пути сохранённого переименования целиком: {file} и {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Исходное содержимое переименованного файла отсутствует."
+
+msgid "The saved rename destination content is missing."
+msgstr "Целевое содержимое сохранённого переименования отсутствует."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "запись файла {path!r} содержит противоречивые сведения о происхождении переименования"

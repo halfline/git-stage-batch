@@ -8538,3 +8538,42 @@ msgstr "Metadata počátečního bodu relace chybí."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Tento příkaz vyžaduje alespoň jeden commit; HEAD dosud nebyl vytvořen."
+
+msgid "A saved rename must contain both paths."
+msgstr "Uložené přejmenování musí obsahovat obě cesty."
+
+msgid "Cannot delete {file}: it has changed since the batch was saved."
+msgstr "Nelze smazat {file}: soubor se od uložení dávky změnil."
+
+msgid "Cannot replay a saved rename over a non-regular index entry."
+msgstr "Uložené přejmenování nelze znovu použít na položku indexu, která není běžným souborem."
+
+msgid "Cannot replay a saved rename over a non-regular path: {file}."
+msgstr "Uložené přejmenování nelze znovu použít na cestu, která není běžným souborem: {file}."
+
+msgid "Cannot replay a saved rename with unmerged index entries: {file}."
+msgstr "Uložené přejmenování nelze znovu použít s nesloučenými položkami indexu: {file}."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths are missing."
+msgstr "Uložené přejmenování {old} -> {new} nelze znovu použít: obě cesty chybí."
+
+msgid "Cannot replay saved rename {old} -> {new}: both paths exist."
+msgstr "Uložené přejmenování {old} -> {new} nelze znovu použít: obě cesty existují."
+
+msgid "Cannot replay saved rename {old} -> {new}: content edits conflict."
+msgstr "Uložené přejmenování {old} -> {new} nelze znovu použít: změny obsahu jsou v konfliktu."
+
+msgid "Saved renames cannot be split or rewritten. Apply or discard both paths, or drop the batch."
+msgstr "Uložená přejmenování nelze rozdělit ani přepsat. Použijte nebo zahoďte obě cesty, nebo odstraňte dávku."
+
+msgid "Select both complete paths of the saved rename: {file} and {partner}."
+msgstr "Vyberte obě úplné cesty uloženého přejmenování: {file} a {partner}."
+
+msgid "The original content of the renamed file is missing."
+msgstr "Původní obsah přejmenovaného souboru chybí."
+
+msgid "The saved rename destination content is missing."
+msgstr "Cílový obsah uloženého přejmenování chybí."
+
+msgid "file entry for {path!r} has inconsistent rename provenance"
+msgstr "položka souboru {path!r} obsahuje nekonzistentní údaje o původu přejmenování"

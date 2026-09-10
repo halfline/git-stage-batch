@@ -25,7 +25,7 @@ from .metadata_types import (
 )
 
 
-CURRENT_BATCH_METADATA_SCHEMA_VERSION = 2
+CURRENT_BATCH_METADATA_SCHEMA_VERSION = 3
 
 JsonScalar: TypeAlias = None | bool | int | str
 JsonValue: TypeAlias = JsonScalar | tuple["JsonValue", ...] | Mapping[str, "JsonValue"]
@@ -48,6 +48,10 @@ _FILE_METADATA_KEYS = frozenset(
         "presence_claims",
         "replacement_masks",
         "replacement_units",
+        "rename_from",
+        "rename_to",
+        "rename_base_blob",
+        "rename_target_blob",
         "source_path",
     }
 )
@@ -227,6 +231,9 @@ def decode_batch_metadata(
         version = 1
     if version == 1:
         data = _migrate_v1_to_v2(data)
+        version = 2
+    if version == 2:
+        data = {**data, "schema_version": CURRENT_BATCH_METADATA_SCHEMA_VERSION}
     elif version != CURRENT_BATCH_METADATA_SCHEMA_VERSION:
         _invalid(
             expected_batch,
@@ -412,6 +419,7 @@ def _decode_current(
         _decode_file_metadata(path, values, expected_batch, allow_legacy=allow_legacy)
         for path, values in files_data.items()
     )
+    _validate_rename_pairs(files, expected_batch)
     return BatchMetadata(
         revision=revision,
         batch=batch,
@@ -422,6 +430,49 @@ def _decode_current(
         content_ref=content_ref,
         content_commit=content_commit,
     )
+
+
+def _validate_rename_pairs(
+    files: tuple[BatchFileMetadata, ...],
+    batch_name: str,
+) -> None:
+    values_by_path = {entry.path: entry.values for entry in files}
+    for path, values in values_by_path.items():
+        source = cast(str | None, values.get("rename_from"))
+        destination = cast(str | None, values.get("rename_to"))
+        base_blob = values.get("rename_base_blob")
+        target_blob = values.get("rename_target_blob")
+        if (
+            source is None and destination is None
+            and base_blob is None and target_blob is None
+        ):
+            continue
+        valid = values.get("mode") in {"100644", "100755"}
+        valid = valid and values.get("file_type") in {None, "binary"}
+        if source is not None:
+            valid = valid and (
+                source != path
+                and destination is None
+                and base_blob is not None
+                and target_blob is not None
+                and values.get("change_type") == "added"
+                and values_by_path.get(source, {}).get("rename_to") == path
+            )
+        elif destination is not None:
+            valid = valid and (
+                destination != path
+                and base_blob is None
+                and target_blob is None
+                and values.get("change_type") == "deleted"
+                and values_by_path.get(destination, {}).get("rename_from") == path
+            )
+        else:
+            valid = False
+        if not valid:
+            _invalid(
+                batch_name,
+                _("file entry for {path!r} has inconsistent rename provenance").format(path=path),
+            )
 
 
 def _decode_file_metadata(
@@ -524,7 +575,10 @@ def _decode_file_metadata(
     for key in ("batch_source_commit",):
         if key in values:
             _validate_object_id(values[key], batch_name, f"files[{path!r}].{key}")
-    for key in ("old_oid", "new_oid"):
+    for key in ("rename_from", "rename_to"):
+        if key in values:
+            _required_string(values, key, batch_name)
+    for key in ("old_oid", "new_oid", "rename_base_blob", "rename_target_blob"):
         value = values.get(key)
         if value is not None:
             _validate_hex_object_id(

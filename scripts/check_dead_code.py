@@ -101,6 +101,30 @@ ALLOWED_FINDINGS = (
         "TypedDict key read from persisted metadata by string name.",
     ),
     _allowed(
+        "src/git_stage_batch/batch/state/metadata_types.py",
+        "variable",
+        "rename_from",
+        "TypedDict key read by saved-rename validation and replay by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/batch/state/metadata_types.py",
+        "variable",
+        "rename_to",
+        "TypedDict key read by saved-rename validation and selection by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/batch/state/metadata_types.py",
+        "variable",
+        "rename_base_blob",
+        "TypedDict key read by saved-rename replay and object retention by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/batch/state/metadata_types.py",
+        "variable",
+        "rename_target_blob",
+        "TypedDict key read by saved-rename replay and object retention by string name.",
+    ),
+    _allowed(
         "src/git_stage_batch/commands/batch_source/text_plan_jobs.py",
         "variable",
         "replacement_display_text",

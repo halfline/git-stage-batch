@@ -286,6 +286,22 @@ def test_saved_rename_conflict_preserves_all_files_and_refs(functional_repo, ope
     assert _persistent_refs() == refs
     assert _git("status", "--porcelain") == status
     assert _git("ls-files", "--stage") == index
+@pytest.mark.parametrize("operation", ["apply", "include", "discard"])
+@pytest.mark.parametrize("path", ["scope_test.c", "outputs_test.c"])
+def test_saved_rename_requires_both_paths(functional_repo, operation, path):
+    old, new, baseline, _target = _start_rename(functional_repo, True)
+    git_stage_batch("discard", "--to", "output-rename", "--files", "**")
+    refs = _persistent_refs()
+
+    result = git_stage_batch(
+        operation, "--from", "output-rename", "--file", path, check=False
+    )
+
+    assert result.returncode != 0
+    assert "both complete paths" in result.stderr
+    assert old.read_text() == baseline
+    assert not new.exists()
+    assert _persistent_refs() == refs
 def test_saved_rename_retains_path_and_content_provenance(functional_repo):
     old, new, baseline, target = _start_rename(functional_repo, True)
     git_stage_batch("discard", "--to", "output-rename", "--files", "**")

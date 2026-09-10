@@ -380,6 +380,8 @@ def test_multi_file_discard_distinguishes_collection_and_single_file_events(
         lambda *_args, **_kwargs: discard_to_batch._CollectedTextFileDiscards(
             inputs_by_file={},
             files_with_text_patches=set(),
+            renames=(),
+            comparison_base="HEAD",
         ),
     )
     monkeypatch.setattr(

@@ -42,3 +42,52 @@ def test_saved_deletion_accepts_unchanged_crlf_worktree(functional_repo, operati
         assert _git("ls-files", "--", path.name) == b""
     else:
         assert _git("diff", "--cached", "--exit-code") == b""
+
+
+@pytest.mark.parametrize("operation", ["apply", "include"])
+@pytest.mark.parametrize("crlf", [False, True], ids=["lf", "crlf"])
+@pytest.mark.parametrize("captured_edit", ["append", "replace", "remove"])
+def test_sifted_deletion_accepts_recorded_preimage(
+    functional_repo, operation, crlf, captured_edit
+):
+    path, baseline = _save_deletion(functional_repo, crlf=crlf)
+    ending = b"\r\n" if crlf else b"\n"
+    if captured_edit == "append":
+        captured = baseline + b"An edit captured by sift." + ending
+    elif captured_edit == "replace":
+        captured = baseline.replace(b"second line", b"A replacement captured by sift.")
+    else:
+        captured = baseline.replace(b"second line" + ending, b"")
+    path.write_bytes(captured)
+    git_stage_batch("sift", "--from", "deleted", "--to", "rebuilt")
+    assert path.read_bytes() == captured
+    assert _git("diff", "--cached", "--exit-code") == b""
+
+    git_stage_batch(operation, "--from", "rebuilt")
+
+    assert not path.exists()
+    if operation == "include":
+        assert _git("ls-files", "--", path.name) == b""
+    else:
+        assert _git("diff", "--cached", "--exit-code") == b""
+    git_stage_batch("undo")
+    assert path.read_bytes() == captured
+    assert _git("diff", "--cached", "--exit-code") == b""
+
+
+def test_sifted_deletion_accepts_staged_subset_of_recorded_preimage(functional_repo):
+    path, baseline = _save_deletion(functional_repo, crlf=True)
+    staged = baseline + b"An edit staged before sift.\r\n"
+    path.write_bytes(staged)
+    _git("add", "--", path.name)
+    captured = staged + b"An unstaged edit also captured by sift.\r\n"
+    path.write_bytes(captured)
+    git_stage_batch("sift", "--from", "deleted", "--to", "rebuilt")
+
+    git_stage_batch("include", "--from", "rebuilt")
+
+    assert not path.exists()
+    assert _git("ls-files", "--", path.name) == b""
+    git_stage_batch("undo")
+    assert path.read_bytes() == captured
+    assert _git("show", f":{path.name}") == staged.replace(b"\r\n", b"\n")

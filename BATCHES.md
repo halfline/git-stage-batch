@@ -186,9 +186,10 @@ references and removes the historical storage for that batch.
 
 [`batch/state/metadata_schema.py`](src/git_stage_batch/batch/state/metadata_schema.py)
 validates stored fields before the rest of the program uses them.
-Schema version 2 adds source-alternative absence claims. Version 1 and
-historical unversioned metadata are migrated in memory; the next successful
-publication writes the current schema.
+Schema version 3 adds explicit saved-rename relationships and their original
+and destination content blobs. Version 2 added source-alternative absence
+claims. Older versioned and historical unversioned metadata are migrated in
+memory; the next successful publication writes the current schema.
 Because older schemas did not record whether an unowned source suffix was the
 other side of an explicit transformed replacement, migration marks text
 ownership with that uncertainty. Whole-file replay refuses a legacy claimed

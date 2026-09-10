@@ -75,6 +75,67 @@ def _current_source_alternative_metadata() -> dict:
     return data
 
 
+def _rename_metadata() -> dict:
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    data["files"] = {
+        "old.txt": {
+            "batch_source_commit": _oid("c"),
+            "mode": "100644",
+            "change_type": "deleted",
+            "rename_to": "new.txt",
+            "presence_claims": [],
+            "deletions": [],
+        },
+        "new.txt": {
+            "batch_source_commit": _oid("d"),
+            "mode": "100644",
+            "change_type": "added",
+            "rename_from": "old.txt",
+            "rename_base_blob": _oid("e"),
+            "rename_target_blob": _oid("f"),
+            "presence_claims": [{"source_lines": ["1-3"]}],
+            "deletions": [],
+        },
+    }
+    return data
+
+
+def test_rename_provenance_survives_metadata_round_trip():
+    data = _rename_metadata()
+    model = decode_batch_metadata(data, expected_batch="feature")
+    stored = json.loads(encode_batch_metadata(model))
+    assert stored["files"] == data["files"]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda files: files.pop("old.txt"),
+        lambda files: files.pop("new.txt"),
+        lambda files: files["new.txt"].update(rename_from="new.txt"),
+        lambda files: files["old.txt"].update(rename_to="other.txt"),
+        lambda files: files["new.txt"].pop("rename_base_blob"),
+        lambda files: files["new.txt"].pop("rename_target_blob"),
+        lambda files: files["old.txt"].update(change_type="added"),
+        lambda files: files["new.txt"].update(change_type="deleted"),
+        lambda files: files["new.txt"].update(mode="120000"),
+    ],
+)
+def test_metadata_rejects_incomplete_or_inconsistent_rename_provenance(mutate):
+    data = _rename_metadata()
+    mutate(data["files"])
+    with pytest.raises(BatchMetadataError, match="inconsistent rename provenance"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_schema_v2_migration_does_not_invent_rename_provenance():
+    data = _v1_metadata()
+    data["schema_version"] = 2
+    model = decode_batch_metadata(data, expected_batch="feature")
+    assert json.loads(encode_batch_metadata(model))["files"] == data["files"]
+
+
 def test_v1_migrates_to_current_schema_deterministically_and_immutably():
     model = decode_batch_metadata(_v1_metadata(), expected_batch="feature")
 

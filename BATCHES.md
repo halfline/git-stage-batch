@@ -443,6 +443,13 @@ ordinary partial selections do not acquire omitted changes.
 submodule pointer needs an intent-to-add index entry so Git can expose it as an
 unstaged pointer change.
 
+When an apply target exactly matches the saved baseline and realizing the
+selected ownership reproduces the complete batch source (allowing line-ending
+differences), the planner can use that proven round trip. This permits complete
+file moves through repeated context without guessing a live placement. Partial
+captures and targets with later edits still use ordinary merge validation and
+candidate review. Comparisons and realization use bounded buffers.
+
 Their command modules are:
 
 - [`commands/include_from.py`](src/git_stage_batch/commands/include_from.py)

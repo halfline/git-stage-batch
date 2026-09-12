@@ -113,8 +113,44 @@ LINE_ENTRY_COMPATIBILITY_MODULES = frozenset(
     }
 )
 
+DISCARD_REPLACEMENT_PREPARATION_MODULES = frozenset(
+    f"git_stage_batch.commands.selection.{module}"
+    for module in (
+        "discard_line_replacement",
+        "discard_replacement_models",
+        "discard_replacement_policy",
+        "discard_replacement_selection",
+        "discard_replacement_rendering",
+        "discard_replacement_projection",
+        "discard_replacement_parents",
+        "discard_replacement_boundaries",
+    )
+)
 
 ARCHITECTURE_SEAMS = (
+    ArchitectureSeam(
+        name="discard-replacement-preparation-and-storage",
+        forbidden_imports=tuple(
+            _forbid(
+                DISCARD_REPLACEMENT_PREPARATION_MODULES,
+                target,
+                "replacement preparation must not publish batch state",
+            )
+            for target in (
+                "git_stage_batch.commands.selection.discard_replacement_storage",
+                "git_stage_batch.batch.text_file_storage",
+                "git_stage_batch.batch.state.lifecycle",
+                "git_stage_batch.batch.source.snapshots",
+            )
+        ),
+        imported_symbols=(
+            _imports(
+                "git_stage_batch.commands.selection.discard_replacement_storage",
+                "git_stage_batch.batch.text_file_storage",
+                required=("add_source_bound_file_to_batch",),
+            ),
+        ),
+    ),
     ArchitectureSeam(
         name="snapshot-bound-domain-values",
         forbidden_imports=(
@@ -138,7 +174,7 @@ ARCHITECTURE_SEAMS = (
             _consumers(
                 ("git_stage_batch.batch.transformed_selection",),
                 required=(
-                    "git_stage_batch.commands.selection.discard_line_replacement",
+                    "git_stage_batch.commands.selection.discard_replacement_projection",
                 ),
             ),
             _consumers(

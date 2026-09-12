@@ -14,15 +14,17 @@ from git_stage_batch.commands.selection.replacement_selection import (
     expand_replacement_selection_ids_with_explicit_span_status,
     require_contiguous_display_selection,
 )
-from git_stage_batch.commands.selection.discard_line_replacement import (
+from git_stage_batch.commands.selection.discard_replacement_selection import (
     _contiguous_selected_addition_count,
-    _expand_parent_through_relocated_prefix_context,
     _requires_explicit_added_side_alternative,
     _matching_discard_prefix_context_count,
     _matching_baseline_prefix_context_count,
     _replacement_payload_retains_selected_addition,
     _verified_explicit_alternative_end,
     _selected_additions_cover_working_span,
+)
+from git_stage_batch.commands.selection.discard_replacement_parents import (
+    _expand_parent_through_relocated_prefix_context,
 )
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange

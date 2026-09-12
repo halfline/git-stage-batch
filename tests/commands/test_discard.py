@@ -1269,7 +1269,7 @@ class TestCommandDiscardToBatch:
         fetch_next_change()
 
         with patch(
-            "git_stage_batch.commands.selection.discard_line_replacement."
+            "git_stage_batch.commands.selection.discard_replacement_storage."
             "add_source_bound_file_to_batch",
             side_effect=RuntimeError("boom"),
         ):

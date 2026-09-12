@@ -196,12 +196,14 @@ class _ReplacementUnitPlanner:
             )
         )
 
-        for current_index in range(unit_index, group_end):
-            if not self.plan_unit(current_index, partial_context):
-                return False
-        if partial_context is not None:
-            partial_context.close()
-        return True
+        try:
+            for current_index in range(unit_index, group_end):
+                if not self.plan_unit(current_index, partial_context):
+                    return False
+            return True
+        finally:
+            if partial_context is not None:
+                partial_context.close()
 
     def plan_unit(
         self, unit_index: int, partial_context: _TrustedPartialReplacementContext | None

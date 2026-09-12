@@ -15,8 +15,8 @@ def _git(*args):
 
 
 @pytest.fixture(
-    params=[("--file", "sample.txt")],
-    ids=["file"],
+    params=[("--file", "sample.txt"), ("--files", "sample.txt"), ("--files", "**")],
+    ids=["file", "files", "glob"],
 )
 def parked_file(functional_repo, request):
     path = functional_repo / "sample.txt"
@@ -42,7 +42,7 @@ def parked_file(functional_repo, request):
     return path, indexed, final
 
 
-@pytest.mark.parametrize("selector", ["--file"])
+@pytest.mark.parametrize("selector", ["--file", "--files"])
 @pytest.mark.parametrize(
     "baseline,indexed,final",
     [
@@ -94,7 +94,7 @@ def test_discard_to_batch_saves_only_unstaged_addition(parked_file):
     assert additions == ["unstaged addition"], saved
 
 
-@pytest.mark.parametrize("selector", ["--file"])
+@pytest.mark.parametrize("selector", ["--file", "--files"])
 @pytest.mark.parametrize("indexed", ["", "staged content\n"])
 def test_discard_to_batch_preserves_staged_new_file(functional_repo, selector, indexed):
     path = functional_repo / "new.txt"

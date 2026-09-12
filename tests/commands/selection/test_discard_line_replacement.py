@@ -5,8 +5,8 @@ from git_stage_batch.batch.line_matching.occurrence_index import (
     LinePayloadOccurrenceIndex,
 )
 from git_stage_batch.batch.ownership.references import BaselineReference
-from git_stage_batch.commands.selection import discard_line_replacement
-from git_stage_batch.commands.selection.discard_line_replacement import (
+from git_stage_batch.commands.selection import discard_replacement_boundaries
+from git_stage_batch.commands.selection.discard_replacement_boundaries import (
     _presence_is_explicit_span_prefix_with_blank_suffix,
 )
 from git_stage_batch.core.line_selection import LineRanges
@@ -46,7 +46,7 @@ def test_explicit_span_uses_nearest_following_two_sided_boundary() -> None:
 
     with MatcherWorkspace() as workspace:
         occurrences = LinePayloadOccurrenceIndex(workspace, source_lines)
-        chosen = discard_line_replacement._nearest_following_explicit_boundary(
+        chosen = discard_replacement_boundaries._nearest_following_explicit_boundary(
             [after_heading, before_heading],
             source_occurrences=occurrences,
             start_boundary=3,
@@ -66,7 +66,7 @@ def test_displaced_single_line_moves_before_its_old_after_boundary() -> None:
         has_before_line=True,
     )
 
-    shifted = discard_line_replacement._boundary_before_reference_after(
+    shifted = discard_replacement_boundaries._boundary_before_reference_after(
         displaced,
         [b"results\n", b"\n", b"Useful commands:\n", b"\n"],
     )

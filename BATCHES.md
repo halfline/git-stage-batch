@@ -334,6 +334,30 @@ retains a different suffix in the working tree, the command records those two
 sides as one source-alternative replacement. This keeps a later replay from
 inserting the owned prefix beside the retained alternative.
 
+### Where selected-line replacement is prepared
+
+[`commands/selection/discard_line_replacement.py`](src/git_stage_batch/commands/selection/discard_line_replacement.py)
+validates the request, owns the original and rewritten buffers, and binds the
+original selection to its snapshots. Both discard and include replacement
+actions use this preparation.
+
+The supporting modules in `commands/selection/` separate these responsibilities:
+
+| Module | Responsibility |
+| --- | --- |
+| `discard_replacement_policy.py` | Try the explicit selection and, if necessary, its expanded form; choose saved-prefix ownership and a content construction strategy |
+| `discard_replacement_selection.py` | Inspect selected spans, retained payload content, and hidden prefix boundaries |
+| `discard_replacement_rendering.py` | Rebuild the diff while keeping explicitly owned rows selectable |
+| `discard_replacement_projection.py` | Map selected runs into the rewritten diff and bind ownership, rollback, and saved/live alternatives |
+| `discard_replacement_parents.py` and `discard_replacement_boundaries.py` | Expand replacement parents and preserve explicit ownership boundaries |
+| `discard_replacement_storage.py` | Create or update the destination batch, translate ownership into its source, and publish the saved file |
+
+Shared values live in `discard_replacement_models.py`. The resolved decision
+contains a content strategy and an optional saved prefix; later phases do not
+reconstruct the policy from temporary flags. Preparation may capture an
+untracked session source when policy needs it, but batch publication belongs
+to storage. The architecture tests enforce that distinction.
+
 ## How text ownership is stored
 
 [`batch/ownership/model.py`](src/git_stage_batch/batch/ownership/model.py) defines

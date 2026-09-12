@@ -448,7 +448,11 @@ selected ownership reproduces the complete batch source (allowing line-ending
 differences), the planner can use that proven round trip. This permits complete
 file moves through repeated context without guessing a live placement. Partial
 captures and targets with later edits still use ordinary merge validation and
-candidate review. Comparisons and realization use bounded buffers.
+candidate review. One narrow formatting exception permits restoring a missing
+blank separator immediately before a recorded insertion, provided those
+separator deletions are the target's only differences from the baseline. Other
+blank-line or content edits do not acquire that authority. Comparisons and
+realization use bounded buffers and mapped scratch storage.
 
 Their command modules are:
 

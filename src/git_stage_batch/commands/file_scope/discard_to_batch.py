@@ -58,6 +58,7 @@ from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ..selection.action_completion import finish_selected_change_action
 from ..index_cleanup import remove_path_from_index
 from .discard_file_to_batch import create_discard_batch, discard_file_to_batch
+from .discard_batch_baseline import prepare_existing_discard_baseline
 
 
 @dataclass(frozen=True)
@@ -454,6 +455,8 @@ def discard_files_to_batch(
     comparison_base = git_write_tree()
     if not batch_exists(batch_name):
         create_discard_batch(batch_name, comparison_base)
+    else:
+        prepare_existing_discard_baseline(batch_name, comparison_base, files)
 
     blocklist_path = get_block_list_file_path()
     blocked_hashes = read_text_file_line_set(blocklist_path)

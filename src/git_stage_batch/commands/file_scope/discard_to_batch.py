@@ -11,7 +11,6 @@ from ...batch.source.annotation import annotate_with_batch_source
 from ...batch.file_state import BatchMetadataRevision, SourceBoundOwnership
 from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.metadata_types import BatchMetadataDict
-from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
 from ...batch.text_file_storage import BatchFileUpdate, add_files_to_batch
@@ -42,6 +41,7 @@ from ...exceptions import exit_with_error
 from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
+from ...utils.git_index import git_write_tree
 from ...utils.git_worktree import (
     git_apply_to_worktree,
 )
@@ -55,10 +55,9 @@ from ...utils.paths import (
     get_block_list_file_path,
 )
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
-from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from ..index_cleanup import remove_path_from_index
-from .discard_file_to_batch import discard_file_to_batch
+from .discard_file_to_batch import create_discard_batch, discard_file_to_batch
 
 
 @dataclass(frozen=True)
@@ -241,9 +240,9 @@ def _collect_text_file_discard_inputs(
     *,
     blocked_hashes: set[str],
     patch_stack: ExitStack,
+    comparison_base: str,
 ) -> _CollectedTextFileDiscards:
     """Collect normal text file discard inputs from one Git diff."""
-    comparison_base = session_comparison_base()
     if not files:
         return _CollectedTextFileDiscards(
             inputs_by_file={},
@@ -451,8 +450,10 @@ def discard_files_to_batch(
     if not files:
         return DiscardFilesToBatchResult(discarded_hunks=0, discarded_files=[])
     auto_add_untracked_files(files)
+    # Staged content is context, not part of the edits being parked.
+    comparison_base = git_write_tree()
     if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
+        create_discard_batch(batch_name, comparison_base)
 
     blocklist_path = get_block_list_file_path()
     blocked_hashes = read_text_file_line_set(blocklist_path)
@@ -467,6 +468,7 @@ def discard_files_to_batch(
             files,
             blocked_hashes=blocked_hashes,
             patch_stack=patch_stack,
+            comparison_base=comparison_base,
         )
 
         for file_path in files:
@@ -497,6 +499,7 @@ def discard_files_to_batch(
                         quiet=True,
                         advance=False,
                         auto_advance=auto_advance,
+                        comparison_base=comparison_base,
                     )
                     if session.record_single_file_discard(
                         file_path,

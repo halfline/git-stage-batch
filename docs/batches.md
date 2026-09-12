@@ -551,7 +551,9 @@ Save unstaged changes in the selected file to the batch, then remove those
 changes from the working tree. Staged content stays in place. A file with no
 indexed version is removed. A newly auto-created batch uses the current index
 as its baseline, so an unstaged replacement can retain staged text as its old
-side.
+side. When saving into an existing batch, compatible staged context is carried
+into its baseline while preserving earlier saved claims and unselected files.
+Staged edits that overlap earlier saved claims are refused.
 
 **Example workflow:**
 ```bash

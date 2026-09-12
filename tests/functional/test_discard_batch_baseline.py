@@ -93,3 +93,31 @@ def test_existing_batch_keeps_prior_claims_when_parking_staged_replacement(
         assert previous.read_text() == baseline.replace("base tail", "saved tail")
     assert unrelated.read_text() == "unrelated staged content\n"
     assert _git("ls-files", "--stage") == index
+
+
+def test_existing_batch_refuses_staged_overlap_without_mutation(functional_repo):
+    path = functional_repo / "sample.txt"
+    path.write_text("old\nkeep\n")
+    _git("add", ".")
+    _git("commit", "-m", "Add baseline")
+    path.write_text("saved\nkeep\n")
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("discard", "--to", "later", "--file", path.name)
+    git_stage_batch("stop")
+    state = _git("rev-parse", "refs/git-stage-batch/state/later")
+    content = _git("rev-parse", "refs/git-stage-batch/batches/later")
+    path.write_text("staged\nkeep\n")
+    _git("add", "--", path.name)
+    path.write_text("unstaged\nkeep\n")
+    git_stage_batch("start", "--no-auto-advance")
+    index = _git("ls-files", "--stage")
+
+    result = git_stage_batch(
+        "discard", "--to", "later", "--file", path.name, check=False
+    )
+
+    assert result.returncode != 0
+    assert path.read_text() == "unstaged\nkeep\n"
+    assert _git("ls-files", "--stage") == index
+    assert _git("rev-parse", "refs/git-stage-batch/state/later") == state
+    assert _git("rev-parse", "refs/git-stage-batch/batches/later") == content

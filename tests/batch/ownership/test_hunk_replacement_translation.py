@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from git_stage_batch.batch.ownership import (
-    hunk_replacement_translation as hunk_replacement_translation_module,
+    hunk_replacement_assembly as hunk_replacement_assembly_module,
 )
 from git_stage_batch.batch.ownership.hunk_replacement_translation import (
     translate_hunk_replacement_line_runs,
@@ -481,7 +481,7 @@ def test_equal_replacement_consumed_ids_stay_compact(monkeypatch):
             builders.append(self)
 
     monkeypatch.setattr(
-        hunk_replacement_translation_module,
+        hunk_replacement_assembly_module,
         "LineRangeBuilder",
         TrackingLineRangeBuilder,
     )

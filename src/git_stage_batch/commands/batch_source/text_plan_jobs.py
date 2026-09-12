@@ -185,6 +185,7 @@ def compute_apply_text_plan_job(
             selected_ids=selected_ids,
             selection_ids_to_apply=selection_ids,
             batch_source_object_id=batch_source_object_id,
+            baseline_commit=input_metadata.get("baseline_commit"),
             working_tree_artifact_path=working_tree_artifact_path,
             captured_working_tree_exists=working_tree_exists,
             captured_index_identity=captured_index_identity,

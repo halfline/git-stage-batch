@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from ..history.plan_lint import HistoryPlanDiagnostic, HistoryPlanLint
+from ..history.plan_diagnostics import HistoryPlanDiagnostic, HistoryPlanLint
 from ..i18n import _, ngettext
 
 

@@ -376,6 +376,29 @@ Use the same division for new output. A data module may return strings that are
 stored data, but it should not print. An output module may format and print, but
 it should not mutate the index, working tree, or session.
 
+## Validate a frozen history plan
+
+[`history/plan_files.py`](src/git_stage_batch/history/plan_files.py) owns strict
+document loading, live snapshot acquisition, and the handoff to replay. Its
+semantic checks operate on prepared metadata through two entry points:
+
+- [`history/plan_lint.py`](src/git_stage_batch/history/plan_lint.py) collects
+  advisory diagnostics in phase order. Invalid output references prevent
+  global checks; invalid conservation prevents dependency checks. Independent
+  findings still appear, with skipped phases recorded in the result.
+- [`history/plan_semantics.py`](src/git_stage_batch/history/plan_semantics.py)
+  enforces the plan and stops at the first failure. Output and inventory
+  validation have separate modules so file loading does not own those rules.
+
+Both entry points borrow source indexes from `plan_source_index.py` and use
+[`history/plan_dependencies.py`](src/git_stage_batch/history/plan_dependencies.py)
+for dependency evidence and crossing checks. That module validates the entire
+evidence inventory before yielding crossings in source order. Its prefix
+indexes retain logarithmic queries over unit metadata. Validation does not
+load patch content or replay Git objects; architecture tests protect that
+boundary. Diagnostic values and their ordered accumulator live in
+`plan_diagnostics.py`, which the output renderer imports directly.
+
 ## Tests that match each source area
 
 | Source changed | First test directory | Add a functional test when |

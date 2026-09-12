@@ -8,6 +8,7 @@ import pytest
 
 import git_stage_batch.batch.merge.baseline_presence_edits as baseline_presence_edits_module
 import git_stage_batch.batch.merge.baseline_replacement_edits as baseline_replacement_edits_module
+import git_stage_batch.batch.merge.replacement_group_planning as replacement_group_planning_module
 import git_stage_batch.batch.merge.absence_constraints as absence_constraints_module
 import git_stage_batch.batch.merge.candidate_enumeration as candidate_enumeration_module
 import git_stage_batch.batch.merge.merge as merge_module
@@ -3921,7 +3922,7 @@ def test_trusted_partial_replay_indexes_each_split_parent_once(monkeypatch) -> N
         return original_index(*args, **kwargs)
 
     monkeypatch.setattr(
-        baseline_replacement_edits_module,
+        replacement_group_planning_module,
         "LinePayloadOccurrenceIndex",
         build_index,
     )
@@ -4019,7 +4020,7 @@ def test_trusted_partial_replay_releases_each_finished_parent_index(
             super().close()
 
     monkeypatch.setattr(
-        baseline_replacement_edits_module,
+        replacement_group_planning_module,
         "LinePayloadOccurrenceIndex",
         TrackingIndex,
     )

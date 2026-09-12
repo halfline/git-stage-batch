@@ -367,6 +367,13 @@ translate selected displayed lines into this stored form. The hunk translator
 can use the complete old and new replacement run so it does not decide
 replacement membership from display adjacency alone.
 
+`batch/ownership/hunk_replacement_translation.py` coordinates replacement
+translation. `hunk_replacement_selection.py` yields selected ranges lazily,
+`replacement_origin_cursor.py` walks origin runs forward and caches only the
+current projection, and `hunk_replacement_assembly.py` builds the resulting
+ownership. These helpers borrow the existing line sequences and preserve
+monotonic range builders instead of expanding selected ranges into line lists.
+
 ## How the realized batch file is built
 
 `build_realized_buffer_from_lines()` in

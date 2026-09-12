@@ -323,7 +323,12 @@ and their fallback handlers. It preserves staged content in the working tree.
 Newly created batches use the index snapshot, retaining the `HEAD` commit
 identity when its tree is identical. A different index tree is wrapped in a
 commit, which the batch content commit retains as a parent across garbage
-collection.
+collection. Existing batches merge the selected paths' staged context into
+their saved baseline once per command. Previously committed context and
+unselected paths are preserved. Existing text claims are remapped only when
+their removal content and boundary evidence survive; overlapping staged edits
+are refused. The enclosing checkpoint rolls back baseline publication if the
+later capture fails.
 When `--as-stdin` preserves the selected lines as an owned payload prefix and
 retains a different suffix in the working tree, the command records those two
 sides as one source-alternative replacement. This keeps a later replay from

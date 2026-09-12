@@ -16,7 +16,7 @@ from git_stage_batch.history.plan_files import (
     read_and_validate_history_plan,
     read_and_validate_history_plan_semantics,
 )
-from git_stage_batch.history.plan_lint import PrefixMaximumIndex
+from git_stage_batch.history.plan_dependencies import PrefixMaximumIndex
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 

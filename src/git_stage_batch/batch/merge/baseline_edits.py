@@ -22,8 +22,10 @@ from .baseline_removal_edits import (
     all_deletions_are_already_absent as _all_deletions_are_already_absent,
     plan_independent_removal_edits as _plan_independent_removal_edits,
 )
-from .baseline_replacement_edits import (
+from .replacement_unit_planning import (
     plan_replacement_unit_edits as _plan_replacement_unit_edits,
+)
+from .baseline_replacement_edits import (
     replacement_source_ranges_fit_presence as _replacement_source_ranges_fit_presence,
 )
 from .baseline_replacement_ranges import (

@@ -58,6 +58,7 @@ from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from ..selection import whole_file_batch_discarding as _whole_file_batch_discarding
 from ..index_cleanup import remove_path_from_index
+from .discard_batch_baseline import prepare_existing_discard_baseline
 
 
 def create_discard_batch(batch_name: str, comparison_base: str) -> None:
@@ -94,6 +95,8 @@ def discard_file_to_batch(
     # every fallback, ownership reference, and reverse patch.
     if comparison_base is None:
         comparison_base = git_write_tree()
+        if batch_exists(batch_name):
+            prepare_existing_discard_baseline(batch_name, comparison_base, [file_path])
 
     log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
 

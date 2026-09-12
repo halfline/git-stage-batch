@@ -59,7 +59,7 @@ These names refer to different file contents. They are not interchangeable.
 | Term | Exact meaning |
 | --- | --- |
 | **Named batch** | A saved set of changes identified by a user-supplied name |
-| **Baseline** | The current commit, named `HEAD` by Git, when the batch is created. A repository without a commit uses Git's empty tree. |
+| **Baseline** | Usually the current commit, named `HEAD` by Git, when the batch is created, or Git's empty tree for an unborn repository. Whole-file `discard --to` retains staged context in a snapshot commit when needed, so staged text can be an unstaged replacement's old side. |
 | **Batch source** | A complete, stable snapshot of one file. Saved line numbers refer to this snapshot. The initial source normally comes from the session-start file. |
 | **Current working tree** | The file on disk now. It may differ from both the baseline and the batch source. |
 | **Batch ownership** | A `BatchOwnership` value containing the saved requirements for one text file |
@@ -318,6 +318,12 @@ storage modules instead of `text_file_storage.py`.
 `discard --to <name>` records the same saved ownership but also removes the
 selected content from the working tree. Its command path lives in the matching
 discard modules under `commands/selection/` and `commands/file_scope/`.
+Whole-file capture compares against one index snapshot, shared across all files
+and their fallback handlers. It preserves staged content in the working tree.
+Newly created batches use the index snapshot, retaining the `HEAD` commit
+identity when its tree is identical. A different index tree is wrapped in a
+commit, which the batch content commit retains as a parent across garbage
+collection.
 When `--as-stdin` preserves the selected lines as an owned payload prefix and
 retains a different suffix in the working tree, the command records those two
 sides as one source-alternative replacement. This keeps a later replay from

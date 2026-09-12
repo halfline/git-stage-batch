@@ -101,6 +101,8 @@ LINE_ENTRY_COMPATIBILITY_MODULES = frozenset(
         "git_stage_batch.core.selection_geometry",
         "git_stage_batch.batch.ownership.hunk_line_ranges",
         "git_stage_batch.batch.ownership.hunk_replacement_translation",
+        "git_stage_batch.batch.ownership.hunk_replacement_assembly",
+        "git_stage_batch.batch.ownership.hunk_replacement_selection",
         "git_stage_batch.batch.ownership.hunk_translation",
         "git_stage_batch.batch.ownership.insertion_references",
         "git_stage_batch.batch.ownership.line_entries",

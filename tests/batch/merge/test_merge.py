@@ -8,6 +8,8 @@ import pytest
 
 import git_stage_batch.batch.merge.baseline_presence_edits as baseline_presence_edits_module
 import git_stage_batch.batch.merge.baseline_replacement_edits as baseline_replacement_edits_module
+import git_stage_batch.batch.merge.replacement_unit_planning as replacement_unit_planning_module
+import git_stage_batch.batch.merge.replacement_group_planning as replacement_group_planning_module
 import git_stage_batch.batch.merge.absence_constraints as absence_constraints_module
 import git_stage_batch.batch.merge.candidate_enumeration as candidate_enumeration_module
 import git_stage_batch.batch.merge.merge as merge_module
@@ -2821,7 +2823,7 @@ def test_replacement_planner_closes_claimed_ranges_on_refusal(
     with MatcherWorkspace() as workspace:
         claimed_ranges = workspace.record_vector(1, "QQ")
         monkeypatch.setattr(
-            baseline_replacement_edits_module,
+            replacement_unit_planning_module,
             "_collect_replacement_source_ranges",
             lambda *_args, **_kwargs: claimed_ranges,
         )
@@ -2838,7 +2840,7 @@ def test_replacement_planner_closes_claimed_ranges_on_refusal(
         replacement_source_ranges = workspace.record_vector(1, "QQ")
         mapped_target_lines = workspace.record_vector(1, "Q")
 
-        assert not baseline_replacement_edits_module.plan_replacement_unit_edits(
+        assert not replacement_unit_planning_module.plan_replacement_unit_edits(
             workspace,
             plan,
             1,
@@ -3912,7 +3914,7 @@ def test_trusted_partial_replay_indexes_each_split_parent_once(monkeypatch) -> N
     )
     source = b"head\nnew-0\nnew-1\nnew-2\nnew-3\nnew-4a\nnew-4b\nnew-4c\ntail\n"
     trusted = b"head\nnew-0\nold-1\nnew-2\nold-3\nnew-4a\nnew-4b\nnew-4c\ntail\n"
-    original_index = baseline_replacement_edits_module.LinePayloadOccurrenceIndex
+    original_index = replacement_group_planning_module.LinePayloadOccurrenceIndex
     index_builds = 0
 
     def build_index(*args, **kwargs):
@@ -3921,7 +3923,7 @@ def test_trusted_partial_replay_indexes_each_split_parent_once(monkeypatch) -> N
         return original_index(*args, **kwargs)
 
     monkeypatch.setattr(
-        baseline_replacement_edits_module,
+        replacement_group_planning_module,
         "LinePayloadOccurrenceIndex",
         build_index,
     )
@@ -4003,7 +4005,7 @@ def test_trusted_partial_replay_releases_each_finished_parent_index(
         b"head-1\nsibling-1\nold-1\ntail-1\nseparator\n"
         b"head-2\nsibling-2\nold-2\ntail-2\n"
     )
-    original_index = baseline_replacement_edits_module.LinePayloadOccurrenceIndex
+    original_index = replacement_group_planning_module.LinePayloadOccurrenceIndex
     capacities = []
     close_count = 0
 
@@ -4019,7 +4021,7 @@ def test_trusted_partial_replay_releases_each_finished_parent_index(
             super().close()
 
     monkeypatch.setattr(
-        baseline_replacement_edits_module,
+        replacement_group_planning_module,
         "LinePayloadOccurrenceIndex",
         TrackingIndex,
     )

@@ -17,7 +17,6 @@ from ...core.text_lines import (
 from ..line_matching.line_range_view import LineRangeView
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
-from ..line_matching.sequence_equality import line_sequences_equal
 from ..ownership.absence_content import build_absence_content_from_range
 from ..ownership.absence_claims import AbsenceClaim
 from ..ownership.model import BatchOwnership
@@ -584,10 +583,6 @@ def translate_ownership_baseline_references(
     replacement origins use live HEAD coordinates and require their separate
     source sequence when available.
     """
-    baselines_are_identical = line_sequences_equal(
-        source_baseline_lines,
-        target_baseline_lines,
-    )
     with MappedIntVector(
         len(ownership.deletions),
         width=4,
@@ -602,15 +597,7 @@ def translate_ownership_baseline_references(
         with (
             source_sequence.acquire_lines() as source_lines,
             target_sequence.acquire_lines() as target_lines,
-            (
-                LineMapping(
-                    list(range(1, len(source_lines) + 1)),
-                    list(range(1, len(target_lines) + 1)),
-                    may_have_unmapped_equal_lines=False,
-                )
-                if baselines_are_identical
-                else match_lines(source_lines, target_lines)
-            ) as mapping,
+            match_lines(source_lines, target_lines) as mapping,
         ):
             _translate_presence_references(
                 ownership,

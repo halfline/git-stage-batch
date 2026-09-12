@@ -547,9 +547,11 @@ Save and discard only specific lines, preserving other changes in your working t
 ❯ git-stage-batch discard --to batch-name --file
 ```
 
-Save all changes in the selected file to the batch, then remove those changes
-from the working tree. A tracked file returns to its indexed baseline; a newly
-added file is removed because it has no indexed version to restore.
+Save unstaged changes in the selected file to the batch, then remove those
+changes from the working tree. Staged content stays in place. A file with no
+indexed version is removed. A newly auto-created batch uses the current index
+as its baseline, so an unstaged replacement can retain staged text as its old
+side.
 
 **Example workflow:**
 ```bash

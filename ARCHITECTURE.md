@@ -55,7 +55,11 @@ The shortest reading path for an ordinary command is:
 6. [`src/git_stage_batch/data/hunk_tracking.py`](src/git_stage_batch/data/hunk_tracking.py)
    finds and saves the next change.
 7. [`src/git_stage_batch/core/diff_parser.py`](src/git_stage_batch/core/diff_parser.py)
-   converts Git diff output into Python values.
+   converts Git diff output into Python values. It owns each hunk's scoped
+   mapped buffer; `core/diff_file_metadata.py` reads file metadata, and
+   `core/diff_stream.py` provides one-line lookahead and streams validated hunk
+   bodies. Gitlink detection without mode metadata reads that same mapped
+   buffer instead of collecting hunk lines in Python memory.
 8. [`src/git_stage_batch/commands/selection/selected_change_staging.py`](src/git_stage_batch/commands/selection/selected_change_staging.py)
    shows how a selected change reaches the index and how the next change is
    selected.

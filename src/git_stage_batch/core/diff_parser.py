@@ -8,16 +8,16 @@ from types import TracebackType
 from . import binary_diff as _binary_diff
 from . import diff_headers as _diff_headers
 from . import empty_file_diff as _empty_file_diff
-from . import file_metadata_diff as _file_metadata_diff
 from . import gitlink_diff as _gitlink_diff
 from . import hunk_headers as _hunk_headers
 from . import line_change_body as _line_change_body
 from . import patch_headers as _patch_headers
 from .buffer import LineBuffer
+from .diff_stream import DiffLineCursor, hunk_line_chunks
+from .diff_file_metadata import FileDiffMetadata, read_file_diff_metadata
 from .models import (
     BinaryFileChange,
     FileModeChange,
-    FileTypeChange,
     GitlinkChange,
     LineLevelChange,
     HunkHeader,
@@ -27,7 +27,7 @@ from .models import (
 )
 from ..exceptions import CommandError
 from ..i18n import _
-from ..git_paths import display_path, encode_path, quote_path_token
+from ..git_paths import encode_path, quote_path_token
 
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
@@ -171,426 +171,242 @@ class _UnifiedDiffParserBuildContext:
         )
 
     def _parse(self) -> Generator[UnifiedDiffItem, None, None]:
-        line_iter = iter(self._lines)
-        lookahead: bytes | None = None  # One-line lookahead buffer
+        cursor = DiffLineCursor(self._lines)
         deleted_modes_by_path: dict[str, str] = {}
-
-        def next_line() -> bytes | None:
-            """Get next line, using lookahead if available."""
-            nonlocal lookahead
-            if lookahead is not None:
-                line = lookahead
-                lookahead = None
-                return line
-            try:
-                return next(line_iter)
-            except StopIteration:
-                return None
-
-        def peek_line() -> bytes | None:
-            """Peek at next line without consuming it."""
-            nonlocal lookahead
-            if lookahead is None:
-                try:
-                    lookahead = next(line_iter)
-                except StopIteration:
-                    lookahead = None
-            return lookahead
-
-        def hunk_line_chunks(
-            old_file_line: bytes,
-            new_file_line: bytes,
-            hunk_header_line: bytes,
-        ) -> Iterator[bytes]:
-            yield old_file_line + b'\n'
-            yield new_file_line + b'\n'
-            yield hunk_header_line + b'\n'
-
-            header = _hunk_headers.parse_hunk_header_line(hunk_header_line)
-            old_consumed = 0
-            new_consumed = 0
-
-            while True:
-                body_line = peek_line()
-                old_remaining, new_remaining = header.remaining_body_counts(
-                    old_consumed,
-                    new_consumed,
-                )
-
-                if body_line is None:
-                    if old_remaining or new_remaining:
-                        raise CommandError(
-                            _("Diff ended before the hunk body was complete")
-                        )
-                    return
-
-                body_line_stripped = body_line.rstrip(b'\n')
-
-                if body_line_stripped.startswith(b"\\"):
-                    if body_line_stripped != b"\\ No newline at end of file":
-                        raise CommandError(_("Invalid marker in diff hunk body"))
-                    next_line()
-                    yield body_line
-                    continue
-
-                if not old_remaining and not new_remaining:
-                    if (
-                        _diff_headers.line_is_diff_git_header(body_line_stripped)
-                        or _hunk_headers.line_is_hunk_header(body_line_stripped)
-                    ):
-                        return
-                    if body_line_stripped.startswith((b" ", b"+", b"-")):
-                        raise CommandError(_("Diff hunk body exceeds declared counts"))
-                    raise CommandError(_("Invalid line prefix after diff hunk body"))
-
-                prefix = body_line_stripped[:1]
-                if prefix == b" ":
-                    if not old_remaining or not new_remaining:
-                        raise CommandError(_("Diff hunk body exceeds declared counts"))
-                    old_consumed += 1
-                    new_consumed += 1
-                elif prefix == b"-":
-                    if not old_remaining:
-                        raise CommandError(_("Diff hunk body exceeds declared old count"))
-                    old_consumed += 1
-                elif prefix == b"+":
-                    if not new_remaining:
-                        raise CommandError(_("Diff hunk body exceeds declared new count"))
-                    new_consumed += 1
-                else:
-                    raise CommandError(_("Invalid line prefix in diff hunk body"))
-
-                next_line()
-                yield body_line
-
         try:
             while True:
-                line = next_line()
+                line = cursor.next_line()
                 if line is None:
-                    break
-
-                # Strip only the diff format's \n terminator (preserve \r in content)
-                line = line.rstrip(b'\n')
-
-                # Look for start of a file diff
-                if _diff_headers.line_is_diff_git_header(line):
-                    file_paths = _diff_headers.diff_git_paths(line)
-                    if file_paths is None:
-                        raise CommandError(_("Malformed diff --git header"))
-                    old_path, new_path = file_paths
-
-                    # Collect metadata lines until we hit the --- line (start of unified diff)
-                    # Files with no hunks (binary, mode-only, rename-only, empty) won't have --- line
-                    metadata_lines: list[bytes] = []
-                    old_file_line: bytes | None = None
-                    while True:
-                        next_l = next_line()
-                        if next_l is None:
-                            # End of input - check for empty file before returning
-                            break
-                        next_l = next_l.rstrip(b'\n')
-                        if next_l.startswith(b"---"):
-                            old_file_line = next_l
-                            break
-                        # Collect metadata lines
-                        metadata_lines.append(next_l)
-                        # If we hit another diff header, this file has no hunks - check if it's an empty new file
-                        if _diff_headers.line_is_diff_git_header(next_l):
-                            # Put the line back for next iteration (with \n restored for consistency)
-                            lookahead = next_l + b'\n'
-                            break
-
-                    is_gitlink = _gitlink_diff.metadata_indicates_gitlink(
-                        metadata_lines
-                    )
-                    is_rename = _file_metadata_diff.metadata_indicates_rename(
-                        metadata_lines
-                    )
-                    if is_rename:
-                        renamed_paths = _file_metadata_diff.rename_paths(
-                            metadata_lines
-                        )
-                        if renamed_paths is not None:
-                            old_path, new_path = renamed_paths
-                    mode_transition = _file_metadata_diff.executable_mode_change(
-                        metadata_lines
-                    )
-                    type_transition = _file_metadata_diff.file_type_change(
-                        metadata_lines
-                    )
-                    deleted_mode = _file_metadata_diff.deleted_file_mode(
-                        metadata_lines
-                    )
-                    if self._allow_file_type_changes and deleted_mode is not None:
-                        deleted_modes_by_path[old_path] = deleted_mode
-                    new_mode = _file_metadata_diff.new_file_mode(metadata_lines)
-                    if (
-                        type_transition is None
-                        and self._allow_file_type_changes
-                        and new_mode is not None
-                        and new_path in deleted_modes_by_path
-                        and deleted_modes_by_path[new_path] != new_mode
-                    ):
-                        type_transition = (
-                            deleted_modes_by_path.pop(new_path),
-                            new_mode,
-                        )
-                    if (
-                        type_transition is not None
-                        and not is_gitlink
-                        and not self._allow_file_type_changes
-                    ):
-                        raise CommandError(
-                            _(
-                                "File type changes are atomic and are not supported yet: "
-                                "{file} ({old} -> {new})"
-                            ).format(
-                                file=display_path(old_path),
-                                old=type_transition[0],
-                                new=type_transition[1],
-                            )
-                        )
-                    type_change = (
-                        FileTypeChange(
-                            new_path,
-                            *type_transition,
-                            index_path=old_path if is_rename else None,
-                        )
-                        if type_transition is not None and not is_gitlink
-                        else None
-                    )
-                    mode_change = (
-                        FileModeChange(
-                            new_path,
-                            *mode_transition,
-                            index_path=old_path if is_rename else None,
-                        )
-                        if mode_transition is not None
-                        else None
-                    )
-                    is_deleted_file = (
-                        _file_metadata_diff.metadata_indicates_deleted_file(
-                            metadata_lines
-                        )
-                    )
-                    index_old_oid, index_new_oid = (
-                        _gitlink_diff.gitlink_oids_from_index(metadata_lines)
-                    )
-
-                    # Handle files without unified diff hunks
-                    if old_file_line is None:
-                        if is_rename:
-                            yield RenameChange(old_path=old_path, new_path=new_path)
-
-                        if is_gitlink:
-                            yield GitlinkChange(
-                                old_path=_gitlink_diff.gitlink_old_path(
-                                    old_path,
-                                    index_old_oid,
-                                ),
-                                new_path=_gitlink_diff.gitlink_new_path(
-                                    new_path,
-                                    index_new_oid,
-                                ),
-                                old_oid=_gitlink_diff.non_null_git_oid(index_old_oid),
-                                new_oid=_gitlink_diff.non_null_git_oid(index_new_oid),
-                                change_type=_gitlink_diff.gitlink_change_type(
-                                    metadata_lines,
-                                    index_old_oid,
-                                    index_new_oid,
-                                ),
-                            )
-                            continue
-
-                        if _binary_diff.metadata_indicates_binary_file(metadata_lines):
-                            yield BinaryFileChange(
-                                old_path=old_path,
-                                new_path=new_path,
-                                change_type=_binary_diff.binary_change_type(
-                                    metadata_lines
-                                ),
-                            )
-                            if mode_change is not None:
-                                yield mode_change
-                            if type_change is not None:
-                                yield type_change
-                            continue
-
-                        if is_rename:
-                            if mode_change is not None:
-                                yield mode_change
-                            if type_change is not None:
-                                yield type_change
-                            continue
-
-                        if is_deleted_file:
-                            yield TextFileDeletionChange(old_path=old_path)
-                            continue
-
-                        if _empty_file_diff.metadata_indicates_new_empty_file(
-                            metadata_lines
-                        ):
-                            yield self._build_single_hunk_patch(
-                                old_path="/dev/null",
-                                new_path=new_path,
-                                lines=_empty_file_diff.synthetic_empty_file_patch_lines(
-                                    b"--- /dev/null",
-                                    b"+++ "
-                                    + quote_path_token(b"b/" + encode_path(new_path)),
-                                ),
-                            )
-                        if mode_change is not None:
-                            yield mode_change
-                        if type_change is not None:
-                            yield type_change
-                        # Skip other files without hunks (mode-only, rename-only, etc.)
-                        continue
-
-                    # Get +++ line
-                    plus_line = next_line()
-                    if plus_line is None:
-                        raise CommandError(
-                            _("Malformed unified diff: missing +++ file header.")
-                        )
-                    plus_line_stripped = plus_line.rstrip(b'\n')
-                    if not _patch_headers.line_is_new_file_header(plus_line_stripped):
-                        raise CommandError(
-                            _("Malformed unified diff: expected +++ file header.")
-                        )
-                    new_file_line = plus_line_stripped
-
-                    patch_old_path = _patch_headers.old_file_path_from_header(
-                        old_file_line
-                    )
-                    patch_new_path = _patch_headers.new_file_path_from_header(
-                        new_file_line
-                    )
-                    if _patch_headers.path_names_repository_file(patch_old_path):
-                        old_path = patch_old_path
-                    if _patch_headers.path_names_repository_file(patch_new_path):
-                        new_path = patch_new_path
-
-                    if is_rename:
-                        yield RenameChange(old_path=old_path, new_path=new_path)
-
-                    if is_gitlink:
-                        hunk_old_oid, hunk_new_oid = (
-                            _gitlink_diff.consume_gitlink_hunks(
-                                next_line,
-                                peek_line,
-                            )
-                        )
-                        old_oid = hunk_old_oid or _gitlink_diff.non_null_git_oid(
-                            index_old_oid
-                        )
-                        new_oid = hunk_new_oid or _gitlink_diff.non_null_git_oid(
-                            index_new_oid
-                        )
-                        if old_oid is not None and old_oid == new_oid:
-                            continue
-                        yield GitlinkChange(
-                            old_path=_gitlink_diff.gitlink_old_path(
-                                old_path,
-                                old_oid or index_old_oid,
-                            ),
-                            new_path=_gitlink_diff.gitlink_new_path(
-                                new_path,
-                                new_oid or index_new_oid,
-                            ),
-                            old_oid=old_oid,
-                            new_oid=new_oid,
-                            change_type=_gitlink_diff.gitlink_change_type(
-                                metadata_lines,
-                                old_oid or index_old_oid,
-                                new_oid or index_new_oid,
-                            ),
-                        )
-                        continue
-
-                    # Process all hunks for this file
-                    has_hunks = False
-                    while True:
-                        # Check if next line is a hunk header
-                        hunk_header_line = peek_line()
-                        if hunk_header_line is None:
-                            break
-                        hunk_header_stripped = hunk_header_line.rstrip(b'\n')
-                        if not _hunk_headers.line_is_hunk_header(
-                            hunk_header_stripped
-                        ):
-                            # No more hunks for this file
-                            break
-
-                        has_hunks = True
-
-                        # Consume the hunk header
-                        next_line()
-
-                        patch_lines: Iterable[bytes] = hunk_line_chunks(
-                            old_file_line,
-                            new_file_line,
-                            hunk_header_stripped,
-                        )
-                        subproject_oids = None
-                        if not is_gitlink and not metadata_lines:
-                            patch_lines = list(patch_lines)
-                            subproject_oids = (
-                                _gitlink_diff.gitlink_oids_from_subproject_commit_patch(
-                                    patch_lines
-                                )
-                            )
-                        if subproject_oids is not None:
-                            old_oid, new_oid = subproject_oids
-                            if old_oid is not None and old_oid == new_oid:
-                                continue
-                            yield GitlinkChange(
-                                old_path=_gitlink_diff.gitlink_old_path(
-                                    old_path,
-                                    old_oid,
-                                ),
-                                new_path=_gitlink_diff.gitlink_new_path(
-                                    new_path,
-                                    new_oid,
-                                ),
-                                old_oid=old_oid,
-                                new_oid=new_oid,
-                                change_type=_gitlink_diff.gitlink_change_type(
-                                    metadata_lines,
-                                    old_oid,
-                                    new_oid,
-                                ),
-                            )
-                            continue
-
-                        # Yield this hunk immediately
-                        yield self._build_single_hunk_patch(
-                            old_path=old_path,
-                            new_path=new_path,
-                            lines=patch_lines,
-                        )
-
-                    if not has_hunks:
-                        if _empty_file_diff.metadata_indicates_new_empty_file(
-                            metadata_lines
-                        ):
-                            yield self._build_single_hunk_patch(
-                                old_path=old_path,
-                                new_path=new_path,
-                                lines=_empty_file_diff.synthetic_empty_file_patch_lines(
-                                    old_file_line,
-                                    new_file_line,
-                                ),
-                            )
-                        elif is_deleted_file:
-                            yield TextFileDeletionChange(old_path=old_path)
-                    if mode_change is not None:
-                        yield mode_change
-                    if type_change is not None:
-                        yield type_change
+                    return
+                line = line.rstrip(b"\n")
+                if not _diff_headers.line_is_diff_git_header(line):
+                    continue
+                metadata = read_file_diff_metadata(
+                    line,
+                    cursor,
+                    deleted_modes_by_path,
+                    allow_file_type_changes=self._allow_file_type_changes,
+                )
+                yield from self._file_changes(metadata, cursor)
         finally:
-            close = getattr(line_iter, "close", None)
-            if close is not None:
-                close()
+            cursor.close()
+
+    def _changes_without_hunks(
+        self, metadata: FileDiffMetadata
+    ) -> Iterator[UnifiedDiffItem]:
+        """Emit atomic metadata changes or a synthetic empty-file hunk."""
+        if metadata.is_rename:
+            yield RenameChange(old_path=metadata.old_path, new_path=metadata.new_path)
+
+        if metadata.is_gitlink:
+            yield GitlinkChange(
+                old_path=_gitlink_diff.gitlink_old_path(
+                    metadata.old_path,
+                    metadata.index_old_oid,
+                ),
+                new_path=_gitlink_diff.gitlink_new_path(
+                    metadata.new_path,
+                    metadata.index_new_oid,
+                ),
+                old_oid=_gitlink_diff.non_null_git_oid(metadata.index_old_oid),
+                new_oid=_gitlink_diff.non_null_git_oid(metadata.index_new_oid),
+                change_type=_gitlink_diff.gitlink_change_type(
+                    metadata.metadata_lines,
+                    metadata.index_old_oid,
+                    metadata.index_new_oid,
+                ),
+            )
+            return
+
+        if _binary_diff.metadata_indicates_binary_file(metadata.metadata_lines):
+            yield BinaryFileChange(
+                old_path=metadata.old_path,
+                new_path=metadata.new_path,
+                change_type=_binary_diff.binary_change_type(metadata.metadata_lines),
+            )
+            if metadata.mode_change is not None:
+                yield metadata.mode_change
+            if metadata.type_change is not None:
+                yield metadata.type_change
+            return
+
+        if metadata.is_rename:
+            if metadata.mode_change is not None:
+                yield metadata.mode_change
+            if metadata.type_change is not None:
+                yield metadata.type_change
+            return
+
+        if metadata.is_deleted_file:
+            yield TextFileDeletionChange(old_path=metadata.old_path)
+            return
+
+        if _empty_file_diff.metadata_indicates_new_empty_file(metadata.metadata_lines):
+            yield self._build_single_hunk_patch(
+                old_path="/dev/null",
+                new_path=metadata.new_path,
+                lines=_empty_file_diff.synthetic_empty_file_patch_lines(
+                    b"--- /dev/null",
+                    b"+++ " + quote_path_token(b"b/" + encode_path(metadata.new_path)),
+                ),
+            )
+        if metadata.mode_change is not None:
+            yield metadata.mode_change
+        if metadata.type_change is not None:
+            yield metadata.type_change
+        # Skip other files without hunks (mode-only, rename-only, etc.)
+        return
+
+    def _file_changes(
+        self, metadata: FileDiffMetadata, cursor: DiffLineCursor
+    ) -> Iterator[UnifiedDiffItem]:
+        """Resolve patch paths and dispatch atomic items or text hunks."""
+        if metadata.old_file_line is None:
+            yield from self._changes_without_hunks(metadata)
+            return
+        old_file_line = metadata.old_file_line
+        old_path, new_path = metadata.old_path, metadata.new_path
+        # Get +++ line
+        plus_line = cursor.next_line()
+        if plus_line is None:
+            raise CommandError(_("Malformed unified diff: missing +++ file header."))
+        plus_line_stripped = plus_line.rstrip(b"\n")
+        if not _patch_headers.line_is_new_file_header(plus_line_stripped):
+            raise CommandError(_("Malformed unified diff: expected +++ file header."))
+        new_file_line = plus_line_stripped
+
+        patch_old_path = _patch_headers.old_file_path_from_header(old_file_line)
+        patch_new_path = _patch_headers.new_file_path_from_header(new_file_line)
+        if _patch_headers.path_names_repository_file(patch_old_path):
+            old_path = patch_old_path
+        if _patch_headers.path_names_repository_file(patch_new_path):
+            new_path = patch_new_path
+
+        if metadata.is_rename:
+            yield RenameChange(old_path=old_path, new_path=new_path)
+
+        if metadata.is_gitlink:
+            hunk_old_oid, hunk_new_oid = _gitlink_diff.consume_gitlink_hunks(
+                cursor.next_line,
+                cursor.peek_line,
+            )
+            old_oid = hunk_old_oid or _gitlink_diff.non_null_git_oid(
+                metadata.index_old_oid
+            )
+            new_oid = hunk_new_oid or _gitlink_diff.non_null_git_oid(
+                metadata.index_new_oid
+            )
+            if old_oid is not None and old_oid == new_oid:
+                return
+            yield GitlinkChange(
+                old_path=_gitlink_diff.gitlink_old_path(
+                    old_path,
+                    old_oid or metadata.index_old_oid,
+                ),
+                new_path=_gitlink_diff.gitlink_new_path(
+                    new_path,
+                    new_oid or metadata.index_new_oid,
+                ),
+                old_oid=old_oid,
+                new_oid=new_oid,
+                change_type=_gitlink_diff.gitlink_change_type(
+                    metadata.metadata_lines,
+                    old_oid or metadata.index_old_oid,
+                    new_oid or metadata.index_new_oid,
+                ),
+            )
+            return
+
+        has_hunks = yield from self._file_hunks(
+            metadata, cursor, old_path, new_path, old_file_line, new_file_line
+        )
+        if not has_hunks:
+            if _empty_file_diff.metadata_indicates_new_empty_file(
+                metadata.metadata_lines
+            ):
+                yield self._build_single_hunk_patch(
+                    old_path=old_path,
+                    new_path=new_path,
+                    lines=_empty_file_diff.synthetic_empty_file_patch_lines(
+                        old_file_line,
+                        new_file_line,
+                    ),
+                )
+            elif metadata.is_deleted_file:
+                yield TextFileDeletionChange(old_path=old_path)
+        if metadata.mode_change is not None:
+            yield metadata.mode_change
+        if metadata.type_change is not None:
+            yield metadata.type_change
+
+    def _file_hunks(
+        self,
+        metadata: FileDiffMetadata,
+        cursor: DiffLineCursor,
+        old_path: str,
+        new_path: str,
+        old_file_line: bytes,
+        new_file_line: bytes,
+    ) -> Generator[UnifiedDiffItem, None, bool]:
+        """Emit one scoped hunk buffer at a time, including gitlink fallback."""
+        has_hunks = False
+        while True:
+            # Check if next line is a hunk header
+            hunk_header_line = cursor.peek_line()
+            if hunk_header_line is None:
+                break
+            hunk_header_stripped = hunk_header_line.rstrip(b"\n")
+            if not _hunk_headers.line_is_hunk_header(hunk_header_stripped):
+                # No more hunks for this file
+                break
+
+            has_hunks = True
+
+            # Consume the hunk header
+            cursor.next_line()
+
+            patch_lines: Iterable[bytes] = hunk_line_chunks(
+                cursor,
+                old_file_line,
+                new_file_line,
+                hunk_header_stripped,
+            )
+            patch = self._build_single_hunk_patch(
+                old_path=old_path,
+                new_path=new_path,
+                lines=patch_lines,
+            )
+            subproject_oids = (
+                _gitlink_diff.gitlink_oids_from_subproject_commit_patch(patch.lines)
+                if not metadata.metadata_lines
+                else None
+            )
+            if subproject_oids is not None:
+                self._release_item(patch)
+                old_oid, new_oid = subproject_oids
+                if old_oid is not None and old_oid == new_oid:
+                    continue
+                yield GitlinkChange(
+                    old_path=_gitlink_diff.gitlink_old_path(
+                        old_path,
+                        old_oid,
+                    ),
+                    new_path=_gitlink_diff.gitlink_new_path(
+                        new_path,
+                        new_oid,
+                    ),
+                    old_oid=old_oid,
+                    new_oid=new_oid,
+                    change_type=_gitlink_diff.gitlink_change_type(
+                        metadata.metadata_lines,
+                        old_oid,
+                        new_oid,
+                    ),
+                )
+                continue
+
+            yield patch
+        return has_hunks
 
 
 def acquire_unified_diff(
@@ -630,7 +446,7 @@ def build_line_changes_from_patch_lines(
     # Preserve line endings so a parsed hunk can be emitted unchanged.
     for line_with_ending in patch_lines:
         # Strip only \n for comparison (preserve \r in content)
-        line = line_with_ending.rstrip(b'\n')
+        line = line_with_ending.rstrip(b"\n")
 
         if hunk_header is not None:
             body_builder.append_patch_line(line)

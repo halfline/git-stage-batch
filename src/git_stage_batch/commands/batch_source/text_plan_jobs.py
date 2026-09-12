@@ -71,6 +71,7 @@ class _ApplyInputMetadata(TypedDict):
     """Inputs saved for one apply worker."""
 
     batch_name: str
+    baseline_commit: str | None
     batch_source_object_id: str | None
     file_meta: BatchFileMetadataDict
     selected_ids: list[int] | None

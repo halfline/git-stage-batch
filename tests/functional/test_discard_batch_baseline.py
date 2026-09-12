@@ -39,7 +39,7 @@ def test_parked_index_baseline_survives_garbage_collection(functional_repo):
     assert _git("ls-files", "--stage") == index
 
 
-@pytest.mark.parametrize("selector", ["--file"])
+@pytest.mark.parametrize("selector", ["--file", "--files"])
 @pytest.mark.parametrize("same_file", [False], ids=["other-file"])
 def test_existing_batch_keeps_prior_claims_when_parking_staged_replacement(
     functional_repo,

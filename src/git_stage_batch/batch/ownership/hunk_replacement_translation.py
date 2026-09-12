@@ -3,51 +3,26 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
 from typing import TypeVar
-
-from ...core.line_selection import LineRangeBuilder, LineRanges
-from ...core.coordinates import LineBoundary, LineSpan, SnapshotSpan
 from ...core.models import LineEntry
-from ...core.repeated_context_replacement import (
-    RepeatedContextSuffixReplacement,
-    find_repeated_context_suffix_replacement,
-)
 from . import hunk_line_ranges as _hunk_line_ranges
-from .absence_content import AbsenceContentBuilder
-from .absence_claims import AbsenceClaim
-from .line_entries import (
-    baseline_reference_for_file_line_range,
-    baseline_reference_for_old_line_range,
-    baseline_reference_for_presence_line,
-    replacement_unit_origin_for_line_run,
+from .hunk_replacement_assembly import (
+    HunkReplacementBuilder,
+    HunkReplacementTranslation,
 )
-from .references import BaselineReference
-from .replacement_units import (
-    ReplacementUnit,
-    ReplacementUnitOrigin,
-)
+from .hunk_replacement_selection import selected_replacement_runs
+from .replacement_origin_cursor import ReplacementOriginCursor
+from .line_entries import replacement_unit_origin_for_line_run
 from .replacement_line_runs import ReplacementLineRun
 from .replacement_origins import (
     NoReplacementOrigin,
     ProjectedReplacementOrigin,
     ReplacementOrigin,
     ReplacementOriginSourceProjection,
-    SameStreamReplacementOrigin,
 )
 from ..source.projection import SourceCoordinateProjection
 
-
 OriginSourceSpace = TypeVar("OriginSourceSpace")
-
-
-@dataclass
-class HunkReplacementTranslation:
-    claimed_source_lines: LineRanges
-    presence_baseline_references: dict[int, BaselineReference]
-    absence_claims: list[AbsenceClaim]
-    replacement_units: list[ReplacementUnit]
-    consumed_display_ids: LineRanges
 
 
 def _close_replacement_run_iterator(
@@ -114,280 +89,22 @@ def _translate_hunk_replacement_line_runs(
     ),
 ) -> HunkReplacementTranslation:
     """Translate replacement runs whose iterator lifetimes are caller-owned."""
-    replacement_origin_source_lines = (
-        replacement_origin.source_lines
-        if isinstance(
-            replacement_origin,
-            (SameStreamReplacementOrigin, ProjectedReplacementOrigin),
-        )
-        else None
+    origins = ReplacementOriginCursor(
+        replacement_origin, origin_run_iterator, replacement_origin_source_projection
     )
-    claimed_source_lines = LineRangeBuilder()
-    presence_baseline_references: dict[int, BaselineReference] = {}
-    absence_claims: list[AbsenceClaim] = []
-    replacement_units: list[ReplacementUnit] = []
-    consumed_old_display_ids = LineRangeBuilder()
-    consumed_new_display_ids = LineRangeBuilder()
-
-    def source_line_for(line: LineEntry) -> int | None:
-        if source_projection is None:
-            return line.source_line
-        return source_projection.source_line_for(line)
-
-    def add_replacement_unit(
-        selected_old_ranges: Iterable[tuple[int, int]],
-        selected_new_lines: Iterable[LineEntry],
-        *,
-        old_start: int,
-        old_end: int,
-        origin: ReplacementUnitOrigin | None = None,
-        origin_old_start: int | None = None,
-        origin_old_end: int | None = None,
-    ) -> None:
-        deletion_anchor: int | None = None
-        old_line_seen = False
-        selected_source_lines = LineRangeBuilder()
-        use_origin_content = (
-            origin_old_start is not None
-            and origin_old_end is not None
-            and replacement_origin_source_lines is not None
-        )
-        with AbsenceContentBuilder() as builder:
-            for range_start, range_stop in selected_old_ranges:
-                if not old_line_seen:
-                    deletion_anchor = source_line_for(hunk_lines[range_start])
-                    old_line_seen = True
-                if not use_origin_content:
-                    builder.append_line_range(
-                        hunk_content_view,
-                        range_start,
-                        range_stop,
-                    )
-                for index in range(range_start, range_stop):
-                    old_line = hunk_lines[index]
-                    if old_line.id is not None:
-                        consumed_old_display_ids.add_line(old_line.id)
-
-            if use_origin_content:
-                assert origin_old_start is not None
-                assert origin_old_end is not None
-                assert replacement_origin_source_lines is not None
-                builder.append_line_range(
-                    replacement_origin_source_lines,
-                    origin_old_start - 1,
-                    origin_old_end,
-                )
-            content_lines = builder.finish()
-
-        for new_line in selected_new_lines:
-            source_line = source_line_for(new_line)
-            if source_line is None:
-                raise ValueError(
-                    f"Cannot translate line to batch ownership: source_line is None "
-                    f"(kind={new_line.kind!r}, text={new_line.display_text()!r}). "
-                    f"Batch source is stale and must be advanced before translation."
-                )
-
-            claimed_source_lines.add_line(source_line)
-            selected_source_lines.add_line(source_line)
-            if new_line.id is not None:
-                consumed_new_display_ids.add_line(new_line.id)
-            baseline_reference = baseline_reference_for_presence_line(new_line)
-            if baseline_reference is not None:
-                presence_baseline_references[source_line] = (
-                    baseline_reference
-                )
-
-        absence_claims.append(
-            AbsenceClaim(
-                anchor_line=deletion_anchor,
-                content_lines=content_lines,
-                baseline_reference=(
-                    baseline_reference_for_file_line_range(
-                        origin_old_start,
-                        origin_old_end,
-                        replacement_origin_source_lines,
-                    )
-                    if (
-                        origin_old_start is not None
-                        and origin_old_end is not None
-                        and replacement_origin_source_lines is not None
-                    )
-                    else baseline_reference_for_old_line_range(
-                        old_start,
-                        old_end,
-                        old_line_content,
-                    )
-                ),
-            )
-        )
-        replacement_units.append(
-            ReplacementUnit(
-                presence_lines=selected_source_lines.finish().to_range_strings(),
-                deletion_indices=[len(absence_claims) - 1],
-                origin=origin,
-            )
-        )
-
+    builder = HunkReplacementBuilder(
+        hunk_lines,
+        old_line_content,
+        hunk_content_view,
+        source_projection,
+        origins.replacement_origin_source_lines,
+    )
     old_cursor = 0
     new_cursor = 0
-    next_origin_run = next(origin_run_iterator, None)
-    cached_origin_run: ReplacementLineRun | None = None
-    cached_origin: ReplacementUnitOrigin | None = None
-
-    def origin_projection_for_new_range(
-        new_start: int,
-        new_end: int,
-        *,
-        replacement_run: ReplacementLineRun,
-        align_suffix: bool = False,
-    ) -> tuple[ReplacementUnitOrigin, int, int] | None:
-        """Project a displayed replacement range through live HEAD."""
-        nonlocal next_origin_run
-        nonlocal cached_origin_run
-        nonlocal cached_origin
-
-        if replacement_origin_source_lines is None:
-            return None
-
-        origin_run: ReplacementLineRun | None
-        if isinstance(replacement_origin, SameStreamReplacementOrigin):
-            origin_run = replacement_run
-        elif isinstance(replacement_origin, ProjectedReplacementOrigin):
-            while (
-                next_origin_run is not None
-                and next_origin_run.new_end < new_start
-            ):
-                next_origin_run = next(origin_run_iterator, None)
-            origin_run = next_origin_run
-        else:
-            return None
-        if (
-            origin_run is None
-            or origin_run.new_start > new_start
-            or new_end > origin_run.new_end
-        ):
-            return None
-
-        if new_start == origin_run.new_start and new_end == origin_run.new_end:
-            origin_old_start = origin_run.old_start
-            origin_old_end = origin_run.old_end
-        else:
-            origin_old_count = origin_run.old_end - origin_run.old_start + 1
-            origin_new_count = origin_run.new_end - origin_run.new_start + 1
-            selected_new_count = new_end - new_start + 1
-            if origin_old_count == origin_new_count:
-                origin_old_start = (
-                    origin_run.old_start + new_start - origin_run.new_start
-                )
-                origin_old_end = origin_old_start + selected_new_count - 1
-            elif (
-                align_suffix
-                and new_end == origin_run.new_end
-                and selected_new_count <= origin_old_count
-            ):
-                origin_old_end = origin_run.old_end
-                origin_old_start = origin_old_end - selected_new_count + 1
-            else:
-                return None
-
-        if cached_origin_run != origin_run:
-            cached_origin_run = origin_run
-            cached_origin = replacement_unit_origin_for_line_run(
-                origin_run,
-                old_file_lines=replacement_origin_source_lines,
-            )
-            if replacement_origin_source_projection is not None:
-                source_span = (
-                    replacement_origin_source_projection.translate_span(
-                        SnapshotSpan(
-                            replacement_origin_source_projection.source_snapshot,
-                            LineSpan(
-                                LineBoundary(origin_run.new_start - 1),
-                                LineBoundary(origin_run.new_end),
-                            ),
-                        )
-                    )
-                )
-                cached_origin = (
-                    cached_origin.with_batch_source_span(source_span)
-                    if source_span is not None
-                    else None
-                )
-        if cached_origin is None:
-            return None
-        return cached_origin, origin_old_start, origin_old_end
-
-    def repeated_context_suffix_selection(
-        old_scan: _hunk_line_ranges.HunkLineRangeScan,
-        new_scan: _hunk_line_ranges.HunkLineRangeScan,
-        replacement_run: ReplacementLineRun,
-    ) -> (
-        tuple[
-            int,
-            int,
-            RepeatedContextSuffixReplacement,
-            int,
-            int,
-            int,
-            int,
-        ]
-        | None
-    ):
-        """Return one selected raw suffix aligned to a semantic run's end."""
-        scan_start = min(old_scan.start_index, new_scan.start_index)
-        scan_stop = max(old_scan.stop_index, new_scan.stop_index)
-        line_index = scan_start
-        while line_index < scan_stop:
-            if hunk_lines[line_index].kind not in ("+", "-"):
-                line_index += 1
-                continue
-
-            run_start = line_index
-            while line_index < scan_stop and hunk_lines[line_index].kind in ("+", "-"):
-                line_index += 1
-            run_end = line_index
-            suffix = find_repeated_context_suffix_replacement(
-                hunk_lines,
-                selected_display_ids,
-                run_start,
-                run_end,
-            )
-            if suffix is None:
-                continue
-
-            old_start = hunk_lines[run_start].old_line_number
-            old_end = hunk_lines[suffix.first_addition - 1].old_line_number
-            new_start = hunk_lines[suffix.selected_suffix_start].new_line_number
-            new_end = hunk_lines[run_end - 1].new_line_number
-            if (
-                old_start is None
-                or old_end is None
-                or new_start is None
-                or new_end is None
-                or old_end != replacement_run.old_end
-                or new_end != replacement_run.new_end
-                or old_end - old_start != new_end - new_start
-            ):
-                continue
-            return (
-                run_start,
-                run_end,
-                suffix,
-                old_start,
-                old_end,
-                new_start,
-                new_end,
-            )
-        return None
-
     for replacement_run in replacement_run_iterator:
-        legacy_replacement_origin = (
-            replacement_unit_origin_for_line_run(
-                replacement_run,
-                old_line_content,
-            )
-            if replacement_origin_source_lines is None
+        legacy_origin = (
+            replacement_unit_origin_for_line_run(replacement_run, old_line_content)
+            if origins.replacement_origin_source_lines is None
             else None
         )
         old_scan = _hunk_line_ranges.scan_hunk_line_range(
@@ -411,160 +128,26 @@ def _translate_hunk_replacement_line_runs(
         old_cursor = old_scan.stop_index
         new_cursor = new_scan.stop_index
 
-        suffix_selection = (
-            repeated_context_suffix_selection(
-                old_scan,
-                new_scan,
-                replacement_run,
-            )
-            if not old_scan.complete or not new_scan.complete
-            else None
-        )
-        if suffix_selection is not None:
-            (
-                run_start,
-                run_end,
-                suffix,
-                selected_old_start,
-                selected_old_end,
-                selected_new_start,
-                selected_new_end,
-            ) = suffix_selection
-            origin_projection = origin_projection_for_new_range(
-                selected_new_start,
-                selected_new_end,
+        for selected in selected_replacement_runs(
+            hunk_lines,
+            selected_display_ids,
+            old_scan,
+            new_scan,
+            replacement_run,
+        ):
+            origin = origins.project(
+                selected.new_start,
+                selected.new_end,
                 replacement_run=replacement_run,
-                align_suffix=True,
+                align_suffix=selected.align_suffix,
             )
-            add_replacement_unit(
-                ((run_start, suffix.first_addition),),
-                (
-                    hunk_lines[index]
-                    for index in range(suffix.selected_suffix_start, run_end)
-                ),
-                old_start=selected_old_start,
-                old_end=selected_old_end,
-                origin=(
-                    origin_projection[0]
-                    if origin_projection is not None
-                    else legacy_replacement_origin
-                ),
-                origin_old_start=(
-                    origin_projection[1] if origin_projection is not None else None
-                ),
-                origin_old_end=(
-                    origin_projection[2] if origin_projection is not None else None
-                ),
+            builder.add_replacement_unit(
+                selected.old_ranges,
+                selected.new_lines,
+                old_start=selected.old_start,
+                old_end=selected.old_end,
+                origin=origin[0] if origin is not None else legacy_origin,
+                origin_old_start=origin[1] if origin is not None else None,
+                origin_old_end=origin[2] if origin is not None else None,
             )
-            continue
-
-        if not old_scan.complete or not new_scan.complete:
-            continue
-
-        if old_scan.count == new_scan.count:
-            old_indexes = _hunk_line_ranges.hunk_line_indexes_in_range(
-                hunk_lines,
-                old_scan,
-                kind="-",
-                line_number_attr="old_line_number",
-            )
-            new_indexes = _hunk_line_ranges.hunk_line_indexes_in_range(
-                hunk_lines,
-                new_scan,
-                kind="+",
-                line_number_attr="new_line_number",
-            )
-            for old_index, new_index in zip(old_indexes, new_indexes):
-                old_line = hunk_lines[old_index]
-                new_line = hunk_lines[new_index]
-                old_selected = (
-                    old_line.id is not None and old_line.id in selected_display_ids
-                )
-                new_selected = (
-                    new_line.id is not None and new_line.id in selected_display_ids
-                )
-                if old_selected and new_selected:
-                    if (
-                        old_line.old_line_number is None
-                        or new_line.new_line_number is None
-                    ):
-                        continue
-                    origin_projection = origin_projection_for_new_range(
-                        new_line.new_line_number,
-                        new_line.new_line_number,
-                        replacement_run=replacement_run,
-                    )
-                    add_replacement_unit(
-                        ((old_index, old_index + 1),),
-                        (new_line,),
-                        old_start=old_line.old_line_number,
-                        old_end=old_line.old_line_number,
-                        origin=(
-                            origin_projection[0]
-                            if origin_projection is not None
-                            else legacy_replacement_origin
-                        ),
-                        origin_old_start=(
-                            origin_projection[1]
-                            if origin_projection is not None
-                            else None
-                        ),
-                        origin_old_end=(
-                            origin_projection[2]
-                            if origin_projection is not None
-                            else None
-                        ),
-                    )
-            continue
-
-        if old_scan.fully_selected and new_scan.fully_selected:
-            origin_projection = origin_projection_for_new_range(
-                replacement_run.new_start,
-                replacement_run.new_end,
-                replacement_run=replacement_run,
-            )
-            add_replacement_unit(
-                _hunk_line_ranges.hunk_line_index_ranges_in_range(
-                    hunk_lines,
-                    old_scan,
-                    kind="-",
-                    line_number_attr="old_line_number",
-                ),
-                (
-                    hunk_lines[index]
-                    for index in _hunk_line_ranges.hunk_line_indexes_in_range(
-                        hunk_lines,
-                        new_scan,
-                        kind="+",
-                        line_number_attr="new_line_number",
-                    )
-                ),
-                old_start=replacement_run.old_start,
-                old_end=replacement_run.old_end,
-                origin=(
-                    origin_projection[0]
-                    if origin_projection is not None
-                    else legacy_replacement_origin
-                ),
-                origin_old_start=(
-                    origin_projection[1] if origin_projection is not None else None
-                ),
-                origin_old_end=(
-                    origin_projection[2] if origin_projection is not None else None
-                ),
-            )
-            continue
-
-    consumed_old_ids = consumed_old_display_ids.finish()
-    consumed_new_ids = consumed_new_display_ids.finish()
-    return HunkReplacementTranslation(
-        claimed_source_lines=claimed_source_lines.finish(),
-        presence_baseline_references=presence_baseline_references,
-        absence_claims=absence_claims,
-        replacement_units=replacement_units,
-        consumed_display_ids=LineRanges.from_ranges(
-            range_pair
-            for consumed_ids in (consumed_old_ids, consumed_new_ids)
-            for range_pair in consumed_ids.ranges()
-        ),
-    )
+    return builder.finish()

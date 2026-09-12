@@ -371,13 +371,18 @@ class _UnifiedDiffParserBuildContext:
                 new_file_line,
                 hunk_header_stripped,
             )
-            subproject_oids = None
-            if not metadata.metadata_lines:
-                patch_lines = list(patch_lines)
-                subproject_oids = (
-                    _gitlink_diff.gitlink_oids_from_subproject_commit_patch(patch_lines)
-                )
+            patch = self._build_single_hunk_patch(
+                old_path=old_path,
+                new_path=new_path,
+                lines=patch_lines,
+            )
+            subproject_oids = (
+                _gitlink_diff.gitlink_oids_from_subproject_commit_patch(patch.lines)
+                if not metadata.metadata_lines
+                else None
+            )
             if subproject_oids is not None:
+                self._release_item(patch)
                 old_oid, new_oid = subproject_oids
                 if old_oid is not None and old_oid == new_oid:
                     continue
@@ -400,11 +405,7 @@ class _UnifiedDiffParserBuildContext:
                 )
                 continue
 
-            yield self._build_single_hunk_patch(
-                old_path=old_path,
-                new_path=new_path,
-                lines=patch_lines,
-            )
+            yield patch
         return has_hunks
 
 

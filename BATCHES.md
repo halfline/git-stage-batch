@@ -59,7 +59,7 @@ These names refer to different file contents. They are not interchangeable.
 | Term | Exact meaning |
 | --- | --- |
 | **Named batch** | A saved set of changes identified by a user-supplied name |
-| **Baseline** | The current commit, named `HEAD` by Git, when the batch is created. A repository without a commit uses Git's empty tree. |
+| **Baseline** | Usually the current commit, named `HEAD` by Git, when the batch is created, or Git's empty tree for an unborn repository. Whole-file `discard --to` retains staged context in a snapshot commit when needed, so staged text can be an unstaged replacement's old side. |
 | **Batch source** | A complete, stable snapshot of one file. Saved line numbers refer to this snapshot. The initial source normally comes from the session-start file. |
 | **Current working tree** | The file on disk now. It may differ from both the baseline and the batch source. |
 | **Batch ownership** | A `BatchOwnership` value containing the saved requirements for one text file |
@@ -318,6 +318,17 @@ storage modules instead of `text_file_storage.py`.
 `discard --to <name>` records the same saved ownership but also removes the
 selected content from the working tree. Its command path lives in the matching
 discard modules under `commands/selection/` and `commands/file_scope/`.
+Whole-file capture compares against one index snapshot, shared across all files
+and their fallback handlers. It preserves staged content in the working tree.
+Newly created batches use the index snapshot, retaining the `HEAD` commit
+identity when its tree is identical. A different index tree is wrapped in a
+commit, which the batch content commit retains as a parent across garbage
+collection. Existing batches merge the selected paths' staged context into
+their saved baseline once per command. Previously committed context and
+unselected paths are preserved. Existing text claims are remapped only when
+their removal content and boundary evidence survive; overlapping staged edits
+are refused. The enclosing checkpoint rolls back baseline publication if the
+later capture fails.
 When `--as-stdin` preserves the selected lines as an owned payload prefix and
 retains a different suffix in the working tree, the command records those two
 sides as one source-alternative replacement. This keeps a later replay from
@@ -431,6 +442,17 @@ ordinary partial selections do not acquire omitted changes.
 `apply --from <name>` changes only the working tree, except that an added
 submodule pointer needs an intent-to-add index entry so Git can expose it as an
 unstaged pointer change.
+
+When an apply target exactly matches the saved baseline and realizing the
+selected ownership reproduces the complete batch source (allowing line-ending
+differences), the planner can use that proven round trip. This permits complete
+file moves through repeated context without guessing a live placement. Partial
+captures and targets with later edits still use ordinary merge validation and
+candidate review. One narrow formatting exception permits restoring a missing
+blank separator immediately before a recorded insertion, provided those
+separator deletions are the target's only differences from the baseline. Other
+blank-line or content edits do not acquire that authority. Comparisons and
+realization use bounded buffers and mapped scratch storage.
 
 Their command modules are:
 

@@ -44,6 +44,8 @@ from ...exceptions import exit_with_error
 from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
+from ...utils.git_index import git_commit_tree, git_write_tree
+from ...utils.git_command import run_git_command
 from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_checkout_index_paths,
@@ -56,6 +58,26 @@ from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from ..selection import whole_file_batch_discarding as _whole_file_batch_discarding
 from ..index_cleanup import remove_path_from_index
+from .discard_batch_baseline import prepare_existing_discard_baseline
+
+
+def create_discard_batch(batch_name: str, comparison_base: str) -> None:
+    """Use the index baseline, retaining HEAD identity when its tree matches."""
+    baseline = session_comparison_base()
+    baseline_tree = run_git_command(
+        ["rev-parse", f"{baseline}^{{tree}}"],
+        requires_index_lock=False,
+    ).stdout.strip()
+    if baseline_tree != comparison_base:
+        baseline = git_commit_tree(
+            comparison_base,
+            message="Baseline for parked unstaged changes",
+        )
+    create_batch(
+        batch_name,
+        "Auto-created",
+        baseline_commit=baseline,
+    )
 
 
 def discard_file_to_batch(
@@ -65,14 +87,21 @@ def discard_file_to_batch(
     quiet: bool = False,
     advance: bool = True,
     auto_advance: bool | None = None,
+    comparison_base: str | None = None,
 ) -> int:
     """Discard one file to a batch."""
     auto_add_untracked_files([file_path])
+    # Capture only unstaged edits. Multi-file callers share this snapshot with
+    # every fallback, ownership reference, and reverse patch.
+    if comparison_base is None:
+        comparison_base = git_write_tree()
+        if batch_exists(batch_name):
+            prepare_existing_discard_baseline(batch_name, comparison_base, [file_path])
 
     log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
 
     if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
+        create_discard_batch(batch_name, comparison_base)
 
     deletion_change = render_text_deletion_change(file_path)
     if deletion_change is not None:
@@ -84,7 +113,6 @@ def discard_file_to_batch(
             auto_advance=auto_advance,
         )
 
-    comparison_base = session_comparison_base()
     binary_change = render_binary_file_change(
         file_path,
         base=comparison_base,
@@ -160,7 +188,9 @@ def discard_file_to_batch(
                 return 1
             repo_root = get_git_repository_root_path()
             full_path = repo_root / file_path
-            lifecycle_change_type = detect_empty_text_lifecycle_change(file_path)
+            lifecycle_change_type = detect_empty_text_lifecycle_change(
+                file_path, baseline_ref=comparison_base,
+            )
             if lifecycle_change_type is not None:
                 snapshot_file_if_untracked(file_path)
                 add_file_to_batch(

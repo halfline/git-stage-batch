@@ -11,6 +11,8 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.utils.git_repository import get_git_repository_root_path
+from git_stage_batch.commands.file_scope import discard_file_to_batch as single_file
+from git_stage_batch.commands.file_scope import discard_to_batch as multiple_files
 
 
 @pytest.fixture
@@ -27,6 +29,32 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
 
     return tmp_path
+
+
+def test_multiple_binary_files_share_one_index_snapshot(temp_git_repo, monkeypatch):
+    paths = ["one.bin", "two.bin", "three.bin"]
+    for path in paths:
+        (temp_git_repo / path).write_bytes(b"old\x00binary")
+    subprocess.run(["git", "add", "--", *paths], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Add binaries"], check=True, capture_output=True)
+    for path in paths:
+        (temp_git_repo / path).write_bytes(b"new\x00binary")
+    command_start(quiet=True, auto_advance=False)
+    snapshots = 0
+    write_tree = single_file.git_write_tree
+
+    def count_snapshot():
+        nonlocal snapshots
+        snapshots += 1
+        return write_tree()
+
+    monkeypatch.setattr(single_file, "git_write_tree", count_snapshot)
+    monkeypatch.setattr(multiple_files, "git_write_tree", count_snapshot)
+    multiple_files.discard_files_to_batch("later", paths, quiet=True, advance=False)
+
+    assert snapshots == 1
+    for path in paths:
+        assert (temp_git_repo / path).read_bytes() == b"old\x00binary"
 
 
 class TestDiscardFileToBatchRemovesFromWorkingTree:

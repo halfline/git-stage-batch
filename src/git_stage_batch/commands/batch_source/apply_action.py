@@ -411,6 +411,9 @@ def _build_apply_action_plans(
             selection_ids_to_apply=selection_ids_to_apply,
             capture=capture,
             workspace=workspace,
+            baseline_commit=(
+                batch_metadata.get("baseline") if batch_metadata is not None else None
+            ),
         )
         text_results_by_ordinal = _run_apply_text_jobs(
             jobs,
@@ -588,6 +591,7 @@ def _build_apply_text_jobs(
     selection_ids_to_apply: set[int] | None,
     capture: _ApplyPlanCapture,
     workspace: FileJobWorkspace,
+    baseline_commit: str | None = None,
 ) -> list[OrderedFileJob[_text_plan_jobs.ApplyTextPlanJob]]:
     """Build compact apply text jobs from captured inputs."""
     text_inputs = capture.text_inputs
@@ -615,6 +619,7 @@ def _build_apply_text_jobs(
                 "apply-input.pickle",
                 {
                     "batch_name": batch_name,
+                    "baseline_commit": baseline_commit,
                     "batch_source_object_id": source_object_id,
                     "file_meta": text_input.file_meta,
                     "selected_ids": (

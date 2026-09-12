@@ -23,6 +23,7 @@ from ...batch.merge.baseline_replacement_edits import (
     trusted_target_replacement_source_ranges,
 )
 from ...batch.line_matching.match import match_lines
+from ...batch.merge.baseline_replay import try_replay_complete_source
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.state.metadata_types import (
@@ -55,6 +56,7 @@ from ...exceptions import MergeError
 from ...utils.repository_buffers import (
     load_git_blob_as_buffer,
     read_git_object_buffer_or_none,
+    read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
 from ...utils.git_repository import get_git_repository_root_path
@@ -127,6 +129,7 @@ def build_apply_text_file_action_plan(
     selected_ids: set[int] | None,
     selection_ids_to_apply: set[int] | None,
     batch_source_object_id: str | None = None,
+    baseline_commit: str | None = None,
     working_tree_artifact_path: str | Path | None = None,
     captured_working_tree_exists: bool | None = None,
     captured_index_identity: IndexIdentity | None = None,
@@ -331,8 +334,18 @@ def build_apply_text_file_action_plan(
                             )
                         )
                     merged_buffer = None
+                    if baseline_commit is not None:
+                        with read_git_object_buffer_or_empty(
+                            f"{baseline_commit}:{file_path}",
+                            **spool_options,
+                        ) as baseline_lines:
+                            merged_buffer = try_replay_complete_source(
+                                baseline_lines, batch_source_lines, working_lines,
+                                ownership, **spool_options,
+                            )
                     if (
-                        applied_overlay is not None
+                        merged_buffer is None
+                        and applied_overlay is not None
                         and applied_overlay.text_applications
                     ):
                         try:

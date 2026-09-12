@@ -651,9 +651,14 @@ exact-coordinate responsibilities:
 - [`batch/merge/baseline_anchor_matching.py`](src/git_stage_batch/batch/merge/baseline_anchor_matching.py)
   proves recorded boundaries identify the intended live-target positions and
   supplies safe deletion anchors to structural matching.
-- [`batch/merge/baseline_replacement_edits.py`](src/git_stage_batch/batch/merge/baseline_replacement_edits.py)
-  plans replacement edits at verified live boundaries and records which
-  source ranges supply their new content.
+- [`batch/merge/replacement_unit_planning.py`](src/git_stage_batch/batch/merge/replacement_unit_planning.py)
+  coordinates replacement groups, chooses mixed, mapped, or unmapped unit
+  strategies, and records accepted source ranges in mapped storage.
+  `replacement_group_planning.py` owns whole-parent and partial-child proofs;
+  each group's temporary occurrence index closes on success, refusal, or
+  exception. `replacement_edit_locations.py` proves individual edit locations,
+  while `baseline_replacement_edits.py` checks mapped boundaries and source
+  alternatives. Planner context records borrow existing content and mappings.
 - [`batch/merge/baseline_removal_edits.py`](src/git_stage_batch/batch/merge/baseline_removal_edits.py)
   plans removals that are not part of replacement units, follows verified
   mapped source gaps when recorded offsets moved, and detects when claimed

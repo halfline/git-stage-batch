@@ -21,6 +21,7 @@ from git_stage_batch.history.plan_dependencies import (
 from git_stage_batch.history.plan_diagnostics import PlanDiagnosticCollector
 from git_stage_batch.history.plan_lint import lint_frozen_history_plan
 from git_stage_batch.history.plan_output_lint import lint_plan_output
+from git_stage_batch.history.plan_semantics import validate_plan_semantics
 from git_stage_batch.history.plan_source_index import PlanSourceIndex
 
 
@@ -98,6 +99,10 @@ def _history(unit_count):
     return snapshot, plan
 
 
+def _reject(message):
+    raise ValueError(message)
+
+
 def test_output_errors_preserve_diagnostic_order_and_skip_global_checks():
     snapshot, plan = _history(2)
     bad = replace(
@@ -115,6 +120,10 @@ def test_output_errors_preserve_diagnostic_order_and_skip_global_checks():
         "unit-duplicate",
     ]
     assert result.skipped_checks == ("conservation", "relative-order", "dependencies")
+    with pytest.raises(
+        ValueError, match=r"plan.outputs\[0\].source_commits contains an unknown commit"
+    ):
+        validate_plan_semantics(snapshot, plan, _reject)
 
 
 def test_corrupt_late_evidence_prevents_earlier_crossing_reports():
@@ -143,6 +152,8 @@ def test_corrupt_late_evidence_prevents_earlier_crossing_reports():
         "dependency-barrier-invalid"
     ]
     assert result.skipped_checks == ("dependencies",)
+    with pytest.raises(ValueError, match="inconsistent barrier evidence"):
+        validate_plan_semantics(snapshot, plan, _reject)
 
 
 def test_crossing_search_retains_logarithmic_prefix_queries(monkeypatch):

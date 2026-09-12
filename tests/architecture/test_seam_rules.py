@@ -63,6 +63,22 @@ def _consumers(
     )
 
 
+FROZEN_PLAN_VALIDATION_MODULES = frozenset(
+    f"git_stage_batch.history.{module}"
+    for module in (
+        "plan_dependencies",
+        "plan_diagnostics",
+        "plan_inventory_lint",
+        "plan_inventory_validation",
+        "plan_lint",
+        "plan_output_lint",
+        "plan_output_validation",
+        "plan_semantics",
+        "plan_source_index",
+    )
+)
+
+
 FILE_JOB_MODULES = frozenset(
     {
         "git_stage_batch.utils.file_job_process",
@@ -174,6 +190,37 @@ ARCHITECTURE_SEAMS = (
                 allowed_sources=tuple(sorted(LINE_ENTRY_COMPATIBILITY_MODULES)),
                 names=("LineEntry", "LineLevelChange"),
             ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="frozen-plan-validation",
+        forbidden_imports=tuple(
+            _forbid(
+                FROZEN_PLAN_VALIDATION_MODULES,
+                target,
+                "frozen plan validation uses metadata without file access or replay",
+            )
+            for target in (
+                "git_stage_batch.utils",
+                "git_stage_batch.data",
+                "git_stage_batch.core.buffer",
+                "git_stage_batch.history.plan_files",
+                "git_stage_batch.history.replay",
+                "git_stage_batch.history.scan",
+                "git_stage_batch.history.safety",
+                "git_stage_batch.history.snapshot_cache",
+            )
+        ),
+        imported_symbols=tuple(
+            _imports(
+                source,
+                "git_stage_batch.history.plan_dependencies",
+                required=("iter_plan_dependency_crossings",),
+            )
+            for source in (
+                "git_stage_batch.history.plan_lint",
+                "git_stage_batch.history.plan_semantics",
+            )
         ),
     ),
     ArchitectureSeam(

@@ -288,6 +288,21 @@ ARCHITECTURE_SEAMS = (
         ),
     ),
     ArchitectureSeam(
+        name="streaming-diff-input",
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.core.diff_stream",
+                "git_stage_batch.core.buffer",
+                "stream validation yields lines; the parser owns hunk buffers",
+            ),
+            _forbid(
+                "git_stage_batch.core.diff_file_metadata",
+                "git_stage_batch.core.buffer",
+                "file metadata parsing must not own hunk content",
+            ),
+        ),
+    ),
+    ArchitectureSeam(
         name="repository-readers",
         forbidden_imports=(
             _forbid(

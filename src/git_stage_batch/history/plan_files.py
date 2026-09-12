@@ -35,10 +35,12 @@ from .models import (
     HistoryPlannedCommit,
     HistoryPlanOperation,
 )
-from .plan_lint import (
-    HistoryPlanLint,
+from .plan_diagnostics import HistoryPlanLint
+from .plan_dependencies import (
     PrefixMaximumIndex,
     grouped_block_chain_can_defer_to_replay,
+)
+from .plan_lint import (
     lint_frozen_history_plan,
 )
 from .json_files import history_canonical_json_sha256
@@ -289,14 +291,10 @@ def _decode_plan(
         range_record = require_object(snapshot.get("range"), "snapshot.range")
         base = require_string(range_record, "base", "snapshot.range")
         tip = require_string(range_record, "tip", "snapshot.range")
-        movable_base = require_string(
-            range_record, "movable_base", "snapshot.range"
-        )
+        movable_base = require_string(range_record, "movable_base", "snapshot.range")
         _require_full_hex_id(base, oid_length, "snapshot.range.base")
         _require_full_hex_id(tip, oid_length, "snapshot.range.tip")
-        _require_full_hex_id(
-            movable_base, oid_length, "snapshot.range.movable_base"
-        )
+        _require_full_hex_id(movable_base, oid_length, "snapshot.range.movable_base")
 
         plan_record = require_object(document["plan"], "plan")
         partitioned_units: tuple[HistoryPartitionedUnit, ...]
@@ -412,17 +410,14 @@ def _validate_plan_semantics(
         _invalid("plan.outputs must contain at least one output commit")
     movable_commit_start = live.snapshot.movable_commit_start
     pinned_commit_ids = {
-        commit.commit_id
-        for commit in source_commits[:movable_commit_start]
+        commit.commit_id for commit in source_commits[:movable_commit_start]
     }
     source_by_id = {commit.commit_id: commit for commit in source_commits}
     source_positions = {
         commit.commit_id: index for index, commit in enumerate(source_commits)
     }
     unit_by_id = {
-        unit.unit_id: unit
-        for source in source_commits
-        for unit in source.units
+        unit.unit_id: unit for source in source_commits for unit in source.units
     }
     unit_positions_by_source = {
         source.commit_id: {
@@ -434,9 +429,7 @@ def _validate_plan_semantics(
         unit.unit_id for source in source_commits for unit in source.units
     )
     expected_unit_set = set(expected_units)
-    unit_occurrences: dict[str, list[int]] = {
-        unit_id: [] for unit_id in expected_units
-    }
+    unit_occurrences: dict[str, list[int]] = {unit_id: [] for unit_id in expected_units}
     target_occurrences: dict[str, list[tuple[int, HistoryPlanOperation]]] = {}
     secondary_occurrences: dict[str, list[int]] = {}
     source_mentions: dict[str, int] = {}
@@ -453,9 +446,10 @@ def _validate_plan_semantics(
         positions = tuple(source_positions[commit] for commit in output.source_commits)
         if positions != tuple(sorted(positions)):
             _invalid(f"{location}.source_commits must retain source order")
-        if output.operation in {"KEEP", "REWORD", "SPLIT", "REORDER"} and len(
-            positions
-        ) != 1:
+        if (
+            output.operation in {"KEEP", "REWORD", "SPLIT", "REORDER"}
+            and len(positions) != 1
+        ):
             _invalid(f"{location}.{output.operation} must consume one source commit")
         if output.operation == "INTEGRATE" and len(positions) < 2:
             _invalid(f"{location}.INTEGRATE must consume at least two commits")
@@ -464,9 +458,7 @@ def _validate_plan_semantics(
 
         sources = tuple(source_by_id[commit] for commit in output.source_commits)
         unknown_units = [
-            unit_id
-            for unit_id in output.source_unit_ids
-            if unit_id not in unit_by_id
+            unit_id for unit_id in output.source_unit_ids if unit_id not in unit_by_id
         ]
         if unknown_units:
             _invalid(f"{location}.source_unit_ids contains an unknown unit")
@@ -496,9 +488,7 @@ def _validate_plan_semantics(
                 )
             )
         if selected_keys != sorted(selected_keys):
-            _invalid(
-                f"{location}.source_unit_ids must retain source and unit order"
-            )
+            _invalid(f"{location}.source_unit_ids must retain source and unit order")
         for source in sources:
             if source.units and not selected_by_source[source.commit_id]:
                 _invalid(
@@ -506,21 +496,17 @@ def _validate_plan_semantics(
                     "of its units"
                 )
         target_source = sources[0]
-        if (
-            target_source.commit_id in pinned_commit_ids
-            and output.operation in {"SPLIT", "REORDER"}
-        ):
+        if target_source.commit_id in pinned_commit_ids and output.operation in {
+            "SPLIT",
+            "REORDER",
+        }:
             _invalid(
                 f"{location}.{output.operation} may not restructure pinned "
                 f"source commit {target_source.commit_id} outside the movable "
                 "scope"
             )
         pinned_secondary = next(
-            (
-                source
-                for source in sources[1:]
-                if source.commit_id in pinned_commit_ids
-            ),
+            (source for source in sources[1:] if source.commit_id in pinned_commit_ids),
             None,
         )
         if pinned_secondary is not None:
@@ -554,9 +540,7 @@ def _validate_plan_semantics(
             if not output.source_unit_ids:
                 _invalid(f"{location}.SPLIT must contain at least one unit")
         elif selected_target_units != target_units:
-            _invalid(
-                f"{location}.INTEGRATE must consume every target unit in order"
-            )
+            _invalid(f"{location}.INTEGRATE must consume every target unit in order")
 
         if output.operation in {"KEEP", "REORDER"}:
             if output.message != target_source.message:
@@ -604,9 +588,7 @@ def _validate_plan_semantics(
         if partition.output_indexes[-1] >= len(plan.outputs):
             _invalid(f"{location}.output_indexes contains an unknown output")
         if tuple(unit_occurrences[partition.unit_id]) != partition.output_indexes:
-            _invalid(
-                f"{location}.output_indexes must exactly match the unit's outputs"
-            )
+            _invalid(f"{location}.output_indexes must exactly match the unit's outputs")
         if any(
             plan.outputs[output_index].materialization != "RESOLVED"
             for output_index in partition.output_indexes
@@ -636,8 +618,7 @@ def _validate_plan_semantics(
             continue
         if len(occurrences) != 1:
             _invalid(
-                "plan.outputs must assign every nonpartitioned source unit "
-                "exactly once"
+                "plan.outputs must assign every nonpartitioned source unit exactly once"
             )
 
     for source in source_commits:
@@ -675,9 +656,7 @@ def _validate_plan_semantics(
                 f"source commit {source_id} must produce at least two SPLIT outputs"
             )
         if not source.units and source_mentions.get(source_id, 0) != 1:
-            _invalid(
-                f"empty source commit {source_id} must be consumed exactly once"
-            )
+            _invalid(f"empty source commit {source_id} must be consumed exactly once")
 
     moved_earlier_outputs: set[int] = set()
     suffix_minimum = output_target_positions[-1]
@@ -694,8 +673,7 @@ def _validate_plan_semantics(
     for output_index, output in enumerate(plan.outputs):
         if output.operation == "REORDER" and output_index not in moved_earlier_outputs:
             _invalid(
-                f"plan.outputs[{output_index}].REORDER does not move its source "
-                "earlier"
+                f"plan.outputs[{output_index}].REORDER does not move its source earlier"
             )
 
     ordered_nonpartitioned_units = tuple(
@@ -733,8 +711,7 @@ def _validate_plan_semantics(
     if len(live.snapshot.dependencies) != len(expected_units):
         _invalid("snapshot dependency graph does not cover every patch unit")
     dependencies_by_unit = {
-        dependency.unit_id: dependency
-        for dependency in live.snapshot.dependencies
+        dependency.unit_id: dependency for dependency in live.snapshot.dependencies
     }
     first_crossings: dict[str, str | None] = {}
     for dependency in live.snapshot.dependencies:
@@ -754,14 +731,8 @@ def _validate_plan_semantics(
         barrier_inconsistent = (
             dependency.barrier_unit_id != expected_barrier_unit
             or (dependency.barrier is None) != (dependency.detail is None)
-            or (
-                expected_barrier_unit is not None
-                and dependency.barrier is None
-            )
-            or (
-                expected_barrier_unit is None
-                and dependency.barrier == "BLOCKED"
-            )
+            or (expected_barrier_unit is not None and dependency.barrier is None)
+            or (expected_barrier_unit is None and dependency.barrier == "BLOCKED")
         )
         if barrier_inconsistent:
             _invalid("snapshot dependency graph has inconsistent barrier evidence")
@@ -942,9 +913,7 @@ def read_and_validate_frozen_history_plan_semantics_from_payload(
         source_commits=tuple(commit.commit_id for commit in live_snapshot.commits),
         publication_source_commits=tuple(
             commit.commit_id
-            for commit in live_snapshot.commits[
-                live_snapshot.movable_commit_start :
-            ]
+            for commit in live_snapshot.commits[live_snapshot.movable_commit_start :]
         ),
         allowed_remote_refs=allowed_remote_refs,
     )

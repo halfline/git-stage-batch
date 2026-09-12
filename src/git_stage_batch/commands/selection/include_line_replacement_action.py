@@ -22,6 +22,7 @@ from ...utils.paths import get_processed_include_ids_file_path
 from . import include_line_replacement as _include_line_replacement
 from . import discard_file_selection as _discard_file_selection
 from . import discard_line_replacement as _discard_line_replacement
+from .discard_replacement_storage import add_discard_line_replacement_to_batch
 from .selected_hunk_refresh import refresh_selected_hunk_after_line_action
 
 
@@ -71,7 +72,7 @@ def include_live_line_replacement_to_batch(
             replacement_text,
             no_edge_overlap=no_edge_overlap,
         ) as replacement:
-            _discard_line_replacement.add_discard_line_replacement_to_batch(
+            add_discard_line_replacement_to_batch(
                 batch_name,
                 replacement,
             )

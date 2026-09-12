@@ -27,6 +27,7 @@ from . import batch_line_updates as _batch_line_updates
 from . import discard_file_selection as _discard_file_selection
 from . import discard_line_publication as _discard_line_publication
 from . import discard_line_replacement as _discard_line_replacement
+from .discard_replacement_storage import add_discard_line_replacement_to_batch
 from .action_completion import finish_selected_change_action
 from .selected_hunk_refresh import recalculate_selected_hunk_for_command
 
@@ -120,7 +121,7 @@ def discard_lines_as_to_batch(
             replacement_text,
             no_edge_overlap=no_edge_overlap,
         ) as replacement:
-            _discard_line_replacement.add_discard_line_replacement_to_batch(
+            add_discard_line_replacement_to_batch(
                 batch_name,
                 replacement,
             )

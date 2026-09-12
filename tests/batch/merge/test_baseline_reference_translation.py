@@ -1,6 +1,9 @@
 """Tests for translating selection references onto batch baselines."""
 
 import pytest
+import tracemalloc
+
+from git_stage_batch.core.buffer import LineBuffer
 
 from git_stage_batch.batch.merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
@@ -13,6 +16,20 @@ from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
+
+
+def test_identical_baseline_projection_avoids_line_scale_python_heap():
+    peaks = []
+    for line_count in (2048, 32768):
+        with LineBuffer.from_chunks(b"same\n" for _ in range(line_count)) as baseline:
+            ownership = BatchOwnership([], [])
+            tracemalloc.start()
+            try:
+                translate_ownership_baseline_references(ownership, baseline, baseline)
+                peaks.append(tracemalloc.get_traced_memory()[1])
+            finally:
+                tracemalloc.stop()
+    assert peaks[1] < peaks[0] + 256 * 1024
 
 
 def test_translates_presence_gap_from_shifted_selection_baseline():

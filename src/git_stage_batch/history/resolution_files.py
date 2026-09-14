@@ -563,7 +563,7 @@ def lock_resolution_directory(
     create: bool = True,
     moved_to: str | Path | None = None,
 ) -> Iterator[None]:
-    """Hold one non-blocking advisory lock inside a pinned workspace root.
+    """Wait for an exclusive advisory lock inside a pinned workspace root.
 
     ``create=False`` opens an existing exact-mode lock read-only, allowing
     workspace authentication to remain non-mutating. ``moved_to`` names a
@@ -668,10 +668,8 @@ def lock_resolution_directory(
             if _identity(path_metadata) != initial_identity:
                 _invalid(lock_path, _("workspace lock changed while it was opened"))
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
             except OSError as error:
-                if error.errno in (errno.EACCES, errno.EAGAIN):
-                    _invalid(directory, _("workspace is already in use"))
                 _invalid(
                     lock_path,
                     _("cannot lock workspace: {error}").format(error=error),

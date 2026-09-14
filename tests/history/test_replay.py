@@ -186,3 +186,52 @@ def test_history_replay_avoids_line_scale_python_heap(tmp_path, monkeypatch):
 
     small_peak, large_peak = heap_peaks
     assert large_peak < small_peak + 64 * 1024
+
+
+@pytest.mark.parametrize("selection", ["partial", "reversed", "interleaved"])
+def test_integration_preserves_explicit_unit_selection(
+    linear_history_repo, monkeypatch, selection,
+):
+    """Complete-source replay must not expand or reorder selected units."""
+    repo = linear_history_repo
+    for name in ("left.txt", "right.txt"):
+        (repo.root / name).write_text(name + "\n", encoding="utf-8")
+    git("add", "left.txt", "right.txt")
+    git("commit", "-m", "Add paired files")
+    document = acquire_history_plan_document(repo.base)
+    source = document.snapshot.commits[-1]
+    first, second = (unit.unit_id for unit in source.units)
+    other = document.snapshot.commits[0].units[0].unit_id
+    selected = {
+        "partial": (first,),
+        "reversed": (second, first),
+        "interleaved": (first, other, second),
+    }[selection]
+    output = replace(
+        document.plan.outputs[-1],
+        operation="INTEGRATE",
+        source_unit_ids=selected,
+    )
+    unit_calls = []
+
+    def replay_unit(tree, unit, **kwargs):
+        unit_calls.append(unit.snapshot.unit_id)
+        return history_replay.PatchApplicationResult(status="APPLIED", tree=source.tree)
+
+    def replay_source(complete_source, tree, *args, **kwargs):
+        assert complete_source.commit_id != source.commit_id
+        unit_calls.extend(unit.unit_id for unit in complete_source.units)
+        return complete_source.tree
+
+    monkeypatch.setattr(history_replay, "apply_history_replay_unit", replay_unit)
+    monkeypatch.setattr(history_replay, "_apply_source_commit", replay_source)
+    with history_replay.acquire_history_replay_units(document.snapshot) as acquired:
+        history_replay._apply_unit_output(
+            output,
+            {unit.snapshot.unit_id: unit for unit in acquired},
+            {commit.commit_id: commit for commit in document.snapshot.commits},
+            document.snapshot.base_tree,
+            0,
+            env=None,
+        )
+    assert tuple(unit_calls) == selected

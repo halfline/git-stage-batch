@@ -18,7 +18,7 @@ def _git(*arguments: str) -> str:
     ).stdout.strip()
 
 
-@pytest.mark.parametrize("command", ["apply"])
+@pytest.mark.parametrize("command", ["apply", "verify"])
 def test_rewrite_waits_for_resolution_reader(
     functional_repo: Path,
     tmp_path: Path,
@@ -62,6 +62,16 @@ def test_rewrite_waits_for_resolution_reader(
         "--porcelain",
     )
     arguments = apply_args
+    if command != "apply":
+        applied = json.loads(git_stage_batch(*apply_args).stdout)
+        assert applied["phase"] == "COMPLETE" and applied["verified"]
+        common = Path(_git("rev-parse", "--git-common-dir")).resolve()
+        workspace = (
+            common / "git-stage-batch" / "rewrite" / applied["operation_id"]
+            / "resolutions"
+        )
+        arguments = ("rewrite", command, "--porcelain")
+
     # Model an independent authenticator without changing workspace contents.
     waited = False
     with (workspace / ".workspace.lock").open("rb") as lock:

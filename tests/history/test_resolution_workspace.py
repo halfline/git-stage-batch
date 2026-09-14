@@ -1334,7 +1334,7 @@ def test_resolve_does_not_mutate_an_unbound_existing_directory(
     assert list(workspace.iterdir()) == []
 
 
-def test_concurrent_workspace_use_fails_without_waiting(linear_history_repo):
+def test_recursive_workspace_use_fails_without_waiting(linear_history_repo):
     plan = _resolved_plan(linear_history_repo)
     workspace = linear_history_repo.root / "resolution"
     resolve_history_plan(str(plan), str(workspace))

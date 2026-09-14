@@ -18,7 +18,7 @@ def _git(*arguments: str) -> str:
     ).stdout.strip()
 
 
-@pytest.mark.parametrize("command", ["apply", "verify"])
+@pytest.mark.parametrize("command", ["apply", "verify", "status"])
 def test_rewrite_waits_for_resolution_reader(
     functional_repo: Path,
     tmp_path: Path,
@@ -97,7 +97,11 @@ def test_rewrite_waits_for_resolution_reader(
     assert process.returncode == 0, stderr
     assert waited, "The command finished while another process held its workspace"
     response = json.loads(stdout)
-    assert response["verified"]
+    if command == "status":
+        assert response["inspection"]["resolution_matches"] is True
+        assert response["inspection"]["blockers"] == []
+    else:
+        assert response["verified"]
     assert _git("rev-parse", "HEAD^{tree}") == final_tree
     assert _git("status", "--porcelain") == ""
     assert json.loads(git_stage_batch("rewrite", "verify", "--porcelain").stdout)["verified"]

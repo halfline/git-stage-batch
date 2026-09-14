@@ -569,6 +569,8 @@ def lock_resolution_directory(
     workspace authentication to remain non-mutating. ``moved_to`` names a
     distinct sibling where the locked directory must be visible on successful
     exit, so callers can keep the same root pinned across atomic publication.
+    Recursive acquisition in the current context is rejected instead of waiting
+    for a lock that the caller itself must release.
     """
     directory = _exact_path(path)
     final_path = _exact_path(moved_to) if moved_to is not None else None
@@ -586,6 +588,12 @@ def lock_resolution_directory(
         require_private=True,
         final_path=final_path,
     ) as parent:
+        parent_identity = _directory_object_identity(os.fstat(parent))
+        if any(
+            _directory_object_identity(os.fstat(root.descriptor)) == parent_identity
+            for root in _ACTIVE_LOCKED_ROOTS.get()
+        ):
+            _invalid(directory, _("workspace is already in use"))
         common_flags = (
             getattr(os, "O_CLOEXEC", 0)
             | getattr(os, "O_NOFOLLOW", 0)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from dataclasses import dataclass
+from itertools import groupby
 from typing import Protocol
 
 from ..exceptions import CommandError
@@ -174,33 +175,52 @@ def _apply_whole_source_output(
 def _apply_unit_output(
     output: HistoryPlannedCommit,
     units: dict[str, HistoryReplayUnit],
+    sources: dict[str, HistoryCommitSnapshot],
     current_tree: str,
     output_index: int,
     *,
     env: dict[str, str] | None,
     replay_cache: dict[tuple[str, str], PatchApplicationResult] | None = None,
+    whole_source_cache: dict[tuple[str, str, str], str] | None = None,
 ) -> str:
     parent_tree = current_tree
-    for unit_id in output.source_unit_ids:
-        result = apply_history_replay_unit(
-            current_tree,
-            units[unit_id],
-            env=env,
-            replay_cache=replay_cache,
-        )
-        if result.status != "APPLIED" or result.tree is None:
-            raise CommandError(
-                _(
-                    "Rewrite output {output} cannot replay unit {unit}: "
-                    "{status} ({detail})."
-                ).format(
-                    output=output_index + 1,
-                    unit=unit_id,
-                    status=result.status,
-                    detail=result.detail or "no detail",
-                )
+    for source_id, group in groupby(
+        output.source_unit_ids,
+        key=lambda unit_id: units[unit_id].snapshot.source_commit,
+    ):
+        selected_ids = tuple(group)
+        source = sources[source_id]
+        if output.operation == "INTEGRATE" and selected_ids == tuple(
+            unit.unit_id for unit in source.units
+        ):
+            current_tree = _apply_source_commit(
+                source,
+                current_tree,
+                output_index,
+                env=env,
+                whole_source_cache=whole_source_cache,
             )
-        current_tree = result.tree
+            continue
+        for unit_id in selected_ids:
+            result = apply_history_replay_unit(
+                current_tree,
+                units[unit_id],
+                env=env,
+                replay_cache=replay_cache,
+            )
+            if result.status != "APPLIED" or result.tree is None:
+                raise CommandError(
+                    _(
+                        "Rewrite output {output} cannot replay unit {unit}: "
+                        "{status} ({detail})."
+                    ).format(
+                        output=output_index + 1,
+                        unit=unit_id,
+                        status=result.status,
+                        detail=result.detail or "no detail",
+                    )
+                )
+            current_tree = result.tree
     if output.source_unit_ids and current_tree == parent_tree:
         raise CommandError(
             _(
@@ -276,10 +296,12 @@ def materialize_history_output_trees(
                 current_tree = _apply_unit_output(
                     output,
                     units,
+                    sources,
                     current_tree,
                     output_index,
                     env=env,
                     replay_cache=replay_cache,
+                    whole_source_cache=whole_source_cache,
                 )
             else:
                 current_tree = _apply_whole_source_output(

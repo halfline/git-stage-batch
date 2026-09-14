@@ -563,12 +563,14 @@ def lock_resolution_directory(
     create: bool = True,
     moved_to: str | Path | None = None,
 ) -> Iterator[None]:
-    """Hold one non-blocking advisory lock inside a pinned workspace root.
+    """Wait for an exclusive advisory lock inside a pinned workspace root.
 
     ``create=False`` opens an existing exact-mode lock read-only, allowing
     workspace authentication to remain non-mutating. ``moved_to`` names a
     distinct sibling where the locked directory must be visible on successful
     exit, so callers can keep the same root pinned across atomic publication.
+    Recursive acquisition in the current context is rejected instead of waiting
+    for a lock that the caller itself must release.
     """
     directory = _exact_path(path)
     final_path = _exact_path(moved_to) if moved_to is not None else None
@@ -586,6 +588,12 @@ def lock_resolution_directory(
         require_private=True,
         final_path=final_path,
     ) as parent:
+        parent_identity = _directory_object_identity(os.fstat(parent))
+        if any(
+            _directory_object_identity(os.fstat(root.descriptor)) == parent_identity
+            for root in _ACTIVE_LOCKED_ROOTS.get()
+        ):
+            _invalid(directory, _("workspace is already in use"))
         common_flags = (
             getattr(os, "O_CLOEXEC", 0)
             | getattr(os, "O_NOFOLLOW", 0)
@@ -660,10 +668,8 @@ def lock_resolution_directory(
             if _identity(path_metadata) != initial_identity:
                 _invalid(lock_path, _("workspace lock changed while it was opened"))
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
             except OSError as error:
-                if error.errno in (errno.EACCES, errno.EAGAIN):
-                    _invalid(directory, _("workspace is already in use"))
                 _invalid(
                     lock_path,
                     _("cannot lock workspace: {error}").format(error=error),

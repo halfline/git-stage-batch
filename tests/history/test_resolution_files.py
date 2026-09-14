@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import ctypes
 import errno
+import fcntl
 import gc
 import hashlib
 import os
@@ -420,6 +421,55 @@ def test_lock_rejects_fifo_and_nonprivate_existing_file(tmp_path):
         with lock_resolution_directory(workspace):
             pass
     assert stat.S_IMODE(lock_path.stat().st_mode) == 0o644
+
+
+@pytest.mark.parametrize("create", [False, True])
+def test_workspace_lock_waits_and_rejects_replacement_during_acquisition(
+    tmp_path, monkeypatch, create,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    lock_path = workspace / ".workspace.lock"
+    _write_private_bytes(lock_path, b"")
+    flock = fcntl.flock
+
+    def replace_during_acquisition(descriptor, operation):
+        assert operation == fcntl.LOCK_EX
+        flock(descriptor, operation)
+        lock_path.rename(workspace / "previous-lock")
+        replacement = workspace / "replacement"
+        _write_private_bytes(replacement, b"")
+        replacement.replace(lock_path)
+
+    monkeypatch.setattr(resolution_files.fcntl, "flock", replace_during_acquisition)
+    with pytest.raises(CommandError, match="workspace lock changed"):
+        with lock_resolution_directory(workspace, create=create):
+            pytest.fail("A replaced lock must not authorize workspace access")
+
+
+@pytest.mark.parametrize("create", [False, True])
+def test_workspace_lock_interruption_closes_descriptor(tmp_path, monkeypatch, create):
+    workspace = _private_directory(tmp_path / "workspace")
+    lock_path = workspace / ".workspace.lock"
+    _write_private_bytes(lock_path, b"")
+    interrupted_descriptors = []
+
+    def interrupt_acquisition(descriptor, operation):
+        assert operation == fcntl.LOCK_EX
+        interrupted_descriptors.append(descriptor)
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patch:
+        patch.setattr(resolution_files.fcntl, "flock", interrupt_acquisition)
+        with pytest.raises(KeyboardInterrupt):
+            with lock_resolution_directory(workspace, create=create):
+                pytest.fail("An interrupted wait must not enter the workspace")
+
+    assert len(interrupted_descriptors) == 1
+    with pytest.raises(OSError) as caught:
+        os.fstat(interrupted_descriptors[0])
+    assert caught.value.errno == errno.EBADF
+    with lock_resolution_directory(workspace, create=False):
+        pass
 
 
 def test_locked_root_anchors_descendant_access_across_visible_swap(tmp_path):

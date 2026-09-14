@@ -94,6 +94,47 @@ def _requires_unit_replay(
     return output.source_unit_ids != expected_units
 
 
+def _apply_source_commit(
+    source: HistoryCommitSnapshot,
+    current_tree: str,
+    output_index: int,
+    *,
+    env: dict[str, str] | None,
+    whole_source_cache: dict[tuple[str, str, str], str] | None,
+) -> str:
+    """Replay a complete source with its original surrounding patch context."""
+    if source.parent_tree == source.tree:
+        return current_tree
+    if source.parent_tree == current_tree:
+        return source.tree
+    ws_key = (current_tree, source.parent_tree, source.tree)
+    if whole_source_cache is not None:
+        cached_tree = whole_source_cache.get(ws_key)
+        if cached_tree is not None:
+            return cached_tree
+    with load_tree_diff_as_buffer(
+        source.parent_tree,
+        source.tree,
+        env=env,
+    ) as patch:
+        replayed_tree = apply_patch_to_tree(
+            current_tree,
+            patch.byte_chunks(),
+            three_way=True,
+            env=env,
+        )
+    if replayed_tree is None:
+        raise CommandError(
+            _(
+                "Rewrite output {output} cannot replay source commit "
+                "{commit} at its requested position."
+            ).format(output=output_index + 1, commit=source.commit_id)
+        )
+    if whole_source_cache is not None:
+        whole_source_cache[ws_key] = replayed_tree
+    return replayed_tree
+
+
 def _apply_whole_source_output(
     output: HistoryPlannedCommit,
     sources: dict[str, HistoryCommitSnapshot],
@@ -107,39 +148,14 @@ def _apply_whole_source_output(
     source_had_effect = False
     for source_commit in output.source_commits:
         source = sources[source_commit]
-        if source.parent_tree == source.tree:
-            continue
-        source_had_effect = True
-        if source.parent_tree == current_tree:
-            current_tree = source.tree
-            continue
-        ws_key = (current_tree, source.parent_tree, source.tree)
-        if whole_source_cache is not None:
-            cached_tree = whole_source_cache.get(ws_key)
-            if cached_tree is not None:
-                current_tree = cached_tree
-                continue
-        with load_tree_diff_as_buffer(
-            source.parent_tree,
-            source.tree,
+        source_had_effect |= source.parent_tree != source.tree
+        current_tree = _apply_source_commit(
+            source,
+            current_tree,
+            output_index,
             env=env,
-        ) as patch:
-            replayed_tree = apply_patch_to_tree(
-                current_tree,
-                patch.byte_chunks(),
-                three_way=True,
-                env=env,
-            )
-        if replayed_tree is None:
-            raise CommandError(
-                _(
-                    "Rewrite output {output} cannot replay source commit "
-                    "{commit} at its requested position."
-                ).format(output=output_index + 1, commit=source_commit)
-            )
-        if whole_source_cache is not None:
-            whole_source_cache[ws_key] = replayed_tree
-        current_tree = replayed_tree
+            whole_source_cache=whole_source_cache,
+        )
 
     if (
         output.operation == "INTEGRATE"

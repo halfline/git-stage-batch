@@ -172,6 +172,97 @@ def test_snapshot_references_clear_ambiguous_stale_reference() -> None:
     assert addition.baseline_reference_before_text_bytes is None
 
 
+def test_snapshot_references_preserve_reviewed_repeated_prefix() -> None:
+    """An exact reviewed prefix should beat a later identical suffix."""
+    changed = LineEntry(
+        id=1,
+        kind="-",
+        old_line_number=1,
+        new_line_number=None,
+        text_bytes=b"old",
+    )
+    replacement = LineEntry(
+        id=2,
+        kind="+",
+        old_line_number=None,
+        new_line_number=2,
+        text_bytes=b"changed",
+        source_line=2,
+    )
+    context = [
+        LineEntry(None, " ", 2, 3, text_bytes=b"unique", source_line=3),
+        LineEntry(None, " ", 3, 4, text_bytes=b"}", source_line=4),
+        LineEntry(None, " ", 4, 5, text_bytes=b"", source_line=5),
+        LineEntry(None, " ", 5, 6, text_bytes=b"#[test]", source_line=6),
+    ]
+    selected = LineEntry(
+        id=3,
+        kind="+",
+        old_line_number=None,
+        new_line_number=7,
+        text_bytes=b"selected",
+        source_line=7,
+    )
+    continuation = LineEntry(
+        id=4,
+        kind="+",
+        old_line_number=None,
+        new_line_number=8,
+        text_bytes=b"continuation",
+        source_line=8,
+    )
+    tail = LineEntry(
+        None,
+        " ",
+        6,
+        12,
+        text_bytes=b"tail",
+        source_line=12,
+    )
+    changes = _line_changes(
+        [changed, replacement, *context, selected, continuation, tail]
+    )
+
+    record_baseline_references_for_additions(
+        changes,
+        baseline_lines=[
+            b"staged\n",
+            b"old\n",
+            b"unique\n",
+            b"}\n",
+            b"\n",
+            b"#[test]\n",
+            b"tail\n",
+        ],
+        source_lines=[
+            b"staged\n",
+            b"changed\n",
+            b"unique\n",
+            b"}\n",
+            b"\n",
+            b"#[test]\n",
+            b"selected\n",
+            b"continuation\n",
+            b"}\n",
+            b"\n",
+            b"#[test]\n",
+            b"tail\n",
+        ],
+    )
+    selected_lines = changes.lines[-3:-1]
+
+    assert all(line.baseline_reference_after_line == 6 for line in selected_lines)
+    assert all(
+        line.baseline_reference_after_text_bytes == b"#[test]\n"
+        for line in selected_lines
+    )
+    assert all(line.baseline_reference_before_line == 7 for line in selected_lines)
+    assert all(
+        line.baseline_reference_before_text_bytes == b"tail\n"
+        for line in selected_lines
+    )
+
+
 def test_snapshot_reference_order_avoids_python_line_collections(
     monkeypatch,
 ) -> None:

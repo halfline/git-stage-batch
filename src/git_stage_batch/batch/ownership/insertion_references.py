@@ -158,9 +158,31 @@ def _record_snapshot_baseline_references_for_additions(
             mapped_pairs = mapping.mapped_line_pairs()
             previous_pair: tuple[int, int] | None = None
             next_pair = next(mapped_pairs, None)
+            prefix_pair: tuple[int, int] | None = None
+            prefix_source_end = 0
+            reviewed_run_line_index: int | None = None
+            reviewed_run_source_line: int | None = None
+            reviewed_run_position = 0
 
             for source_line, line_index in addition_line_records:
                 addition_line = line_changes.lines[line_index]
+                if (
+                    reviewed_run_line_index is not None
+                    and reviewed_run_source_line is not None
+                    and line_index == reviewed_run_line_index + 1
+                    and source_line == reviewed_run_source_line + 1
+                ):
+                    line_changes.lines[line_index] = _set_addition_baseline_reference(
+                        addition_line,
+                        baseline_lines,
+                        reviewed_run_position,
+                    )
+                    reviewed_run_line_index = line_index
+                    reviewed_run_source_line = source_line
+                    continue
+
+                reviewed_run_line_index = None
+                reviewed_run_source_line = None
 
                 while next_pair is not None and next_pair[0] < source_line:
                     previous_pair = next_pair
@@ -175,9 +197,49 @@ def _record_snapshot_baseline_references_for_additions(
                     after_line = previous_pair[1] if previous_pair is not None else None
                     before_line = next_pair[1] if next_pair is not None else None
                     insertion_position = after_line or 0
+                    previous_source_line = (
+                        previous_pair[0] if previous_pair is not None else 0
+                    )
+                    if prefix_pair != previous_pair:
+                        prefix_pair = previous_pair
+                        prefix_source_end = previous_source_line
+                        prefix_target_end = insertion_position
+                        source_limit = (
+                            next_pair[0] - 1
+                            if next_pair is not None
+                            else len(source_lines)
+                        )
+                        while (
+                            prefix_source_end < source_limit
+                            and prefix_target_end < len(baseline_lines)
+                            and normalized_source_lines[prefix_source_end]
+                            == normalized_baseline_lines[prefix_target_end]
+                        ):
+                            prefix_source_end += 1
+                            prefix_target_end += 1
+
+                    # The conservative matcher can assign a repeated suffix to
+                    # the target and leave an earlier, reviewed copy unmapped.
+                    # Recover that copy only when every line since the preceding
+                    # mapped anchor agrees. The cached scan covers one mapping
+                    # gap at a time, so all scans remain linear in source lines.
+                    copied_context_count = source_line - previous_source_line - 1
+                    reviewed_prefix_reaches_insertion = (
+                        copied_context_count > 0
+                        and source_line - 1 <= prefix_source_end
+                    )
+                    if reviewed_prefix_reaches_insertion:
+                        insertion_position += copied_context_count
+                        after_line = insertion_position or None
+                        reviewed_run_line_index = line_index
+                        reviewed_run_source_line = source_line
+                        reviewed_run_position = insertion_position
                     expected_before_line = insertion_position + 1
                     actual_before_line = before_line or len(baseline_lines) + 1
-                    if expected_before_line != actual_before_line:
+                    if (
+                        not reviewed_prefix_reaches_insertion
+                        and expected_before_line != actual_before_line
+                    ):
                         # Target-only content leaves the relative insertion order
                         # ambiguous.
                         line_changes.lines[line_index] = (

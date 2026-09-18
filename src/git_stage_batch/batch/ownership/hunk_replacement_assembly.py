@@ -149,6 +149,63 @@ class HunkReplacementBuilder:
             )
         )
 
+    def add_baseline_replacement_unit(
+        self,
+        selected_new_lines: Iterable[LineEntry],
+        baseline_lines: Sequence[bytes],
+        *,
+        old_start: int,
+        old_end: int,
+        origin: ReplacementUnitOrigin | None = None,
+    ) -> None:
+        """Add a replacement whose old side is absent from the review hunk."""
+        selected_source_lines = LineRangeBuilder()
+        deletion_anchor: int | None = None
+        for new_line in selected_new_lines:
+            source_line = self.source_line_for(new_line)
+            if source_line is None:
+                raise ValueError(
+                    f"Cannot translate line to batch ownership: source_line is None "
+                    f"(kind={new_line.kind!r}, text={new_line.display_text()!r}). "
+                    f"Batch source is stale and must be advanced before translation."
+                )
+            if deletion_anchor is None:
+                deletion_anchor = source_line - 1 if source_line > 1 else None
+            self.claimed_source_lines.add_line(source_line)
+            selected_source_lines.add_line(source_line)
+            if new_line.id is not None:
+                self.consumed_new_display_ids.add_line(new_line.id)
+            baseline_reference = baseline_reference_for_presence_line(new_line)
+            if baseline_reference is not None:
+                self.presence_baseline_references[source_line] = baseline_reference
+
+        with AbsenceContentBuilder() as content_builder:
+            content_builder.append_line_range(
+                baseline_lines,
+                old_start - 1,
+                old_end,
+            )
+            content_lines = content_builder.finish()
+
+        self.absence_claims.append(
+            AbsenceClaim(
+                anchor_line=deletion_anchor,
+                content_lines=content_lines,
+                baseline_reference=baseline_reference_for_file_line_range(
+                    old_start,
+                    old_end,
+                    baseline_lines,
+                ),
+            )
+        )
+        self.replacement_units.append(
+            ReplacementUnit(
+                presence_lines=selected_source_lines.finish().to_range_strings(),
+                deletion_indices=[len(self.absence_claims) - 1],
+                origin=origin,
+            )
+        )
+
     def finish(self) -> HunkReplacementTranslation:
         """Return the accumulated ownership without copying its claims."""
         consumed_old_ids = self.consumed_old_display_ids.finish()

@@ -429,6 +429,60 @@ def test_translate_hunk_selection_uses_file_derived_replacement_runs():
     )
 
 
+def test_translate_hunk_selection_pairs_hidden_staged_replacement_by_position():
+    """A selected new row replaces its undisplayed staged counterpart."""
+    lines = [
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=1,
+            new_line_number=1,
+            text_bytes=b"top",
+            source_line=1,
+        ),
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"one new",
+            source_line=2,
+        ),
+        LineEntry(
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=3,
+            text_bytes=b"two new",
+            source_line=3,
+        ),
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=2,
+            new_line_number=4,
+            text_bytes=b"bottom",
+            source_line=4,
+        ),
+    ]
+    baseline_lines = [b"top\n", b"one old\n", b"two old\n", b"bottom\n"]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {1},
+        replacement_line_runs=[ReplacementLineRun(2, 3, 2, 3)],
+        baseline_lines=baseline_lines,
+    )
+
+    assert ownership.presence_line_set() == {2}
+    assert len(ownership.deletions) == 1
+    assert ownership.deletions[0].anchor_line == 1
+    assert list(ownership.deletions[0].content_lines) == [b"one old\n"]
+    assert ownership.replacement_units == [
+        ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+    ]
+
+
 def test_translate_hunk_selection_pairs_additions_after_selected_old_text():
     """A selected sub-edit should survive a wider replacement run."""
     lines = [

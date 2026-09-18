@@ -240,6 +240,7 @@ def translate_hunk_selection_to_batch_ownership(
             selected_display_ids,
             old_line_content=old_line_content,
             replacement_line_runs=replacement_line_runs,
+            baseline_lines=baseline_lines,
             replacement_origin=replacement_origin,
             source_projection=source_projection,
             replacement_origin_source_projection=(
@@ -254,6 +255,7 @@ def _translate_hunk_selection_with_old_content(
     *,
     old_line_content: Mapping[int, bytes],
     replacement_line_runs: Iterable[_ReplacementLineRun] | None,
+    baseline_lines: Sequence[bytes] | None,
     replacement_origin: ReplacementOrigin,
     source_projection: SourceCoordinateProjection | None,
     replacement_origin_source_projection: (
@@ -269,6 +271,7 @@ def _translate_hunk_selection_with_old_content(
             replacement_line_runs=replacement_line_runs or (),
             old_line_content=old_line_content,
             hunk_content_view=hunk_content_view,
+            baseline_lines=baseline_lines,
             replacement_origin=replacement_origin,
             source_projection=source_projection,
             replacement_origin_source_projection=(

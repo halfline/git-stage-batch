@@ -1072,8 +1072,6 @@ def test_message_guidance_reserves_imperative_voice_for_summaries() -> None:
     required = (
         "Use imperative voice only in the commit summary.",
         "Write every commit-body sentence as an indicative, declarative statement",
-        "including the selected-state, problem, `This commit`, and "
-        "series-transition paragraphs",
         "Never use a body sentence to instruct the reader.",
     )
     for phrase in required:

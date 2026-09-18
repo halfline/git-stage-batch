@@ -78,12 +78,14 @@ def _multi_file_undo_checkpoint(
     files: Sequence[str],
     *,
     worktree_paths: Sequence[str] | None = None,
+    index_paths: Sequence[str] | None = None,
 ) -> AbstractContextManager[object]:
     """Create one undo checkpoint for a resolved multi-file command."""
     paths = list(worktree_paths) if worktree_paths is not None else list(files)
     return undo_checkpoint(
         _format_multi_file_operation(command, files),
         worktree_paths=paths,
+        index_paths=list(index_paths) if index_paths is not None else None,
         rollback_on_error=True,
     )
 
@@ -303,12 +305,17 @@ def include_each_resolved_file(
     staged_files: list[str] = []
 
     checkpoint_paths = checkpoint_paths_for_live_files(list(files))
+    checkpoint_index = read_index_identities(checkpoint_paths)
+    worktree_checkpoint_paths = [
+        path for path in checkpoint_paths if checkpoint_index[path].mode != "160000"
+    ]
     with (
         isolated_index_transaction() as publish_index,
         _multi_file_undo_checkpoint(
             "include",
             files,
-            worktree_paths=checkpoint_paths,
+            worktree_paths=worktree_checkpoint_paths,
+            index_paths=checkpoint_paths,
         ),
     ):
         auto_add_untracked_files(files)

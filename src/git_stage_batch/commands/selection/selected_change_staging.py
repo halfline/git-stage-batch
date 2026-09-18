@@ -58,9 +58,11 @@ def include_selected_change(
                 print(_("No more hunks to process."), file=sys.stderr)
             return 0
 
+    checkpoint_paths = worktree_paths_for_selected_change(item)
     with undo_checkpoint(
         "include",
-        worktree_paths=worktree_paths_for_selected_change(item),
+        worktree_paths=[] if isinstance(item, GitlinkChange) else checkpoint_paths,
+        index_paths=checkpoint_paths if isinstance(item, GitlinkChange) else None,
     ):
         _include_loaded_selected_change(
             item,

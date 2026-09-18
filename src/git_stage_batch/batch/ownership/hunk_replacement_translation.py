@@ -135,6 +135,33 @@ def _translate_hunk_replacement_line_runs(
         old_cursor = old_scan.stop_index
         new_cursor = new_scan.stop_index
 
+        if (
+            baseline_lines is not None
+            and old_scan.count == 0
+            and new_scan.fully_selected
+        ):
+            origin = origins.project(
+                replacement_run.new_start,
+                replacement_run.new_end,
+                replacement_run=replacement_run,
+                align_suffix=False,
+            )
+            builder.add_baseline_replacement_unit(
+                (
+                    hunk_lines[index]
+                    for index in _hunk_line_ranges.hunk_line_indexes_in_range(
+                        hunk_lines,
+                        new_scan,
+                        kind="+",
+                        line_number_attr="new_line_number",
+                    )
+                ),
+                baseline_lines,
+                old_start=replacement_run.old_start,
+                old_end=replacement_run.old_end,
+                origin=origin[0] if origin is not None else legacy_origin,
+            )
+            continue
         for selected in selected_replacement_runs(
             hunk_lines,
             selected_display_ids,

@@ -186,6 +186,51 @@ def test_include_line_transient_staging_pure_addition(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
 
 
+def test_include_line_replaces_an_edited_staged_insertion(functional_repo):
+    """Selecting an edited insertion must not retain its older staged copy."""
+    original = (
+        "enum commands {\n"
+        "\tOLD,\n"
+        "};\n"
+    )
+    staged = (
+        "enum commands {\n"
+        "\tOLD,\n"
+        "\tNEW =\n"
+        "\t\tMACRO(value,\n"
+        "\t\t\t struct payload),\n"
+        "};\n"
+    )
+    working = staged.replace("\t\t\t struct payload", "\t\t\tstruct payload")
+    _commit_file(functional_repo, "api.h", original)
+    path = functional_repo / "api.h"
+    path.write_text(staged)
+    subprocess.run(
+        ["git", "add", "api.h"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    path.write_text(working)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "api.h", "--page", "all"
+    ).stdout
+    assert "Change 1/1   lines 1–3" in view
+    result = git_stage_batch(
+        "include",
+        "--line",
+        "1-3",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _index_content(functional_repo, "api.h") == working
+    assert path.read_text() == working
+
+
 def test_include_line_new_file_applies_clean_filter(functional_repo):
     """Partial new-file staging stores the same clean form as git add."""
     (functional_repo / ".gitattributes").write_text("*.txt filter=token\n")

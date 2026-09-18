@@ -4,7 +4,7 @@ description: Audit and refine messages in an existing local linear commit series
 user-invocable: true
 context: fork
 argument-hint: "<base-sha> | audit <base-sha> | resume"
-when_to_use: "Use when the user wants Claude Code to polish commit prose, enforce repository message conventions, repair series narrative or fourth-paragraph transitions, audit messages without changing history, or resume an interrupted message-only rewrite. Examples: \"refine these commit messages\", \"fix the message narrative after BASE_SHA\", \"audit these messages only\", \"resume refine-commit-messages\". Do not use for changing commit contents, order, or boundaries."
+when_to_use: "Use when the user wants Claude Code to polish commit prose, enforce repository message conventions, correct the reasoning or scope of a message, audit messages without changing history, or resume an interrupted message-only rewrite. Examples: \"refine these commit messages\", \"fix the message narrative after BASE_SHA\", \"audit these messages only\", \"resume refine-commit-messages\". Do not use for changing commit contents, order, or boundaries."
 allowed-tools:
   - Read
   - Grep
@@ -87,21 +87,29 @@ commits, refs, or checkpoints; they may reuse or update the disposable
 history-analysis cache.
 
 Build one compact series index before drafting. For each position, record the
-SHA, subject, narrative role, one plain-language patch outcome, relevant parent
-state, and only the prior capabilities needed to understand the change. Inspect
+SHA, subject, exact change, relevant parent state, actual reason, whether the
+changed behavior runs at this commit, and only necessary dependencies. Treat
+the overall goal as analysis context, not required message text. Inspect
 each complete patch once in order. Do not copy the whole prefix into each entry
 or reread the raw series for every draft.
 
-For each message, compare the full patch with repository rules and adjacent
-series transitions. Reject unexplained local terms, coined shorthand,
-artifact-only subjects, compressed labels, claims absent from the patch, and
-meaningful patch outcomes absent from the prose. Draft from the target patch
-and its relevant neighboring context, not from the clean staged index.
+For each message, compare the full patch with repository rules and necessary
+dependencies. Reject unexplained local terms, coined shorthand, compressed
+labels, claims absent from the patch, and meaningful patch outcomes absent from
+the prose. A preparatory API or representation is a legitimate outcome;
+verify whether callers use it before claiming runtime behavior. Draft from the
+target patch and its relevant neighboring context, not from the clean staged
+index.
 
 Classify every output:
 
-- `KEEP` when the exact message is compliant and narratively accurate.
-- `REWORD` when a complete replacement is required.
+- `KEEP` when the exact message explains the patch accurately and meets the rules.
+- `REWORD` for a named defect: an inaccurate claim, missing necessary reasoning,
+  ambiguity, irrelevant or repeated explanation, or a violated repository rule.
+
+Do not reword solely because another phrasing is possible, the paragraph count
+differs from a usual pattern, or the message lacks a series introduction or
+conclusion.
 
 For `REWORD`, edit only `operation`, `message`, optional `encoding`, and a
 concrete `rationale`. Keep all other generated fields exact. Cover every output
@@ -120,8 +128,9 @@ proves that every replacement is encodable.
 ## Audit mode
 
 Audit mode stops after the edited plan validates. Report every source in order
-with `KEEP` or `REWORD`, the exact repository rule and patch evidence, adjacent
-series transition, and complete proposed message for every `REWORD`. Report
+with `KEEP` or `REWORD`, the named defect or acceptance reason and patch
+evidence, any necessary dependency, and the complete proposed message for
+every `REWORD`. Report
 validator failures as failures; do not silently weaken or apply the plan.
 
 Audit mode must not call `rewrite apply`, create recovery refs or checkpoints,

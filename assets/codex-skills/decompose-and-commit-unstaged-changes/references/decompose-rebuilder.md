@@ -334,7 +334,9 @@ independently meaningful item, the commit is too broad. Split.
 A valid subject should predict which changed regions belong in the commit and
 which adjacent concerns are excluded. It should name the behavior, invariant,
 workflow, or contract that becomes true after the commit, not merely the module,
-helper, docs section, fixture, or test file being added.
+helper, docs section, fixture, or test file being added. Preparatory changes
+may accurately name the internal API, representation, or capability they add;
+do not claim that existing callers use it unless the patch connects them.
 
 Warning-sign verbs (acceptable only when they state the actual product or
 maintainer-visible outcome): `add`, `cover`, `register`, `expand`, `wire`,
@@ -364,12 +366,15 @@ tests: Pin workflow dispatch by selected adapter
 Use a fresh-context commit-message-drafter subagent for each commit. Provide the agent:
 
 - Whether this is part of a series
-- The one-clause purpose of this commit
-- Whether this is the final commit in the series
+- The relevant state before the patch and exact staged change
+- The actual reason, with supporting code locations or other evidence
+- Whether the patch adds machinery or makes behavior run in a caller
+- Only the dependencies needed to explain the patch's design or scope
+- The series goal as background, without assigning a role to its position
 - Repository-specific commit rules from CONTRIBUTING.md
 - The files staged for this commit
-- The behavior, invariant, workflow, or contract that becomes true after this
-  commit, so the summary does not collapse to `Add MODULE` or `Cover MODULE`
+- The behavior, invariant, workflow, contract, or internal API established by
+  this commit, without claiming integration that happens in another patch
 
 **Never mention** in commit messages: decomposition, reconstruction, batches,
 repairs, peeling, restored layers, ash, or the number of commits in the

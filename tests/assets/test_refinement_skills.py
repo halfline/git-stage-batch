@@ -1048,6 +1048,10 @@ def test_message_guidance_requires_low_context_prose() -> None:
         assert "## Low-context prose" in guidance
         assert "Do not invent a one- or two-word name" in guidance
         assert "Apply a read-once test" in guidance
+        prose = " ".join(guidance.split())
+        assert "Do not turn a relationship into phrases" in prose
+        assert "what data moves, who uses it, and why" in prose
+        assert "Introduce a code identifier by its role" in prose
 
     drafters = (
         CODEX_ROOT / "internal" / "commit-message-drafter.md",
@@ -1059,7 +1063,7 @@ def test_message_guidance_requires_low_context_prose() -> None:
 
 
 def test_message_guidance_reserves_imperative_voice_for_summaries() -> None:
-    """Message bodies should stay indicative in both provider variants."""
+    """Every drafting path should preserve declarative narrative present."""
     codex_guidance = _read(
         CODEX_MESSAGES / "references" / "message-guidelines.md"
     )
@@ -1072,12 +1076,25 @@ def test_message_guidance_reserves_imperative_voice_for_summaries() -> None:
     required = (
         "Use imperative voice only in the commit summary.",
         "Write every commit-body sentence as an indicative, declarative statement",
-        "including the selected-state, problem, `This commit`, and "
-        "series-transition paragraphs",
+        "Keep narrative present tense for the existing state and the change",
         "Never use a body sentence to instruct the reader.",
     )
     for phrase in required:
         assert phrase in prose
+
+    drafting_paths = (
+        CODEX_ROOT / "internal" / "commit-message-drafter.md",
+        PROJECT_ROOT / "assets" / "claude-agents" / "commit-message-drafter.md",
+        CODEX_ROOT / "commit-staged-changes" / "SKILL.md",
+        CLAUDE_ROOT / "commit-staged-changes" / "SKILL.md",
+        CODEX_ROOT / "commit-unstaged-changes" / "SKILL.md",
+        CLAUDE_ROOT / "commit-unstaged-changes" / "SKILL.md",
+    )
+    for path in drafting_paths:
+        prose = " ".join(_read(path).split())
+        assert "Use imperative voice only in the summary" in prose, path
+        assert "indicative, declarative statement" in prose, path
+        assert "narrative present tense" in prose, path
 
 
 def test_snapshot_helpers_match_and_leave_no_worktree(

@@ -212,22 +212,22 @@ Building multiple commits from mixed changes:
 
 ❯ git-stage-batch start
 
-# First pass: collect all bug fixes
-❯ git-stage-batch include  # bug fix in file1
+# First pass: collect one parser fix across its implementation files
+❯ git-stage-batch include  # parser fix in file1
 ❯ git-stage-batch skip     # feature in file2
-❯ git-stage-batch include  # bug fix in file3
-❯ git commit -m "fix: Various bug fixes"
+❯ git-stage-batch include  # matching parser fix in file3
+❯ git commit -m "parser: Preserve empty trailing fields"
 
 # Second pass: feature implementation
 ❯ git-stage-batch again
 ❯ git-stage-batch include  # feature from file2
 ❯ git-stage-batch skip     # refactoring in file4
-❯ git commit -m "feat: Add new feature"
+❯ git commit -m "dashboard: Display account activity"
 
 # Third pass: cleanup and refactoring
 ❯ git-stage-batch again
 ❯ git-stage-batch include  # refactoring from file4
-❯ git commit -m "refactor: Clean up code structure"
+❯ git commit -m "processing: Avoid repeated record scans"
 ```
 
 ---

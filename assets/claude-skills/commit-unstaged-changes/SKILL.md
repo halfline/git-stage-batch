@@ -449,22 +449,21 @@ owned only by this skill.
   fresh, include everything it needs in the prompt instead of referring to the
   prior conversation.
 - The briefing should include:
-  - the planned position of this commit in the series
-  - the series' overall goal and the current commit's contribution
-  - whether this is the opening commit in the series
+  - the relevant state before the patch, with supporting code locations
+  - the exact change and its actual reason, with supporting evidence
+  - whether the patch adds machinery or makes behavior run in a caller
   - which independent series this commit belongs to when the unstaged tree
     contains more than one
-  - the one-clause purpose of the current commit
+  - only the dependencies needed to explain the patch's design or scope
+  - the series goal as background, without assigning a role to its position
   - the exact repository message constraints already discovered
-  - whether this is the final commit in the series
-  - whether this is the penultimate commit in the series, when known
   - the exact files staged for this commit
   - instructions to inspect `git diff --cached`, relevant `git log` history,
     `CONTRIBUTING.md`, and `.git/hooks/commit-msg` if present
 - Require the agent to return:
   - one proposed commit message
-  - a short checklist confirming prefix, paragraph count, tense, series
-    framing, and the relevance of any fourth-paragraph connection
+  - a short checklist confirming the prefix, declarative body prose, necessary
+    reasoning, and the particular fact each cross-commit reference explains
   - any specific uncertainty if the staged diff does not support a confident
     draft
 - Review the draft before committing. If it violates the rules below or no
@@ -645,15 +644,15 @@ For each commit:
 
 ### Message template
 
-Re-read this template before writing each commit message in a multi-commit
-series. Keep the first three paragraphs distinct. Add a separate fourth
-paragraph when it explains a useful connection in the series; otherwise
-omit it. The series' goal and rationale must remain in the history itself.
+Re-read this guidance before writing each commit message in a multi-commit
+series. State, problem, and solution are questions to answer, not paragraphs to
+fill. Combine them when separation repeats the same fact; a mechanical change
+may need one sentence, while a one-line correctness fix may need several
+paragraphs.
 
-Assume the reader may not know the underlying technology. Explain
-unfamiliar technology and industry acronyms in plain language, defining
-terms before using them. Prefer a fuller explanation when shorthand would
-make the reader decode the meaning.
+Write for a competent developer who does not know this part of the codebase.
+Explain the local roles and specialized terms needed for the change without
+reproducing a subsystem introduction.
 
 Keep explanations within the commit history. Do not refer to outside
 development context such as "the plan" or "review results". Explain the
@@ -669,31 +668,15 @@ add new detail where relevant. A standalone commit needs its own context.
 ```text
 prefix: Summary under 68 chars
 
-[The relevant state, using present tense for state descriptions. If recent
-work established that state, briefly recount the change in past tense and
-loosely when it happened. Leave timeless background unqualified; use
-"already" only for a useful contrast. Do not describe the current patch or
-limitation yet.]
-
-[Description of what is missing, broken, or insufficient — and why
-that matters. Use first-person maintainer perspective for internal
-concerns, user perspective for external ones. Never refer to
-maintainers in the third person.]
-
-This commit [addresses|mitigates|resolves] that [problem] by [precise
-description of what this commit changes and how it solves the problem
-stated above].
-
-[Optional fourth paragraph: explain the current step's role in the series,
-a design choice that enables later work, a dependency, or deliberately
-unfinished scope. The opening can frame the broader goal and the final
-commit can explain the achieved outcome; do not merely list other patches.]
+[The relevant state, actual reason, and exact change, in declarative
+narrative present tense. "This commit ..." marks the change. Combine or
+separate these facts according to the reasoning the reader needs.]
 ```
 
 The most common errors are:
 
-1. skipping the first paragraph and opening with the problem
-2. merging the first and second paragraphs with `but` or `however`
+1. repeating the same fact to fill separate paragraphs
+2. claiming behavior that only later integration makes active
 3. using bare imperative voice instead of `This commit ...`
 
 Check for all three before committing.
@@ -704,23 +687,16 @@ Write for drive-by reviewers with limited context. You are the
 maintainer — write to a casual reader who does not know the codebase
 well. Never refer to maintainers in the third person.
 
-### Required structure
+### Structure
 
-Every commit message should use this shape:
+Use a concise subject and the explanation the reader needs:
 
 ```text
 prefix: Concise summary of the change
 
-First paragraph establishing the relevant state and, if recent work
-established it, briefly describing that past change and loosely when it
-happened. Leave timeless background unqualified.
-
-Second paragraph describing the underlying problem.
-
-Third paragraph describing how this commit addresses that problem.
-
-Optional fourth paragraph, kept distinct for a useful series connection
-or conclusion.
+The relevant state, actual reason, and exact change, in declarative narrative
+present tense. "This commit ..." marks the change wherever it fits naturally.
+The explanation determines the number of paragraphs.
 ```
 
 ### Summary line
@@ -732,7 +708,12 @@ or conclusion.
 - Capitalize the first word after the colon.
 - Keep the full summary line under 68 characters.
 
-### First paragraph
+When repository prefixes are free-form, prefer a concrete subsystem or surface
+label established by history. Generic change-type labels such as `fix:` and
+`refactor:` usually add little signal. Follow Conventional Commits or another
+declared type-based format when the repository requires it.
+
+### Relevant state
 
 - Describe the project's selected state immediately before the commit is
   applied.
@@ -756,14 +737,14 @@ or conclusion.
   `parent commit`.
 - Describe what the program, project, interface, or documentation has or
   provides.
-- Do not describe the patch, the user's situation, or future goals here.
+- Combine the state with the reason or change when separation would repeat
+  the same fact.
 - If the commit is part of a series, reflect the relevant state after the
   previous commit without recapping unrelated work or claiming later
   capabilities.
-- If this is the first commit in a series, later paragraphs should introduce
-  the series goal, even if the first change is narrow groundwork.
+- Explain a later capability when it motivates the current patch's design.
 
-### Second paragraph
+### Actual reason
 
 - Describe the real underlying problem from the right perspective.
 - Use first-person maintainer perspective for internal concerns such as
@@ -771,55 +752,52 @@ or conclusion.
   program lacks X", never as "Maintainers cannot X."
 - Use user perspective for external concerns such as unclear workflows,
   missing discoverability, or absent functionality.
-- Focus on missing capabilities, not symptoms tied only to a file.
+- Explain the actual reason at the smallest scope that makes it understandable.
+  Internal simplification can be sufficient. Do not invent reported failures,
+  benchmarks, testing history, or rejected alternatives.
 - Prefer concrete limitations over vague judgments.
 
-### Third paragraph
+### Change
 
 - Describe exactly how this commit addresses one part of the problem.
 - Use present tense for the change itself, such as `This commit returns ...`.
   Work in later commits remains future tense.
 - Be precise about scope.
 - If the commit is an early step toward a larger goal, say so directly.
-- When a commit series is building toward one goal, make that goal explicit
-  and explain how the current commit advances the narrative.
-- For the final commit in a series, explain how it completes or reaches the
-  goal when that is true.
+- Before claiming that the program begins an operation, verify that this patch
+  makes it run in the relevant execution path. A helper that callers will adopt
+  separately is a legitimate outcome.
+- Prefer `This commit ...` in narrative present tense wherever it fits naturally.
+  Use imperative voice only in the summary. Every body sentence is an
+  indicative, declarative statement.
 - Use phrasing such as:
   - `This commit addresses that by ...`
   - `This commit begins adding support for ... by ...`
-  - `This commit continues that work by ...`
-  - `This commit completes that series by ...`
+  - `This commit removes the unused parameter ...`
 
-### Fourth paragraph
+### Series context
 
-Use a distinct fourth paragraph when it helps explain the current commit's
-place in the series. The series is the larger story, not just a collection of
-isolated patches, and its goal, rationale, and connections belong in the
-commit history itself.
+A commit message explains its own change. Series context belongs in the
+message when it explains a prerequisite, design choice, contract with a
+consumer, or deliberately unfinished scope.
 
-A useful segue explains how the current step advances the goal, why a design
-choice enables later work, what a dependent patch needs, or why some scope is
-deliberately left unfinished. Ask whether removing the paragraph would make
-that progression harder to understand. Merely sharing a topic or appearing
-next in the series is not enough.
+For each reference, identify the particular fact about this patch it explains.
+Would removing it make the patch's reason, design, or stopping point unclear?
+If removing it only loses knowledge of what happens elsewhere, remove it.
+Merely sharing a topic or appearing next in the series is not enough.
 
 For example, a full-damage representation change can explain why a later
 shadow-copy patch can use ordinary region operations. An unused-argument
 cleanup should not merely announce that the next commit fixes failed GPU
 copies; it needs a meaningful connection to that work.
 
-Keep a useful segue as a fourth paragraph, separate from the current state,
-problem, and solution. Do not fold it into those paragraphs or repeat their
-explanation. Omit the fourth paragraph when no useful connection remains,
-rather than manufacturing a segue to satisfy a template.
+Describe a necessary relationship where it belongs in the explanation.
+It need not occupy a separate paragraph or repeat the current patch's reason.
 
-The opening commit speaks for the series as well as its own patch: introduce
-the overall goal and motivation, then distinguish the contribution made
-here. The final commit closes that story by explaining the achieved outcome,
-without claiming more than the series actually establishes. A fourth
-paragraph can carry that broader framing or conclusion when it adds useful
-context instead of merely repeating the solution.
+Being first, last, or adjacent to another commit creates no obligation to
+introduce, summarize, or conclude the series. Put the series-wide overview and
+recap in the review request or cover letter, while retaining the rationale
+that belongs to this patch.
 
 Verify references against actual patches. Describe work in later commits in
 future tense and do not claim it is already implemented. Make references to
@@ -833,21 +811,16 @@ an irrelevant segue useful.
 
 ## Required principles
 
-- Tell a story. Related commits should read as connected steps, not isolated
-  patches.
+- Retain cross-commit references that explain the current patch's reason,
+  design, or scope.
 - Separate independent series. A dirty worktree can contain multiple unrelated
-  commit series. Split them into separate series with separate opening and
-  concluding commits instead of forcing one message thread across all unstaged
-  changes.
-- Introduce the series in its first commit. When a commit opens a multi-commit
-  series, its message should name the larger goal and explain why the series
-  exists, even if the first change is narrow groundwork.
-- Conclude the series in its final commit. The final commit should make clear
-  that the series has reached its intended goal instead of only describing the
-  last small change.
+  commit series. Split them into separate series instead of forcing one message
+  thread across all unstaged changes.
+- Being first or last creates no introduction or conclusion duty. Put the
+  series-wide overview and recap in the review request.
 - Name the eventual feature goal in early groundwork commits when that explains
   why the work exists.
-- Describe problems at the product level, not only at the file level.
+- Explain the actual reason without inflating local concerns.
 - Be humble and specific. Avoid bragging language and vague praise.
 - Only use the word `this` when referring to the commit itself.
 - Do not add `Co-Authored-By` lines for AI assistance.
@@ -891,25 +864,14 @@ Before committing, verify:
 - If the worktree contains multiple independent series, they are split into
   separate series.
 - The summary uses a fitting prefix and stays under 68 characters.
-- The first paragraph describes what the project currently has or provides,
-  not what is missing, broken, or being changed.
+- The background matches the relevant state after the previous commit.
 - The status quo is clear without needless temporal cues; any `already`
   claim describes an existing capability the patch builds on.
-- The second paragraph explains the broader problem from the right
-  perspective.
-- The third paragraph opens with `This commit` and describes how it addresses
-  the problem.
-- The message reflects a larger series narrative when the work is split across
-  multiple commits.
-- If this is the first commit in a series, the message introduces the whole
-  series goal rather than only the first change.
-- If this is the final commit in a series, the message concludes the series
-  goal rather than reading like another incremental step.
-- Any fourth paragraph explains a useful connection in the series rather
-  than merely naming the next item. Retained segues stay separate from the
-  first three paragraphs and match the actual patches.
-- The series' goal, rationale, and progression are understandable from the
-  commit history alone.
+- The actual reason is clear from the appropriate maintainer or user perspective.
+- The body uses declarative prose and narrative present tense.
+- The change is clear without claiming work done by another patch.
+- Each cross-commit reference explains the current patch's reason, design, or
+  scope, and every paragraph adds information.
 - Body paragraphs wrap at 75 characters.
 
 ## Completion

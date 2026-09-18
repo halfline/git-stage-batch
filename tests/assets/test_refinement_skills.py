@@ -1048,6 +1048,10 @@ def test_message_guidance_requires_low_context_prose() -> None:
         assert "## Low-context prose" in guidance
         assert "Do not invent a one- or two-word name" in guidance
         assert "Apply a read-once test" in guidance
+        prose = " ".join(guidance.split())
+        assert "Do not turn a relationship into phrases" in prose
+        assert "what data moves, who uses it, and why" in prose
+        assert "Introduce a code identifier by its role" in prose
 
     drafters = (
         CODEX_ROOT / "internal" / "commit-message-drafter.md",

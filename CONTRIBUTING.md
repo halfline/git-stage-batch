@@ -73,19 +73,18 @@ We follow strict commit message conventions to maintain a clear and understandab
 
 ### Key Principles
 
-- **Write for drive-by readers who are new to the codebase.** Assume the reader does not know the project or underlying technology well. Explain unfamiliar technology and industry acronyms in simple terms, and define terms before using them. Prefer a fuller explanation over shorthand that makes the reader decode the meaning. For a series, expect readers to read the commits together in order, not only as isolated messages.
+- **Write for a competent developer who does not know this part of the codebase.** Explain the local roles and specialized terms needed to understand the change when encountered in history, without reproducing a subsystem introduction.
 - **You are the maintainer; write to a casual reader.** The commit message is you explaining the change to someone unfamiliar with the codebase. Never refer to maintainers in the third person.
 - **Keep explanations within the commit history.** Do not refer to outside development context such as "the plan" or "review results". Explain the motivation directly, using only context available at that point in the series.
-- **Tell the series' story in the commit history.** The series is the larger unit of work. Explain its goal, each commit's contribution, and the useful connections between steps so the history remains understandable on its own.
+- **Use series context to explain this patch.** Retain prerequisites, design choices, consumer contracts, and intentionally unfinished scope. Put the series-wide overview and recap in the review request or cover letter.
 - **Separate independent series.** A dirty worktree can contain multiple unrelated commit series. Keep their explanations separate instead of forcing one narrative across all unstaged changes.
 - **Explain groundwork where it matters.** Name the later capability that motivates a preparatory patch, regardless of the patch's position in the series.
-- **Let the opening commit speak for the series.** Introduce the overall goal and motivation as well as the opening patch, while distinguishing what that patch actually accomplishes.
-- **Close the story in the final commit.** Explain the outcome achieved by the series without overstating the final patch's individual scope or repeating an itinerary.
-- **Use the tense that reflects the state of the project just before the commit is applied.** When discussing the old behavior, treat it as the selected behavior. When discussing the changes, treat them as new behavior.
-- **Describe problems at the product level, not just the file level.** Focus on what users experience or what you find problematic as the maintainer, not only what is missing in a specific file or function.
-- **Focus on missing capabilities, not symptoms.** Documentation gaps, code organization, and naming issues are often symptoms. Identify the underlying limitation or missing behavior that motivates the change.
-- **Do not describe secondary effects as the primary problem.** Code organization, maintainability, or cleanliness are rarely the main reason for a change.
-- **Be precise about scope.** If a change only improves one aspect of a problem, do not imply it fully solves it.
+- **Let structure follow the explanation.** State, problem, and solution are questions to answer, not paragraph assignments. Being first or last creates no introduction or conclusion duty.
+- **Keep narrative present tense.** Describe the existing behavior from the viewpoint of the previous commit, then describe what the current commit changes. Prefer `This commit ...` for that transition wherever it belongs.
+- **Use imperative voice only in the summary.** Every body sentence is an indicative, declarative statement. Never instruct the reader in the body.
+- **Explain the actual reason at the smallest scope that makes it understandable.** Describe concrete consequences when they matter, without inflating a local change into a project-wide limitation. Internal simplification, removal of an unused argument, or clarification of a contract can be sufficient reasons.
+- **Distinguish evidence from inference.** Do not invent reported failures, benchmarks, testing history, or rejected alternatives.
+- **Be precise about scope.** If a change only improves one aspect of a problem, do not imply it fully solves it. Verify that the patch makes an operation run before describing the program as beginning it. A new helper or internal representation is a legitimate outcome even when callers will adopt it separately.
 - **If the commit is a step toward a larger feature, say so explicitly.** Describe the end goal briefly, then explain how this commit moves toward it.
 - **Name the feature goal in early groundwork commits.** If a commit mainly exists to enable a later user-facing feature, say what that feature is and why it matters instead of presenting the commit as isolated infrastructure work.
 - **Prefer concrete limitations over vague judgments.** Avoid words like "cumbersome", "better", or "improved" without explaining why.
@@ -100,9 +99,11 @@ We follow strict commit message conventions to maintain a clear and understandab
 
 ### Format
 
-Use three body paragraphs for the selected state, problem, and solution.
-Add a distinct fourth paragraph only when a series connection earns its
-place, as described below. Keep each explanation proportionate to the patch.
+State, problem, and solution are questions to answer, not paragraphs to fill.
+Combine them when separation repeats the same fact, and omit background the
+subject or problem already establishes. A mechanical cleanup may need one
+sentence; a one-line correctness fix may need several paragraphs. The topics
+below guide the explanation without assigning paragraphs.
 
 #### First Line (Summary)
 
@@ -110,12 +111,12 @@ place, as described below. Keep each explanation proportionate to the patch.
 prefix: Concise summary of the change
 ```
 
-- Use a short, lowercase prefix (`project:`, `cli:`, `patch:`, `editor:`, `state:`, etc.)
+- Use a short, lowercase prefix (`project:`, `cli:`, `patch:`, `editor:`, `state:`, etc.). Prefer the affected subsystem over generic `fix:` or `refactor:` labels when prefixes are free-form; Conventional Commits and other declared type-based formats take precedence.
 - Capitalize the first word of the summary after the colon
 - Keep the entire line under 72 characters
 - If unsure which prefix to use, run `git log --pretty=oneline FILE` and see what prefixes were used previously
 
-#### First Paragraph
+#### Relevant State
 
 Establish the program's selected state at this point in history. If recent
 work established that state, briefly recount the change in past tense and
@@ -124,8 +125,8 @@ loosely when it happened.
 Describe the status quo in present tense from the viewpoint of the code
 after the previous commit. Use a light cue such as `Right now, ...`,
 `Currently, ...`, or `As things stand, ...` when it helps distinguish
-time-dependent behavior from the change. The third paragraph's `This
-commit ...` supplies the transition.
+time-dependent behavior from the change. `This commit ...` supplies the
+transition wherever the explanation needs it.
 
 Do not add a cue automatically to the first paragraph. Timeless background
 or a lasting contract can stand unqualified; naming the project or component
@@ -172,9 +173,10 @@ If the patch mainly exists to enable a later feature, explain that connection
 where it helps establish the problem or design. Do not describe it as generic
 cleanup when a specific capability motivates the work.
 
-Do not describe the diff, the change itself, or future goals.
+Combine that background with the problem or change when separate paragraphs
+would repeat the same fact.
 
-#### Second Paragraph
+#### Problem
 
 Explain the underlying problem from the appropriate perspective.
 
@@ -183,22 +185,19 @@ Explain the underlying problem from the appropriate perspective.
 - Use **user perspective** for external concerns (confusing interfaces, missing documentation, poor workflows). Frame as "Users cannot X" or "Users must Y."
 
 Describe what is non-obvious, hard to discover, confusing, missing, or limited
-about the selected state. Focus on the broader problem and future goals, not just the
-specific file being edited.
-
-Prefer the broadest accurate framing of the problem.
+about the selected state. Explain the actual reason at the smallest scope that
+makes it understandable. Do not broaden a local reason merely to make the
+patch sound important.
 
 Useful tests:
-- Would this problem still exist even if the specific file being edited were perfect?
+- Does the explanation identify the actual reason for this patch?
 - Is this something users would notice, or only you as the maintainer?
 
-For opening commits in a feature series, prefer framing the problem
-around the missing user-facing capability instead of the missing internal
-helper. For example, "Users cannot replace selected lines with different
-text during include or discard workflows" is usually stronger than "The
-project does not provide generic helpers for transformed selections."
+When a helper exists specifically for a later capability, explain that
+capability and the constraint it places on the helper. The relationship matters
+because it explains the design, regardless of the commit's position.
 
-#### Third Paragraph
+#### Change
 
 Describe how the commit addresses one part of that problem.
 
@@ -212,42 +211,38 @@ feature, describe it as such.
 Describe the capability or intermediate state established by the patch.
 Do not force "begins", "continues", or "completes" wording based on position.
 
-Start this paragraph with `This commit`.
+Prefer `This commit ...` to mark the change in narrative present tense.
+It can share a paragraph with the reason when that reads naturally. Do not
+repeat the subject merely to supply a concluding solution paragraph.
 
 Use natural prose such as:
 - `This commit addresses that by ...`
 - `This commit begins adding support for ... by ...`
 - `This commit lays groundwork for ... by ...`
 
-#### Fourth Paragraph
+#### Series Context
 
-Use a distinct fourth paragraph when it helps explain the current commit's
-place in the series. The series is the larger story, not just a collection of
-isolated patches, and its goal, rationale, and connections belong in the
-commit history itself.
+A commit message explains its own change. Series context belongs in the
+message when it explains a prerequisite, design choice, contract with a
+consumer, or deliberately unfinished scope.
 
-A useful segue explains how the current step advances the goal, why a design
-choice enables later work, what a dependent patch needs, or why some scope is
-deliberately left unfinished. Ask whether removing the paragraph would make
-that progression harder to understand. Merely sharing a topic or appearing
-next in the series is not enough.
+For each reference, identify the particular fact about this patch it explains.
+Would removing it make the patch's reason, design, or stopping point unclear?
+If removing it only loses knowledge of what happens elsewhere, remove it.
+Merely sharing a topic or appearing next in the series is not enough.
 
 For example, a full-damage representation change can explain why a later
 shadow-copy patch can use ordinary region operations. An unused-argument
 cleanup should not merely announce that the next commit fixes failed GPU
 copies; it needs a meaningful connection to that work.
 
-Keep a useful segue as a fourth paragraph, separate from the current state,
-problem, and solution. Do not fold it into those paragraphs or repeat their
-explanation. Omit the fourth paragraph when no useful connection remains,
-rather than manufacturing a segue to satisfy a template.
+Describe a necessary relationship where it belongs in the explanation.
+It need not occupy a separate paragraph or repeat the current patch's reason.
 
-The opening commit speaks for the series as well as its own patch: introduce
-the overall goal and motivation, then distinguish the contribution made
-here. The final commit closes that story by explaining the achieved outcome,
-without claiming more than the series actually establishes. A fourth
-paragraph can carry that broader framing or conclusion when it adds useful
-context instead of merely repeating the solution.
+Being first, last, or adjacent to another commit creates no obligation to
+introduce, summarize, or conclude the series. Put the series-wide overview and
+recap in the review request or cover letter, while retaining the rationale
+that belongs to this patch.
 
 Verify references against actual patches. Describe work in later commits in
 future tense and do not claim it is already implemented. Make references to
@@ -264,31 +259,26 @@ an irrelevant segue useful.
 Before finalizing a commit message, check:
 
 - Does the summary use a fitting prefix and stay under 68 characters?
-- Does the first paragraph describe the program's selected state, not the patch?
+- Does the description of existing behavior match the state before the patch?
 - Is the status quo clear, with temporal cues only where they resolve an
   ambiguity rather than make lasting background sound temporary?
 - Does any `already` claim identify an existing capability the patch builds
   on, rather than assume later work?
-- Does the first paragraph describe the program's state (what it has), not the user's situation (what they must do)?
+- Does the message use declarative body sentences and narrative present tense?
 - Does the selected state match the previous commit without recapping
   unrelated earlier work?
 - If the worktree contains multiple independent series, are they split into separate series?
-- Does each cross-commit reference help explain the current patch's contribution or a meaningful connection in the series?
-- Does the opening commit explain the whole series' goal and motivation as well as its own contribution?
-- Does the final commit close that story with the outcome actually achieved?
-- Can the series be understood from the commit history alone?
+- Can you name the particular fact about this patch that each cross-commit reference explains?
+- Does the message contain the reasoning needed to understand this patch when encountered in history?
 - Are unrelated roadmaps, recaps, and next-item announcements omitted?
-- Does the second paragraph use the appropriate perspective (first-person maintainer for internal concerns, user for external concerns)?
-- Does the second paragraph describe the real problem from either the user's or your own maintainer perspective?
-- Is the problem broader than just the file being edited?
-- Does the message focus on a missing capability rather than a symptom?
+- Does the explanation use the appropriate perspective (first-person maintainer for internal concerns, user for external concerns)?
+- Does it describe the actual reason without artificially broadening the scope?
 - If the patch is groundwork, does it explain the later capability that motivates the design?
-- Does the third paragraph open with `This commit` and clearly state what this commit does without overstating its impact?
+- Does the explanation clearly state what this commit does without overstating its impact or claiming later integration?
 - If this is an incremental step, does it clearly say so?
-- Would removing any series-context paragraph make the series' progression harder to understand, rather than just lose an announcement?
+- Would removing any cross-commit reference make this patch's reason, design, or stopping point unclear?
 - Is retained series context accurate, brief, and not repeated elsewhere in the message?
-- Is any useful segue a distinct fourth paragraph rather than folded into the first three?
-- Is each explanation proportionate to the patch?
+- Does every paragraph add necessary information beyond the subject and other paragraphs?
 - Can a newcomer understand the state, limitation, and change without decoding coined shorthand?
 - Are unfamiliar terms introduced where they first matter, with concise reminders where later messages need them?
 - Does repeated context become more concise while retaining what helps explain the current patch?
@@ -315,9 +305,9 @@ optional and preserves the existing terse output when not specified.
 
 ### Example: Commit Series
 
-The opening commit explains the series goal and its first step. Its fourth
-paragraph connects the representation change to the consumer that will use
-it. The final commit then closes the story with the resulting behavior.
+The representation change explains the contract that its consumer will use.
+The consumer's message explains why its existing special case is no longer
+needed. Their positions create no introduction or conclusion duty.
 
 **Commit 1:**
 
@@ -329,8 +319,7 @@ everything". Rendering and shadow-buffer copies each interpret that
 special value.
 
 Ordinary region operations instead treat an empty region as containing no
-pixels. The series makes full redraws use ordinary regions throughout
-rendering and copying so both paths agree about which pixels to update.
+pixels, so the special value cannot describe a full redraw directly.
 
 This commit represents full redraws with the framebuffer rectangle,
 allowing region operations to describe the complete update directly.
@@ -339,7 +328,7 @@ That representation will let the shadow-copy path remove its empty-region
 special case and use the damage supplied by the renderer.
 ```
 
-**Final commit:**
+**Consumer commit:**
 
 ```text
 renderer: Use supplied shadow buffer damage
@@ -352,10 +341,6 @@ even though the supplied region already describes all pixels to copy.
 
 This commit passes the supplied region directly to the copy operation,
 removing the special case.
-
-Rendering and shadow-buffer copying now describe full updates with the
-same region semantics. Neither path needs an empty region to mean the
-opposite of its ordinary meaning.
 ```
 
 By contrast, an unused-argument cleanup does not need "The next commit will
@@ -374,23 +359,22 @@ The code used to only show minimal output...
 Right now, the code provides minimal output...
 ```
 
-❌ **Don't describe the change in the first paragraph:**
+❌ **Don't use imperative body sentences:**
 ```
-This commit adds verbose output to the command-line interface...
-```
-
-✅ **Do frame what exists before the commit:**
-```
-As things stand, the command-line interface provides minimal feedback
-during operation...
+Add verbose output to the command-line interface.
 ```
 
-❌ **Don't confuse a symptom with the real problem:**
+✅ **Do describe the change in narrative present tense:**
+```
+This commit adds verbose output to the command-line interface.
+```
+
+❌ **Don't leave a non-obvious reason unexplained:**
 ```
 Users reading the man page cannot discover that interactive mode exists.
 ```
 
-✅ **Do describe the broader problem first:**
+✅ **Do explain the relevant consequence:**
 ```
 Interactive mode is not obvious for a tool that otherwise presents itself as a
 command-line interface.
@@ -401,14 +385,15 @@ command-line interface.
 The man page does not currently help users discover or understand that mode.
 ```
 
-❌ **Don't frame internal structure as the problem:**
+❌ **Don't invent a broader reason for a local cleanup:**
 ```
-Without an organized directory, the code may become harder to maintain.
+Unused parameters prevent the rendering subsystem from evolving.
 ```
 
-✅ **Do describe the missing capability:**
+✅ **Do explain the actual reason, even when it is brief:**
 ```
-The project does not yet provide an interactive terminal interface.
+copy_shared_framebuffer_cpu() does not use renderer_gpu_data. This commit
+removes the parameter from the helper and its caller.
 ```
 
 ❌ **Don't use vague value judgments:**
@@ -452,7 +437,7 @@ Without French translations, French-speaking users cannot use the
 program in their native language...
 ```
 
-❌ **Don't describe user situations in the first paragraph:**
+❌ **Don't leave the affected state ambiguous:**
 ```
 i18n: Add French translation (fr)
 

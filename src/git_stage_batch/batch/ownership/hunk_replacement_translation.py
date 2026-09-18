@@ -40,6 +40,7 @@ def translate_hunk_replacement_line_runs(
     replacement_line_runs: Iterable[ReplacementLineRun],
     old_line_content: Mapping[int, bytes],
     hunk_content_view: Sequence[bytes],
+    baseline_lines: Sequence[bytes] | None = None,
     replacement_origin: ReplacementOrigin = NoReplacementOrigin(),
     source_projection: SourceCoordinateProjection | None = None,
     replacement_origin_source_projection: (
@@ -61,6 +62,7 @@ def translate_hunk_replacement_line_runs(
                 replacement_run_iterator=replacement_run_iterator,
                 old_line_content=old_line_content,
                 hunk_content_view=hunk_content_view,
+                baseline_lines=baseline_lines,
                 origin_run_iterator=origin_run_iterator,
                 replacement_origin=replacement_origin,
                 source_projection=source_projection,
@@ -81,6 +83,7 @@ def _translate_hunk_replacement_line_runs(
     replacement_run_iterator: Iterator[ReplacementLineRun],
     old_line_content: Mapping[int, bytes],
     hunk_content_view: Sequence[bytes],
+    baseline_lines: Sequence[bytes] | None,
     origin_run_iterator: Iterator[ReplacementLineRun],
     replacement_origin: ReplacementOrigin,
     source_projection: SourceCoordinateProjection | None,
@@ -103,7 +106,11 @@ def _translate_hunk_replacement_line_runs(
     new_cursor = 0
     for replacement_run in replacement_run_iterator:
         legacy_origin = (
-            replacement_unit_origin_for_line_run(replacement_run, old_line_content)
+            replacement_unit_origin_for_line_run(
+                replacement_run,
+                old_line_content if baseline_lines is None else None,
+                old_file_lines=baseline_lines,
+            )
             if origins.replacement_origin_source_lines is None
             else None
         )

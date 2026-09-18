@@ -9,9 +9,9 @@ as the series-level checks when local guidance is silent.
 2. Read the message as prose for a drive-by reviewer with limited context.
 3. Check the subject and each body paragraph against the patch.
 4. Check the relevant state after the previous commit against earlier work.
-5. Check the series goal, each commit's contribution, and the closing
-   outcome. Check whether cross-commit references explain useful connections
-   and verify them against the referenced patches.
+5. Check whether each cross-commit reference explains a particular fact about
+   this patch, and verify it against the referenced patch. Series position
+   alone creates no introduction or conclusion duty.
 
 Never approve prose merely because its nouns occur in the diff. Every
 meaningful helper, result field, API surface, CLI branch, fixture family,
@@ -21,16 +21,13 @@ in `refine-history`; do not disguise it with a broader message.
 
 ## Low-context prose
 
-Assume the reader understands ordinary software development and Git but is
-new to the codebase. For a series, expect that drive-by reader to read the
-commits together in order. Each message should make its own state,
-limitation, and change clear in that context; it need not rebuild all the
-background for someone reading only that commit in isolation.
+Assume the reader understands ordinary software development and Git but does
+not know this part of the codebase. Explain the local roles and relationships
+needed to understand the change when encountered in history, without
+reproducing a subsystem introduction.
 
-- Assume the reader may not know the underlying technology. Explain
-  unfamiliar technology and industry acronyms in plain language, defining
-  terms before using them. Prefer a fuller explanation when shorthand would
-  make the reader decode the meaning.
+- Define specialized terms and unfamiliar acronyms when their meaning is
+  needed and cannot reasonably be inferred.
 - Keep explanations within the commit history. Do not refer to outside
   development context such as "the plan" or "review results". Explain the
   motivation directly, using only context available at that point in the
@@ -83,27 +80,35 @@ Use a concise, single-outcome subject with the repository's normal lowercase
 prefix when it has one. Keep body lines at or below 75 characters unless an
 unbreakable token or explicit repository rule requires otherwise.
 
-Use three body paragraphs for the selected state, problem, and solution:
+When repository prefixes are free-form, prefer a concrete subsystem or surface
+label established by history. Generic change-type labels such as `fix:` and
+`refactor:` usually add little signal. Follow Conventional Commits or another
+declared type-based format when the repository requires it.
+
+State, problem, and solution are questions to answer, not mandatory paragraphs.
+Use that progression when each part contributes distinct information:
 
 1. Establish the relevant project state after the previous commit. Use
    present tense for state descriptions. If recent work established that
    state, briefly recount the change in past tense and loosely when it
-   happened. Do not describe the current patch or begin with `This commit`.
+   happened.
 2. Explain the underlying limitation from the maintainer or user perspective.
-   Describe a missing capability or concrete constraint, not merely a symptom
-   such as "cumbersome", "bad", or "hard".
-3. Begin with `This commit` and explain precisely how this patch addresses the
-   limitation. Do not claim work that appears only in another commit.
+   Explain the actual reason at the smallest scope that makes it understandable.
+   Internal simplification can be sufficient. Avoid vague judgments such as
+   "cumbersome", "bad", or "hard".
+3. Prefer `This commit ...` to explain precisely what the patch changes.
+   Do not claim work that appears only in another commit.
 
-Use a distinct fourth paragraph when it helps explain the current commit's
-role in the series. Otherwise omit it; do not fold a useful segue into the
-first three paragraphs or repeat their explanation.
+Combine parts when separation repeats the same fact. A mechanical change may
+need one sentence; a one-line correctness fix may need several paragraphs.
+Choose depth according to the reasoning the reader needs. Do not restate the
+subject just to supply a concluding solution paragraph.
 
-Keep the selected state and problem in separate paragraphs. Use imperative
-voice only in the commit summary. Write every commit-body sentence as an
-indicative, declarative statement, including the selected-state,
-problem, `This commit`, and series-transition paragraphs. Never use a body
-sentence to instruct the reader. Avoid reconstruction mechanics such as
+Use imperative voice only in the commit summary.
+Write every commit-body sentence as an indicative, declarative statement.
+Keep narrative present tense for the existing state and the change, regardless
+of paragraph count. Never use a body sentence to instruct the reader.
+Avoid reconstruction mechanics such as
 `fixup`, `squash`, `rebase`, `split`, `cleanup`, `decomposition`, or
 `reconstruction` unless those are literally product-domain concepts.
 
@@ -112,8 +117,8 @@ sentence to instruct the reader. Avoid reconstruction mechanics such as
 Describe the status quo in present tense from the viewpoint of the code
 after the previous commit. Use a light cue such as `Right now, ...`,
 `Currently, ...`, or `As things stand, ...` when it helps distinguish
-time-dependent behavior from the change. The third paragraph's `This
-commit ...` supplies the transition.
+time-dependent behavior from the change. `This commit ...` supplies the
+transition wherever the explanation needs it.
 
 Do not add a cue automatically to the first paragraph. Timeless background
 or a lasting contract can stand unqualified; naming the project or component
@@ -148,48 +153,45 @@ In message prose, use `commit`, not `revision`, and `previous commit`, not
 
 ## Cumulative state
 
-Evaluate each message at its own historical position. The first paragraph must
-describe the state selected by the previous commit, not the final branch or
+Evaluate each message at its own historical position. Background must describe
+the state selected by the previous commit, not the final branch or
 the uncommitted worktree. Include only earlier changes needed to explain the
 current limitation or design; do not recap unrelated work or prematurely
 claim later capabilities.
 
-Read the series as the larger unit of work, not as unrelated writing
-exercises. The opening commit introduces the overall goal and motivation as
-well as its own patch. Each later message explains its contribution, and the
-final commit closes that story with the outcome actually achieved. Keep the
-series understandable from the history alone, while distinguishing each
-patch's effect from work established elsewhere in the series.
+Before claiming that the program begins an operation, verify that the patch
+makes it active in the relevant execution path. Adding machinery that later
+commits will call does not change existing callers. An internal API,
+representation, or invariant is a legitimate outcome. Describe that capability
+without claiming its later integration.
 
-## Fourth-paragraph transitions
+Distinguish documented motivation from consequences demonstrated by the code.
+Do not invent a reported failure, benchmark, testing history, or rejected
+alternative.
 
-Use a distinct fourth paragraph when it helps explain the current commit's
-place in the series. The series is the larger story, not just a collection of
-isolated patches, and its goal, rationale, and connections belong in the
-commit history itself.
+## Cross-commit references
 
-A useful segue explains how the current step advances the goal, why a design
-choice enables later work, what a dependent patch needs, or why some scope is
-deliberately left unfinished. Ask whether removing the paragraph would make
-that progression harder to understand. Merely sharing a topic or appearing
-next in the series is not enough.
+A commit message explains its own change. Series context belongs in the
+message when it explains a prerequisite, design choice, contract with a
+consumer, or deliberately unfinished scope.
+
+For each reference, identify the particular fact about this patch it explains.
+Would removing it make the patch's reason, design, or stopping point unclear?
+If removing it only loses knowledge of what happens elsewhere, remove it.
+Merely sharing a topic or appearing next in the series is not enough.
 
 For example, a full-damage representation change can explain why a later
 shadow-copy patch can use ordinary region operations. An unused-argument
 cleanup should not merely announce that the next commit fixes failed GPU
 copies; it needs a meaningful connection to that work.
 
-Keep a useful segue as a fourth paragraph, separate from the current state,
-problem, and solution. Do not fold it into those paragraphs or repeat their
-explanation. Omit the fourth paragraph when no useful connection remains,
-rather than manufacturing a segue to satisfy a template.
+Describe a necessary relationship where it belongs in the explanation.
+It need not occupy a separate paragraph or repeat the current patch's reason.
 
-The opening commit speaks for the series as well as its own patch: introduce
-the overall goal and motivation, then distinguish the contribution made
-here. The final commit closes that story by explaining the achieved outcome,
-without claiming more than the series actually establishes. A fourth
-paragraph can carry that broader framing or conclusion when it adds useful
-context instead of merely repeating the solution.
+Being first, last, or adjacent to another commit creates no obligation to
+introduce, summarize, or conclude the series. Put the series-wide overview and
+recap in the review request or cover letter, while retaining the rationale
+that belongs to this patch.
 
 Verify references against actual patches. Describe work in later commits in
 future tense and do not claim it is already implemented. Make references to
@@ -203,11 +205,17 @@ an irrelevant segue useful.
 
 ## Verdicts
 
-Use `KEEP` only when the complete message matches the complete patch, its
-historical position, and all applicable rules. Give a concrete reason.
+Use `KEEP` when the subject accurately names the patch's outcome, the body
+contains the necessary reasoning at this commit, each paragraph contributes
+distinct information, cross-commit context explains this patch, and the
+message follows repository rules and reads naturally. Give a concrete reason.
 
-Use `REWORD` when message prose can be corrected without changing the patch
-boundary. Provide a complete replacement, not isolated edits.
+Use `REWORD` for a named defect: an inaccurate claim, missing necessary
+reasoning, ambiguity, irrelevant or repeated explanation, or a violated
+repository rule. Provide a complete replacement, not isolated edits.
+Do not reword solely because another phrasing is possible, the paragraph count
+differs from a usual pattern, or the message lacks a series introduction or
+conclusion.
 
 Escalate to `refine-history` when no honest single-outcome message can describe
 the patch. `refine-commit-messages` must never solve that problem by changing

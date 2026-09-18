@@ -42,13 +42,17 @@ class _FileScope:
 
 
 class _Checkpoint:
-    def __init__(self, calls, operation, worktree_paths):
+    def __init__(self, calls, operation, worktree_paths, index_paths):
         self._calls = calls
         self._operation = operation
         self._worktree_paths = worktree_paths
+        self._index_paths = index_paths
 
     def __enter__(self):
-        self._calls.append(("enter", self._operation, self._worktree_paths))
+        entry = ("enter", self._operation, self._worktree_paths)
+        if self._index_paths is not None:
+            entry += (self._index_paths,)
+        self._calls.append(entry)
 
     def __exit__(self, exc_type, exc, traceback):
         self._calls.append(("exit",))
@@ -62,10 +66,11 @@ def _capture_undo_checkpoints(monkeypatch):
         operation,
         *,
         worktree_paths=None,
+        index_paths=None,
         rollback_on_error=False,
     ):
         assert rollback_on_error is True
-        return _Checkpoint(calls, operation, worktree_paths)
+        return _Checkpoint(calls, operation, worktree_paths, index_paths)
 
     monkeypatch.setattr(multi_file_actions, "undo_checkpoint", fake_undo_checkpoint)
     return calls
@@ -356,6 +361,7 @@ def test_include_each_resolved_file_reports_aggregate_result(
         (
             "enter",
             "include --files alpha.txt beta.txt",
+            ["alpha.txt", "beta.txt"],
             ["alpha.txt", "beta.txt"],
         ),
         ("exit",),

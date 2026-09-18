@@ -231,6 +231,45 @@ def test_include_line_replaces_an_edited_staged_insertion(functional_repo):
     assert path.read_text() == working
 
 
+@pytest.mark.parametrize(
+    ("line_spec", "expected_index"),
+    [
+        ("1", "top\none new\ntwo old\nbottom\n"),
+        ("2", "top\none old\ntwo new\nbottom\n"),
+    ],
+)
+def test_include_line_partly_replaces_an_edited_staged_insertion(
+    functional_repo,
+    line_spec,
+    expected_index,
+):
+    """A selected edit replaces only its positional staged counterpart."""
+    _commit_file(functional_repo, "file.txt", "top\nbottom\n")
+    path = functional_repo / "file.txt"
+    path.write_text("top\none old\ntwo old\nbottom\n")
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    path.write_text("top\none new\ntwo new\nbottom\n")
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    result = git_stage_batch(
+        "include",
+        "--line",
+        line_spec,
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _index_content(functional_repo, "file.txt") == expected_index
+    assert path.read_text() == "top\none new\ntwo new\nbottom\n"
+
+
 def test_include_line_new_file_applies_clean_filter(functional_repo):
     """Partial new-file staging stores the same clean form as git add."""
     (functional_repo / ".gitattributes").write_text("*.txt filter=token\n")

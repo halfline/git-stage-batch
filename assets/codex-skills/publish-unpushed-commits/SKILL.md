@@ -299,10 +299,10 @@ require its tree to represent the normalized aggregate result.
 
 Refine messages bottom-up within each review request by invoking
 `$refine-commit-messages DIRECT_PARENT_TIP`. Cascade changed identifiers into
-descendant branches, then recheck all anchors and the integration result. Treat
-each review request as its own message series: a final commit concludes its
-review request, while a real dependency names the preceding pull request or
-merge request in the stack or series in plain long-form prose. Do not use
+descendant branches, then recheck all anchors and the integration result.
+A commit's position in a review request creates no conclusion duty. Name a
+preceding pull request or merge request in plain long-form prose when the
+dependency explains the current patch's reason, design, or scope. Do not use
 compressed labels such as "preceding stack layer."
 
 After every rewrite and branch tip stabilizes, freeze the integration result:

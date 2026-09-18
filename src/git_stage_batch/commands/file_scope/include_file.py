@@ -95,9 +95,18 @@ def include_file_changes(
             if not file
             else f"include --file {terminal_safe_shell_quote(file)}"
         )
+        index_entry = read_index_entry(target_file)
+        worktree_paths = (
+            []
+            if index_entry is not None
+            and index_entry.mode == "160000"
+            and checkpoint_paths == [target_file]
+            else checkpoint_paths
+        )
         checkpoint = undo_checkpoint(
             operation,
-            worktree_paths=checkpoint_paths,
+            worktree_paths=worktree_paths,
+            index_paths=checkpoint_paths,
         )
         patch_context = acquire_unified_diff(
             stream_live_git_diff(

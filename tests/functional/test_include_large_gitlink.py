@@ -77,6 +77,7 @@ def test_include_large_populated_gitlink_does_not_need_a_temporary_archive(
     other_submodule = functional_repo / "vendor/other"
     _git(other_submodule, "fetch")
     _git(other_submodule, "checkout", other_second)
+    (other_submodule / "build-output.bin").write_bytes(b"\0" * (2 * 1024 * 1024))
 
     git_stage_batch("start", "--no-auto-advance")
     result = subprocess.run(
@@ -108,3 +109,27 @@ def test_include_large_populated_gitlink_does_not_need_a_temporary_archive(
     assert _git(submodule, "rev-parse", "HEAD").stdout.strip() == second
     assert _git(other_submodule, "rev-parse", "HEAD").stdout.strip() == other_second
     assert (submodule / "build-output.bin").stat().st_size == 2 * 1024 * 1024
+
+    git_stage_batch("stop")
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("show")
+    selected = subprocess.run(
+        _git_stage_batch_command("include", "--no-auto-advance"),
+        text=True,
+        capture_output=True,
+        check=False,
+        preexec_fn=_limit_output_file_size,
+    )
+
+    assert selected.returncode == 0, selected.stderr
+    staged_pointers = {
+        _git(functional_repo, "rev-parse", f":vendor/{name}").stdout.strip()
+        for name in ("submodule", "other")
+    }
+    assert second in staged_pointers or other_second in staged_pointers
+
+    git_stage_batch("undo")
+    assert _git(functional_repo, "rev-parse", ":vendor/submodule").stdout.strip() == first
+    assert _git(functional_repo, "rev-parse", ":vendor/other").stdout.strip() == other_first
+    assert (submodule / "build-output.bin").stat().st_size == 2 * 1024 * 1024
+    assert (other_submodule / "build-output.bin").stat().st_size == 2 * 1024 * 1024

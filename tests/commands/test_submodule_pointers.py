@@ -1170,18 +1170,21 @@ def test_discard_submodule_pointer_undo_redo(
     assert _worktree_pointer_diff(repo) == ""
 
 
-def test_submodule_pointer_undo_refuses_moved_worktree(
+def test_submodule_pointer_undo_preserves_moved_worktree(
     submodule_pointer_repo: tuple[Path, str, str],
 ) -> None:
-    """undo should refuse when the nested repository moved after the checkpoint."""
+    """undo should restore the index without moving the nested repository."""
     repo, old_oid, _new_oid = submodule_pointer_repo
 
     command_start(quiet=True)
     command_include(quiet=True)
     _run(["git", "checkout", "--detach", old_oid], cwd=repo / "sub")
 
-    with pytest.raises(CommandError, match="current state has changed"):
-        command_undo()
+    command_undo()
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == old_oid
+    assert _cached_raw_diff(repo) == ""
+    assert _worktree_pointer_diff(repo) == ""
 
 
 def _configure_identity(repo: Path) -> None:

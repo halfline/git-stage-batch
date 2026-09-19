@@ -99,6 +99,7 @@ def _complete_source_replacement_spans(
     ownership: BatchOwnership,
     *,
     allow_unmarked_empty_baseline: bool = False,
+    allow_claimed_live_lines: bool = False,
 ) -> tuple[LineSpan[BatchSourceSpace], LineSpan[BatchSourceSpace]] | None:
     resolved = ownership.resolve()
     if (
@@ -108,13 +109,28 @@ def _complete_source_replacement_spans(
     ):
         return None
     alternative = resolved.replacement_alternatives[0]
+    extra_live_lines = resolved.presence_line_set.difference(alternative.saved_lines)
+    live_start = alternative.live_envelope.start.offset + 1
+    live_end = alternative.live_envelope.end.offset
+    live_source_lines = (
+        LineRanges.from_ranges(((live_start, live_end),))
+        if live_start <= live_end
+        else LineRanges.empty()
+    )
     if (
         alternative.deletion_index != 0
         or alternative.unit_index != 0
         or len(alternative.live_payload) != 1
         or alternative.saved.start.offset != 0
         or alternative.live_envelope.end.offset != len(source_lines)
-        or resolved.presence_line_set != alternative.saved_lines
+        or alternative.saved_lines.difference(resolved.presence_line_set)
+        or (
+            extra_live_lines
+            and (
+                not allow_claimed_live_lines
+                or not extra_live_lines.is_subset_of(live_source_lines)
+            )
+        )
         or alternative.absence_claim.anchor.offset != 0
     ):
         return None
@@ -136,6 +152,60 @@ def _complete_source_replacement_spans(
         ):
             return None
     return alternative.saved, alternative.live_payload[0]
+
+
+def saved_file_after_claimed_live_lines(
+    source_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    working_lines: Sequence[bytes],
+) -> Sequence[bytes] | None:
+    """Replay a complete pair after separate discards removed live-copy lines.
+
+    Require the remaining worktree to equal the stored live version exactly
+    after those claimed lines are omitted. The matching saved lines must be at
+    the same offsets, so the whole saved version is the verified result.
+    """
+    spans = _complete_source_replacement_spans(
+        source_lines, ownership, allow_claimed_live_lines=True
+    )
+    if spans is None:
+        return None
+    saved_span, live_span = spans
+    saved_count = saved_span.end.offset - saved_span.start.offset
+    live_count = live_span.end.offset - live_span.start.offset
+    if saved_count == 0 or saved_count != live_count:
+        return None
+    extra_live_lines = ownership.presence_line_set().difference(
+        LineRanges.from_ranges(
+            (
+                (
+                    saved_span.start.offset + 1,
+                    saved_span.end.offset,
+                ),
+            )
+        )
+    )
+    if not extra_live_lines:
+        return None
+    if len(working_lines) != live_count - extra_live_lines.count():
+        return None
+
+    for source_line in extra_live_lines:
+        offset = source_line - live_span.start.offset - 1
+        if (
+            source_lines[saved_span.start.offset + offset]
+            != source_lines[source_line - 1]
+        ):
+            return None
+
+    working_index = 0
+    for source_index in range(live_span.start.offset, live_span.end.offset):
+        if source_index + 1 in extra_live_lines:
+            continue
+        if source_lines[source_index] != working_lines[working_index]:
+            return None
+        working_index += 1
+    return LineRangeView(source_lines, saved_span.start.offset, saved_span.end.offset)
 
 
 def _leading_source_replacement_spans(

@@ -231,6 +231,10 @@ def _requires_explicit_added_side_alternative(
             continue
         if no_edge_overlap:
             return True
+        if destination_has_file and not baseline_file_exists:
+            # The existing batch source can already contain the broader live
+            # line. Keep the shortened worktree version as a separate choice.
+            return True
         if replacement_line not in working_line and (
             destination_has_file or not baseline_file_exists
         ):

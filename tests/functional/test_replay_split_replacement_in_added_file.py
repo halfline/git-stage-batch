@@ -93,3 +93,58 @@ def test_split_wrapped_call_replays_to_exact_added_file(functional_repo):
     replay = git_stage_batch("apply", "--from", "stable-output", check=False)
     assert replay.returncode == 0, replay.stderr
     assert path.read_text() == target
+
+
+def test_split_replacement_and_disjoint_additions_replay_together(functional_repo):
+    """An added-file replacement must replay alongside separate owned lines."""
+    path = functional_repo / "supervisor.rs"
+    target = (
+        "use std::collections::HashMap;\n"
+        "struct Running;\n"
+        "impl Running {\n"
+        "    fn stop(&self) {}\n"
+        "    fn healthy(&self) -> bool { true }\n"
+        "}\n"
+        "fn main() {\n"
+        "    let mut running = HashMap::<u32, Running>::new();\n"
+        "    running.insert(1, Running);\n"
+        "}\n"
+    )
+    predecessor = (
+        "struct Running;\n"
+        "impl Running {\n"
+        "    fn stop(&self) {}\n"
+        "}\n"
+        "fn main() {\n"
+        "    let running = Running;\n"
+        "    running.stop();\n"
+        "}\n"
+    )
+    path.write_text(target)
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("new", "multi-output")
+
+    view = git_stage_batch("show", "--file", path.name, "--page", "all").stdout
+    body_start = _display_id_for_text(view, "let mut running = HashMap")
+    body_end = _display_id_for_text(view, "running.insert")
+    replacement = git_stage_batch(
+        "discard", "--to", "multi-output", "--line",
+        f"{body_start}-{body_end}", "--as-stdin", "--no-auto-advance",
+        input_text="    let running = Running;\n    running.stop();\n",
+        check=False,
+    )
+    assert replacement.returncode == 0, replacement.stderr
+
+    view = git_stage_batch("show", "--file", path.name, "--page", "all").stdout
+    import_line = _display_id_for_text(view, "use std::collections::HashMap")
+    git_stage_batch("discard", "--to", "multi-output", "--line", str(import_line), "--no-auto-advance")
+
+    view = git_stage_batch("show", "--file", path.name, "--page", "all").stdout
+    helper_line = _display_id_for_text(view, "fn healthy")
+    git_stage_batch("discard", "--to", "multi-output", "--line", str(helper_line), "--no-auto-advance")
+    assert path.read_text() == predecessor
+
+    replay = git_stage_batch("apply", "--from", "multi-output", "--file", path.name, check=False)
+    assert replay.returncode == 0, replay.stderr
+    assert path.read_text() == target

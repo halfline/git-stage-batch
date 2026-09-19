@@ -75,6 +75,7 @@ from ..complete_source_replacement import (
     acquire_source_replacement_replay_mapping,
     changes_from_complete_source_replacement,
     changes_from_leading_source_replacement,
+    saved_file_after_claimed_live_lines,
     unique_live_alternative_span,
 )
 from ..ownership.resolved_presence_alternatives import (
@@ -1019,6 +1020,12 @@ def _merge_batch_acquired_line_chunks(
 ) -> Iterator[bytes]:
     """Merge acquired normalized line sequences and yield normalized chunks."""
     _validate_resolution_shape(resolution)
+    saved_file = saved_file_after_claimed_live_lines(
+        source_lines, ownership, working_lines
+    )
+    if saved_file is not None:
+        yield from saved_file
+        return
     complete_changes = changes_from_complete_source_replacement(
         source_lines,
         ownership,

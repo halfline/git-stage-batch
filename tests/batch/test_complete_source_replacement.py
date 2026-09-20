@@ -6,6 +6,7 @@ from git_stage_batch.batch.complete_source_replacement import (
     promote_untracked_presence_to_complete_source_replacement,
     refresh_complete_source_replacement,
     resolve_complete_source_replacement,
+    saved_file_after_claimed_live_lines,
 )
 from git_stage_batch.batch.file_state import SourceBoundOwnership
 from git_stage_batch.batch.merge.merge import (
@@ -200,6 +201,32 @@ def test_complete_source_replacement_owns_only_changed_lines() -> None:
                 b"new value\n",
                 b"tail\n",
             )
+
+
+def test_claimed_live_line_requires_exact_remaining_preimage() -> None:
+    """A later claim within the live copy restores only a verified saved file."""
+    saved = (b"head\n", b"helper\n", b"new\n", b"tail\n")
+    live = (b"head\n", b"helper\n", b"old\n", b"tail\n")
+    with LineBuffer.from_chunks((*saved, *live)) as source_lines:
+        complete_ownership = _complete_ownership(
+            "file.txt", source_lines, saved_line_count=len(saved)
+        ).value
+        ownership = BatchOwnership.from_presence_lines(
+            ["1-4", "6"],
+            complete_ownership.deletions,
+            replacement_units=complete_ownership.replacement_units,
+        )
+        result = saved_file_after_claimed_live_lines(
+            source_lines, ownership, (b"head\n", b"old\n", b"tail\n")
+        )
+        assert result is not None
+        assert tuple(result) == saved
+        assert (
+            saved_file_after_claimed_live_lines(
+                source_lines, ownership, (b"head\n", b"changed\n", b"tail\n")
+            )
+            is None
+        )
 
 
 def test_complete_source_one_sided_changes_remain_atomic() -> None:

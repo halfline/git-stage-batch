@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Hunk-by-hunk and line-by-line staging for git">
+        <meta name="description" content="Fine-grained Git staging and deterministic draft-history refinement">
       
       
         <meta name="author" content="Ray Strode">
@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -525,6 +525,34 @@
     
   
     Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
   
 
     
@@ -1372,102 +1400,224 @@ the project <code>.gitignore</code>.</p>
 <li><code>commit-unstaged-changes</code> for splitting unstaged work into one or more commits</li>
 <li><code>decompose-and-commit-unstaged-changes</code> for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series</li>
+<li><code>publish-unpushed-commits</code> for turning a clean unpublished commit range into
+  ready-for-review GitHub pull requests or GitLab merge requests, including
+  provider-native same-repository stacks and cross-fork publication</li>
+<li><code>refine-commit-messages</code> for auditing and rewording messages in an existing
+  series without changing any patch or commit boundary</li>
+<li><code>refine-history</code> for splitting, rewording, and integrating commits in an
+  existing local draft series after an optional base or its tracked upstream</li>
 </ul>
-<p>The regular commit skills stage the current working tree into new commits. The
-decomposition skill may rewrite commits it just created while polishing a local
-draft series, but it is not intended to rewrite shared or protected branch
-history.</p>
+<p>The regular commit skills stage the current working tree into new commits.
+The decomposition skill hands its rebuilt series to <code>refine-history</code> for the
+final boundary rewrite, and <code>refine-history</code> delegates its final prose pass to
+<code>refine-commit-messages</code>. You can invoke the refinement and publication
+workflows directly:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-commit-messages BASE_SHA&quot;</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-commit-messages audit BASE_SHA&quot;</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-commit-messages resume&quot;</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-history&quot;</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-history BASE_SHA&quot;</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-history audit&quot;</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-history audit BASE_SHA&quot;</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>claude<span class="w"> </span><span class="s2">&quot;/refine-history resume&quot;</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>claude<span class="w"> </span><span class="s2">&quot;/publish-unpushed-commits&quot;</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>claude<span class="w"> </span><span class="s2">&quot;/publish-unpushed-commits draft&quot;</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>claude<span class="w"> </span><span class="s2">&quot;/publish-unpushed-commits audit&quot;</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>claude<span class="w"> </span><span class="s2">&quot;/publish-unpushed-commits resume&quot;</span>
+</span></code></pre></div>
+<p>The default forms of both refinement skills require a clean, non-empty, linear
+unpublished range or an explicitly verified force-push review head, and refuse
+protected or ambiguously published history. The review-head exception permits
+only a local rewrite and neither performs nor authorizes a push. Message
+refinement requires an explicit base; history refinement can use the current
+branch's tracked upstream. Message refinement rewords by default and proves
+every patch, boundary, tree, author, committer, and series position is
+unchanged. Rewritten cryptographic signatures are removed and reported because
+they cannot remain valid. Explicit audit forms may inspect blocked history
+because scan and validation do not update refs or commits. The <code>resume</code> forms
+use the product rewrite checkpoint and its exact next action.</p>
+<p>For one unambiguous adjacent two-commit squash, adjacent two-commit swap, or
+complete message replacement, <code>refine-history</code> can use a targeted exact mode.
+It still scans, validates, checks live mutation safety, applies, and verifies
+the selected transformation, but it does not claim to have audited the
+untouched series. Broader cleanup requests use the full semantic audit.</p>
+<p>Publication is ready for review by default. The explicit <code>draft</code> form keeps all
+new review requests in draft status, <code>audit</code> plans without publishing, and
+<code>resume</code> continues the strict publication checkpoint. The skill uses GitHub's
+native stack relationship or GitLab's recognized target-branch chain for
+eligible dependent branches in one repository. It uses ordinary review
+requests for a singleton, when native stacks are unavailable, and when head
+branches live in a fork. It stops after verified publication and never merges.</p>
+<p>For eligible groups, the skill probes GitHub's Stacked Pull Requests REST API
+and creates the relationship directly after the pull requests exist. It falls
+back to ordinary pull requests when that API is unavailable; no GitHub CLI
+extension is required. See GitHub's
+<a href="https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-rest-and-graphql-apis">Stacked Pull Requests API documentation</a>
+for repository availability and endpoint details.</p>
+<p>GitLab recognizes same-project stacked merge requests from their target-branch
+chain on GitLab 19.1 and newer. Publication creates and verifies that chain with
+host-pinned <code>glab api</code> calls rather than adopting <code>glab stack</code>, whose
+experimental workflow also owns commit and branch construction. GitLab
+publication requires an authenticated <code>glab</code> CLI for the selected root-hosted
+GitLab URL and records numeric source and target project identities. See the
+<a href="https://docs.gitlab.com/user/project/merge_requests/reviews/stacked_merge_requests/">GitLab stacked merge request documentation</a>
+for the server-side relationship and limits.</p>
+<p>Selecting the decomposition or publication skill installs both refinement
+dependencies, and selecting <code>refine-history</code> installs
+<code>refine-commit-messages</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--filter<span class="w"> </span>decompose-and-commit-unstaged-changes
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--filter<span class="w"> </span>publish-unpushed-commits
+</span></code></pre></div>
 <p>Create or update <code>CLAUDE.md</code> in your repository root:</p>
-<p><div class="language-markdown highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="gu">## Commit Workflow</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="gs">**Commits**</span> should be atomic and well-structured. Each commit should represent one
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>logical step in the project&#39;s development. The goal is not to preserve the exact
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>twists and turns of drafting, but to produce a commit history that tells a clear
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>story of progress.
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>To aid in this endeavor, use the <span class="sb">`git-stage-batch`</span> tool. It provides
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>functionality similar to <span class="sb">`git add -p`</span> in a multi-command flow more suitable for
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>automation.
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="gu">### Staging Process</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="k">1.</span> Run <span class="sb">`git-stage-batch start`</span> to begin the process
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="k">2.</span> For each presented patch hunk, run either:
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">   </span><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch include`</span> (stage this hunk)
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">   </span><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch skip`</span> (skip this hunk for now)
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>   These commands automatically display the next hunk to evaluate. Use
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>   <span class="sb">`--no-auto-advance`</span> when the automation should stop after one action and
-</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>   run <span class="sb">`git-stage-batch show`</span> explicitly before the next bare action.
-</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>
-</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="k">3.</span> Repeatedly run these commands until all hunks relevant to the selected commit
-</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>   are processed, then commit the results.
-</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>
-</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="k">4.</span> Run <span class="sb">`git-stage-batch again`</span> to run through all previously skipped
-</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>   and unprocessed hunks for the next commit.
-</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>
-</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="k">5.</span> Repeat until all commits are in place.
-</span><span id="__span-2-30"><a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>
-</span><span id="__span-2-31"><a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="gu">### Fine-Grained Line Selection</span>
-</span><span id="__span-2-32"><a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>
-</span><span id="__span-2-33"><a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>If a hunk is too coarse and contains multiple orthogonal changes, individual lines
-</span><span id="__span-2-34"><a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>may be included or skipped using:
-</span><span id="__span-2-35"><a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch include --line 1,3,5-7`</span> (stage specific lines)
-</span><span id="__span-2-36"><a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch skip --line 2,4`</span> (skip specific lines)
-</span><span id="__span-2-37"><a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>
-</span><span id="__span-2-38"><a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>Line IDs are shown in the hunk output as <span class="sb">`[#N]`</span> markers.
-</span><span id="__span-2-39"><a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>
-</span><span id="__span-2-40"><a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a><span class="gu">### Commit Messages</span>
-</span><span id="__span-2-41"><a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>
-</span><span id="__span-2-42"><a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>Commit messages should aid <span class="gs">**drive-by reviewers with limited context**</span>. Assume
-</span><span id="__span-2-43"><a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>the reader does not know the project well.
-</span><span id="__span-2-44"><a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a>
-</span><span id="__span-2-45"><a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a><span class="gs">**Format:**</span>
-</span><span id="__span-2-46"><a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a><span class="k">-</span><span class="w"> </span><span class="gs">**First line**</span>: a concise summary with a lowercase prefix (<span class="sb">`module:`</span>, <span class="sb">`cli:`</span>, etc.)
-</span><span id="__span-2-47"><a id="__codelineno-2-47" name="__codelineno-2-47" href="#__codelineno-2-47"></a><span class="k">-</span><span class="w"> </span><span class="gs">**First paragraph**</span>: describe the program&#39;s <span class="gs">**selected state**</span> (what it has or provides)
-</span><span id="__span-2-48"><a id="__codelineno-2-48" name="__codelineno-2-48" href="#__codelineno-2-48"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>If part of a series, reflect the cumulative state after previous commits
-</span><span id="__span-2-49"><a id="__codelineno-2-49" name="__codelineno-2-49" href="#__codelineno-2-49"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Don&#39;t describe the diff, the change, or future goals
-</span><span id="__span-2-50"><a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Second paragraph**</span>: explain the underlying problem
-</span><span id="__span-2-51"><a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Choose perspective: first-person maintainer (internal concerns) or user (external concerns)
-</span><span id="__span-2-52"><a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Focus on <span class="gs">**missing capabilities**</span>, not symptoms
-</span><span id="__span-2-53"><a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Prefer concrete limitations over vague words like &quot;cumbersome&quot; or &quot;better&quot;
-</span><span id="__span-2-54"><a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Third paragraph**</span>: describe how this commit addresses the problem
-</span><span id="__span-2-55"><a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Be precise about scope (if it only improves one aspect, say so)
-</span><span id="__span-2-56"><a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Use &quot;This commit addresses that by...&quot;
-</span><span id="__span-2-57"><a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>If part of a series, use progression words: &quot;begins&quot;, &quot;continues&quot;, &quot;completes&quot;
-</span><span id="__span-2-58"><a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>
-</span><span id="__span-2-59"><a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a><span class="gs">**Key rules:**</span>
-</span><span id="__span-2-60"><a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a><span class="k">-</span><span class="w"> </span>Write in <span class="gs">**present tense**</span> about the selected state (&quot;has&quot;, not &quot;used to have&quot;)
-</span><span id="__span-2-61"><a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a><span class="k">-</span><span class="w"> </span>Use &quot;this&quot; only when referring to the commit itself
-</span><span id="__span-2-62"><a id="__codelineno-2-62" name="__codelineno-2-62" href="#__codelineno-2-62"></a><span class="k">-</span><span class="w"> </span>Don&#39;t overstate impact or use words like &quot;comprehensive&quot; or &quot;crucial&quot;
-</span><span id="__span-2-63"><a id="__codelineno-2-63" name="__codelineno-2-63" href="#__codelineno-2-63"></a>
-</span><span id="__span-2-64"><a id="__codelineno-2-64" name="__codelineno-2-64" href="#__codelineno-2-64"></a><span class="gs">**Anti-patterns to avoid:**</span>
-</span><span id="__span-2-65"><a id="__codelineno-2-65" name="__codelineno-2-65" href="#__codelineno-2-65"></a>
-</span><span id="__span-2-66"><a id="__codelineno-2-66" name="__codelineno-2-66" href="#__codelineno-2-66"></a>❌ First paragraph describes the change:
+<p><div class="language-markdown highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="gu">## Commit Workflow</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="gs">**Commits**</span> should be atomic and well-structured. Each commit should represent one
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>logical step in the project&#39;s development. The goal is not to preserve the exact
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>twists and turns of drafting, but to produce a commit history that tells a clear
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>story of progress.
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>To aid in this endeavor, use the <span class="sb">`git-stage-batch`</span> tool. It provides
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>functionality similar to <span class="sb">`git add -p`</span> in a multi-command flow more suitable for
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>automation.
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="gu">### Staging Process</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="k">1.</span> Run <span class="sb">`git-stage-batch start`</span> to begin the process
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="k">2.</span> For each presented patch hunk, run either:
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">   </span><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch include`</span> (stage this hunk)
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">   </span><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch skip`</span> (skip this hunk for now)
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>   These commands automatically display the next hunk to evaluate. Use
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>   <span class="sb">`--no-auto-advance`</span> when the automation should stop after one action and
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>   run <span class="sb">`git-stage-batch show`</span> explicitly before the next bare action.
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="k">3.</span> Repeatedly run these commands until all hunks relevant to the selected commit
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>   are processed, then commit the results.
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="k">4.</span> Run <span class="sb">`git-stage-batch again`</span> to run through all previously skipped
+</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>   and unprocessed hunks for the next commit.
+</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>
+</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="k">5.</span> Repeat until all commits are in place.
+</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>
+</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="gu">### Fine-Grained Line Selection</span>
+</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>
+</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>If a hunk is too coarse and contains multiple orthogonal changes, individual lines
+</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>may be included or skipped using:
+</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch include --line 1,3,5-7`</span> (stage specific lines)
+</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="k">-</span><span class="w"> </span><span class="sb">`git-stage-batch skip --line 2,4`</span> (skip specific lines)
+</span><span id="__span-4-37"><a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>
+</span><span id="__span-4-38"><a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a>Line IDs are shown in the hunk output as <span class="sb">`[#N]`</span> markers.
+</span><span id="__span-4-39"><a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a>
+</span><span id="__span-4-40"><a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a><span class="gu">### Commit Messages</span>
+</span><span id="__span-4-41"><a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a>
+</span><span id="__span-4-42"><a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>Commit messages should aid competent developers who do not know this part of
+</span><span id="__span-4-43"><a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>the codebase. Explain local roles, shared context, and unfamiliar terms where
+</span><span id="__span-4-44"><a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a>they first matter; later messages
+</span><span id="__span-4-45"><a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>may rely on that explanation. Keep useful repetition, but make it a shorter
+</span><span id="__span-4-46"><a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>reminder rather than repeating the detail. Add new detail where it becomes
+</span><span id="__span-4-47"><a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a>relevant. A standalone commit still needs its own context.
+</span><span id="__span-4-48"><a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a>
+</span><span id="__span-4-49"><a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a>State, problem, and solution are questions to answer, not paragraphs to fill.
+</span><span id="__span-4-50"><a id="__codelineno-4-50" name="__codelineno-4-50" href="#__codelineno-4-50"></a>Combine them when separation repeats the same fact. A mechanical cleanup may
+</span><span id="__span-4-51"><a id="__codelineno-4-51" name="__codelineno-4-51" href="#__codelineno-4-51"></a>need one sentence; a one-line correctness fix may need several paragraphs.
+</span><span id="__span-4-52"><a id="__codelineno-4-52" name="__codelineno-4-52" href="#__codelineno-4-52"></a>Keep narrative present tense and declarative body prose at any length.
+</span><span id="__span-4-53"><a id="__codelineno-4-53" name="__codelineno-4-53" href="#__codelineno-4-53"></a>
+</span><span id="__span-4-54"><a id="__codelineno-4-54" name="__codelineno-4-54" href="#__codelineno-4-54"></a><span class="gs">**Format:**</span>
+</span><span id="__span-4-55"><a id="__codelineno-4-55" name="__codelineno-4-55" href="#__codelineno-4-55"></a><span class="k">-</span><span class="w"> </span><span class="gs">**First line**</span>: a concise summary with a lowercase prefix (<span class="sb">`module:`</span>, <span class="sb">`cli:`</span>, etc.)
+</span><span id="__span-4-56"><a id="__codelineno-4-56" name="__codelineno-4-56" href="#__codelineno-4-56"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Relevant state**</span>: establish what the program has or provides when needed
+</span><span id="__span-4-57"><a id="__codelineno-4-57" name="__codelineno-4-57" href="#__codelineno-4-57"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>If recent work established that state, briefly recount the change in
+</span><span id="__span-4-58"><a id="__codelineno-4-58" name="__codelineno-4-58" href="#__codelineno-4-58"></a>    past tense and loosely when it happened
+</span><span id="__span-4-59"><a id="__codelineno-4-59" name="__codelineno-4-59" href="#__codelineno-4-59"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Add a temporal cue only where it clarifies time-dependent behavior;
+</span><span id="__span-4-60"><a id="__codelineno-4-60" name="__codelineno-4-60" href="#__codelineno-4-60"></a>    timeless background may already be clear from the project or component
+</span><span id="__span-4-61"><a id="__codelineno-4-61" name="__codelineno-4-61" href="#__codelineno-4-61"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Let &quot;This commit ...&quot; mark the transition
+</span><span id="__span-4-62"><a id="__codelineno-4-62" name="__codelineno-4-62" href="#__codelineno-4-62"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Use &quot;already&quot; selectively for a capability the patch builds on
+</span><span id="__span-4-63"><a id="__codelineno-4-63" name="__codelineno-4-63" href="#__codelineno-4-63"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Match the state after the previous commit without an unrelated recap
+</span><span id="__span-4-64"><a id="__codelineno-4-64" name="__codelineno-4-64" href="#__codelineno-4-64"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Combine the state with the reason or change when that avoids repetition
+</span><span id="__span-4-65"><a id="__codelineno-4-65" name="__codelineno-4-65" href="#__codelineno-4-65"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Reason**</span>: explain the actual reason at the smallest useful scope
+</span><span id="__span-4-66"><a id="__codelineno-4-66" name="__codelineno-4-66" href="#__codelineno-4-66"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Choose perspective: first-person maintainer (internal concerns) or user (external concerns)
+</span><span id="__span-4-67"><a id="__codelineno-4-67" name="__codelineno-4-67" href="#__codelineno-4-67"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Internal simplification or clarification of a contract can be sufficient
+</span><span id="__span-4-68"><a id="__codelineno-4-68" name="__codelineno-4-68" href="#__codelineno-4-68"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Prefer concrete limitations over vague words like &quot;cumbersome&quot; or &quot;better&quot;
+</span><span id="__span-4-69"><a id="__codelineno-4-69" name="__codelineno-4-69" href="#__codelineno-4-69"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Change**</span>: describe precisely what this commit changes
+</span><span id="__span-4-70"><a id="__codelineno-4-70" name="__codelineno-4-70" href="#__codelineno-4-70"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Be precise about scope (if it only improves one aspect, say so)
+</span><span id="__span-4-71"><a id="__codelineno-4-71" name="__codelineno-4-71" href="#__codelineno-4-71"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Prefer &quot;This commit ...&quot; wherever the explanation turns to the change
+</span><span id="__span-4-72"><a id="__codelineno-4-72" name="__codelineno-4-72" href="#__codelineno-4-72"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Verify that the patch makes behavior run before claiming it begins
+</span><span id="__span-4-73"><a id="__codelineno-4-73" name="__codelineno-4-73" href="#__codelineno-4-73"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>A new helper or representation is a valid outcome before callers adopt it
+</span><span id="__span-4-74"><a id="__codelineno-4-74" name="__codelineno-4-74" href="#__codelineno-4-74"></a><span class="k">-</span><span class="w"> </span><span class="gs">**Series context**</span>: retain a prerequisite, design choice, consumer contract,
+</span><span id="__span-4-75"><a id="__codelineno-4-75" name="__codelineno-4-75" href="#__codelineno-4-75"></a>  or scope deliberately left unfinished when it explains the current patch
+</span><span id="__span-4-76"><a id="__codelineno-4-76" name="__codelineno-4-76" href="#__codelineno-4-76"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Identify the particular fact about this patch that each reference explains
+</span><span id="__span-4-77"><a id="__codelineno-4-77" name="__codelineno-4-77" href="#__codelineno-4-77"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Remove references that only say what happens elsewhere in the series
+</span><span id="__span-4-78"><a id="__codelineno-4-78" name="__codelineno-4-78" href="#__codelineno-4-78"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Describe a useful relationship wherever it belongs, without repetition
+</span><span id="__span-4-79"><a id="__codelineno-4-79" name="__codelineno-4-79" href="#__codelineno-4-79"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Verify references against actual patches and describe future work as future
+</span><span id="__span-4-80"><a id="__codelineno-4-80" name="__codelineno-4-80" href="#__codelineno-4-80"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Being first or last creates no introduction or conclusion duty
+</span><span id="__span-4-81"><a id="__codelineno-4-81" name="__codelineno-4-81" href="#__codelineno-4-81"></a><span class="w">  </span><span class="k">-</span><span class="w"> </span>Omit unrelated recaps, next-item announcements, and ceremonial conclusions
+</span><span id="__span-4-82"><a id="__codelineno-4-82" name="__codelineno-4-82" href="#__codelineno-4-82"></a>
+</span><span id="__span-4-83"><a id="__codelineno-4-83" name="__codelineno-4-83" href="#__codelineno-4-83"></a>A representation change can explain how it enables a later consumer
+</span><span id="__span-4-84"><a id="__codelineno-4-84" name="__codelineno-4-84" href="#__codelineno-4-84"></a>simplification. An unused-argument cleanup should not announce an unrelated
+</span><span id="__span-4-85"><a id="__codelineno-4-85" name="__codelineno-4-85" href="#__codelineno-4-85"></a>GPU-copy fix merely because that patch comes next.
+</span><span id="__span-4-86"><a id="__codelineno-4-86" name="__codelineno-4-86" href="#__codelineno-4-86"></a>
+</span><span id="__span-4-87"><a id="__codelineno-4-87" name="__codelineno-4-87" href="#__codelineno-4-87"></a><span class="gs">**Key rules:**</span>
+</span><span id="__span-4-88"><a id="__codelineno-4-88" name="__codelineno-4-88" href="#__codelineno-4-88"></a><span class="k">-</span><span class="w"> </span>Use imperative voice only in the summary. Every body sentence is an
+</span><span id="__span-4-89"><a id="__codelineno-4-89" name="__codelineno-4-89" href="#__codelineno-4-89"></a>  indicative, declarative statement; never instruct the reader.
+</span><span id="__span-4-90"><a id="__codelineno-4-90" name="__codelineno-4-90" href="#__codelineno-4-90"></a><span class="k">-</span><span class="w"> </span>Keep narrative present tense about the selected state (&quot;has&quot;, not &quot;used to
+</span><span id="__span-4-91"><a id="__codelineno-4-91" name="__codelineno-4-91" href="#__codelineno-4-91"></a>  have&quot;) and the change (&quot;This commit removes ...&quot;, not &quot;Remove ...&quot;).
+</span><span id="__span-4-92"><a id="__codelineno-4-92" name="__codelineno-4-92" href="#__codelineno-4-92"></a><span class="k">-</span><span class="w"> </span>Prefer concrete subsystem prefixes when prefixes are free-form; generic
+</span><span id="__span-4-93"><a id="__codelineno-4-93" name="__codelineno-4-93" href="#__codelineno-4-93"></a>  <span class="sb">`fix:`</span> and <span class="sb">`refactor:`</span> labels usually add little signal. Follow Conventional
+</span><span id="__span-4-94"><a id="__codelineno-4-94" name="__codelineno-4-94" href="#__codelineno-4-94"></a>  Commits or another declared type-based format when the repository requires it.
+</span><span id="__span-4-95"><a id="__codelineno-4-95" name="__codelineno-4-95" href="#__codelineno-4-95"></a><span class="k">-</span><span class="w"> </span>Use facts supported by the patch or repository evidence. Do not invent
+</span><span id="__span-4-96"><a id="__codelineno-4-96" name="__codelineno-4-96" href="#__codelineno-4-96"></a>  reported failures, benchmarks, testing history, or rejected alternatives.
+</span><span id="__span-4-97"><a id="__codelineno-4-97" name="__codelineno-4-97" href="#__codelineno-4-97"></a><span class="k">-</span><span class="w"> </span>Put series-wide overviews and recaps in the review request or cover letter.
+</span><span id="__span-4-98"><a id="__codelineno-4-98" name="__codelineno-4-98" href="#__codelineno-4-98"></a><span class="k">-</span><span class="w"> </span>Use &quot;Right now, ...&quot;, &quot;Currently, ...&quot;, or &quot;As things stand, ...&quot; when it
+</span><span id="__span-4-99"><a id="__codelineno-4-99" name="__codelineno-4-99" href="#__codelineno-4-99"></a>  resolves a temporal ambiguity, not automatically in the first paragraph.
+</span><span id="__span-4-100"><a id="__codelineno-4-100" name="__codelineno-4-100" href="#__codelineno-4-100"></a>  Leave timeless background and lasting contracts unqualified. If the
+</span><span id="__span-4-101"><a id="__codelineno-4-101" name="__codelineno-4-101" href="#__codelineno-4-101"></a>  ambiguity is in the problem paragraph, anchor that claim instead.
+</span><span id="__span-4-102"><a id="__codelineno-4-102" name="__codelineno-4-102" href="#__codelineno-4-102"></a>  Avoid implying that every background fact changes afterward with a
+</span><span id="__span-4-103"><a id="__codelineno-4-103" name="__codelineno-4-103" href="#__codelineno-4-103"></a>  before/after clause. Vary naturally without repeating cues throughout.
+</span><span id="__span-4-104"><a id="__codelineno-4-104" name="__codelineno-4-104" href="#__codelineno-4-104"></a><span class="k">-</span><span class="w"> </span>Use &quot;already&quot; for a useful contrast, not merely because a capability
+</span><span id="__span-4-105"><a id="__codelineno-4-105" name="__codelineno-4-105" href="#__codelineno-4-105"></a>  exists before the patch. If a recent change established the relevant
+</span><span id="__span-4-106"><a id="__codelineno-4-106" name="__codelineno-4-106" href="#__codelineno-4-106"></a>  state, recount it in past tense and attribute it to earlier work:
+</span><span id="__span-4-107"><a id="__codelineno-4-107" name="__codelineno-4-107" href="#__codelineno-4-107"></a>  &quot;Recent commits moved ...&quot;. Describing that past change differs from
+</span><span id="__span-4-108"><a id="__codelineno-4-108" name="__codelineno-4-108" href="#__codelineno-4-108"></a>  describing the existing state in present tense. Avoid &quot;now&quot; alone, which
+</span><span id="__span-4-109"><a id="__codelineno-4-109" name="__codelineno-4-109" href="#__codelineno-4-109"></a>  can imply the current commit made that change. Verify claims against
+</span><span id="__span-4-110"><a id="__codelineno-4-110" name="__codelineno-4-110" href="#__codelineno-4-110"></a>  the previous commit, not later work.
+</span><span id="__span-4-111"><a id="__codelineno-4-111" name="__codelineno-4-111" href="#__codelineno-4-111"></a><span class="k">-</span><span class="w"> </span>Use &quot;commit&quot; and &quot;previous commit&quot; in message prose, not &quot;revision&quot; or
+</span><span id="__span-4-112"><a id="__codelineno-4-112" name="__codelineno-4-112" href="#__codelineno-4-112"></a>  &quot;parent commit&quot;.
+</span><span id="__span-4-113"><a id="__codelineno-4-113" name="__codelineno-4-113" href="#__codelineno-4-113"></a><span class="k">-</span><span class="w"> </span>Use present tense for the change (&quot;This commit returns ...&quot;) and future
+</span><span id="__span-4-114"><a id="__codelineno-4-114" name="__codelineno-4-114" href="#__codelineno-4-114"></a>  tense for work in later commits.
+</span><span id="__span-4-115"><a id="__codelineno-4-115" name="__codelineno-4-115" href="#__codelineno-4-115"></a><span class="k">-</span><span class="w"> </span>Make references to future work in the series explicit: &quot;in a later commit&quot;,
+</span><span id="__span-4-116"><a id="__codelineno-4-116" name="__codelineno-4-116" href="#__codelineno-4-116"></a>  &quot;later commits will ...&quot;, or &quot;the final commit will ...&quot;, not bare &quot;later&quot;.
+</span><span id="__span-4-117"><a id="__codelineno-4-117" name="__codelineno-4-117" href="#__codelineno-4-117"></a><span class="k">-</span><span class="w"> </span>Use &quot;this&quot; only when referring to the commit itself
+</span><span id="__span-4-118"><a id="__codelineno-4-118" name="__codelineno-4-118" href="#__codelineno-4-118"></a><span class="k">-</span><span class="w"> </span>Don&#39;t overstate impact or use words like &quot;comprehensive&quot; or &quot;crucial&quot;
+</span><span id="__span-4-119"><a id="__codelineno-4-119" name="__codelineno-4-119" href="#__codelineno-4-119"></a>
+</span><span id="__span-4-120"><a id="__codelineno-4-120" name="__codelineno-4-120" href="#__codelineno-4-120"></a><span class="gs">**Anti-patterns to avoid:**</span>
+</span><span id="__span-4-121"><a id="__codelineno-4-121" name="__codelineno-4-121" href="#__codelineno-4-121"></a>
+</span><span id="__span-4-122"><a id="__codelineno-4-122" name="__codelineno-4-122" href="#__codelineno-4-122"></a>❌ Imperative body sentence:
 </span></code></pre></div>
-This commit adds verbose output to the CLI...
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>✅ First paragraph describes selected state:
+Add verbose output to the CLI.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>✅ Declarative body sentence in narrative present tense:
 </span></code></pre></div>
-The CLI currently provides minimal feedback during operation...
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>❌ Problem is a symptom:
+This commit adds verbose output to the CLI.
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>❌ Problem is a symptom:
 </span></code></pre></div>
 The code is cumbersome to use.
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>✅ Problem is a concrete limitation:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>✅ Problem is a concrete limitation:
 </span></code></pre></div>
 The code requires repeated command invocation and does not provide
 a continuous workflow.
-<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>❌ Solution overstates scope:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>❌ Solution overstates scope:
 </span></code></pre></div>
 This commit solves the discoverability problem.
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>✅ Solution is precise about scope:
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>✅ Solution is precise about scope:
 </span></code></pre></div>
 This commit improves discoverability through the man page by...
-<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>
 </span></code></pre></div></p>
 <h2 id="codex">Codex<a class="headerlink" href="#codex" title="Permanent link">&para;</a></h2>
 <p>If <code>git-stage-batch</code> is available in your environment, you can install the
 bundled Codex commit skills into the current repository:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>codex-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>codex-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
 </span></code></pre></div>
 <p>Omit <code>--filter</code> to install all bundled Codex skills.
 Use <code>--force</code> to replace an existing repo-local copy.</p>
@@ -1481,7 +1631,45 @@ Codex scans the skills automatically from the repository root.</p>
 <li><code>commit-unstaged-changes</code> for splitting unstaged work into one or more commits</li>
 <li><code>decompose-and-commit-unstaged-changes</code> for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series</li>
+<li><code>publish-unpushed-commits</code> for turning a clean unpublished commit range into
+  ready-for-review GitHub pull requests or GitLab merge requests, including
+  provider-native same-repository stacks and cross-fork publication</li>
+<li><code>refine-commit-messages</code> for auditing and rewording messages in an existing
+  series without changing any patch or commit boundary</li>
+<li><code>refine-history</code> for splitting, rewording, and integrating commits in an
+  existing local draft series after an optional base or its tracked upstream</li>
 </ul>
+<p>The decomposition skill uses <code>refine-history</code> for its final committed-series
+rewrite, which delegates its final prose pass to <code>refine-commit-messages</code>.
+Invoke <code>$refine-history</code> with no base to use the tracked upstream, or invoke
+<code>$refine-history BASE_SHA</code> to select an explicit excluded boundary. Add
+<code>audit</code> before the optional base for a read-only report, and use
+<code>$refine-history resume</code> to continue its durable product checkpoint.</p>
+<p>Invoke <code>$refine-commit-messages BASE_SHA</code> directly for a message-only rewrite;
+it rewords by default, while <code>$refine-commit-messages audit BASE_SHA</code> only
+reports findings and proposed messages. Message refinement requires an
+explicit base. Both mutating skills require a clean, linear unpublished range
+or an explicitly verified force-push review head. That exception permits only
+a local rewrite and neither performs nor authorizes a push. Both skills support
+<code>resume</code> and create recovery refs. Message refinement verifies that every patch
+and boundary is unchanged. Full history refinement instead audits every output
+and its plan, runs the exact risk-selected semantic-boundary manifest, and
+completes the final-tip test and build suite.</p>
+<p>For one unambiguous adjacent two-commit squash, adjacent two-commit swap, or
+complete message replacement, <code>refine-history</code> can use a targeted exact mode.
+It still scans, validates, checks live mutation safety, applies, and verifies
+the selected transformation, but it does not claim to have audited the
+untouched series. Broader cleanup requests use the full semantic audit.</p>
+<p>Invoke <code>$publish-unpushed-commits</code> to publish ready-for-review pull requests or
+merge requests, or add <code>draft</code>, <code>audit</code>, or <code>resume</code>. The skill chooses a native
+GitHub stack relationship or GitLab's recognized target-branch chain only when a
+dependent group and repository support it; singletons, unavailable stacks, and
+forks use ordinary review requests with explicit dependency prose. Publication
+never includes merging.</p>
+<p>Selecting <code>decompose-and-commit-unstaged-changes</code> or
+<code>publish-unpushed-commits</code> automatically installs both refinement
+dependencies. Selecting <code>refine-history</code> automatically installs
+<code>refine-commit-messages</code>.</p>
 <p>Installing <code>codex-skills</code> also writes a shared internal drafter brief to
 <code>.agents/internal/commit-message-drafter.md</code> for those skills to use when
 they spawn a fresh-context subagent.</p>
@@ -1489,82 +1677,82 @@ they spawn a fresh-context subagent.</p>
 <p>Create or update <code>.cursorrules</code> in your repository root with the same instructions as above.</p>
 <h2 id="continuedev">Continue.dev<a class="headerlink" href="#continuedev" title="Permanent link">&para;</a></h2>
 <p>Create or update <code>.continuerules</code>:</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># git-stage-batch workflow</span>
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">staging</span><span class="p">:</span>
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">tool</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git-stage-batch</span>
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">workflow</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="no">Use git-stage-batch for atomic commits:</span>
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="no">1. Start: git-stage-batch start</span>
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="no">2. Process hunks:</span>
-</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">       </span><span class="no">- git-stage-batch include (stage)</span>
-</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">       </span><span class="no">- git-stage-batch skip (skip for now)</span>
-</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">       </span><span class="no">- git-stage-batch include --line 1,3,5-7 (specific lines)</span>
-</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">    </span><span class="no">3. Commit when done: git commit -m &quot;...&quot;</span>
-</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">    </span><span class="no">4. Review skipped: git-stage-batch again</span>
-</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">    </span><span class="no">5. Repeat</span>
-</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>
-</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="w">    </span><span class="no">Line IDs shown as [#N] in output.</span>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># git-stage-batch workflow</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">staging</span><span class="p">:</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">tool</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git-stage-batch</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span><span class="nt">workflow</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="no">Use git-stage-batch for atomic commits:</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="no">1. Start: git-stage-batch start</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="no">2. Process hunks:</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">       </span><span class="no">- git-stage-batch include (stage)</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">       </span><span class="no">- git-stage-batch skip (skip for now)</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">       </span><span class="no">- git-stage-batch include --line 1,3,5-7 (specific lines)</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="no">3. Commit when done: git commit -m &quot;...&quot;</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span><span class="no">4. Review skipped: git-stage-batch again</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span><span class="no">5. Repeat</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">    </span><span class="no">Line IDs shown as [#N] in output.</span>
 </span></code></pre></div>
 <h2 id="example-ai-workflow">Example AI Workflow<a class="headerlink" href="#example-ai-workflow" title="Permanent link">&para;</a></h2>
 <p>Here's what an AI assistant would do:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a># AI makes changes to multiple files
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a># Now needs to create atomic commits
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a># First commit: Authentication changes
-</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>git-stage-batch start
-</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a># Shows: auth.py hunk
-</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>git-stage-batch include
-</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a># Shows: database.py hunk
-</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>git-stage-batch skip
-</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a># Shows: config.py hunk (auth-related)
-</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>git-stage-batch include
-</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a># Shows: utils.py hunk
-</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>git-stage-batch skip
-</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a># No more hunks
-</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>
-</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>git commit -m &quot;auth: Implement OAuth2 authentication
-</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>
-</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>The authentication system currently uses basic auth with password hashing.
-</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>
-</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>OAuth2 is required for integration with third-party services and provides
-</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>better security through token-based authentication.
-</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>
-</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>This commit addresses that by implementing OAuth2 flow with token refresh
-</span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>and adding configuration for OAuth providers.&quot;
-</span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>
-</span><span id="__span-11-26"><a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a># Second commit: Database changes
-</span><span id="__span-11-27"><a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a>git-stage-batch again
-</span><span id="__span-11-28"><a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a># Shows: database.py hunk (skipped earlier)
-</span><span id="__span-11-29"><a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a>git-stage-batch include
-</span><span id="__span-11-30"><a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a># Shows: utils.py hunk
-</span><span id="__span-11-31"><a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a>git-stage-batch skip
-</span><span id="__span-11-32"><a id="__codelineno-11-32" name="__codelineno-11-32" href="#__codelineno-11-32"></a># No more hunks
-</span><span id="__span-11-33"><a id="__codelineno-11-33" name="__codelineno-11-33" href="#__codelineno-11-33"></a>
-</span><span id="__span-11-34"><a id="__codelineno-11-34" name="__codelineno-11-34" href="#__codelineno-11-34"></a>git commit -m &quot;database: Add connection pooling
-</span><span id="__span-11-35"><a id="__codelineno-11-35" name="__codelineno-11-35" href="#__codelineno-11-35"></a>
-</span><span id="__span-11-36"><a id="__codelineno-11-36" name="__codelineno-11-36" href="#__codelineno-11-36"></a>The database module creates a new connection for each query.
-</span><span id="__span-11-37"><a id="__codelineno-11-37" name="__codelineno-11-37" href="#__codelineno-11-37"></a>
-</span><span id="__span-11-38"><a id="__codelineno-11-38" name="__codelineno-11-38" href="#__codelineno-11-38"></a>This leads to performance issues under load and exhausts connection limits
-</span><span id="__span-11-39"><a id="__codelineno-11-39" name="__codelineno-11-39" href="#__codelineno-11-39"></a>when handling conselected requests.
-</span><span id="__span-11-40"><a id="__codelineno-11-40" name="__codelineno-11-40" href="#__codelineno-11-40"></a>
-</span><span id="__span-11-41"><a id="__codelineno-11-41" name="__codelineno-11-41" href="#__codelineno-11-41"></a>This commit addresses that by implementing connection pooling with configurable
-</span><span id="__span-11-42"><a id="__codelineno-11-42" name="__codelineno-11-42" href="#__codelineno-11-42"></a>pool size and timeout settings.&quot;
-</span><span id="__span-11-43"><a id="__codelineno-11-43" name="__codelineno-11-43" href="#__codelineno-11-43"></a>
-</span><span id="__span-11-44"><a id="__codelineno-11-44" name="__codelineno-11-44" href="#__codelineno-11-44"></a># Continue until all changes are committed...
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a># AI makes changes to multiple files
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a># Now needs to create atomic commits
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a># First commit: Authentication changes
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>git-stage-batch start
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a># Shows: auth.py hunk
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>git-stage-batch include
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a># Shows: database.py hunk
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>git-stage-batch skip
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a># Shows: config.py hunk (auth-related)
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>git-stage-batch include
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a># Shows: utils.py hunk
+</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>git-stage-batch skip
+</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a># No more hunks
+</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>
+</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>git commit -m &quot;auth: Implement OAuth2 authentication
+</span><span id="__span-13-17"><a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a>
+</span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>Right now, the authentication system uses basic auth with password hashing.
+</span><span id="__span-13-19"><a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>
+</span><span id="__span-13-20"><a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a>OAuth2 is required for integration with third-party services and provides
+</span><span id="__span-13-21"><a id="__codelineno-13-21" name="__codelineno-13-21" href="#__codelineno-13-21"></a>better security through token-based authentication.
+</span><span id="__span-13-22"><a id="__codelineno-13-22" name="__codelineno-13-22" href="#__codelineno-13-22"></a>
+</span><span id="__span-13-23"><a id="__codelineno-13-23" name="__codelineno-13-23" href="#__codelineno-13-23"></a>This commit addresses that by implementing OAuth2 flow with token refresh
+</span><span id="__span-13-24"><a id="__codelineno-13-24" name="__codelineno-13-24" href="#__codelineno-13-24"></a>and adding configuration for OAuth providers.&quot;
+</span><span id="__span-13-25"><a id="__codelineno-13-25" name="__codelineno-13-25" href="#__codelineno-13-25"></a>
+</span><span id="__span-13-26"><a id="__codelineno-13-26" name="__codelineno-13-26" href="#__codelineno-13-26"></a># Second commit: Database changes
+</span><span id="__span-13-27"><a id="__codelineno-13-27" name="__codelineno-13-27" href="#__codelineno-13-27"></a>git-stage-batch again
+</span><span id="__span-13-28"><a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a># Shows: database.py hunk (skipped earlier)
+</span><span id="__span-13-29"><a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a>git-stage-batch include
+</span><span id="__span-13-30"><a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a># Shows: utils.py hunk
+</span><span id="__span-13-31"><a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a>git-stage-batch skip
+</span><span id="__span-13-32"><a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a># No more hunks
+</span><span id="__span-13-33"><a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a>
+</span><span id="__span-13-34"><a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a>git commit -m &quot;database: Add connection pooling
+</span><span id="__span-13-35"><a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a>
+</span><span id="__span-13-36"><a id="__codelineno-13-36" name="__codelineno-13-36" href="#__codelineno-13-36"></a>Currently, the database module creates a new connection for each query.
+</span><span id="__span-13-37"><a id="__codelineno-13-37" name="__codelineno-13-37" href="#__codelineno-13-37"></a>
+</span><span id="__span-13-38"><a id="__codelineno-13-38" name="__codelineno-13-38" href="#__codelineno-13-38"></a>This leads to performance issues under load and exhausts connection limits
+</span><span id="__span-13-39"><a id="__codelineno-13-39" name="__codelineno-13-39" href="#__codelineno-13-39"></a>when handling conselected requests.
+</span><span id="__span-13-40"><a id="__codelineno-13-40" name="__codelineno-13-40" href="#__codelineno-13-40"></a>
+</span><span id="__span-13-41"><a id="__codelineno-13-41" name="__codelineno-13-41" href="#__codelineno-13-41"></a>This commit addresses that by implementing connection pooling with configurable
+</span><span id="__span-13-42"><a id="__codelineno-13-42" name="__codelineno-13-42" href="#__codelineno-13-42"></a>pool size and timeout settings.&quot;
+</span><span id="__span-13-43"><a id="__codelineno-13-43" name="__codelineno-13-43" href="#__codelineno-13-43"></a>
+</span><span id="__span-13-44"><a id="__codelineno-13-44" name="__codelineno-13-44" href="#__codelineno-13-44"></a># Continue until all changes are committed...
 </span></code></pre></div>
 <h2 id="machine-readable-output">Machine-Readable Output<a class="headerlink" href="#machine-readable-output" title="Permanent link">&para;</a></h2>
 <p>AI assistants can use <code>--porcelain</code> flags for programmatic access:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a># Check if there&#39;s a selected hunk
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>if git-stage-batch show --porcelain; then
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    echo &quot;Hunk exists&quot;
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>fi
-</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
-</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a># Get structured status
-</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>status=$(git-stage-batch status --porcelain)
-</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>echo &quot;$status&quot; | jq &#39;.selected_change&#39;
-</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>echo &quot;$status&quot; | jq &#39;.file_review&#39;
-</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>echo &quot;$status&quot; | jq &#39;.progress.remaining&#39;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a># Check if there&#39;s a selected hunk
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>if git-stage-batch show --porcelain; then
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    echo &quot;Hunk exists&quot;
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>fi
+</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>
+</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a># Get structured status
+</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>status=$(git-stage-batch status --porcelain)
+</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>echo &quot;$status&quot; | jq &#39;.selected_change&#39;
+</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>echo &quot;$status&quot; | jq &#39;.file_review&#39;
+</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>echo &quot;$status&quot; | jq &#39;.progress.remaining&#39;
 </span></code></pre></div>
 <h2 id="tips-for-ai-configuration">Tips for AI Configuration<a class="headerlink" href="#tips-for-ai-configuration" title="Permanent link">&para;</a></h2>
 <ol>
@@ -1615,53 +1803,53 @@ they spawn a fresh-context subagent.</p>
 </tbody>
 </table>
 <h2 id="common-patterns">Common Patterns<a class="headerlink" href="#common-patterns" title="Permanent link">&para;</a></h2>
-<p><strong>Note:</strong> Examples below show abbreviated commit messages for brevity. In practice,
-use the full three-paragraph format described in the Commit Messages section.</p>
+<p><strong>Note:</strong> Examples below abbreviate commit messages. Actual bodies should use
+declarative narrative present tense and provide the reasoning the reader needs.</p>
 <h3 id="pattern-1-feature-implementation">Pattern 1: Feature Implementation<a class="headerlink" href="#pattern-1-feature-implementation" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a># AI implements a feature touching multiple files
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git-stage-batch start
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a># Include all feature-related hunks
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>git-stage-batch include  # feature code
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>git-stage-batch skip     # tests (separate commit)
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>git-stage-batch include  # feature code
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>git-stage-batch skip     # docs (separate commit)
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
-</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>git commit -m &quot;feature: Implement user dashboard&quot;
-</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>
-</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a># Tests
-</span><span id="__span-13-13"><a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>git-stage-batch again
-</span><span id="__span-13-14"><a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>git-stage-batch include  # tests
-</span><span id="__span-13-15"><a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>git commit -m &quot;tests: Add dashboard tests&quot;
-</span><span id="__span-13-16"><a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>
-</span><span id="__span-13-17"><a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a># Docs
-</span><span id="__span-13-18"><a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a>git-stage-batch again
-</span><span id="__span-13-19"><a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a>git-stage-batch include  # docs
-</span><span id="__span-13-20"><a id="__codelineno-13-20" name="__codelineno-13-20" href="#__codelineno-13-20"></a>git commit -m &quot;docs: Document dashboard feature&quot;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a># AI implements a feature touching multiple files
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>git-stage-batch start
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a># Include all feature-related hunks
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>git-stage-batch include  # feature code
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>git-stage-batch skip     # tests (separate commit)
+</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>git-stage-batch include  # feature code
+</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>git-stage-batch skip     # docs (separate commit)
+</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>
+</span><span id="__span-15-10"><a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>git commit -m &quot;dashboard: Display account activity&quot;
+</span><span id="__span-15-11"><a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>
+</span><span id="__span-15-12"><a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a># Tests
+</span><span id="__span-15-13"><a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>git-stage-batch again
+</span><span id="__span-15-14"><a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>git-stage-batch include  # tests
+</span><span id="__span-15-15"><a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>git commit -m &quot;tests: Add dashboard tests&quot;
+</span><span id="__span-15-16"><a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>
+</span><span id="__span-15-17"><a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a># Docs
+</span><span id="__span-15-18"><a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a>git-stage-batch again
+</span><span id="__span-15-19"><a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>git-stage-batch include  # docs
+</span><span id="__span-15-20"><a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>git commit -m &quot;docs: Document dashboard feature&quot;
 </span></code></pre></div>
 <h3 id="pattern-2-refactoring">Pattern 2: Refactoring<a class="headerlink" href="#pattern-2-refactoring" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a># AI refactors code with both rename and logic changes
-</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>git-stage-batch start
-</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
-</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a># Separate rename from logic changes
-</span><span id="__span-14-5"><a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a># First prompt shows the structural rename
-</span><span id="__span-14-6"><a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>git-stage-batch include               # rename only
-</span><span id="__span-14-7"><a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>git commit -m &quot;refactor: Rename helper_function to process_data&quot;
-</span><span id="__span-14-8"><a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
-</span><span id="__span-14-9"><a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>git-stage-batch again
-</span><span id="__span-14-10"><a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>git-stage-batch include             # logic changes
-</span><span id="__span-14-11"><a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>git commit -m &quot;refactor: Improve process_data algorithm&quot;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a># AI refactors code with both rename and logic changes
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git-stage-batch start
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a># Separate rename from logic changes
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a># First prompt shows the structural rename
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>git-stage-batch include               # rename only
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>git commit -m &quot;processing: Rename helper_function to process_data&quot;
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>git-stage-batch again
+</span><span id="__span-16-10"><a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>git-stage-batch include             # logic changes
+</span><span id="__span-16-11"><a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>git commit -m &quot;processing: Avoid repeated record scans&quot;
 </span></code></pre></div>
 <h3 id="pattern-3-bug-fix-with-tests">Pattern 3: Bug Fix with Tests<a class="headerlink" href="#pattern-3-bug-fix-with-tests" title="Permanent link">&para;</a></h3>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a># AI fixes bug and adds regression test
-</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>git-stage-batch start
-</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>git-stage-batch include  # bug fix
-</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>git-stage-batch skip     # test
-</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>git commit -m &quot;fix: Handle edge case in parser&quot;
-</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>
-</span><span id="__span-15-7"><a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>git-stage-batch again
-</span><span id="__span-15-8"><a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>git-stage-batch include  # test
-</span><span id="__span-15-9"><a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>git commit -m &quot;tests: Add regression test for parser edge case&quot;
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a># AI fixes bug and adds regression test
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>git-stage-batch start
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>git-stage-batch include  # bug fix
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>git-stage-batch skip     # test
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>git commit -m &quot;parser: Accept an empty trailing field&quot;
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>git-stage-batch again
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>git-stage-batch include  # test
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>git commit -m &quot;tests: Add regression test for parser edge case&quot;
 </span></code></pre></div>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1809,7 +1997,7 @@ use the full three-paragraph format described in the Commit Messages section.</p
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
         <script src="../assets/extra.js"></script>
       

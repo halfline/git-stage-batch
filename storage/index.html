@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Hunk-by-hunk and line-by-line staging for git">
+        <meta name="description" content="Fine-grained Git staging and deterministic draft-history refinement">
       
       
         <meta name="author" content="Ray Strode">
@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -538,6 +538,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -931,6 +959,39 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#shell-prompt-status-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell prompt status cache
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#applied-batch-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Applied batch provenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#disposable-history-analysis-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disposable history-analysis cache
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#batch-metadata-authority-and-crash-residue" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1078,6 +1139,39 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#shell-prompt-status-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shell prompt status cache
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#applied-batch-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Applied batch provenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#disposable-history-analysis-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disposable history-analysis cache
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#batch-metadata-authority-and-crash-residue" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1177,6 +1271,53 @@
 <h1 id="storage-and-recovery-refs">Storage and Recovery Refs<a class="headerlink" href="#storage-and-recovery-refs" title="Permanent link">&para;</a></h1>
 <p>Git-stage-batch stores durable batch state under <code>refs/git-stage-batch/</code> and
 worktree-local session scratch files below the worktree's Git directory.</p>
+<h2 id="shell-prompt-status-cache">Shell prompt status cache<a class="headerlink" href="#shell-prompt-status-cache" title="Permanent link">&para;</a></h2>
+<p>After a rich <code>status --for-prompt</code> format is used, the active session keeps a
+compact JSON summary in <code>session/status-summary.json</code>. It contains only fields
+available to prompt formats; the full skipped-change list from porcelain status
+is not copied into it. A small marker enables refreshes for the rest of that
+session, so users who do not put rich status fields in their prompt pay no
+refresh cost.</p>
+<p>The first prompt writes a quick snapshot and starts one background refresh.
+Later git-stage-batch commands request another refresh when needed. A
+repository has at most one prompt refresh worker, and each worker makes at most
+one full pass. The worker does not acquire the session lock. It publishes only
+when the session marker and lock generation are unchanged across the pass, so
+an overlapping command leaves the earlier complete cache in place.</p>
+<p>These private files are disposable session state. Undo and redo checkpoints
+ignore them. <code>stop</code> and <code>abort</code> remove them with the rest of the session;
+<code>again</code> keeps them long enough to display the prior complete snapshot while a
+new one is calculated.</p>
+<h2 id="applied-batch-provenance">Applied batch provenance<a class="headerlink" href="#applied-batch-provenance" title="Permanent link">&para;</a></h2>
+<p><code>apply --from</code> writes compact, worktree-local provenance to
+<code>.git/git-stage-batch/applied-batch-overlays.json</code>. This does not change the
+batch's authoritative state or metadata. It lets a later fresh <code>start</code> review
+the ownership that the user intentionally restored, but only while the batch
+revision, <code>HEAD</code>, index entry, and exact worktree file identity still match.
+Within a session, git-stage-batch may stage part of a fresh restored path while
+keeping the remainder reviewable; <code>stop</code> validates the other identities and
+binds the overlay to the final index.</p>
+<p>The state stores normalized presence ranges and deletion anchors/object IDs,
+not complete file contents, per-line boundary references, or replacement-unit
+coupling. Bulk identity reads use bounded path-argument groups. The state is
+covered by apply undo checkpoints. Session startup snapshots it and the
+start-time index boundary in abort state, abort restores the original overlay,
+and stop leaves the rebound state in place for the next session. Applies
+performed by older versions have no such provenance and retain their previous
+behavior.</p>
+<h2 id="disposable-history-analysis-cache">Disposable history-analysis cache<a class="headerlink" href="#disposable-history-analysis-cache" title="Permanent link">&para;</a></h2>
+<p>Rewrite commands that acquire a frozen source snapshot may reuse exact commit,
+tree, patch-unit, and dependency analysis from a persistent JSON cache. The
+cache retains at most 64 entries. On Linux its default location is
+<code>/var/tmp/git-stage-batch-$UID/history-snapshots</code>; <code>TMPDIR</code>, <code>TEMP</code>, or <code>TMP</code>
+selects another scratch parent, and <code>GIT_STAGE_BATCH_HISTORY_CACHE_ROOT</code>
+overrides the complete cache root.</p>
+<p>Entries are accepted only while their exact repository, range, Git behavior,
+configuration, analysis versions, source diffs, and object closure still
+match. A miss or failed check rebuilds the analysis, and live rewrite safety
+facts are always collected again. The cache is disposable optimization data,
+not recovery state or proof of a valid plan, replay, or final tree. Removing it
+only makes the next matching analysis cold.</p>
 <h2 id="batch-metadata-authority-and-crash-residue">Batch metadata authority and crash residue<a class="headerlink" href="#batch-metadata-authority-and-crash-residue" title="Permanent link">&para;</a></h2>
 <p>Batch content and state refs are authoritative. A file-backed
 <code>batches/&lt;name&gt;/metadata.json</code> is only a compatibility/publication staging file;
@@ -1196,6 +1337,15 @@ reflog expiration followed by garbage collection may otherwise prune it.</p>
 that an undo, redo, or abort operation promises to restore. Checkpoint stack
 refs describe undo and redo order; anchor refs provide reachability. Those are
 separate responsibilities.</p>
+<p>The worktree-local <code>session/abort/batch-refs.json</code> file is required recovery
+state once <code>session/abort/head.txt</code> publishes the active session. Its
+<code>schema_version</code> identifies the snapshot format, and its <code>batches</code> object
+contains each batch's content ref, optional state ref, and validated metadata.
+Abort loads this snapshot once and validates its complete structure and
+referenced objects before changing HEAD, the index, the worktree, or batch
+refs. Missing, empty, malformed, or unsupported snapshot state leaves the
+session marker and repository-wide ownership record intact for repair and
+retry.</p>
 <p>Gitlink entries name commits in a submodule's separate object database. They
 cannot be rooted by refs in the superproject; their availability remains the
 responsibility of the nested repository.</p>
@@ -1450,7 +1600,7 @@ type are ignored conservatively rather than hiding an unverified change.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
         <script src="../assets/extra.js"></script>
       

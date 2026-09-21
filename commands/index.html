@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Hunk-by-hunk and line-by-line staging for git">
+        <meta name="description" content="Fine-grained Git staging and deterministic draft-history refinement">
       
       
         <meta name="author" content="Ray Strode">
@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://halfline.github.io/git-stage-batch/commands/">
       
       
-        <link rel="prev" href="../installation/">
+        <link rel="prev" href="../releasing/">
       
       
         <link rel="next" href="../interactive/">
@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -538,6 +538,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -996,22 +1024,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fixup-suggestions" class="md-nav__link">
+  <a href="#fixup-workflows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Fixup Suggestions
+        Fixup Workflows
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Fixup Suggestions">
+    <nav class="md-nav" aria-label="Fixup Workflows">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#suggest-fixup" class="md-nav__link">
+  <a href="#fixup-suggest-suggest-fixup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        suggest-fixup
+        fixup suggest / suggest-fixup
       
     </span>
   </a>
@@ -1023,6 +1051,133 @@
     <span class="md-ellipsis">
       
         Line-level fixup suggestions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixup-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fixup create
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#history-refinement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History Refinement
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="History Refinement">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-scan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite scan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-lint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite lint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite validate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-resolve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite resolve
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-apply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite apply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-continue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite continue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-abort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite abort
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite verify
       
     </span>
   </a>
@@ -1800,22 +1955,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fixup-suggestions" class="md-nav__link">
+  <a href="#fixup-workflows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Fixup Suggestions
+        Fixup Workflows
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Fixup Suggestions">
+    <nav class="md-nav" aria-label="Fixup Workflows">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#suggest-fixup" class="md-nav__link">
+  <a href="#fixup-suggest-suggest-fixup" class="md-nav__link">
     <span class="md-ellipsis">
       
-        suggest-fixup
+        fixup suggest / suggest-fixup
       
     </span>
   </a>
@@ -1827,6 +1982,133 @@
     <span class="md-ellipsis">
       
         Line-level fixup suggestions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixup-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fixup create
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#history-refinement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        History Refinement
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="History Refinement">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-scan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite scan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-lint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite lint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite validate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-resolve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite resolve
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-apply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite apply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-continue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite continue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-abort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite abort
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rewrite-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rewrite verify
       
     </span>
   </a>
@@ -1997,6 +2279,14 @@ once. Git publishes the index through its lockfile transaction, and a failed
 bulk update rolls back the planned session manifest.</p>
 <p>Live session diffs render renames as atomic <code>old -&gt; new</code> choices. A selected
 rename can be included, skipped, or discarded with the rest of the workflow.
+To save a rename and its content edits in a batch, select both paths with
+<code>discard --to &lt;batch&gt; --files &lt;old&gt; &lt;new&gt;</code>. Applying the batch carries later
+source edits to the destination; conflicting edits stop the command before it
+changes files. Include keeps later unstaged edits unstaged, and discard from
+the batch reverses the rename while preserving later edits. Both complete
+paths must be selected together. Saved renames currently cannot be sifted,
+split, or moved between batches with reset. Text replay preserves the working
+file's line-ending style, including CRLF when <code>core.autocrlf</code> is enabled.
 At session start, staged renames and regular text deletions are temporarily
 normalized into that same live workflow; if a normalized start-time change is
 left untouched, <code>stop</code> or <code>abort</code> restores the original staged change.</p>
@@ -2206,9 +2496,18 @@ later actions that do not specify either flag.</p>
 brackets included in <code>FORMAT</code> are hidden too. Without <code>FORMAT</code>, it prints
 <code>STAGING</code>. In prompt output, <code>{status}</code> is the operation name <code>STAGING</code>;
 <code>{progress_status}</code> exposes the underlying <code>in_progress</code> or <code>complete</code> state.
-Prompt rendering is lock-free and read-only so shell startup never waits for an
-in-progress staging operation. A prompt may briefly reflect either side of a
-concurrent update, but it does not modify or clean up session state.
+Rich prompt fields come from a small cache in the active session. The first
+rich prompt records the current counters and selected change without counting
+every remaining change, then starts an exact refresh in the background. Later
+prompts read that one cache file. Regular <code>status</code> still calculates current
+values directly.</p>
+<p>Neither the prompt nor its background refresh waits for the session lock. The
+refresh compares the lock generation and active-session marker before and after
+its scan, and publishes the result atomically only when both stayed unchanged.
+A prompt may therefore show the prior snapshot while another command runs, but
+it never receives a result assembled across that command. Prompt cache files
+are disposable and do not change the index, worktree, batches, or recovery
+state.
 Format fields include <code>{status}</code>, <code>{status_label}</code>, <code>{progress_status}</code>,
 <code>{progress_label}</code>, <code>{iteration}</code>, <code>{processed}</code>, <code>{total}</code>, <code>{included}</code>,
 <code>{skipped}</code>, <code>{discarded}</code>, <code>{remaining}</code>, <code>{selected_file}</code>,
@@ -2233,7 +2532,8 @@ unborn symbolic branch and initial index are recorded explicitly. <code>stop</co
 preserves a first commit created during the session. <code>abort</code> removes that
 session-created branch tip, restores the original index, and leaves original
 first-commit files in the worktree. History-dependent commands such as
-<code>suggest-fixup</code> remain unavailable until the first commit exists.</p>
+<code>fixup suggest</code>, <code>fixup create</code>, and the compatible <code>suggest-fixup</code> spelling
+remain unavailable until the first commit exists.</p>
 <h3 id="again"><code>again</code><a class="headerlink" href="#again" title="Permanent link">&para;</a></h3>
 <p>Clear the blocklist and restart iteration through all hunks.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>❯ git-stage-batch again
@@ -2473,14 +2773,30 @@ contiguous span:</p>
 </span></code></pre></div>
 <p>The same rule applies to <code>discard --to BATCH --line ... --as TEXT</code>.</p>
 <hr />
-<h2 id="fixup-suggestions">Fixup Suggestions<a class="headerlink" href="#fixup-suggestions" title="Permanent link">&para;</a></h2>
-<h3 id="suggest-fixup"><code>suggest-fixup</code><a class="headerlink" href="#suggest-fixup" title="Permanent link">&para;</a></h3>
-<p>Suggest which commit the selected hunk should be fixed up to.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-49-1"><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>❯ git-stage-batch suggest-fixup [BOUNDARY]
+<h2 id="fixup-workflows">Fixup Workflows<a class="headerlink" href="#fixup-workflows" title="Permanent link">&para;</a></h2>
+<h3 id="fixup-suggest-suggest-fixup"><code>fixup suggest</code> / <code>suggest-fixup</code><a class="headerlink" href="#fixup-suggest-suggest-fixup" title="Permanent link">&para;</a></h3>
+<p>Inspect exact lineage and mechanical placement evidence for the selected hunk,
+then suggest a commit to fix up.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-49-1"><a id="__codelineno-49-1" name="__codelineno-49-1" href="#__codelineno-49-1"></a>❯ git-stage-batch fixup suggest [BOUNDARY]
+</span><span id="__span-49-2"><a id="__codelineno-49-2" name="__codelineno-49-2" href="#__codelineno-49-2"></a># Compatible spelling:
+</span><span id="__span-49-3"><a id="__codelineno-49-3" name="__codelineno-49-3" href="#__codelineno-49-3"></a>❯ git-stage-batch suggest-fixup [BOUNDARY]
 </span></code></pre></div>
-<p>Finds commits that previously modified the lines in the selected hunk and suggests them as fixup targets. Iteratively shows candidates starting from most recent, progressing backwards with each invocation.</p>
+<p>The command materializes the selected hunk as an exact patch without changing
+the real index. The patch is based on the frozen <code>HEAD</code> tree; an index-relative
+hunk is rejected when that file's index entry differs from <code>HEAD</code>. It searches
+each disjoint changed source range independently
+and also commutes the patch backward through the target range. Candidate
+iteration includes commits found by exact source-line history and any
+mechanical placement barrier, newest first. The output keeps those two forms
+of evidence separate: a placement barrier is useful, but is not presented as
+proof of semantic ownership.</p>
+<p>Pure additions to an existing tracked file use the adjacent old-file lines as
+lineage anchors. An insertion into an empty tracked file can therefore have
+placement evidence without lineage evidence. Whole-file additions remain
+unsupported.</p>
 <p><strong>Arguments:</strong>
-- <code>BOUNDARY</code>: Lower bound for commit search (default: <code>@{upstream}</code>)</p>
+- <code>BOUNDARY</code>: Commit excluded from the search. By default, use the fork point
+  (or merge base) between <code>HEAD</code> and its configured upstream.</p>
 <p><strong>Options:</strong>
 - <code>--reset</code>: Start over from the most recent candidate
 - <code>--abort</code>: Clear state and exit
@@ -2491,63 +2807,507 @@ contiguous span:</p>
 </span><span id="__span-50-2"><a id="__codelineno-50-2" name="__codelineno-50-2" href="#__codelineno-50-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
 </span><span id="__span-50-3"><a id="__codelineno-50-3" name="__codelineno-50-3" href="#__codelineno-50-3"></a>
 </span><span id="__span-50-4"><a id="__codelineno-50-4" name="__codelineno-50-4" href="#__codelineno-50-4"></a><span class="c1"># Find which commit to fixup (searches back to upstream by default)</span>
-</span><span id="__span-50-5"><a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup
-</span><span id="__span-50-6"><a id="__codelineno-50-6" name="__codelineno-50-6" href="#__codelineno-50-6"></a>Candidate<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>a1b2c3d<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
-</span><span id="__span-50-7"><a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a>
-</span><span id="__span-50-8"><a id="__codelineno-50-8" name="__codelineno-50-8" href="#__codelineno-50-8"></a><span class="c1"># Not the right commit, try next</span>
-</span><span id="__span-50-9"><a id="__codelineno-50-9" name="__codelineno-50-9" href="#__codelineno-50-9"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup
-</span><span id="__span-50-10"><a id="__codelineno-50-10" name="__codelineno-50-10" href="#__codelineno-50-10"></a>Candidate<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>e4f5g6h<span class="w"> </span>Add<span class="w"> </span>user<span class="w"> </span>validation
-</span><span id="__span-50-11"><a id="__codelineno-50-11" name="__codelineno-50-11" href="#__codelineno-50-11"></a>
-</span><span id="__span-50-12"><a id="__codelineno-50-12" name="__codelineno-50-12" href="#__codelineno-50-12"></a><span class="c1"># This is the one! Create fixup commit</span>
-</span><span id="__span-50-13"><a id="__codelineno-50-13" name="__codelineno-50-13" href="#__codelineno-50-13"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span>e4f5g6h
-</span><span id="__span-50-14"><a id="__codelineno-50-14" name="__codelineno-50-14" href="#__codelineno-50-14"></a>
-</span><span id="__span-50-15"><a id="__codelineno-50-15" name="__codelineno-50-15" href="#__codelineno-50-15"></a><span class="c1"># Or specify a different boundary for the search</span>
-</span><span id="__span-50-16"><a id="__codelineno-50-16" name="__codelineno-50-16" href="#__codelineno-50-16"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>main
-</span><span id="__span-50-17"><a id="__codelineno-50-17" name="__codelineno-50-17" href="#__codelineno-50-17"></a>Candidate<span class="w"> </span><span class="m">1</span>:<span class="w"> </span>a1b2c3d<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
+</span><span id="__span-50-5"><a id="__codelineno-50-5" name="__codelineno-50-5" href="#__codelineno-50-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>suggest
+</span><span id="__span-50-6"><a id="__codelineno-50-6" name="__codelineno-50-6" href="#__codelineno-50-6"></a>Selected<span class="w"> </span>unit<span class="w"> </span>91c3e8ac213f<span class="w"> </span><span class="k">in</span><span class="w"> </span>src/auth.py<span class="w"> </span><span class="o">[</span>agreed<span class="o">]</span>
+</span><span id="__span-50-7"><a id="__codelineno-50-7" name="__codelineno-50-7" href="#__codelineno-50-7"></a>Lineage:<span class="w"> </span>exact<span class="w"> </span><span class="nb">source</span><span class="w"> </span>lines<span class="w"> </span>resolve<span class="w"> </span>to<span class="w"> </span>a1b2c3d4e5f.
+</span><span id="__span-50-8"><a id="__codelineno-50-8" name="__codelineno-50-8" href="#__codelineno-50-8"></a>Placement:<span class="w"> </span>patch<span class="w"> </span>first<span class="w"> </span>stops<span class="w"> </span>at<span class="w"> </span>a1b2c3d4e5f.
+</span><span id="__span-50-9"><a id="__codelineno-50-9" name="__codelineno-50-9" href="#__codelineno-50-9"></a>Decision:<span class="w"> </span>lineage<span class="w"> </span>and<span class="w"> </span>placement<span class="w"> </span>agree.
+</span><span id="__span-50-10"><a id="__codelineno-50-10" name="__codelineno-50-10" href="#__codelineno-50-10"></a>
+</span><span id="__span-50-11"><a id="__codelineno-50-11" name="__codelineno-50-11" href="#__codelineno-50-11"></a>Candidate<span class="w"> </span><span class="m">1</span><span class="w"> </span>of<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>a1b2c3d4e5f<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
+</span><span id="__span-50-12"><a id="__codelineno-50-12" name="__codelineno-50-12" href="#__codelineno-50-12"></a>Candidate<span class="w"> </span>evidence:<span class="w"> </span>lineage-history,<span class="w"> </span>placement-barrier
+</span><span id="__span-50-13"><a id="__codelineno-50-13" name="__codelineno-50-13" href="#__codelineno-50-13"></a>
+</span><span id="__span-50-14"><a id="__codelineno-50-14" name="__codelineno-50-14" href="#__codelineno-50-14"></a><span class="c1"># Not the right commit, try next</span>
+</span><span id="__span-50-15"><a id="__codelineno-50-15" name="__codelineno-50-15" href="#__codelineno-50-15"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>suggest
+</span><span id="__span-50-16"><a id="__codelineno-50-16" name="__codelineno-50-16" href="#__codelineno-50-16"></a>Candidate<span class="w"> </span><span class="m">2</span><span class="w"> </span>of<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>e4f5a6b7c8d<span class="w"> </span>Add<span class="w"> </span>user<span class="w"> </span>validation
+</span><span id="__span-50-17"><a id="__codelineno-50-17" name="__codelineno-50-17" href="#__codelineno-50-17"></a>Candidate<span class="w"> </span>evidence:<span class="w"> </span>lineage-history
+</span><span id="__span-50-18"><a id="__codelineno-50-18" name="__codelineno-50-18" href="#__codelineno-50-18"></a>
+</span><span id="__span-50-19"><a id="__codelineno-50-19" name="__codelineno-50-19" href="#__codelineno-50-19"></a><span class="c1"># This is the one! Create fixup commit</span>
+</span><span id="__span-50-20"><a id="__codelineno-50-20" name="__codelineno-50-20" href="#__codelineno-50-20"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span>e4f5a6b7c8d
+</span><span id="__span-50-21"><a id="__codelineno-50-21" name="__codelineno-50-21" href="#__codelineno-50-21"></a>
+</span><span id="__span-50-22"><a id="__codelineno-50-22" name="__codelineno-50-22" href="#__codelineno-50-22"></a><span class="c1"># Or specify a different boundary for the search</span>
+</span><span id="__span-50-23"><a id="__codelineno-50-23" name="__codelineno-50-23" href="#__codelineno-50-23"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>suggest<span class="w"> </span>main
+</span><span id="__span-50-24"><a id="__codelineno-50-24" name="__codelineno-50-24" href="#__codelineno-50-24"></a>Candidate<span class="w"> </span><span class="m">1</span><span class="w"> </span>of<span class="w"> </span><span class="m">2</span>:<span class="w"> </span>a1b2c3d4e5f<span class="w"> </span>Fix<span class="w"> </span>authentication<span class="w"> </span>logic
 </span></code></pre></div></p>
-<p>The command uses <code>git log -L</code> to find commits that touched the affected lines, making it easy to create fixup commits for amendment during interactive rebase.</p>
+<p><code>fixup suggest</code> is read-only with respect to commits, refs, the working tree,
+and the index. It does not create a commit. Use the displayed <code>git commit
+--fixup=...</code> command for one reviewed target, or use <code>fixup create</code> to analyze
+the staged index and create conservative grouped fixups.</p>
 <p><strong>Porcelain output:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-51-1"><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>--porcelain
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-51-1"><a id="__codelineno-51-1" name="__codelineno-51-1" href="#__codelineno-51-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>suggest<span class="w"> </span>--porcelain
 </span></code></pre></div></p>
-<p>Outputs JSON with stable fields for script integration:
+<p>The versioned record uses full object IDs only and includes the frozen range,
+exact unit, lineage, placement, candidate sources, and iteration position:
 <div class="language-json highlight"><pre><span></span><code><span id="__span-52-1"><a id="__codelineno-52-1" name="__codelineno-52-1" href="#__codelineno-52-1"></a><span class="p">{</span>
-</span><span id="__span-52-2"><a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a><span class="w">  </span><span class="nt">&quot;candidate&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-</span><span id="__span-52-3"><a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a><span class="w">    </span><span class="nt">&quot;hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3d&quot;</span><span class="p">,</span>
-</span><span id="__span-52-4"><a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a><span class="w">    </span><span class="nt">&quot;full_hash&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0&quot;</span><span class="p">,</span>
-</span><span id="__span-52-5"><a id="__codelineno-52-5" name="__codelineno-52-5" href="#__codelineno-52-5"></a><span class="w">    </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Fix authentication logic&quot;</span><span class="p">,</span>
-</span><span id="__span-52-6"><a id="__codelineno-52-6" name="__codelineno-52-6" href="#__codelineno-52-6"></a><span class="w">    </span><span class="nt">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;John Doe&quot;</span><span class="p">,</span>
-</span><span id="__span-52-7"><a id="__codelineno-52-7" name="__codelineno-52-7" href="#__codelineno-52-7"></a><span class="w">    </span><span class="nt">&quot;date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-01T10:30:00-05:00&quot;</span><span class="p">,</span>
-</span><span id="__span-52-8"><a id="__codelineno-52-8" name="__codelineno-52-8" href="#__codelineno-52-8"></a><span class="w">    </span><span class="nt">&quot;relative_date&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2 weeks ago&quot;</span>
-</span><span id="__span-52-9"><a id="__codelineno-52-9" name="__codelineno-52-9" href="#__codelineno-52-9"></a><span class="w">  </span><span class="p">},</span>
-</span><span id="__span-52-10"><a id="__codelineno-52-10" name="__codelineno-52-10" href="#__codelineno-52-10"></a><span class="w">  </span><span class="nt">&quot;iteration&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-</span><span id="__span-52-11"><a id="__codelineno-52-11" name="__codelineno-52-11" href="#__codelineno-52-11"></a><span class="w">  </span><span class="nt">&quot;boundary&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;@{upstream}&quot;</span>
-</span><span id="__span-52-12"><a id="__codelineno-52-12" name="__codelineno-52-12" href="#__codelineno-52-12"></a><span class="p">}</span>
+</span><span id="__span-52-2"><a id="__codelineno-52-2" name="__codelineno-52-2" href="#__codelineno-52-2"></a><span class="w">  </span><span class="nt">&quot;schema_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-52-3"><a id="__codelineno-52-3" name="__codelineno-52-3" href="#__codelineno-52-3"></a><span class="w">  </span><span class="nt">&quot;operation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;fixup-suggest&quot;</span><span class="p">,</span>
+</span><span id="__span-52-4"><a id="__codelineno-52-4" name="__codelineno-52-4" href="#__codelineno-52-4"></a><span class="w">  </span><span class="nt">&quot;object_format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha1&quot;</span><span class="p">,</span>
+</span><span id="__span-52-5"><a id="__codelineno-52-5" name="__codelineno-52-5" href="#__codelineno-52-5"></a><span class="w">  </span><span class="nt">&quot;range&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-52-6"><a id="__codelineno-52-6" name="__codelineno-52-6" href="#__codelineno-52-6"></a><span class="w">    </span><span class="nt">&quot;base&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1111111111111111111111111111111111111111&quot;</span><span class="p">,</span>
+</span><span id="__span-52-7"><a id="__codelineno-52-7" name="__codelineno-52-7" href="#__codelineno-52-7"></a><span class="w">    </span><span class="nt">&quot;head&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2222222222222222222222222222222222222222&quot;</span>
+</span><span id="__span-52-8"><a id="__codelineno-52-8" name="__codelineno-52-8" href="#__codelineno-52-8"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-52-9"><a id="__codelineno-52-9" name="__codelineno-52-9" href="#__codelineno-52-9"></a><span class="w">  </span><span class="nt">&quot;unit&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-52-10"><a id="__codelineno-52-10" name="__codelineno-52-10" href="#__codelineno-52-10"></a><span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;3333333333333333333333333333333333333333333333333333333333333333&quot;</span><span class="p">,</span>
+</span><span id="__span-52-11"><a id="__codelineno-52-11" name="__codelineno-52-11" href="#__codelineno-52-11"></a><span class="w">    </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;src/auth.py&quot;</span><span class="p">,</span>
+</span><span id="__span-52-12"><a id="__codelineno-52-12" name="__codelineno-52-12" href="#__codelineno-52-12"></a><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;agreed&quot;</span><span class="p">,</span>
+</span><span id="__span-52-13"><a id="__codelineno-52-13" name="__codelineno-52-13" href="#__codelineno-52-13"></a><span class="w">    </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;lineage-and-placement-agree&quot;</span><span class="p">,</span>
+</span><span id="__span-52-14"><a id="__codelineno-52-14" name="__codelineno-52-14" href="#__codelineno-52-14"></a><span class="w">    </span><span class="nt">&quot;lineage&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-52-15"><a id="__codelineno-52-15" name="__codelineno-52-15" href="#__codelineno-52-15"></a><span class="w">      </span><span class="nt">&quot;queried_ranges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;start&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;end&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">18</span><span class="p">}]</span>
+</span><span id="__span-52-16"><a id="__codelineno-52-16" name="__codelineno-52-16" href="#__codelineno-52-16"></a><span class="w">    </span><span class="p">},</span>
+</span><span id="__span-52-17"><a id="__codelineno-52-17" name="__codelineno-52-17" href="#__codelineno-52-17"></a><span class="w">    </span><span class="nt">&quot;placement&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-52-18"><a id="__codelineno-52-18" name="__codelineno-52-18" href="#__codelineno-52-18"></a><span class="w">      </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;barrier&quot;</span><span class="p">,</span>
+</span><span id="__span-52-19"><a id="__codelineno-52-19" name="__codelineno-52-19" href="#__codelineno-52-19"></a><span class="w">      </span><span class="nt">&quot;barrier&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2222222222222222222222222222222222222222&quot;</span>
+</span><span id="__span-52-20"><a id="__codelineno-52-20" name="__codelineno-52-20" href="#__codelineno-52-20"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-52-21"><a id="__codelineno-52-21" name="__codelineno-52-21" href="#__codelineno-52-21"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-52-22"><a id="__codelineno-52-22" name="__codelineno-52-22" href="#__codelineno-52-22"></a><span class="w">  </span><span class="nt">&quot;candidate&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-52-23"><a id="__codelineno-52-23" name="__codelineno-52-23" href="#__codelineno-52-23"></a><span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2222222222222222222222222222222222222222&quot;</span><span class="p">,</span>
+</span><span id="__span-52-24"><a id="__codelineno-52-24" name="__codelineno-52-24" href="#__codelineno-52-24"></a><span class="w">    </span><span class="nt">&quot;subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Fix authentication logic&quot;</span><span class="p">,</span>
+</span><span id="__span-52-25"><a id="__codelineno-52-25" name="__codelineno-52-25" href="#__codelineno-52-25"></a><span class="w">    </span><span class="nt">&quot;author_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;John Doe&quot;</span><span class="p">,</span>
+</span><span id="__span-52-26"><a id="__codelineno-52-26" name="__codelineno-52-26" href="#__codelineno-52-26"></a><span class="w">    </span><span class="nt">&quot;author_email&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;john@example.com&quot;</span><span class="p">,</span>
+</span><span id="__span-52-27"><a id="__codelineno-52-27" name="__codelineno-52-27" href="#__codelineno-52-27"></a><span class="w">    </span><span class="nt">&quot;authored_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-03-01T10:30:00-05:00&quot;</span>
+</span><span id="__span-52-28"><a id="__codelineno-52-28" name="__codelineno-52-28" href="#__codelineno-52-28"></a><span class="w">  </span><span class="p">},</span>
+</span><span id="__span-52-29"><a id="__codelineno-52-29" name="__codelineno-52-29" href="#__codelineno-52-29"></a><span class="w">  </span><span class="nt">&quot;candidate_sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;lineage-history&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;placement-barrier&quot;</span><span class="p">],</span>
+</span><span id="__span-52-30"><a id="__codelineno-52-30" name="__codelineno-52-30" href="#__codelineno-52-30"></a><span class="w">  </span><span class="nt">&quot;iteration&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">},</span>
+</span><span id="__span-52-31"><a id="__codelineno-52-31" name="__codelineno-52-31" href="#__codelineno-52-31"></a><span class="w">  </span><span class="nt">&quot;result&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;candidate&quot;</span>
+</span><span id="__span-52-32"><a id="__codelineno-52-32" name="__codelineno-52-32" href="#__codelineno-52-32"></a><span class="p">}</span>
 </span></code></pre></div></p>
+<p>When no evidence produces a candidate, porcelain prints the same complete
+record with <code>"candidate": null</code>, a <code>result</code> reason such as <code>no-candidates</code> or
+<code>exhausted</code>, and exits nonzero.</p>
 <p><strong>Automated fixup example:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-53-1"><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="c1"># Get fixup candidate programmatically</span>
-</span><span id="__span-53-2"><a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a><span class="nv">CANDIDATE</span><span class="o">=</span><span class="k">$(</span>git-stage-batch<span class="w"> </span>suggest-fixup<span class="w"> </span>--porcelain<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.candidate.hash&#39;</span><span class="k">)</span>
-</span><span id="__span-53-3"><a id="__codelineno-53-3" name="__codelineno-53-3" href="#__codelineno-53-3"></a>
-</span><span id="__span-53-4"><a id="__codelineno-53-4" name="__codelineno-53-4" href="#__codelineno-53-4"></a><span class="c1"># Create fixup commit automatically</span>
-</span><span id="__span-53-5"><a id="__codelineno-53-5" name="__codelineno-53-5" href="#__codelineno-53-5"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CANDIDATE</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-</span><span id="__span-53-6"><a id="__codelineno-53-6" name="__codelineno-53-6" href="#__codelineno-53-6"></a><span class="w">  </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span><span class="nv">$CANDIDATE</span>
-</span><span id="__span-53-7"><a id="__codelineno-53-7" name="__codelineno-53-7" href="#__codelineno-53-7"></a><span class="k">fi</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-53-1"><a id="__codelineno-53-1" name="__codelineno-53-1" href="#__codelineno-53-1"></a><span class="c1"># Get a full candidate ID and create a fixup only on a successful result</span>
+</span><span id="__span-53-2"><a id="__codelineno-53-2" name="__codelineno-53-2" href="#__codelineno-53-2"></a><span class="k">if</span><span class="w"> </span><span class="nv">CANDIDATE</span><span class="o">=</span><span class="k">$(</span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>suggest<span class="w"> </span>--porcelain<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-er<span class="w"> </span><span class="s1">&#39;.candidate.id&#39;</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+</span><span id="__span-53-3"><a id="__codelineno-53-3" name="__codelineno-53-3" href="#__codelineno-53-3"></a><span class="w">  </span>git<span class="w"> </span>commit<span class="w"> </span>--fixup<span class="o">=</span><span class="s2">&quot;</span><span class="nv">$CANDIDATE</span><span class="s2">&quot;</span>
+</span><span id="__span-53-4"><a id="__codelineno-53-4" name="__codelineno-53-4" href="#__codelineno-53-4"></a><span class="k">fi</span>
 </span></code></pre></div></p>
 <hr />
 <h3 id="line-level-fixup-suggestions">Line-level fixup suggestions<a class="headerlink" href="#line-level-fixup-suggestions" title="Permanent link">&para;</a></h3>
 <p>Suggest fixup target for specific lines only.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-54-1"><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a>❯ git-stage-batch suggest-fixup [BOUNDARY] --line LINE_IDS
+<div class="language-text highlight"><pre><span></span><code><span id="__span-54-1"><a id="__codelineno-54-1" name="__codelineno-54-1" href="#__codelineno-54-1"></a>❯ git-stage-batch fixup suggest [BOUNDARY] --line LINE_IDS
 </span></code></pre></div>
 <p><strong>Example:</strong>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-55-1"><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>❯ git-stage-batch suggest-fixup --line 1,3
-</span><span id="__span-55-2"><a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a>❯ git-stage-batch suggest-fixup main --line 1,3
+<div class="language-text highlight"><pre><span></span><code><span id="__span-55-1"><a id="__codelineno-55-1" name="__codelineno-55-1" href="#__codelineno-55-1"></a>❯ git-stage-batch fixup suggest --line 1,3
+</span><span id="__span-55-2"><a id="__codelineno-55-2" name="__codelineno-55-2" href="#__codelineno-55-2"></a>❯ git-stage-batch fixup suggest main --line 1,3
 </span></code></pre></div></p>
-<p>Useful when a hunk contains changes to multiple unrelated areas. You can get separate fixup suggestions for different line ranges within the same hunk.</p>
+<p>Useful when a hunk contains changes to multiple unrelated areas. Display-ID
+ranges remain range-backed, and disjoint selected source lines are queried as
+disjoint ranges rather than being widened to one min/max span. The exact
+selected subset, not the complete hunk, is used for placement analysis.</p>
+<hr />
+<h3 id="fixup-create"><code>fixup create</code><a class="headerlink" href="#fixup-create" title="Permanent link">&para;</a></h3>
+<p>Analyze the exact staged index and create one ordinary <code>fixup!</code> commit per
+eligible target:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-56-1"><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span><span class="o">[</span>BOUNDARY<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--partial<span class="o">]</span><span class="w"> </span><span class="o">[</span>--porcelain<span class="o">]</span>
+</span><span id="__span-56-2"><a id="__codelineno-56-2" name="__codelineno-56-2" href="#__codelineno-56-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span>--plan<span class="w"> </span>FILE<span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--partial<span class="o">]</span><span class="w"> </span><span class="o">[</span>--porcelain<span class="o">]</span>
+</span></code></pre></div>
+<p>The command combines exact-line history with tree-replay commutation. It
+creates a fixup when both signals agree, or when line history identifies one
+target and the patch can commute through the entire target range. It reports
+but does not automatically commit:</p>
+<ul>
+<li>conflicting or ambiguous attribution;</li>
+<li>mechanical placement without semantic line history;</li>
+<li>changes with no target evidence; and</li>
+<li>currently unsupported whole-file additions/deletions, renames, binary
+  changes, file modes, and gitlinks.</li>
+</ul>
+<p>By default, any such remaining unit prevents all mutation. Use <code>--partial</code> to
+create the eligible fixups and leave every other unit staged:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-57-1"><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a><span class="c1"># Review exact assignments without changing HEAD, the index, or the worktree.</span>
+</span><span id="__span-57-2"><a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span>--dry-run
+</span><span id="__span-57-3"><a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a>
+</span><span id="__span-57-4"><a id="__codelineno-57-4" name="__codelineno-57-4" href="#__codelineno-57-4"></a><span class="c1"># Create eligible fixups while preserving unresolved staged work.</span>
+</span><span id="__span-57-5"><a id="__codelineno-57-5" name="__codelineno-57-5" href="#__codelineno-57-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span>--partial
+</span></code></pre></div>
+<p><code>fixup create</code> never stages unstaged changes, runs autosquash, rewrites an
+existing commit, or publishes anything. It preserves a private recovery ref
+for the original <code>HEAD</code> and prints that ref after successful creation.
+The generated <code>fixup!</code> title normally uses the readable target subject. It
+falls back to the full target object ID only when subject matching would make
+<code>git rebase --autosquash</code> attach the fixup to another commit, including a
+later commit that repeats an earlier subject.
+Each generated commit also carries a random verification marker in its body.
+The command uses that marker to distinguish its own commit from a ref moved by
+a hook; autosquash discards the fixup body when the fixup is integrated.
+Commit hooks inherit the isolated <code>GIT_INDEX_FILE</code> used to materialize the
+proposed fixup tree. Hooks therefore inspect and stage against that temporary
+index, not the user's real staged index. After each hook returns, the command
+checks the verification marker, parent, subject, and complete tree; any
+unexpected hook change stops creation and rolls <code>HEAD</code> back when it is still
+safe to do so. Hooks used with this command must not assume that
+<code>GIT_INDEX_FILE</code> names the user's ordinary index.</p>
+<p>Successful creation deliberately retains its recovery ref below
+<code>refs/git-stage-batch/fixup/backups/</code>; the command does not prune those refs.
+The retained ref keeps the original tip reachable until recovery is no longer
+needed. Repositories with many fixup runs can inspect the accumulated refs and
+delete a reviewed terminal backup with an expected-old-value check:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-58-1"><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>❯<span class="w"> </span>git<span class="w"> </span><span class="k">for</span>-each-ref<span class="w"> </span>--format<span class="o">=</span><span class="s1">&#39;%(refname) %(objectname)&#39;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-58-2"><a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a><span class="w">    </span>refs/git-stage-batch/fixup/backups/
+</span><span id="__span-58-3"><a id="__codelineno-58-3" name="__codelineno-58-3" href="#__codelineno-58-3"></a>❯<span class="w"> </span>git<span class="w"> </span>update-ref<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;EXACT_RECOVERY_REF&#39;</span><span class="w"> </span>EXPECTED_ORIGINAL_HEAD
+</span></code></pre></div>
+<p>Use the exact ref and object ID printed by the successful operation. Deleting
+the ref removes the command's recovery anchor and may allow the original
+commits to be garbage-collected, so retain it while rollback or comparison is
+still useful.</p>
+<p>The default boundary is the fork point, or merge base, between <code>HEAD</code> and its
+configured upstream. An explicit boundary is the excluded base of the target
+range. The range must be non-empty and linear.</p>
+<p><strong>Porcelain output</strong> is versioned JSON containing full object IDs, source tree
+fingerprints, every change unit and evidence source, target groups, created
+commits, and the recovery ref. A dry-run document is also a reusable plan:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-59-1"><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span>--dry-run<span class="w"> </span>--porcelain
+</span></code></pre></div>
+<p>To review or supply semantic assignments without weakening the mechanical
+checks, save that output, edit only its <code>assignments</code> array, and replay it:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-60-1"><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span>main<span class="w"> </span>--dry-run<span class="w"> </span>--porcelain<span class="w"> </span>&gt;fixup-plan.json
+</span><span id="__span-60-2"><a id="__codelineno-60-2" name="__codelineno-60-2" href="#__codelineno-60-2"></a><span class="c1"># Review assignments. Use full unit and commit IDs in every edited record.</span>
+</span><span id="__span-60-3"><a id="__codelineno-60-3" name="__codelineno-60-3" href="#__codelineno-60-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span>--plan<span class="w"> </span>fixup-plan.json<span class="w"> </span>--dry-run
+</span><span id="__span-60-4"><a id="__codelineno-60-4" name="__codelineno-60-4" href="#__codelineno-60-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>fixup<span class="w"> </span>create<span class="w"> </span>--plan<span class="w"> </span>fixup-plan.json
+</span></code></pre></div>
+<p>Each assignment has this shape:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-61-1"><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a><span class="p">{</span>
+</span><span id="__span-61-2"><a id="__codelineno-61-2" name="__codelineno-61-2" href="#__codelineno-61-2"></a><span class="w">  </span><span class="nt">&quot;unit_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;full stable unit ID&gt;&quot;</span><span class="p">,</span>
+</span><span id="__span-61-3"><a id="__codelineno-61-3" name="__codelineno-61-3" href="#__codelineno-61-3"></a><span class="w">  </span><span class="nt">&quot;target&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;full commit object ID&gt;&quot;</span><span class="p">,</span>
+</span><span id="__span-61-4"><a id="__codelineno-61-4" name="__codelineno-61-4" href="#__codelineno-61-4"></a><span class="w">  </span><span class="nt">&quot;basis&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;automatic&quot;</span>
+</span><span id="__span-61-5"><a id="__codelineno-61-5" name="__codelineno-61-5" href="#__codelineno-61-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>Generated assignments use <code>"basis": "automatic"</code>. Change the basis to
+<code>"explicit"</code> when a reviewed semantic decision adds an unresolved unit or
+overrides its suggested target. Explicit review can supply meaning that the
+lineage evidence lacks; it cannot move a patch through a mechanical barrier
+or an <code>UNKNOWN</code> placement. Remove an assignment to leave that unit staged;
+normal creation then requires <code>--partial</code> when any units remain.</p>
+<p>Plan input accepts only the current strict JSON schema and only dry-run output.
+Before creating refs or commits, the command regenerates and exactly compares
+the object format, <code>HEAD</code>, index tree, head tree, ordered range, stable unit
+IDs, paths, locations, and all lineage and placement evidence. It rejects
+omitted or forged unit facts and duplicate, abbreviated, or out-of-range
+assignments. It also relocates each assigned group to its target, replays the
+complete range, and requires the integrated result to reproduce the assigned
+staged patch.
+The <code>groups</code> and <code>summary</code> fields are generated reports rather than plan
+inputs; they are recalculated from the reviewed assignments. Passing both a
+positional boundary and <code>--plan</code> is an error because the plan already freezes
+its excluded base.</p>
+<hr />
+<h2 id="history-refinement">History Refinement<a class="headerlink" href="#history-refinement" title="Permanent link">&para;</a></h2>
+<h3 id="rewrite-scan"><code>rewrite scan</code><a class="headerlink" href="#rewrite-scan" title="Permanent link">&para;</a></h3>
+<p>Capture an immutable linear range and emit a reusable KEEP plan template:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-62-1"><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>scan<span class="w"> </span><span class="o">[</span>MOVABLE_BASE<span class="o">]</span><span class="w"> </span>--output<span class="w"> </span>rewrite-plan.json
+</span><span id="__span-62-2"><a id="__codelineno-62-2" name="__codelineno-62-2" href="#__codelineno-62-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>scan<span class="w"> </span><span class="o">[</span>MOVABLE_BASE<span class="o">]</span><span class="w"> </span>--porcelain<span class="w"> </span>&gt;rewrite-plan.json
+</span><span id="__span-62-3"><a id="__codelineno-62-3" name="__codelineno-62-3" href="#__codelineno-62-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>scan<span class="w"> </span>--onto<span class="w"> </span>ONTO<span class="w"> </span>MOVABLE_BASE<span class="w"> </span>--output<span class="w"> </span>rewrite-plan.json
+</span></code></pre></div>
+<p>The positional <code>MOVABLE_BASE</code> is the excluded base of the commits that may be
+split, reordered, consumed, or donate units, and defaults to the fork point or
+merge base with the configured upstream. It mirrors the <code>&lt;upstream&gt;</code> argument
+of <code>git rebase --onto</code>.</p>
+<p><code>--onto ONTO</code> supplies an older frozen base — like the <code>&lt;newbase&gt;</code> of
+<code>git rebase --onto</code>. The scan then captures the whole <code>ONTO..HEAD</code> range but
+only computes movable dependency evidence for <code>MOVABLE_BASE..HEAD</code>. Commits in
+the pinned prefix <code>ONTO..MOVABLE_BASE</code> may only be kept, reworded, or receive
+movable units through <code>INTEGRATE</code>; they are never split, reordered, or used as
+a donor source. This directly expresses "fold only the newest commits into the
+existing history" while still replaying the complete <code>ONTO..HEAD</code> tree during
+validation. Passing <code>--onto</code> without a <code>MOVABLE_BASE</code> is an error. When <code>--onto</code>
+is omitted the frozen base equals the movable base and the whole range is
+movable.</p>
+<p>The JSON snapshot records full commit, parent, and tree
+IDs; byte-faithful messages with declared encodings and raw-content digests;
+author and committer metadata; signature-header digests without signature
+payloads; stable patch-unit identities; and compact per-unit dependency
+evidence. Exact parent/new tree pairs bind the patches without storing one
+Python or JSON object per changed line.</p>
+<p>For each unit, the dependency graph records its original flat position, the
+earliest position reached by real adjacent patch swaps, and the first
+<code>BLOCKED</code> or <code>UNKNOWN</code> barrier. Same-path candidate swaps apply both units in
+the opposite order with isolated Git indexes and accept the crossing only when
+the resulting tree is identical. Consecutive different-path units are proved
+as one exact block replay to avoid quadratic Git process growth. One blocked
+sibling therefore does not suppress an independent sibling. Unsupported
+renames, file-type transitions, and atomic
+non-text changes remain <code>UNKNOWN</code>; analysis resumes from the next exact commit
+tree but retains an <code>UNKNOWN</code> edge back across the unsupported segment.</p>
+<p>Scan does not create commits, refs, checkpoints, or persistent Git objects.
+Its speculative tree objects live only in a temporary object quarantine.
+Commands that acquire the frozen source snapshot may reuse or update a
+persistent JSON cache of exact snapshot and dependency analysis. The cache
+retains at most 64 entries. On Linux, the default root is
+<code>/var/tmp/git-stage-batch-$UID/history-snapshots</code>; <code>TMPDIR</code>,
+<code>TEMP</code>, or <code>TMP</code> selects another scratch parent, and
+<code>GIT_STAGE_BATCH_HISTORY_CACHE_ROOT</code> overrides the complete cache root.</p>
+<p>A cached entry is accepted only after the repository identity, exact range and
+trees, branch, object format, effective Git configuration and build behavior,
+analysis versions, source-edge diffs, and source-object closure still match.
+A miss or failed check rebuilds the analysis from the source objects. Live
+safety facts are always collected again, and cached analysis never substitutes
+for plan replay or final-tree proof.</p>
+<p>Dirty local state, active operations, saved batches, or remotely published
+range commits appear as safety blockers rather than preventing an audit.
+Merges, replace objects, and legacy grafts are rejected because they change
+the supported topology or commit identity semantics.</p>
+<h3 id="rewrite-lint"><code>rewrite lint</code><a class="headerlink" href="#rewrite-lint" title="Permanent link">&para;</a></h3>
+<p>Advisory-check an edited plan before snapshot acquisition or replay:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-63-1"><a id="__codelineno-63-1" name="__codelineno-63-1" href="#__codelineno-63-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>lint<span class="w"> </span>rewrite-plan.json
+</span><span id="__span-63-2"><a id="__codelineno-63-2" name="__codelineno-63-2" href="#__codelineno-63-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>lint<span class="w"> </span>rewrite-plan.json<span class="w"> </span>--porcelain
+</span></code></pre></div>
+<p>Lint strictly decodes the complete frozen document, then reports independent
+operation-shape, source/unit conservation, partition, relative-output-order,
+recorded dependency-crossing, and statically unsupported resolution-workspace
+findings together. It performs no Git reads, creates no cache entry or candidate
+object, and can run outside a repository. Checks whose prerequisites failed are named in
+<code>summary.skipped_checks</code> instead of producing cascading diagnostics.</p>
+<p>The porcelain report has <code>operation: "rewrite-lint"</code>, <code>status: "valid"</code> or
+<code>"invalid-plan"</code>, stable diagnostic codes and locations, affected commits,
+units, paths and kinds, and <code>authoritative: false</code>. Frozen declarations are
+untrusted: a successful lint never replaces <code>rewrite validate</code>, which
+reacquires immutable facts and proves the complete replay and final tree.</p>
+<h3 id="rewrite-validate"><code>rewrite validate</code><a class="headerlink" href="#rewrite-validate" title="Permanent link">&para;</a></h3>
+<p>Validate edited semantic input against independently reacquired source facts:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-64-1"><a id="__codelineno-64-1" name="__codelineno-64-1" href="#__codelineno-64-1"></a><span class="c1"># Validate an all-EXACT plan.</span>
+</span><span id="__span-64-2"><a id="__codelineno-64-2" name="__codelineno-64-2" href="#__codelineno-64-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>validate<span class="w"> </span>rewrite-plan.json
+</span><span id="__span-64-3"><a id="__codelineno-64-3" name="__codelineno-64-3" href="#__codelineno-64-3"></a>
+</span><span id="__span-64-4"><a id="__codelineno-64-4" name="__codelineno-64-4" href="#__codelineno-64-4"></a><span class="c1"># Validate a plan containing RESOLVED outputs against its completed workspace.</span>
+</span><span id="__span-64-5"><a id="__codelineno-64-5" name="__codelineno-64-5" href="#__codelineno-64-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>validate<span class="w"> </span>rewrite-plan.json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-64-6"><a id="__codelineno-64-6" name="__codelineno-64-6" href="#__codelineno-64-6"></a><span class="w">    </span>--workspace<span class="w"> </span>rewrite-resolution
+</span></code></pre></div>
+<p>The executor schema accepts ordered <code>KEEP</code>, <code>REWORD</code>, <code>SPLIT</code>, <code>INTEGRATE</code>,
+and <code>REORDER</code> outputs with independent <code>EXACT</code> or <code>RESOLVED</code> materialization.
+For a plan whose outputs are all <code>EXACT</code>, omit <code>--workspace</code>; supplying a
+gratuitous workspace is rejected rather than ignored. A plan containing any
+<code>RESOLVED</code> output requires <code>--workspace DIR</code>, where <code>DIR</code> is the <code>COMPLETE</code>
+private workspace produced by <code>rewrite resolve</code> for that exact plan. Missing,
+incomplete, or differently bound workspaces fail validation.
+Successful validation reports expose the immutable-analysis cache disposition
+as <code>snapshot_cache.status</code> (<code>hit</code>, <code>miss</code>, <code>rejected</code>, or <code>bypassed</code>), its
+content-addressed key and entry path when one was addressable, a stable reason,
+and whether rebuilt analysis was retained. This is provenance only; live safety
+collection and full replay still run.
+<code>KEEP</code>, <code>REWORD</code>, and <code>REORDER</code> consume every unit of one source commit.
+<code>REORDER</code> marks a whole source moved earlier and preserves its exact message
+and encoding. <code>SPLIT</code> consumes a non-empty ordered subset of one source; every
+split source must produce at least two outputs, and every piece preserves the
+original author while supplying its own encodable message.</p>
+<p><code>INTEGRATE</code> consumes the complete target source followed by units from one or
+more later repair sources. A multi-concern repair may partition its ordinary
+units across several targets without first creating temporary commits. Every
+output lists sources and units in source order. An ordinary source unit is
+consumed exactly once globally. When one mechanical unit contains semantic
+portions owned by several outputs, <code>plan.partitioned_units</code> lists every
+zero-based RESOLVED output where that unit occurs. <code>KEEP</code> also preserves the
+message and encoding; <code>REWORD</code>, <code>SPLIT</code>, and <code>INTEGRATE</code> explicitly supply an
+encodable message. Rationale text is informational and never substitutes for
+tree or patch conservation.</p>
+<p>All snapshot fields are immutable. Validation rejects stale object IDs,
+forged metadata, omitted or undeclared duplicate units, unmarked reorder
+operations, abbreviated IDs, duplicate JSON keys, and unknown fields. Moving
+an EXACT unit earlier is permitted only as far as its recorded adjacent-swap
+proof. A chain of <code>BLOCKED</code> predecessors may move farther only when the plan
+keeps the complete chain ordered inside one EXACT output; exact full-plan
+replay must then prove that compound movement. A blocker assigned to another
+output and every <code>UNKNOWN</code> crossing remain rejected. RESOLVED does not claim
+that a patch commutes: it requires the explicit workspace workflow below to
+materialize and audit the requested snapshots. Dependency evidence limits
+exact replay, while complete replay and the frozen final tree remain required
+for either materialization.</p>
+<p>Completed-workspace validation does not modify the completed workspace,
+commits, or refs. It authenticates the immutable workspace binding, receipts,
+result artifacts, and <code>complete.json</code>, then replays both exact and resolved
+outputs in a fresh Git object quarantine and rechecks the frozen final tree. It
+does not repair or advance the workspace, and no candidate objects or refs
+persist. Successful output reports the authenticated completion SHA-256
+digest. Porcelain output always includes
+<code>summary.resolved_outputs</code>; its top-level <code>resolution</code> is <code>null</code> for an
+all-EXACT plan or an object containing <code>workspace</code>, <code>complete_sha256</code>, and
+<code>resolved_outputs</code> for completed-workspace validation.</p>
+<p>The input safety block is not trusted: live index, worktree, operation,
+publication, and upstream facts are collected again and returned in the
+validation report. All candidate trees are materialized in a temporary object
+quarantine and leave no objects or refs behind.</p>
+<h3 id="rewrite-resolve"><code>rewrite resolve</code><a class="headerlink" href="#rewrite-resolve" title="Permanent link">&para;</a></h3>
+<p>Create or advance a private workspace for outputs that require explicit
+snapshot materialization:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-65-1"><a id="__codelineno-65-1" name="__codelineno-65-1" href="#__codelineno-65-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>resolve<span class="w"> </span>rewrite-plan.json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-65-2"><a id="__codelineno-65-2" name="__codelineno-65-2" href="#__codelineno-65-2"></a><span class="w">    </span>--workspace<span class="w"> </span>rewrite-resolution
+</span><span id="__span-65-3"><a id="__codelineno-65-3" name="__codelineno-65-3" href="#__codelineno-65-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>resolve<span class="w"> </span>rewrite-plan.json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-65-4"><a id="__codelineno-65-4" name="__codelineno-65-4" href="#__codelineno-65-4"></a><span class="w">    </span>--workspace<span class="w"> </span>rewrite-resolution<span class="w"> </span>--accept
+</span></code></pre></div>
+<p>Resolution is deliberately separate from semantic ordering. The plan must
+already name each output's causal owner and mark only the mechanically
+non-exact outputs <code>RESOLVED</code>. The command reacquires and compares the frozen
+snapshot, validates unit conservation and ordering, then replays from the base
+tree in a fresh object quarantine. It stops at the first unresolved output and
+exports an immutable request containing its actual parent tree, exact source
+units, authorized Git paths, and streamed <code>CURRENT_PARENT</code>, <code>SOURCE_BEFORE</code>,
+and <code>SOURCE_AFTER</code> references.</p>
+<p>The porcelain result names the exact request, editable <code>result.json</code>, and
+opaque result-artifact directory. Edit only the result metadata and artifacts;
+Git paths are never used as filesystem artifact names. JSON object-member
+order is insignificant, but every field and path entry is required. For a
+present result, write the desired bytes to its opaque artifact, retain
+<code>state: "PRESENT"</code>, and choose an authorized <code>100644</code> or <code>100755</code> mode. Use
+<code>state: "ABSENT"</code> with a null mode and remove its result artifact for an
+authorized deletion; an authorized addition starts absent and becomes present
+only after its result artifact is created. Keep every workspace metadata and
+artifact file private with mode <code>0600</code>; newly created result artifacts with
+broader permissions are refused.
+<code>--accept</code> accepts exactly one output, verifies every authorized
+path and transition, replays the deterministic downstream prefix, then writes
+a digest-bound receipt. It either exports the next request or, after frozen
+final-tree equality succeeds, writes <code>complete.json</code>. A result cannot add,
+delete, change mode, or change content unless its selected source units
+authorize that kind of transition, and every authorized path must actually
+change.</p>
+<p>Workspaces and artifacts are private, reject links and unexpected entries,
+require root and subdirectory mode <code>0700</code>, and use descriptor-pinned bounded
+I/O. Candidate blobs and trees remain in a temporary Git object quarantine.
+The command never creates commits or refs, changes the index or worktree, or
+publishes the completed workspace by itself. Re-running without <code>--accept</code>
+safely reports the current request without accepting its seeded result.
+The first invocation requires that the workspace path does not exist;
+subsequent invocations reopen only the workspace bound to the same plan.
+The completed external workspace remains a reusable, read-only input to
+<code>rewrite validate</code>. Supply it with <code>--workspace</code> on the initial
+<code>rewrite apply</code> invocation to hand its authenticated results to a durable
+operation; apply never modifies or publishes the external workspace itself.</p>
+<h3 id="rewrite-apply"><code>rewrite apply</code><a class="headerlink" href="#rewrite-apply" title="Permanent link">&para;</a></h3>
+<p>Build, verify, and atomically update the checked-out branch:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-66-1"><a id="__codelineno-66-1" name="__codelineno-66-1" href="#__codelineno-66-1"></a><span class="c1"># Apply an all-EXACT plan.</span>
+</span><span id="__span-66-2"><a id="__codelineno-66-2" name="__codelineno-66-2" href="#__codelineno-66-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>apply<span class="w"> </span>rewrite-plan.json
+</span><span id="__span-66-3"><a id="__codelineno-66-3" name="__codelineno-66-3" href="#__codelineno-66-3"></a>
+</span><span id="__span-66-4"><a id="__codelineno-66-4" name="__codelineno-66-4" href="#__codelineno-66-4"></a><span class="c1"># Apply a plan containing RESOLVED outputs.</span>
+</span><span id="__span-66-5"><a id="__codelineno-66-5" name="__codelineno-66-5" href="#__codelineno-66-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>apply<span class="w"> </span>rewrite-plan.json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-66-6"><a id="__codelineno-66-6" name="__codelineno-66-6" href="#__codelineno-66-6"></a><span class="w">    </span>--workspace<span class="w"> </span>rewrite-resolution
+</span><span id="__span-66-7"><a id="__codelineno-66-7" name="__codelineno-66-7" href="#__codelineno-66-7"></a>
+</span><span id="__span-66-8"><a id="__codelineno-66-8" name="__codelineno-66-8" href="#__codelineno-66-8"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>apply<span class="w"> </span>rewrite-plan.json<span class="w"> </span>--porcelain
+</span></code></pre></div>
+<p>For an all-EXACT plan, omit <code>--workspace</code>; supplying a workspace is rejected
+rather than ignored. A plan containing any <code>RESOLVED</code> output requires
+<code>--workspace DIR</code> on the initial apply invocation. <code>DIR</code> must be the
+<code>COMPLETE</code> private workspace produced by <code>rewrite resolve</code> for that exact
+plan. Missing, incomplete, changed, or differently bound workspaces are
+rejected.</p>
+<p>Before activating the operation, apply authenticates the external workspace,
+copies its exact private inventory into the unpublished operation directory,
+confirms that the source did not change during the copy, and independently
+authenticates the copy in a separate fresh object quarantine. It then rechecks
+the branch, index, and worktree facts that authorize mutation. Once the
+operation is activated, building, <code>rewrite continue</code>, <code>rewrite status</code>, and
+<code>rewrite verify</code> use only the operation-owned copy. The external workspace may
+then be moved or deleted without affecting continuation or later independent
+verification; none of those commands accepts its path again.</p>
+<p>Apply creates a durable private recovery ref, records a durable <code>PREPARED</code>
+checkpoint, then reconstructs the selected exact and resolved output trees in
+a temporary object quarantine. It builds deterministic unsigned commits there
+and promotes the required commit, tree, and blob closure durably into the
+repository before updating the local operation-owned output ref. The promotion
+lease and exact-name ref updates keep interruption recovery bounded to objects
+and refs owned by the operation.</p>
+<p>Before changing the branch, apply requires that complete output closure to be
+readable from persistent object storage with lazy fetching disabled. It
+independently regenerates the expected commits and trees in another fresh
+quarantine, compares them with the persistent objects, and writes a
+digest-bound verification record. For a resolved plan, the record also binds
+the raw-plan and completed-workspace digests and the resolved-output count.
+Commit objects preserve the planned author, target source committer, declared
+encoding, exact KEEP/REORDER message bytes, and every output tree. Split pieces
+inherit the original source author and committer. Invalidated source signature
+headers are omitted and recorded by header name and digest; payloads never
+enter the plan or audit record.</p>
+<p>The checked-out branch remains at its original tip until the entire output
+chain has been mechanically replayed, independently verified, and shown to
+have the frozen final tree. Apply then performs one compare-and-swap branch
+update. It never runs interactive rebase, invokes commit hooks, edits the
+worktree, contacts a remote, or pushes or force-pushes.</p>
+<p>Any remote-tracking ref containing a source commit blocks apply by default.
+After separately verifying that a ref is an authorized force-push review head,
+name that exact full ref explicitly:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-67-1"><a id="__codelineno-67-1" name="__codelineno-67-1" href="#__codelineno-67-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>apply<span class="w"> </span>rewrite-plan.json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-67-2"><a id="__codelineno-67-2" name="__codelineno-67-2" href="#__codelineno-67-2"></a><span class="w">    </span>--allow-published-ref<span class="w"> </span>refs/remotes/origin/my-review
+</span></code></pre></div>
+<p>Repeat the option for every containing remote ref. The exception authorizes
+only the local rewrite; it never authorizes a later push.</p>
+<h3 id="rewrite-status"><code>rewrite status</code><a class="headerlink" href="#rewrite-status" title="Permanent link">&para;</a></h3>
+<p>Inspect the durable state machine used by the rewrite executor:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-68-1"><a id="__codelineno-68-1" name="__codelineno-68-1" href="#__codelineno-68-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>status
+</span><span id="__span-68-2"><a id="__codelineno-68-2" name="__codelineno-68-2" href="#__codelineno-68-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>status<span class="w"> </span>--porcelain
+</span></code></pre></div>
+<p>Before any operation exists, status reports no active operation. For an active
+checkpoint it reports the closed phase, exact next action, completed and
+planned output counts, pending publication, recovery and output refs, last
+verified tree, and live resume blockers. After completion or abort it reports
+the latest terminal operation without occupying the active slot. The private
+output ref keeps a partially built linear chain reachable. Status verifies
+both owned refs, persisted plan and verification digests, the operation-owned
+resolution workspace when present, source/plan identity, output objects,
+branch compare-and-swap expectation, index, and worktree before declaring
+continuation safe. Porcelain status also reports the persisted plan's count
+for each operation kind. A specialized workflow can therefore prove that an
+active checkpoint belongs to its allowed operation subset without reading
+private state files.</p>
+<p>Operation records live below <code>git-stage-batch/rewrite/</code> in the repository's
+common Git directory (<code>.git/git-stage-batch/rewrite/</code> in an ordinary
+checkout). They therefore remain available if the linked worktree that began
+an operation is removed.</p>
+<p>In porcelain output, <code>inspection.resolution_matches</code> is <code>null</code> only when the
+captured, digest-bound persisted output plan is structurally valid, all-EXACT,
+and the checkpoint correctly has no resolution provenance. It is <code>true</code> only
+when a plan containing RESOLVED outputs has matching provenance and its
+operation-owned workspace authenticates successfully. An invalid output plan,
+missing or gratuitous provenance, a provenance mismatch, or a changed
+resolution workspace reports <code>false</code>, adds <code>resolution-bundle-changed</code>, and
+prevents continuation.</p>
+<h3 id="rewrite-continue"><code>rewrite continue</code><a class="headerlink" href="#rewrite-continue" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-69-1"><a id="__codelineno-69-1" name="__codelineno-69-1" href="#__codelineno-69-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span><span class="k">continue</span>
+</span></code></pre></div>
+<p>Continue revalidates the checkpoint and executes only its recorded next
+action. Each output uses a pending commit/tree checkpoint around the output-ref
+compare-and-swap, so interruption before or after ref publication converges on
+the same deterministic object. The final branch CAS is similarly reconciled
+if it completed before the terminal state write.</p>
+<h3 id="rewrite-abort"><code>rewrite abort</code><a class="headerlink" href="#rewrite-abort" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-70-1"><a id="__codelineno-70-1" name="__codelineno-70-1" href="#__codelineno-70-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>abort
+</span></code></pre></div>
+<p>Abort first persists restore intent. It retracts an operation-owned pending
+output ref and restores the original branch only if the live tip is still the
+original value or the fully verified output value. Concurrent or manual
+foreign movement is never overwritten; the recovery ref and a compare-and-swap
+manual command remain available.</p>
+<p>Completed and aborted operations deliberately retain their state plus any
+recovery and output refs below <code>refs/git-stage-batch/rewrite/</code>; the command
+does not prune them automatically. Those refs preserve the original and
+replacement histories for later status, verification, and recovery. A
+repository with many terminal operations can inspect the accumulated refs and,
+after those capabilities are no longer needed, remove each reviewed ref with
+an expected-old-value check:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-71-1"><a id="__codelineno-71-1" name="__codelineno-71-1" href="#__codelineno-71-1"></a>❯<span class="w"> </span>git<span class="w"> </span><span class="k">for</span>-each-ref<span class="w"> </span>--format<span class="o">=</span><span class="s1">&#39;%(refname) %(objectname)&#39;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-71-2"><a id="__codelineno-71-2" name="__codelineno-71-2" href="#__codelineno-71-2"></a><span class="w">    </span>refs/git-stage-batch/rewrite/
+</span><span id="__span-71-3"><a id="__codelineno-71-3" name="__codelineno-71-3" href="#__codelineno-71-3"></a>❯<span class="w"> </span>git<span class="w"> </span>update-ref<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;EXACT_OPERATION_ORIGINAL_REF&#39;</span><span class="w"> </span>EXPECTED_ORIGINAL_HEAD
+</span><span id="__span-71-4"><a id="__codelineno-71-4" name="__codelineno-71-4" href="#__codelineno-71-4"></a>❯<span class="w"> </span>git<span class="w"> </span>update-ref<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;EXACT_OPERATION_OUTPUT_REF&#39;</span><span class="w"> </span>EXPECTED_OUTPUT_HEAD
+</span></code></pre></div>
+<p>Delete only refs for a terminal operation and only when their exact expected
+objects match. A partially built operation might not have an output ref.
+Removing either anchor prevents later verification or automatic recovery for
+that operation and may allow the corresponding commits to be
+garbage-collected.</p>
+<h3 id="rewrite-verify"><code>rewrite verify</code><a class="headerlink" href="#rewrite-verify" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-72-1"><a id="__codelineno-72-1" name="__codelineno-72-1" href="#__codelineno-72-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>verify
+</span><span id="__span-72-2"><a id="__codelineno-72-2" name="__codelineno-72-2" href="#__codelineno-72-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>verify<span class="w"> </span>--porcelain
+</span></code></pre></div>
+<p>Verify works on the active operation or latest complete operation. It
+reacquires the frozen source facts independently of current <code>HEAD</code>, replays
+every output tree, rehashes each normalized unsigned commit, checks parents,
+authors, committers, messages, encodings, and signature removal, and compares
+the reconstructed audit record with its durable digest. For a resolved plan it
+replays the operation-owned workspace and does not read the external workspace
+originally supplied to apply.
+Verification may run while another worktree owns a staging session. It still
+takes the repository session lock so its related reads cannot interleave with
+<code>rewrite apply</code>, <code>rewrite continue</code>, or <code>rewrite abort</code> mutations.</p>
 <hr />
 <h2 id="assistant-assets">Assistant Assets<a class="headerlink" href="#assistant-assets" title="Permanent link">&para;</a></h2>
 <h3 id="install-assets-claude-agentsclaude-skillscodex-skills-filter-pattern-force"><code>install-assets [{claude-agents|claude-skills|codex-skills}] [--filter PATTERN...] [--force]</code><a class="headerlink" href="#install-assets-claude-agentsclaude-skillscodex-skills-filter-pattern-force" title="Permanent link">&para;</a></h3>
 <p>Install bundled assistant assets into the current repository.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-56-1"><a id="__codelineno-56-1" name="__codelineno-56-1" href="#__codelineno-56-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets
-</span><span id="__span-56-2"><a id="__codelineno-56-2" name="__codelineno-56-2" href="#__codelineno-56-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-73-1"><a id="__codelineno-73-1" name="__codelineno-73-1" href="#__codelineno-73-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets
+</span><span id="__span-73-2"><a id="__codelineno-73-2" name="__codelineno-73-2" href="#__codelineno-73-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills
 </span></code></pre></div>
 <p>This writes bundled assistant assets into the repository root so the target
 assistant can discover them automatically.</p>
@@ -2558,10 +3318,14 @@ assistant can discover them automatically.</p>
 <li><code>codex-skills</code> installs into <code>.agents/skills/</code> and <code>.codex/config.toml</code></li>
 </ul>
 <p><strong>Install matching assets only:</strong>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-57-1"><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
-</span><span id="__span-57-2"><a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-agents<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
-</span><span id="__span-57-3"><a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
-</span><span id="__span-57-4"><a id="__codelineno-57-4" name="__codelineno-57-4" href="#__codelineno-57-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>codex-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span><span class="w"> </span><span class="s1">&#39;squash-*&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-74-1"><a id="__codelineno-74-1" name="__codelineno-74-1" href="#__codelineno-74-1"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
+</span><span id="__span-74-2"><a id="__codelineno-74-2" name="__codelineno-74-2" href="#__codelineno-74-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-agents<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
+</span><span id="__span-74-3"><a id="__codelineno-74-3" name="__codelineno-74-3" href="#__codelineno-74-3"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span>
+</span><span id="__span-74-4"><a id="__codelineno-74-4" name="__codelineno-74-4" href="#__codelineno-74-4"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span>refine-commit-messages
+</span><span id="__span-74-5"><a id="__codelineno-74-5" name="__codelineno-74-5" href="#__codelineno-74-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span>refine-history
+</span><span id="__span-74-6"><a id="__codelineno-74-6" name="__codelineno-74-6" href="#__codelineno-74-6"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span>decompose-and-commit-unstaged-changes
+</span><span id="__span-74-7"><a id="__codelineno-74-7" name="__codelineno-74-7" href="#__codelineno-74-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>claude-skills<span class="w"> </span>--filter<span class="w"> </span>publish-unpushed-commits
+</span><span id="__span-74-8"><a id="__codelineno-74-8" name="__codelineno-74-8" href="#__codelineno-74-8"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>install-assets<span class="w"> </span>codex-skills<span class="w"> </span>--filter<span class="w"> </span><span class="s1">&#39;commit-*&#39;</span><span class="w"> </span>publish-unpushed-commits
 </span></code></pre></div></p>
 <p><strong>Options:</strong>
 - <code>GROUP</code>: Optionally restrict installation to one bundled asset group
@@ -2571,19 +3335,55 @@ assistant can discover them automatically.</p>
   - For <code>codex-skills</code>, this also replaces the bundled repo-local Codex config</p>
 <p>Bundled assets currently include the Claude agent
 <code>commit-message-drafter</code>, Claude decomposition agents, the Claude skills
-<code>commit-staged-changes</code>, <code>commit-unstaged-changes</code>, and
-<code>decompose-and-commit-unstaged-changes</code>, and the Codex skills
-<code>commit-staged-changes</code>, <code>commit-unstaged-changes</code>, and
-<code>decompose-and-commit-unstaged-changes</code>.</p>
+<code>commit-staged-changes</code>, <code>commit-unstaged-changes</code>,
+<code>decompose-and-commit-unstaged-changes</code>, <code>publish-unpushed-commits</code>,
+<code>refine-commit-messages</code>, and <code>refine-history</code>, plus the Codex versions of
+those six skills.</p>
+<p>Selecting <code>decompose-and-commit-unstaged-changes</code> also installs its
+<code>refine-history</code> and <code>refine-commit-messages</code> dependencies automatically.
+Selecting <code>publish-unpushed-commits</code> installs the same two refinement
+dependencies.
+Selecting <code>refine-history</code> also installs <code>refine-commit-messages</code>.</p>
+<p><code>refine-commit-messages BASE_SHA</code> audits a linear series and rewords
+noncompliant messages by default. It expresses only KEEP and REWORD outputs in
+a rewrite plan and proves that every tree, patch boundary, author, committer,
+and series position remains unchanged. Rewritten cryptographic signatures are
+removed and reported because they cannot remain valid. Its explicit
+<code>audit BASE_SHA</code> mode validates proposed replacements without updating refs or
+commits.</p>
+<p><code>refine-history BASE_SHA</code> additionally splits broad commits, integrates late
+repair units, and reorders only proven-independent sources before delegating
+its message pass. Both skills use <code>rewrite status</code>, operation-kind summaries,
+<code>continue</code>, <code>abort</code>, and <code>verify</code> instead of assistant-owned checkpoint or
+interactive-rebase helpers. Mutating modes accept clean local draft history or
+an explicitly verified force-push review head.</p>
+<p><code>publish-unpushed-commits</code> maps a clean unpublished range onto reviewable
+GitHub pull requests or GitLab merge requests. It publishes ready for review by
+default, supports an explicit <code>draft</code> mode, and uses provider-native stacks for
+eligible same-repository dependent groups. Singletons, unavailable stacks, and
+cross-fork publication use ordinary review requests. Its <code>audit</code> mode plans
+without mutation, its <code>resume</code> mode continues strict recovery state, and no
+mode merges.</p>
+<p>For eligible same-repository groups, the skill probes GitHub's Stacked Pull
+Requests REST API and creates the relationship directly; no GitHub CLI
+extension is required. When the target repository does not offer Stacked Pull
+Requests, publication continues through ordinary pull requests.</p>
+<p>On GitLab 19.1 and newer, a same-project target-branch chain is recognized as a
+stack without a separate linking mutation. The skill does not adopt the
+experimental <code>glab stack</code> commit-and-branch workflow because refinement and
+recovery state remain owned by the skill. GitLab publication requires an
+authenticated <code>glab</code> CLI for the selected root-hosted GitLab URL. It uses
+host-pinned API calls and numeric project identities, including for fork merge
+requests, without changing local Git remotes.</p>
 <p>Installing <code>codex-skills</code> also writes the shared internal drafter brief at
 <code>.agents/internal/commit-message-drafter.md</code>.</p>
 <hr />
 <h2 id="diagnostics">Diagnostics<a class="headerlink" href="#diagnostics" title="Permanent link">&para;</a></h2>
 <h3 id="journal"><code>journal</code><a class="headerlink" href="#journal" title="Permanent link">&para;</a></h3>
 <p>Locate, summarize, or remove private diagnostic journal data.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-58-1"><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>git-stage-batch<span class="w"> </span>journal
-</span><span id="__span-58-2"><a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a>git-stage-batch<span class="w"> </span>journal<span class="w"> </span>--path
-</span><span id="__span-58-3"><a id="__codelineno-58-3" name="__codelineno-58-3" href="#__codelineno-58-3"></a>git-stage-batch<span class="w"> </span>journal<span class="w"> </span>--purge
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-75-1"><a id="__codelineno-75-1" name="__codelineno-75-1" href="#__codelineno-75-1"></a>git-stage-batch<span class="w"> </span>journal
+</span><span id="__span-75-2"><a id="__codelineno-75-2" name="__codelineno-75-2" href="#__codelineno-75-2"></a>git-stage-batch<span class="w"> </span>journal<span class="w"> </span>--path
+</span><span id="__span-75-3"><a id="__codelineno-75-3" name="__codelineno-75-3" href="#__codelineno-75-3"></a>git-stage-batch<span class="w"> </span>journal<span class="w"> </span>--purge
 </span></code></pre></div>
 <p>Journaling is disabled by default. Enable content-free operation metadata for
 a reproduction with <code>GIT_STAGE_BATCH_JOURNAL=metadata-only</code>, or add bounded
@@ -2599,15 +3399,15 @@ data for every repository.</p>
 <h2 id="batch-operations">Batch Operations<a class="headerlink" href="#batch-operations" title="Permanent link">&para;</a></h2>
 <h3 id="validate"><code>validate</code><a class="headerlink" href="#validate" title="Permanent link">&para;</a></h3>
 <p>Validate persisted metadata for every batch without modifying refs or files.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-59-1"><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a>git-stage-batch<span class="w"> </span>validate
-</span><span id="__span-59-2"><a id="__codelineno-59-2" name="__codelineno-59-2" href="#__codelineno-59-2"></a>git-stage-batch<span class="w"> </span>validate<span class="w"> </span>--porcelain
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-76-1"><a id="__codelineno-76-1" name="__codelineno-76-1" href="#__codelineno-76-1"></a>git-stage-batch<span class="w"> </span>validate
+</span><span id="__span-76-2"><a id="__codelineno-76-2" name="__codelineno-76-2" href="#__codelineno-76-2"></a>git-stage-batch<span class="w"> </span>validate<span class="w"> </span>--porcelain
 </span></code></pre></div>
 <p>The report identifies malformed or unsupported schemas, missing Git objects,
 content-ref mismatches, and unversioned metadata eligible for migration.</p>
 <hr />
 <h3 id="sift"><code>sift</code><a class="headerlink" href="#sift" title="Permanent link">&para;</a></h3>
 <p>Reconcile a batch against the current tip by removing portions whose effect is already present.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-60-1"><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a>❯ git-stage-batch sift --from OLD_BATCH --to NEW_BATCH
+<div class="language-text highlight"><pre><span></span><code><span id="__span-77-1"><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a>❯ git-stage-batch sift --from OLD_BATCH --to NEW_BATCH
 </span></code></pre></div>
 <p><strong>Required arguments:</strong>
 - <code>--from BATCH</code>: Source batch to sift
@@ -2615,11 +3415,11 @@ content-ref mismatches, and unversioned metadata eligible for migration.</p>
 <p><strong>Purpose:</strong></p>
 <p>After ad hoc history surgery, some parts of a batch may already have landed in history while other parts are still unapplied. <code>sift</code> removes the already-present portions and writes the remaining unapplied portion to the destination batch.</p>
 <p><strong>Examples:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-61-1"><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a><span class="c1"># Sift to a new batch</span>
-</span><span id="__span-61-2"><a id="__codelineno-61-2" name="__codelineno-61-2" href="#__codelineno-61-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups-pruned
-</span><span id="__span-61-3"><a id="__codelineno-61-3" name="__codelineno-61-3" href="#__codelineno-61-3"></a>
-</span><span id="__span-61-4"><a id="__codelineno-61-4" name="__codelineno-61-4" href="#__codelineno-61-4"></a><span class="c1"># In-place sift</span>
-</span><span id="__span-61-5"><a id="__codelineno-61-5" name="__codelineno-61-5" href="#__codelineno-61-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-78-1"><a id="__codelineno-78-1" name="__codelineno-78-1" href="#__codelineno-78-1"></a><span class="c1"># Sift to a new batch</span>
+</span><span id="__span-78-2"><a id="__codelineno-78-2" name="__codelineno-78-2" href="#__codelineno-78-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups-pruned
+</span><span id="__span-78-3"><a id="__codelineno-78-3" name="__codelineno-78-3" href="#__codelineno-78-3"></a>
+</span><span id="__span-78-4"><a id="__codelineno-78-4" name="__codelineno-78-4" href="#__codelineno-78-4"></a><span class="c1"># In-place sift</span>
+</span><span id="__span-78-5"><a id="__codelineno-78-5" name="__codelineno-78-5" href="#__codelineno-78-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups
 </span></code></pre></div>
 <p><strong>Output:</strong></p>
 <p>Shows summary of:
@@ -2637,27 +3437,27 @@ content-ref mismatches, and unversioned metadata eligible for migration.</p>
 </ul>
 <hr />
 <h2 id="workflow-example">Workflow Example<a class="headerlink" href="#workflow-example" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-62-1"><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a><span class="c1"># Make some changes to multiple files</span>
-</span><span id="__span-62-2"><a id="__codelineno-62-2" name="__codelineno-62-2" href="#__codelineno-62-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 1&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
-</span><span id="__span-62-3"><a id="__codelineno-62-3" name="__codelineno-62-3" href="#__codelineno-62-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 2&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file2.txt
-</span><span id="__span-62-4"><a id="__codelineno-62-4" name="__codelineno-62-4" href="#__codelineno-62-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;debug code&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
-</span><span id="__span-62-5"><a id="__codelineno-62-5" name="__codelineno-62-5" href="#__codelineno-62-5"></a>
-</span><span id="__span-62-6"><a id="__codelineno-62-6" name="__codelineno-62-6" href="#__codelineno-62-6"></a><span class="c1"># Start staging session</span>
-</span><span id="__span-62-7"><a id="__codelineno-62-7" name="__codelineno-62-7" href="#__codelineno-62-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
-</span><span id="__span-62-8"><a id="__codelineno-62-8" name="__codelineno-62-8" href="#__codelineno-62-8"></a>
-</span><span id="__span-62-9"><a id="__codelineno-62-9" name="__codelineno-62-9" href="#__codelineno-62-9"></a><span class="c1"># Include first hunk (feature 1)</span>
-</span><span id="__span-62-10"><a id="__codelineno-62-10" name="__codelineno-62-10" href="#__codelineno-62-10"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
-</span><span id="__span-62-11"><a id="__codelineno-62-11" name="__codelineno-62-11" href="#__codelineno-62-11"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 1&quot;</span>
-</span><span id="__span-62-12"><a id="__codelineno-62-12" name="__codelineno-62-12" href="#__codelineno-62-12"></a>
-</span><span id="__span-62-13"><a id="__codelineno-62-13" name="__codelineno-62-13" href="#__codelineno-62-13"></a><span class="c1"># Discard debug code</span>
-</span><span id="__span-62-14"><a id="__codelineno-62-14" name="__codelineno-62-14" href="#__codelineno-62-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard
-</span><span id="__span-62-15"><a id="__codelineno-62-15" name="__codelineno-62-15" href="#__codelineno-62-15"></a>
-</span><span id="__span-62-16"><a id="__codelineno-62-16" name="__codelineno-62-16" href="#__codelineno-62-16"></a><span class="c1"># Include feature 2</span>
-</span><span id="__span-62-17"><a id="__codelineno-62-17" name="__codelineno-62-17" href="#__codelineno-62-17"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
-</span><span id="__span-62-18"><a id="__codelineno-62-18" name="__codelineno-62-18" href="#__codelineno-62-18"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 2&quot;</span>
-</span><span id="__span-62-19"><a id="__codelineno-62-19" name="__codelineno-62-19" href="#__codelineno-62-19"></a>
-</span><span id="__span-62-20"><a id="__codelineno-62-20" name="__codelineno-62-20" href="#__codelineno-62-20"></a><span class="c1"># Check if anything remains</span>
-</span><span id="__span-62-21"><a id="__codelineno-62-21" name="__codelineno-62-21" href="#__codelineno-62-21"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-79-1"><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a><span class="c1"># Make some changes to multiple files</span>
+</span><span id="__span-79-2"><a id="__codelineno-79-2" name="__codelineno-79-2" href="#__codelineno-79-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 1&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
+</span><span id="__span-79-3"><a id="__codelineno-79-3" name="__codelineno-79-3" href="#__codelineno-79-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 2&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file2.txt
+</span><span id="__span-79-4"><a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;debug code&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
+</span><span id="__span-79-5"><a id="__codelineno-79-5" name="__codelineno-79-5" href="#__codelineno-79-5"></a>
+</span><span id="__span-79-6"><a id="__codelineno-79-6" name="__codelineno-79-6" href="#__codelineno-79-6"></a><span class="c1"># Start staging session</span>
+</span><span id="__span-79-7"><a id="__codelineno-79-7" name="__codelineno-79-7" href="#__codelineno-79-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-79-8"><a id="__codelineno-79-8" name="__codelineno-79-8" href="#__codelineno-79-8"></a>
+</span><span id="__span-79-9"><a id="__codelineno-79-9" name="__codelineno-79-9" href="#__codelineno-79-9"></a><span class="c1"># Include first hunk (feature 1)</span>
+</span><span id="__span-79-10"><a id="__codelineno-79-10" name="__codelineno-79-10" href="#__codelineno-79-10"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
+</span><span id="__span-79-11"><a id="__codelineno-79-11" name="__codelineno-79-11" href="#__codelineno-79-11"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 1&quot;</span>
+</span><span id="__span-79-12"><a id="__codelineno-79-12" name="__codelineno-79-12" href="#__codelineno-79-12"></a>
+</span><span id="__span-79-13"><a id="__codelineno-79-13" name="__codelineno-79-13" href="#__codelineno-79-13"></a><span class="c1"># Discard debug code</span>
+</span><span id="__span-79-14"><a id="__codelineno-79-14" name="__codelineno-79-14" href="#__codelineno-79-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard
+</span><span id="__span-79-15"><a id="__codelineno-79-15" name="__codelineno-79-15" href="#__codelineno-79-15"></a>
+</span><span id="__span-79-16"><a id="__codelineno-79-16" name="__codelineno-79-16" href="#__codelineno-79-16"></a><span class="c1"># Include feature 2</span>
+</span><span id="__span-79-17"><a id="__codelineno-79-17" name="__codelineno-79-17" href="#__codelineno-79-17"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
+</span><span id="__span-79-18"><a id="__codelineno-79-18" name="__codelineno-79-18" href="#__codelineno-79-18"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 2&quot;</span>
+</span><span id="__span-79-19"><a id="__codelineno-79-19" name="__codelineno-79-19" href="#__codelineno-79-19"></a>
+</span><span id="__span-79-20"><a id="__codelineno-79-20" name="__codelineno-79-20" href="#__codelineno-79-20"></a><span class="c1"># Check if anything remains</span>
+</span><span id="__span-79-21"><a id="__codelineno-79-21" name="__codelineno-79-21" href="#__codelineno-79-21"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status
 </span></code></pre></div>
 
 
@@ -2800,7 +3600,7 @@ content-ref mismatches, and unversioned metadata eligible for migration.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
         <script src="../assets/extra.js"></script>
       

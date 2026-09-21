@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Hunk-by-hunk and line-by-line staging for git">
+        <meta name="description" content="Fine-grained Git staging and deterministic draft-history refinement">
       
       
         <meta name="author" content="Ray Strode">
@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -525,6 +525,34 @@
     
   
     Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
   
 
     
@@ -2231,9 +2259,13 @@ If the batch doesn't exist, it will be automatically created.</p>
 <p><strong>File-level saving and discarding:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-39-1"><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>❯ git-stage-batch discard --to batch-name --file
 </span></code></pre></div></p>
-<p>Save all changes in the selected file to the batch, then remove those changes
-from the working tree. A tracked file returns to its indexed baseline; a newly
-added file is removed because it has no indexed version to restore.</p>
+<p>Save unstaged changes in the selected file to the batch, then remove those
+changes from the working tree. Staged content stays in place. A file with no
+indexed version is removed. A newly auto-created batch uses the current index
+as its baseline, so an unstaged replacement can retain staged text as its old
+side. When saving into an existing batch, compatible staged context is carried
+into its baseline while preserving earlier saved claims and unselected files.
+Staged edits that overlap earlier saved claims are refused.</p>
 <p><strong>Example workflow:</strong>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-40-1"><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="c1"># Accidentally included debug logging in your changes</span>
 </span><span id="__span-40-2"><a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
@@ -2332,6 +2364,16 @@ applied.</p>
 <h3 id="phase-2-recompose-inside-out">Phase 2: Recompose inside-out<a class="headerlink" href="#phase-2-recompose-inside-out" title="Permanent link">&para;</a></h3>
 <p>Start from the original base commit. Apply each layer batch and its corresponding bridge repair to the working tree, stage with <code>git-stage-batch include --files</code>, and commit. Before the next real layer, remove the previous bridge repair with <code>discard --from</code>.</p>
 <p>Using <code>apply --from</code> (working-tree-only) followed by <code>git-stage-batch include --files</code> is preferred over <code>include --from</code> (which writes to both index and working tree simultaneously) because recomposition alternates <code>apply --from</code> and <code>discard --from</code>, and keeping the index separate lets you review the final working-tree state before staging.</p>
+<p><code>apply --from</code> records compact, worktree-local attribution claims for the exact
+ownership it restores. A later fresh <code>git-stage-batch start</code> can therefore
+review those changes even though their batches still exist. The provenance
+applies only while the batch revision, <code>HEAD</code>, index, and exact working-tree
+file identity remain unchanged. Editing or staging before the next session,
+committing, or changing the batch makes it stale automatically. Staging part of
+the restored work through git-stage-batch keeps the remaining ownership
+reviewable during that session and binds it to the final index at <code>stop</code>. It
+does not change the batch's stored metadata. Applies performed by older versions
+have no such record and retain their previous behavior.</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-43-1"><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a><span class="c1"># Start from the original base commit / pristine tree.</span>
 </span><span id="__span-43-2"><a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a><span class="c1"># Recompose inside-out.</span>
 </span><span id="__span-43-3"><a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>
@@ -2630,7 +2672,7 @@ Batches let you <strong>defer and group those parts</strong> so they can become 
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
         <script src="../assets/extra.js"></script>
       

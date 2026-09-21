@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="Hunk-by-hunk and line-by-line staging for git">
+        <meta name="description" content="Fine-grained Git staging and deterministic draft-history refinement">
       
       
         <meta name="author" content="Ray Strode">
@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -538,6 +538,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -802,10 +830,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#find-fixup-target" class="md-nav__link">
+  <a href="#create-fixup-commits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Find Fixup Target
+        Create Fixup Commits
       
     </span>
   </a>
@@ -828,6 +856,17 @@
     <span class="md-ellipsis">
       
         Status Tracking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#refine-local-draft-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Refine Local Draft History
       
     </span>
   </a>
@@ -1199,10 +1238,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#find-fixup-target" class="md-nav__link">
+  <a href="#create-fixup-commits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Find Fixup Target
+        Create Fixup Commits
       
     </span>
   </a>
@@ -1225,6 +1264,17 @@
     <span class="md-ellipsis">
       
         Status Tracking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#refine-local-draft-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Refine Local Draft History
       
     </span>
   </a>
@@ -1400,22 +1450,27 @@ line-level staging.</p>
 </span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>❯ git-stage-batch include
 </span></code></pre></div>
 <hr />
-<h2 id="find-fixup-target">Find Fixup Target<a class="headerlink" href="#find-fixup-target" title="Permanent link">&para;</a></h2>
-<p>Create fixup commits for historical changes:</p>
+<h2 id="create-fixup-commits">Create Fixup Commits<a class="headerlink" href="#create-fixup-commits" title="Permanent link">&para;</a></h2>
+<p>For one selected hunk, inspect historical candidates:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>❯ git-stage-batch start
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>auth.py :: @@ -23,5 +23,5 @@
 </span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>[#1] - if age &gt; 18:
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>[#2] + if age &gt;= 18:
 </span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
 </span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a># Which commit does this fix?
-</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>❯ git-stage-batch suggest-fixup
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>❯ git-stage-batch fixup suggest
 </span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>Candidate 1: a1b2c3d Add age validation
 </span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
 </span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a># That&#39;s the one!
 </span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>❯ git commit --fixup=a1b2c3d
 </span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
-</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a># Later, during interactive rebase:
-</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>❯ git rebase -i --autosquash
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a># Or stage several review fixes and let git-stage-batch partition them.
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>❯ git add auth.py parser.py
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>❯ git-stage-batch fixup create --dry-run
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>❯ git-stage-batch fixup create
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a># Later, during interactive rebase:
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>❯ git rebase -i --autosquash
 </span></code></pre></div>
 <hr />
 <h2 id="multi-pass-workflow">Multi-Pass Workflow<a class="headerlink" href="#multi-pass-workflow" title="Permanent link">&para;</a></h2>
@@ -1424,22 +1479,22 @@ line-level staging.</p>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>❯ git-stage-batch start
 </span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a># First pass: collect all bug fixes
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>❯ git-stage-batch include  # bug fix in file1
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a># First pass: collect one parser fix across its implementation files
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>❯ git-stage-batch include  # parser fix in file1
 </span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>❯ git-stage-batch skip     # feature in file2
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>❯ git-stage-batch include  # bug fix in file3
-</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>❯ git commit -m &quot;fix: Various bug fixes&quot;
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>❯ git-stage-batch include  # matching parser fix in file3
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>❯ git commit -m &quot;parser: Preserve empty trailing fields&quot;
 </span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>
 </span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a># Second pass: feature implementation
 </span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>❯ git-stage-batch again
 </span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>❯ git-stage-batch include  # feature from file2
 </span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>❯ git-stage-batch skip     # refactoring in file4
-</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>❯ git commit -m &quot;feat: Add new feature&quot;
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>❯ git commit -m &quot;dashboard: Display account activity&quot;
 </span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>
 </span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a># Third pass: cleanup and refactoring
 </span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>❯ git-stage-batch again
 </span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>❯ git-stage-batch include  # refactoring from file4
-</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>❯ git commit -m &quot;refactor: Clean up code structure&quot;
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>❯ git commit -m &quot;processing: Avoid repeated record scans&quot;
 </span></code></pre></div>
 <hr />
 <h2 id="status-tracking">Status Tracking<a class="headerlink" href="#status-tracking" title="Permanent link">&para;</a></h2>
@@ -1466,17 +1521,39 @@ line-level staging.</p>
 - Know how much work remains
 - Plan which skipped hunks to handle next</p>
 <hr />
+<h2 id="refine-local-draft-history">Refine Local Draft History<a class="headerlink" href="#refine-local-draft-history" title="Permanent link">&para;</a></h2>
+<p>For a clean, linear unpublished range, capture exact source facts, edit only
+the semantic plan fields, validate the result, then apply and verify it:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Repository-read-only: capture a KEEP template for commits after main.</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>scan<span class="w"> </span>main<span class="w"> </span>--output<span class="w"> </span>rewrite-plan.json
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Review and edit only plan.outputs and plan.partitioned_units.</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>❯<span class="w"> </span><span class="nv">$EDITOR</span><span class="w"> </span>rewrite-plan.json
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># Repository-read-only: prove unit conservation, replay, and the final tree.</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>validate<span class="w"> </span>rewrite-plan.json
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="c1"># Branch-mutating: build and verify, then atomically update the checked-out branch.</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>apply<span class="w"> </span>rewrite-plan.json
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="c1"># Independently verify the completed local rewrite.</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>rewrite<span class="w"> </span>verify
+</span></code></pre></div>
+<p>An explicitly verified force-push review head can be allowed by its exact
+remote-tracking ref. That exception permits only this local branch rewrite;
+<code>rewrite apply</code> never contacts a remote or performs or authorizes a push.</p>
+<hr />
 <h2 id="recovering-from-mistakes">Recovering from Mistakes<a class="headerlink" href="#recovering-from-mistakes" title="Permanent link">&para;</a></h2>
 <p>Made a wrong decision? Use <code>abort</code>:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>❯ git-stage-batch start
-</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>❯ git-stage-batch include
-</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>❯ git commit -m &quot;oops wrong commit&quot;
-</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
-</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a># Wait, that wasn&#39;t right!
-</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>❯ git-stage-batch abort
-</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>✓ Session aborted, repository restored
-</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
-</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a># Back to where you started
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>❯ git-stage-batch start
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>❯ git-stage-batch include
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>❯ git commit -m &quot;oops wrong commit&quot;
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a># Wait, that wasn&#39;t right!
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>❯ git-stage-batch abort
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>✓ Session aborted, repository restored
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a># Back to where you started
 </span></code></pre></div>
 <p>The <code>abort</code> command:
 - Resets HEAD to the session start point
@@ -1625,7 +1702,7 @@ line-level staging.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
         <script src="../assets/extra.js"></script>
       

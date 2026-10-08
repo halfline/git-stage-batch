@@ -122,6 +122,104 @@ def test_grouped_checks_use_one_clean_worktree(
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
 
 
+def test_reworded_commit_reuses_evidence_for_identical_tree(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    counter = tmp_path / "runs"
+    spec = _spec(counter)
+    first, old = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert first.returncode == 0, first.stderr
+    original_logs = {
+        p.name: p.read_bytes() for p in Path(old["receipt"]).parent.iterdir()
+    }
+    _git(repo, "commit", "--amend", "-qm", "Reworded snapshot")
+    second, new = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert second.returncode == 0, second.stderr
+    assert new["commit"] != old["commit"] and new["tree"] == old["tree"]
+    assert new["reused"] and new["receipt"] == old["receipt"]
+    assert len(counter.read_text().splitlines()) == 2
+    assert original_logs == {
+        p.name: p.read_bytes() for p in Path(old["receipt"]).parent.iterdir()
+    }
+
+
+@pytest.mark.parametrize(
+    "changed", ["tree", "command", "environment", "prerequisite", "harness"]
+)
+def test_changed_check_inputs_invalidate_reuse(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+    changed: str,
+) -> None:
+    counter = tmp_path / "runs"
+    harness = tmp_path / "harness.py"
+    harness.write_text("version one\n")
+    spec = _spec(counter)
+    spec["inputs"] = [str(harness)]
+    first, old = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert first.returncode == 0, first.stderr
+    if changed == "tree":
+        (repo / "new-contract.txt").write_text("new behavior\n")
+        _git(repo, "add", "new-contract.txt")
+        _git(repo, "commit", "-qm", "New contract")
+    elif changed == "command":
+        spec["commands"][0].append("different argument")
+    elif changed == "environment":
+        spec["environment"] = {"DECOMPOSE_CHECK_VARIANT": "second"}
+    elif changed == "prerequisite":
+        spec["prerequisites"]["python"] = "Different dependency identity"
+    else:
+        harness.write_text("version two\n")
+    second, new = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert second.returncode == 0, second.stderr
+    assert not new["reused"] and new["receipt"] != old["receipt"]
+    assert len(counter.read_text().splitlines()) == 4
+
+
+def test_failed_check_is_retained_and_only_retried_with_diagnosis(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    counter = tmp_path / "attempts"
+    later = tmp_path / "should-not-run"
+    command = [
+        sys.executable,
+        "-c",
+        f"from pathlib import Path; p = Path({str(counter)!r}); p.write_text(p.read_text() + 'attempt\\n' if p.exists() else 'attempt\\n'); raise SystemExit(3)",
+    ]
+    spec = {
+        "commands": [
+            command,
+            [sys.executable, "-c", f"open({str(later)!r}, 'w').close()"],
+        ]
+    }
+    first, old = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert first.returncode == 1 and not old["passed"]
+    receipt = Path(old["receipt"])
+    original = receipt.read_bytes()
+    second, reused = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert second.returncode == 1 and reused["reused"]
+    assert counter.read_text().splitlines() == ["attempt"]
+    third, retry = _run(
+        helper,
+        repo,
+        tmp_path,
+        spec,
+        "--reuse",
+        "--retry",
+        "Investigated transient fixture failure",
+    )
+    assert third.returncode == 1 and not retry["reused"]
+    assert retry["receipt"] != old["receipt"] and receipt.read_bytes() == original
+    assert counter.read_text().splitlines() == ["attempt", "attempt"]
+    assert not later.exists()
+    assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
+
+
 @pytest.mark.parametrize("alteration", ["tracked", "untracked", "external-input"])
 def test_checks_cannot_claim_success_after_changing_bound_inputs(
     helper: Path,
@@ -150,3 +248,36 @@ def test_checks_cannot_claim_success_after_changing_bound_inputs(
         assert not receipt["results"][0]["source_unchanged"]
     assert (repo / "value.txt").read_text() == "committed"
     assert not (repo / "new-source.py").exists()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ["changed-log", "missing-log", "inconsistent-receipt", "changed-allocation"],
+)
+def test_corrupt_evidence_cannot_be_reused(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    counter = tmp_path / "runs"
+    spec = _spec(counter)
+    result, report = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert result.returncode == 0, result.stderr
+    receipt = Path(report["receipt"])
+    log = receipt.parent / "0.log"
+    if corruption == "changed-log":
+        log.write_text("different proof")
+    elif corruption == "missing-log":
+        log.unlink()
+    else:
+        data = json.loads(receipt.read_text())
+        if corruption == "changed-allocation":
+            data["results"][0]["command"] = [sys.executable, "-c", "pass"]
+        else:
+            data["identity_unchanged"] = False
+        receipt.write_text(json.dumps(data))
+    failed, _ = _run(helper, repo, tmp_path, spec, "--reuse")
+    assert failed.returncode != 0
+    assert "verification" in failed.stderr
+    assert len(counter.read_text().splitlines()) == 2

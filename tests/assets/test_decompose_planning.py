@@ -194,6 +194,28 @@ def test_capture_preserves_input_without_mutation(
         ).read_bytes()
 
 
+@pytest.mark.parametrize("mutation", ["source", "index", "head", "batch"])
+def test_input_gate_detects_execution_during_preparation(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    state = tmp_path / "state"
+    manifest = _capture(helper, repo, state)
+    if mutation == "source":
+        (repo / "decoder.py").write_text("changed input\n")
+    elif mutation == "index":
+        _git(repo, "add", "decoder.py")
+    elif mutation == "head":
+        _git(repo, "commit", "--allow-empty", "-qm", "Unexpected history")
+    else:
+        _git(repo, "update-ref", "refs/git-stage-batch/batches/unexpected", "HEAD")
+    result = _run(helper, repo, state, "verify-input", manifest)
+    assert result.returncode != 0
+    assert "changed since input capture" in result.stderr
+
+
 def test_capture_preserves_deletions_modes_symlinks_and_git_filtered_contents(
     helper: Path,
     repo: Path,

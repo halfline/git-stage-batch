@@ -251,6 +251,7 @@ def main() -> int:
     target_parser = sub.add_parser("verify-target")
     target_parser.add_argument("manifest")
     target_parser.add_argument("--ref", default="HEAD")
+    sub.add_parser("verify-input").add_argument("manifest")
     args = parser.parse_args()
     repo = Path(
         git(Path(args.repo), "rev-parse", "--show-toplevel").decode().strip()
@@ -258,6 +259,13 @@ def main() -> int:
     state = state_path(repo)
     if args.command == "capture":
         print(capture(repo, state, args.base))
+    elif args.command == "verify-input":
+        manifest, _digest = load_input(state, args.manifest)
+        require(
+            inventory(repo, manifest["base"], state)[0] == manifest["identity"],
+            "source, index, HEAD, or batch refs changed since input capture",
+        )
+        print("Captured source, index, HEAD, and batch refs are unchanged.")
     else:
         manifest, _digest = load_input(state, args.manifest)
         expected = {

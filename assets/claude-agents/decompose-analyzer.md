@@ -35,13 +35,18 @@ unaffected work instead of unconditionally replacing the plan from scratch.
    Read repository guidance and discover real verification commands. Capture
    the input and final target in the disposable repository as specified in
    the planning reference.
-2. Identify observable changes from the actual code. Internal APIs and
-   representation changes can be useful concerns before their eventual
-   consumers. Attach support tests/docs to the contract they establish, honoring required
+2. Identify observable changes and working flows from the actual code. Draft
+   vertical slices whose separate atomic concerns bring a provider, its
+   adopter, and focused proof near each other. Internal APIs and representation
+   changes can precede consumers when they have a directly useful contract;
+   do not sort all providers ahead of all user flows merely by layer. Attach
+   support tests/docs to the contract they establish, honoring required
    separate proof commits. In that convention, give the immediately following
    test concern `role: "verification"` and `validates` pointing to its code
    concern; preserve that adjacency through numbering, peeling, and rebuild.
-3. Construct chronological before/after versions. Execute focused checks.
+3. Construct chronological before/after versions, authoring simpler valid
+   historical implementations when final files combine later flows; do not
+   merely select hunks from their final versions. Execute focused checks.
    Inspect actual imports, exports, calls, registrations, data contracts, and
    package dependencies in those versions. Use the resulting dependencies
    to choose order; do not impose the final import graph on earlier history.

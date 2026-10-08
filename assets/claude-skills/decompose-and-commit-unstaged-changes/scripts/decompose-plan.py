@@ -397,17 +397,118 @@ def validate(
     return plan, manifest
 
 
+def affected(
+    old: dict[str, JsonValue],
+    new: dict[str, JsonValue],
+    old_input: dict[str, JsonValue],
+    new_input: dict[str, JsonValue],
+) -> list[str]:
+    """Find changed boundaries, order inversions, and dependent/shared-file successors."""
+    old_cs = {c["slug"]: c for c in old["concerns"]}
+    new_cs = {c["slug"]: c for c in new["concerns"]}
+
+    def signature(
+        plan: dict[str, JsonValue], concern: dict[str, JsonValue]
+    ) -> dict[str, JsonValue]:
+        numbers = {c["number"]: c["slug"] for c in plan["concerns"]}
+        result = {
+            k: v
+            for k, v in concern.items()
+            if k
+            not in (
+                "number",
+                "name",
+                "evolution_step",
+                "depends_on",
+                "dependency_evidence",
+            )
+        }
+        result["milestone"] = {
+            k: v
+            for k, v in plan["evolution_ladder"][concern["evolution_step"] - 1].items()
+            if k != "step"
+        }
+        result["depends_on"] = sorted(numbers[n] for n in concern["depends_on"])
+        result["dependency_evidence"] = [
+            {**e, "provider": numbers[e["provider"]]}
+            for e in concern["dependency_evidence"]
+        ]
+        result["ownership"] = [
+            {k: v for k, v in e.items() if k != "concern"}
+            for e in plan["ownership_ledger"]
+            if e["concern"] == concern["number"]
+        ]
+        return result
+
+    changed = {
+        s
+        for s in old_cs.keys() | new_cs.keys()
+        if s not in old_cs
+        or s not in new_cs
+        or signature(old, old_cs[s]) != signature(new, new_cs[s])
+    }
+    if old["base"] != new["base"]:
+        changed.update(old_cs.keys() | new_cs.keys())
+    old_entries, new_entries = (
+        old_input["identity"]["entries"],
+        new_input["identity"]["entries"],
+    )
+    changed_paths = {
+        p
+        for p in old_entries.keys() | new_entries.keys()
+        if old_entries.get(p) != new_entries.get(p)
+    }
+    old_positions = {c["slug"]: i for i, c in enumerate(reversed(old["concerns"]))}
+    new_order = [
+        c["slug"] for c in reversed(new["concerns"]) if c["slug"] in old_positions
+    ]
+    for i, slug in enumerate(new_order):
+        for later in new_order[i + 1 :]:
+            if old_positions[slug] > old_positions[later]:
+                changed.update((slug, later))
+    consumers = {}
+    for plan in (old, new):
+        numbers = {c["number"]: c["slug"] for c in plan["concerns"]}
+        paths = {
+            c["slug"]: {
+                e["path"]
+                for e in plan["ownership_ledger"]
+                if e["concern"] == c["number"]
+            }
+            for c in plan["concerns"]
+        }
+        changed.update(s for s, ps in paths.items() if ps & changed_paths)
+        earlier = []
+        for concern in reversed(plan["concerns"]):
+            slug = concern["slug"]
+            providers = {numbers[d] for d in concern["depends_on"]}
+            providers.update(s for s in earlier if paths[s] & paths[slug])
+            for provider in providers:
+                consumers.setdefault(provider, set()).add(slug)
+            earlier.append(slug)
+    pending = list(changed)
+    while pending:
+        for consumer in consumers.get(pending.pop(), set()) - changed:
+            changed.add(consumer)
+            pending.append(consumer)
+    return [c["slug"] for c in reversed(new["concerns"]) if c["slug"] in changed]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=".")
     sub = parser.add_subparsers(dest="command", required=True)
     capture_parser = sub.add_parser("capture")
     capture_parser.add_argument("--base", default="HEAD")
-    target_parser = sub.add_parser("verify-target")
-    target_parser.add_argument("manifest")
-    target_parser.add_argument("--ref", default="HEAD")
-    sub.add_parser("verify-input").add_argument("manifest")
+    for command in ("verify-input", "verify-target"):
+        child = sub.add_parser(command)
+        child.add_argument("manifest")
+        if command == "verify-target":
+            child.add_argument("--ref", default="HEAD")
     sub.add_parser("validate").add_argument("plan", type=Path)
+    diff_parser = sub.add_parser("affected")
+    diff_parser.add_argument("old", type=Path)
+    diff_parser.add_argument("new", type=Path)
     args = parser.parse_args()
     repo = Path(
         git(Path(args.repo), "rev-parse", "--show-toplevel").decode().strip()
@@ -420,24 +521,30 @@ def main() -> int:
         print(
             f"Preparation structure valid: {len(plan['concerns'])} concerns; semantic review still required."
         )
-    elif args.command == "verify-input":
-        manifest, _digest = load_input(state, args.manifest)
-        require(
-            inventory(repo, manifest["base"], state)[0] == manifest["identity"],
-            "source, index, HEAD, or batch refs changed since input capture",
-        )
-        print("Captured source, index, HEAD, and batch refs are unchanged.")
+    elif args.command == "affected":
+        old, old_input = validate(repo, state, args.old)
+        new, new_input = validate(repo, state, args.new)
+        print(json.dumps(affected(old, new, old_input, new_input)))
     else:
         manifest, _digest = load_input(state, args.manifest)
-        expected = {
-            p: {k: e[k] for k in ("mode", "object")}
-            for p, e in manifest["identity"]["entries"].items()
-        }
-        require(
-            tree(repo, args.ref) == expected,
-            "committed tree differs from captured input",
-        )
-        print("Committed tree matches captured input, including modes and gitlinks.")
+        if args.command == "verify-input":
+            require(
+                inventory(repo, manifest["base"], state)[0] == manifest["identity"],
+                "source, index, HEAD, or batch refs changed since input capture",
+            )
+            print("Captured source, index, HEAD, and batch refs are unchanged.")
+        else:
+            expected = {
+                p: {k: e[k] for k in ("mode", "object")}
+                for p, e in manifest["identity"]["entries"].items()
+            }
+            require(
+                tree(repo, args.ref) == expected,
+                "committed tree differs from captured input",
+            )
+            print(
+                "Committed tree matches captured input, including modes and gitlinks."
+            )
     return 0
 
 

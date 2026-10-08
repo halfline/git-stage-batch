@@ -106,6 +106,52 @@ def identity(
     }
 
 
+def previous_attempt(
+    root: Path, expected: dict[str, JsonValue]
+) -> tuple[Path, dict[str, JsonValue]] | None:
+    for path in sorted(root.glob("*/receipt.json"), reverse=True):
+        try:
+            receipt = json.loads(path.read_text())
+            if receipt.get("schema") != 1 or receipt.get("identity") != expected:
+                continue
+            results = receipt["results"]
+            if not results:
+                continue
+            allocated = [
+                (kind, command)
+                for kind in ("setup", "commands")
+                for command in expected["spec"].get(kind, [])
+            ]
+            if len(results) > len(allocated):
+                raise SystemExit(f"inconsistent verification receipt: {path}")
+            for result, (kind, command) in zip(results, allocated):
+                if result["kind"] != kind or result["command"] != command:
+                    raise SystemExit(f"verification command allocation changed: {path}")
+                log = path.parent / result["log"]
+                if (
+                    log.parent != path.parent
+                    or file_digest(log) != result["log_sha256"]
+                ):
+                    raise SystemExit(f"verification log is missing or changed: {log}")
+            expected_count = len(expected["spec"].get("setup", [])) + len(
+                expected["spec"]["commands"]
+            )
+            if receipt["passed"] and (
+                not receipt.get("identity_unchanged")
+                or len(results) != expected_count
+                or any(
+                    r["exit_code"] != 0 or not r["source_unchanged"] for r in results
+                )
+            ):
+                raise SystemExit(f"inconsistent verification receipt: {path}")
+            return path, receipt
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise SystemExit(
+                f"invalid verification evidence: {path}: {error}"
+            ) from error
+    return None
+
+
 def unchanged(repo: Path, commit: str) -> bool:
     if git(repo, "rev-parse", "HEAD") != commit:
         return False
@@ -211,11 +257,24 @@ def main() -> int:
     parser.add_argument(
         "--evidence-dir", type=Path, help="retain immutable attempts and receipts here"
     )
+    parser.add_argument(
+        "--reuse",
+        action="store_true",
+        help="reuse only matching content and execution evidence",
+    )
+    parser.add_argument(
+        "--retry",
+        help="record the diagnosed reason for retrying an unchanged failed check",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if args.checks and command:
         parser.error("choose --checks or a single command")
+    if (args.reuse or args.retry) and not args.evidence_dir:
+        parser.error("reuse and retry require --evidence-dir")
+    if args.retry is not None and not args.retry.strip():
+        parser.error("retry needs a diagnosed reason")
     spec = (
         json.loads(args.checks.read_text())
         if args.checks
@@ -235,6 +294,23 @@ def main() -> int:
         root = (
             args.evidence_dir.resolve() / key if args.evidence_dir else Path(temporary)
         )
+        previous = (
+            previous_attempt(root, expected) if args.reuse and not args.retry else None
+        )
+        if previous and not args.retry:
+            path, receipt = previous
+            print(
+                json.dumps(
+                    {
+                        "commit": commit,
+                        "tree": expected["tree"],
+                        "receipt": str(path),
+                        "reused": True,
+                        "passed": receipt["passed"],
+                    }
+                )
+            )
+            return 0 if receipt["passed"] else 1
         attempt = root / f"{time.time_ns()}-{uuid.uuid4().hex}"
         attempt.mkdir(parents=True)
         results = run_checks(repo, commit, spec, environment, attempt)
@@ -249,7 +325,7 @@ def main() -> int:
             "identity_unchanged": identity_unchanged,
             "passed": passed,
             "results": results,
-            "retry_reason": None,
+            "retry_reason": args.retry,
         }
         path = attempt / "receipt.json"
         path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")

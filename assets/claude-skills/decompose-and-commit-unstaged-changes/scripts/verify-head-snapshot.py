@@ -21,6 +21,13 @@ JsonValue: TypeAlias = (
     str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 )
 
+SYNTAX_CHECK = """from pathlib import Path
+for root in ('src', 'tests'):
+    for path in Path(root).rglob('*.py'):
+        if path.is_file():
+            compile(path.read_bytes(), str(path), 'exec')
+"""
+
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -278,11 +285,7 @@ def main() -> int:
     spec = (
         json.loads(args.checks.read_text())
         if args.checks
-        else {
-            "commands": [
-                command or [sys.executable, "-m", "compileall", "-q", "src", "tests"]
-            ]
-        }
+        else {"commands": [command or [sys.executable, "-c", SYNTAX_CHECK]]}
     )
     check_spec(spec)
     repo = Path(args.repo).resolve()

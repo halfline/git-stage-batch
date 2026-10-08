@@ -6,128 +6,80 @@ tools: Read, Grep, Glob, LS, Edit, Write, Agent(decompose-batch-peeler), Bash
 
 # Decompose Deconstructor Reference
 
-Peel approved concerns outermost-to-innermost into named batches. Do not stage
-or commit in the maintained repository. Read
-`.claude/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`
-and the batch-peeler brief first.
+Peel approved concerns outermost-to-innermost through git-stage-batch.
+Read `.claude/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md` and peeler brief. Preserve original source in
+batches; do not author a prototype history or stage the maintained index.
 
-## Preparation
+## Preparation and peel loop
 
-Read the approved plan, input manifest, narrative, patches, and checkpoint.
-Verify Gate 1 still applies to the input before starting mutations. Confirm
-that no unrelated staged changes or batch/session state will be absorbed. Read
-installed git-stage-batch help for every command you use.
+Read the approved schema 2 plan, manifest, ledger, accepted findings, and
+checkpoint. Verify the input before the first peel; on resume account for the
+recorded batches and remaining tree instead. Confirm scope and installed help.
+Mark `phase2-running`. Start a tool session only when none is active, and
+continue only one owned by this workflow.
 
-Resolve `DECOMPOSE_STATE_DIR` with the checkpoint helper. Before the loop:
+For each concern in ascending `peel_order`:
 
-```bash
-python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase2-running
-git-stage-batch status
-git-stage-batch list
-```
+1. Mark `current-batch` with the checkpoint helper.
+2. Execute the peeler brief, or give a worker the scoped concern/ownership,
+   exclusions, relevant source, findings, and session state. Keep mutations
+   sequential; a new worker for each concern is optional.
+3. Audit the batch and optional repair, original ownership, shared context,
+   and remaining-source coherence. Preserve local evidence with exact ref IDs.
+4. Mark `completed-batch` only after that audit passes. Use `again` as needed
+   and refresh `show` after mutations.
 
-Start a session if none is active. Continue only a session verified to belong
-to the current workflow. Use `again` between concerns and refresh `show` after
-mutations. Pass `--no-auto-advance` wherever supported.
+When source reveals a narrower boundary, pause that selection, record concrete
+findings, and correct the affected concerns/ledger/mini-series. Run global
+structural validation, review affected boundaries, and retain other accepted
+findings. Update already peeled affected batches through tool operations.
+Do not return to constructing a global history or weaken a boundary to avoid
+intricate selection work.
 
-## Peel loop
+## Gate 2: one cumulative preservation replay
 
-For each concern in `peel_order`:
+The remaining maintained tree must equal the actual committed base, with an
+empty index. Every planned concern and recorded repair has its tool-created
+batch, deliberate note, complete ownership, and provenance. Account for all
+input, including new/deleted files, modes, symlinks, and gitlinks.
 
-1. Record the current concern:
+Create a uniquely named disposable clone at the base and copy the required
+existing batch/state refs there. Record their immutable IDs. For each concern
+in reverse order:
 
-   ```bash
-   python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase2-running --current-batch decompose-NN-NAME
-   ```
+1. Use its recorded successful repair order. If none is known, inspect overlap
+   and choose either apply concern then reverse repair, or reverse repair then
+   apply concern. Use installed `apply --from` and `discard --from` semantics.
+2. Inspect the restored diff and check it against the concern ledger.
+   Stage the replay increment explicitly with git-stage-batch and make a
+   temporary native commit to establish the next base. Those commits prove
+   batch preservation; final atomic mini-series are built in Phase 3.
+3. Record the actual before/after trees and operations. If application fails,
+   retain the failure and test the alternate order from a clean copy of the
+   preceding replay commit only when the failure warrants it. Once an order
+   succeeds, retain it; do not routinely run both.
+4. Run additional focused checks only for a concrete replay/repair risk.
+   Reuse valid local evidence. Final behavioral proof belongs to actual
+   atomic commits during reconstruction.
 
-2. Supply its exact JSON, historical patch, adjacent exclusions, ledger,
-   and session state to a fresh batch-peeler context when available. Otherwise
-   execute `.claude/agents/decompose-batch-peeler.md` yourself. Keep mutation sequential; workers must not
-   operate on the same live session concurrently.
-3. Create the batch with its approved purpose note before selecting lines.
-   Peel original owned content with `discard --to`; copy shared wrappers with
-   `include --to`. After saving final content, write any needed earlier
-   syntactic version into the remaining working tree and capture it in the
-   companion repair batch. `discard --to --as-stdin` changes saved batch
-   content, so it cannot perform that working-tree repair.
-   The peeler brief governs exact selection, ID refresh, and repair capture.
-4. Audit the batch and optional repair refs. Reconstruct the planned snapshot
-   from the before state and compare its tracked tree with the approved after
-   state. Syntax checks alone are insufficient. Check retained working-tree
-   entry points and ownership coverage before proceeding.
-5. Mark the batch complete only after the local audit passes:
-
-   ```bash
-   python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase2-running --completed-batch decompose-NN-NAME
-   ```
-
-Do not use `save` for original concern content. Do not create unnumbered
-holding batches. Repair batches record temporary deconstruction edits, not new
-product concerns. Record repairs precisely so rebuild can reverse them.
-
-## Findings during peeling
-
-If actual content contradicts an approved boundary or exposes a missing
-dependency, pause that concern's mutations and retain the concrete finding.
-Use the planning reference's targeted correction procedure. Update affected
-snapshots, ledger, dependencies, narrative, and batch mapping; do not restart
-unrelated analysis. Revalidate the complete Gate 1 against the captured input
-and current peel state before continuing. If a replan changes an already
-peeled batch, re-peel or repair that batch and its affected successors.
-
-Do not create a broad batch promising that Phase 3 will split it. Each
-approved concern already represents one atomic commit. If the tool cannot
-express that boundary, report its exact limitation with the attempted patch.
-
-## Gate 2 evidence
-
-The remaining maintained tree must equal the recorded base. Do not invent an
-empty project skeleton when the actual base already contains a project. If a
-deliberate minimal-base change is required, it belongs in an approved concern
-rather than unexplained leftovers.
-
-Audit the full batch set:
-
-- every planned concern has its named batch with the approved purpose;
-- optional repair batches have recorded provenance and reversal;
-- ownership covers each intended changed region once, with shared context
-  explicitly separate;
-- no unrelated batches, partial units, missing deletions, or unknown content
-  are included;
-- the complete reverse replay from the base reproduces each planned snapshot
-  and the final captured target tree.
-
-Run the full replay in a disposable clone with copied required batch/state
-refs, using installed git-stage-batch semantics. For each companion repair,
-try the two legal orders in isolated copies: reverse repair then apply
-concern, or apply concern then reverse repair. Record the order that
-reconstructs the approved after tree for the rebuilder; never assume one
-works for every shared file. A later version of a newly added file can reject
-application while its earlier version is still present. Inspect the resulting
-tree and compare with the approved after snapshot. Temporary native commits
-are permitted in that clone to establish
-each intermediate base; they are verification, not final history. Run checks
-again where the reconstructed snapshot or its prerequisites differ from
-accepted evidence. Comparing batch notes or compiling blobs alone is not Gate
-2 proof.
-
-Inspect refs without changing the live review cursor:
+After the cumulative replay:
 
 ```bash
-git --no-optional-locks for-each-ref --format='%(refname)' refs/git-stage-batch/state
-git --no-optional-locks cat-file -p refs/git-stage-batch/state/decompose-NN-NAME:batch.json
+python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py --repo REPLAY_REPO verify-target INPUT_MANIFEST
 ```
 
-After the full audit, stop the session and confirm no active/completed
-session:
+Use the original `DECOMPOSE_STATE_DIR` and real paths. This checks the complete
+committed tree against the immutable input manifest. Do not manufacture batch
+metadata, copy prototype versions over replay results, use native staging,
+or substitute hand-written patch/claim application for the tool.
 
-```bash
-git-stage-batch stop
-git-stage-batch status
-git-stage-batch list
-```
+Write `decompose-replay.json` with the base, input digest, exact ordered
+batch/state IDs, repair operations, intermediate tree IDs, retained replay
+repository/tip, and local verification receipts. Confirm its final target and
+complete ownership mapping. A reused replay must match all those inputs;
+changed refs invalidate their boundaries and the affected replay suffix.
+An unchanged authenticated replay does not need rebuilding merely on resume.
 
-The orchestrator marks `phase2-complete` after Gate 2 passes. Return the batch
-list, base/target comparison, replay evidence, checks, repairs, changed
-boundaries, and session status. If a required check is blocked, report it
-without claiming Gate 2 passed.
+Stop the live tool session and confirm no active/completed session before
+returning the complete evidence to the coordinator for `phase2-complete`.
+Report blockers without claiming the gate passed.

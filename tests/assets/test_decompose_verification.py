@@ -7,12 +7,11 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
 import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-
 SKILL_NAME = "decompose-and-commit-unstaged-changes"
 
 
@@ -283,7 +282,6 @@ def test_corrupt_evidence_cannot_be_reused(
     assert len(counter.read_text().splitlines()) == 2
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize("invalid", [False, True])
 def test_default_syntax_check_needs_no_cache_ignores(
     helper: Path,
@@ -311,3 +309,14 @@ def test_default_syntax_check_needs_no_cache_ignores(
     assert "introduced nonignored files" not in result.stderr
     assert not _git(repo, "status", "--porcelain")
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
+
+
+def test_platform_helpers_have_identical_execution_contract() -> None:
+    for script in ("decompose-plan.py", "verify-head-snapshot.py"):
+        codex = (
+            PROJECT_ROOT / "assets" / "codex-skills" / SKILL_NAME / "scripts" / script
+        )
+        claude = (
+            PROJECT_ROOT / "assets" / "claude-skills" / SKILL_NAME / "scripts" / script
+        )
+        assert codex.read_bytes() == claude.read_bytes()

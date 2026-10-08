@@ -483,6 +483,14 @@ immediate adopter or test successor, and every later natural source or test
 boundary whose API or representation the group crosses. A passing final tip
 does not replace those intermediate checks.
 
+Existing semantic evidence handed over from decomposition may also satisfy a
+selected boundary. Authenticate it with the originating grouped runner and
+check specification against the current tree, commands, environment,
+runtime/dependency identities, external inputs, and log digests. Rewording alone
+does not invalidate that evidence. Missing or changed bindings require fresh
+checks. Retain the complete object-and-plan audit, final semantic review, and
+normal final-tip checks.
+
 For a verified-prefix continuation, immutable receipts may satisfy unchanged
 semantic boundaries whose exact inputs and assumptions remain valid. Audit
 every output in the complete combined chain through the object-and-plan tier,

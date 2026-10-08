@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -176,7 +177,7 @@ def _identity(repo: Path) -> tuple:
     )
 
 
-def test_capture_preserves_input_without_mutation(
+def test_preparation_accepts_multiple_atomic_slices_without_mutation(
     helper: Path,
     repo: Path,
     tmp_path: Path,
@@ -184,6 +185,10 @@ def test_capture_preserves_input_without_mutation(
     state = tmp_path / "state"
     before = _identity(repo)
     manifest = _capture(helper, repo, state)
+    plan = _write(state, _plan(repo, state, manifest))
+    result = _run(helper, repo, state, "validate", str(plan))
+    assert result.returncode == 0, result.stderr
+    assert _run(helper, repo, state, "verify-input", manifest).returncode == 0
     assert _identity(repo) == before
     assert not (state / "snapshots").exists()
     saved = json.loads((state / manifest).read_text())
@@ -192,6 +197,68 @@ def test_capture_preserves_input_without_mutation(
         assert (state / manifest).parent.joinpath(f"{index}.blob").read_bytes() == (
             repo / name
         ).read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("digest", "input digest"),
+        ("dependency", "dependency order"),
+        ("evidence", "dependency evidence"),
+        ("proof", "immediately follow"),
+        ("ownership", "cover captured changes"),
+        ("duplicate", "duplicate owned region"),
+        ("milestone", "milestone order"),
+        ("schema", "schema 2"),
+    ],
+)
+def test_invalid_preparation_is_rejected(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+    mutation: str,
+    message: str,
+) -> None:
+    state = tmp_path / "state"
+    plan = _plan(repo, state, _capture(helper, repo, state))
+    if mutation == "digest":
+        plan["input_digest"] = "stale"
+    elif mutation == "dependency":
+        plan["concerns"][0]["depends_on"] = [1]
+    elif mutation == "evidence":
+        plan["concerns"][0]["dependency_evidence"] = []
+    elif mutation == "proof":
+        plan["concerns"][0]["expected_commits"][1]["validates"] = "record-decoder/code"
+    elif mutation == "ownership":
+        plan["ownership_ledger"].pop()
+    elif mutation == "duplicate":
+        plan["ownership_ledger"].append(copy.deepcopy(plan["ownership_ledger"][0]))
+    elif mutation == "milestone":
+        plan["concerns"][0]["evolution_step"] = 1
+    else:
+        plan["schema"] = 1
+    result = _run(helper, repo, state, "validate", str(_write(state, plan)))
+    assert result.returncode != 0
+    assert message in result.stderr
+
+
+def test_existing_contract_proof_does_not_require_new_implementation(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    plan = _plan(repo, state, _capture(helper, repo, state))
+    plan["concerns"][1]["expected_commits"] = [
+        {
+            "slug": "existing-proof",
+            "purpose": "Validate the documented base format",
+            "role": "verification",
+            "validates": "base:README.md:record format",
+        }
+    ]
+    result = _run(helper, repo, state, "validate", str(_write(state, plan)))
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize("mutation", ["source", "index", "head", "batch"])

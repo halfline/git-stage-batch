@@ -59,16 +59,25 @@ versions. Functions, tests, parser calls, imports, tables, registries,
 configuration, and fenced documentation must parse in both the batch's
 reconstruction and the remaining tree. Copy shared wrappers as context. A
 syntactic unit can contain several concerns; it need not land as its final
-version. Use the approved earlier version for exact replacements:
+version.
 
-```bash
-cat <<'EOF' | git-stage-batch discard --to decompose-NN-NAME --line IDS --as-stdin --no-auto-advance
-COMPLETE_EARLIER_VERSION
-EOF
-```
+`discard --to` saves the selected **current** content in the concern batch
+and removes it from the working tree. If the remaining tree needs an earlier
+version of a shared unit, first save the final owned content with ordinary
+`discard --to --line`, then write the approved earlier version into the
+working tree and capture that edit with `include --to
+decompose-NN-NAME-repair`. During replay, reverse the repair and apply the
+concern in the order proven by a disposable clone. An earlier version of a
+new, untracked file may need its repair reversed **before** the later version
+can be applied; other changes may need the concern applied first. Record the
+successful order for the rebuilder.
 
-The example placeholders must be replaced with current IDs and real code. Do
-not use `save` to capture original content.
+Do not pass an earlier version to `discard --to --as-stdin`: that option
+changes the content saved in the batch. It does not write the earlier version
+into the remaining working tree, and it can replace the final content needed
+for replay. Use `--as-stdin` only when the intended **batch** content is the
+replacement, with an exact before/after replay check. Do not use `save` to
+capture original content.
 
 ## Repairs and verification
 

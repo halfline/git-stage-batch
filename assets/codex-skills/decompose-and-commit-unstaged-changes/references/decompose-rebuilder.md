@@ -32,14 +32,21 @@ For each remaining concern, highest number first:
 
 ```bash
 python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --current-batch decompose-NN-NAME
-git-stage-batch apply --from decompose-NN-NAME
 ```
 
-If a companion repair exists, undo its temporary effects:
+Use the order recorded by Gate 2's exact batch replay. With no repair, apply
+the concern. With a repair, the two documented operations are:
 
 ```bash
+git-stage-batch apply --from decompose-NN-NAME
 git-stage-batch discard --from decompose-NN-NAME-repair
 ```
+
+Run them in the proven order, which may be the reverse of the display above.
+For a newly added file whose earlier version is present, reverse its repair
+first if applying the later version would otherwise be incompatible. Do not
+choose an order from file type alone; compare the resulting tree with the
+approved after snapshot before staging.
 
 Inspect `git diff` and `git diff --cached`. The index should remain empty
 until explicit staging. Compare the restored content with the planned

@@ -3,6 +3,28 @@
 Read this reference in every phase. It defines concern boundaries, evidence,
 and review corrections; worker briefs define the tool operations.
 
+## Shape the development story
+
+Plan a plausible sequence of working slices, not a dependency-layer inventory.
+A slice may take several atomic commits: a provider with direct proof, its
+adoption in a working flow, and a focused scenario. Keep those commits near
+each other when dependencies allow. Shared foundations can land earlier when
+they have their own useful contract; dependencies constrain order but do not
+require every domain module before every UI module. Add integration or browser
+proof near the first usable flow instead of collecting all such checks at the
+end. A later broad regression suite can still be a separate concern.
+
+Make the slices real by authoring simpler, complete historical versions when a
+final file combines several flows. Evolve imports, handlers, markup, and
+focused proof with each version so that snapshot works on its own. Reordering
+final-file hunks or adding no-op scaffolding does not establish a working
+slice; the versions must still reach the captured final tree.
+
+At Gate 1, inspect the chronology as well as individual patches. Long runs of
+unused providers, controls before their handlers, or delayed proof can reveal
+an unnatural order even when every commit is atomic. Correct the affected
+snapshots and checks without merging independent changes into feature commits.
+
 ## What is atomic
 
 A concern is one reviewable change with one reason to exist. It can add an

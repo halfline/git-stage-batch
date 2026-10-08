@@ -20,7 +20,15 @@ allowed-tools:
 
 Build an atomic commit series from unstaged work through analysis, peeling,
 and rebuilding. Each concern is one reviewable change; a feature can span many
-concerns. There is no target commit count.
+concerns. There is no target commit count. Make the series read like incremental
+development, not a topological inventory of final files. Prefer vertical
+slices in which a provider, its adoption in a working flow, and relevant proof
+arrive near each other as separate atomic commits. Author simpler, complete
+historical versions of shared files when the final code combines later flows,
+so each slice works at its own snapshot. Shared foundations can precede
+several slices when they have a direct contract; avoid long stretches of
+unused modules or deferring integration checks until the end solely for
+layering.
 
 Read `references/decompose-planning.md` before any phase. It defines concrete
 snapshot evidence, atomicity, proof, and targeted corrections. Phase briefs:
@@ -215,15 +223,19 @@ Then independently inspect the patches and relevant check output:
 3. Dependencies reflect imports, calls, contracts, and registrations in the
    historical versions. Providers precede consumers; final imports do not
    force later features into early patches.
-4. Owned regions cover the intended diff exactly once. Context is separate.
+4. The chronological ladder makes plausible working progress. Related
+   providers, adopters, and proof stay near each other where dependencies
+   allow; avoidable runs of dormant layers or deferred integration scenarios
+   require correction. This does not require feature-sized commits.
+5. Owned regions cover the intended diff exactly once. Context is separate.
    Submodule stanzas and gitlinks have owners. Lockfiles/configuration are
    valid generated snapshots for their manifests.
-5. Repository proof placement is honored, including required immediate
+6. Repository proof placement is honored, including required immediate
    `tests: Validate ...` commits with their code/proof links. Relevant checks
    actually ran in those snapshots with declared prerequisites.
    Syntax/import/collection output cannot stand in for behavioral proof.
    Generated ignored assets are built by the snapshot's scripts when required.
-6. The concise narrative/ladder accurately describe the retained history.
+7. The concise narrative/ladder accurately describe the retained history.
 
 A failed review gives precise concern/patch feedback. Apply targeted
 correction as defined in the planning reference; retain valid unrelated

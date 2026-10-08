@@ -242,6 +242,161 @@ def capture(repo: Path, state: Path, revision: str) -> str:
     return str((directory / "manifest.json").relative_to(state))
 
 
+def validate(
+    repo: Path, state: Path, path: Path
+) -> tuple[dict[str, JsonValue], dict[str, JsonValue]]:
+    plan = json.loads(path.read_text())
+    require(
+        plan.get("schema") == 2,
+        "use preparation plan schema 2; audit older snapshot plans before reuse",
+    )
+    manifest, input_digest = load_input(state, plan["input_manifest"])
+    require(
+        plan["input_digest"] == input_digest,
+        "plan input digest differs from its manifest",
+    )
+    base = plan["base"]
+    require(
+        base
+        == manifest["base"]
+        == git(repo, "rev-parse", "--verify", f"{base}^{{commit}}").decode().strip(),
+        "plan base differs from captured base",
+    )
+    concerns = plan["concerns"]
+    require(isinstance(concerns, list) and bool(concerns), "empty concern list")
+    numbers = list(range(1, len(concerns) + 1))
+    require(
+        [c["number"] for c in concerns] == numbers
+        and all(type(c["number"]) is int for c in concerns),
+        "noncontiguous concern numbers",
+    )
+    require(
+        plan["peel_order"] == numbers and plan["rebuild_order"] == numbers[::-1],
+        "invalid concern orders",
+    )
+    for key in ("slug", "name"):
+        values = [c[key] for c in concerns]
+        require(
+            all(isinstance(v, str) and v.strip() for v in values)
+            and len(set(values)) == len(values),
+            f"invalid or duplicate {key}",
+        )
+    ladder = plan["evolution_ladder"]
+    require(
+        bool(ladder) and [s["step"] for s in ladder] == list(range(1, len(ladder) + 1)),
+        "invalid evolution ladder",
+    )
+    require(
+        all(
+            isinstance(s["behavior_after"], str) and s["behavior_after"].strip()
+            for s in ladder
+        ),
+        "missing milestone behavior",
+    )
+    previous_step = 0
+    previous_commit = None
+    previous_role = None
+    commit_ids = set()
+    for concern in reversed(concerns):
+        step = concern["evolution_step"]
+        require(
+            type(step) is int and previous_step <= step <= len(ladder) and step > 0,
+            "concerns do not follow milestone order",
+        )
+        previous_step = step
+        require(
+            isinstance(concern["purpose"], str) and bool(concern["purpose"].strip()),
+            "empty concern purpose",
+        )
+        deps = concern["depends_on"]
+        require(
+            isinstance(deps, list)
+            and all(
+                type(d) is int and concern["number"] < d <= len(concerns) for d in deps
+            )
+            and len(deps) == len(set(deps)),
+            "invalid dependency order",
+        )
+        evidence = concern["dependency_evidence"]
+        require(
+            set(deps) == {e["provider"] for e in evidence},
+            "missing dependency evidence",
+        )
+        require(
+            all(e.get("anchor") and e.get("contract") for e in evidence),
+            "missing dependency anchor or contract",
+        )
+        commits = concern["expected_commits"]
+        require(
+            isinstance(commits, list) and bool(commits),
+            "missing proposed atomic slices",
+        )
+        for commit in commits:
+            require(
+                all(
+                    isinstance(commit.get(k), str) and commit[k].strip()
+                    for k in ("slug", "purpose")
+                ),
+                "missing atomic slice purpose or slug",
+            )
+            require(
+                commit.get("role")
+                in ("implementation", "verification", "documentation", "mechanical"),
+                "invalid atomic slice role",
+            )
+            identity = f"{concern['slug']}/{commit['slug']}"
+            require(identity not in commit_ids, "duplicate atomic slice")
+            commit_ids.add(identity)
+            if commit.get("role") == "verification":
+                validates = commit.get("validates", "")
+                existing = (
+                    isinstance(validates, str)
+                    and validates.startswith("base:")
+                    and bool(validates[5:].strip())
+                )
+                require(
+                    existing
+                    or (
+                        previous_role == "implementation"
+                        and validates == previous_commit
+                    ),
+                    "proof must immediately follow the code it validates, or identify an existing base contract",
+                )
+            previous_commit = identity
+            previous_role = commit["role"]
+    ledger = plan["ownership_ledger"]
+    require(isinstance(ledger, list) and bool(ledger), "missing ownership ledger")
+    owned = set()
+    owners = set()
+    anchors = set()
+    for entry in ledger:
+        require(
+            isinstance(entry["path"], str) and bool(entry["path"].strip()),
+            "missing ownership path",
+        )
+        require(
+            type(entry["concern"]) is int and entry["concern"] in numbers,
+            "unknown ledger owner",
+        )
+        require(
+            isinstance(entry["anchor"], str) and bool(entry["anchor"].strip()),
+            "missing stable ownership anchor",
+        )
+        require(entry["kind"] in ("owned", "context"), "unknown ownership kind")
+        if entry["kind"] == "owned":
+            key = (entry["path"], entry["anchor"])
+            require(key not in anchors, "duplicate owned region")
+            anchors.add(key)
+            owned.add(entry["path"])
+            owners.add(entry["concern"])
+    require(
+        owned == set(manifest["changed_paths"]),
+        "owned paths do not cover captured changes exactly",
+    )
+    require(owners == set(numbers), "each concern must own an actual changed region")
+    return plan, manifest
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=".")
@@ -252,6 +407,7 @@ def main() -> int:
     target_parser.add_argument("manifest")
     target_parser.add_argument("--ref", default="HEAD")
     sub.add_parser("verify-input").add_argument("manifest")
+    sub.add_parser("validate").add_argument("plan", type=Path)
     args = parser.parse_args()
     repo = Path(
         git(Path(args.repo), "rev-parse", "--show-toplevel").decode().strip()
@@ -259,6 +415,11 @@ def main() -> int:
     state = state_path(repo)
     if args.command == "capture":
         print(capture(repo, state, args.base))
+    elif args.command == "validate":
+        plan, _manifest = validate(repo, state, args.plan)
+        print(
+            f"Preparation structure valid: {len(plan['concerns'])} concerns; semantic review still required."
+        )
     elif args.command == "verify-input":
         manifest, _digest = load_input(state, args.manifest)
         require(

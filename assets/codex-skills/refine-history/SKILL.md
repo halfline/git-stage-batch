@@ -476,6 +476,14 @@ Use three verification tiers for a full-series result:
 3. **Final tip:** run the complete normal repository test suite, message checks,
    and repository-appropriate build at the final candidate tip.
 
+Existing semantic evidence handed over from decomposition may also satisfy a
+selected boundary. Authenticate it with the originating grouped runner and
+check specification against the current tree, commands, environment,
+runtime/dependency identities, external inputs, and log digests. Rewording alone
+does not invalidate that evidence. Missing or changed bindings require fresh
+checks. Retain the complete object-and-plan audit, final semantic review, and
+normal final-tip checks.
+
 An unchanged verified prefix may reuse immutable semantic-boundary receipts
 whose exact inputs and assumptions remain valid. Reauthenticate the complete
 combined output chain in the object-and-plan tier, run the semantic-boundary

@@ -1,148 +1,91 @@
 # Decompose Rebuilder Reference
 
-Restore approved batches in `rebuild_order` and create their atomic commits.
-Read
-`.agents/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`
-first. Applying a batch writes to the working tree only; it never counts as
-staging.
+Restore narrow batches in reverse order and develop their atomic mini-series.
+Read the planning reference, approved plan, ownership, accepted findings,
+Gate 2 replay record, captured input, and checkpoint. Applying a batch changes
+the working tree only; staging is a separate explicit git-stage-batch action.
 
-## Preparation
+## Restore and plan from the real diff
 
-Read the approved plan, snapshot patches, Gate 2 replay evidence, input
-manifest, checkpoint, and batch list. Confirm the maintained tree is the
-recorded base, the index is clean, and all remaining batches belong to this
-workflow. On resume, compare completed commits with their planned snapshots
-and continue from the verified boundary.
+Verify the current maintained base or completed reconstruction boundary and
+empty index. Authenticate remaining batch/state IDs and repair orders against
+Gate 2. Read repository commit/test conventions and relevant installed help.
+Mark `phase3-running`.
 
-Read repository commit/test guidance, its commit-msg hook if present, and the
-installed git-stage-batch help for all commands used. Read the
-`.agents/skills/commit-unstaged-changes/SKILL.md` staging guidance when
-available. Do not use native `git add` for ordinary slices in the maintained
-repository.
+For each highest-numbered remaining concern, mark `current-batch`, then restore
+it through `apply --from` and reverse any repair with `discard --from` in its
+proven order. Inspect the resulting unstaged diff, relevant imports/calls, and
+ownership. Never copy a prototype or final version over the restored source.
 
-Compute `DECOMPOSE_STATE_DIR` with the checkpoint helper if needed. Mark
-`phase3-running` before applying batches. Resolve the installed snapshot
-verifier at `.agents/skills/refine-history/scripts/verify-head-snapshot.py`;
-use the companion helper so verification follows the same implementation as
-the required final refinement.
+Refine `expected_commits` into a short atomic mini-series from that actual
+diff before staging. Each slice has one purpose and coherent prerequisites.
+Expose providers before consumers, keep adoption and proof near the useful
+flow, and exclude future imports/registrations/behavior. Code/tests/docs need
+separate commits when repository conventions require them; test proof follows
+its code immediately.
 
-## Rebuild loop
+If the actual diff reveals independent outcomes, update the affected boundary
+and mini-series, validate global structure, and review those changes. Preserve
+unaffected decisions. Do not require a global Phase 1 restart or one commit
+per batch. Broad unrelated batches still require correction before committing.
 
-For each remaining concern, highest number first:
+## Stage, commit, and verify
 
-```bash
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --current-batch decompose-NN-NAME
-```
+Use `show` and explicit `include` operations to stage only the current slice.
+Refresh review IDs after every mutation. Whole-file inclusion requires the
+entire current diff to belong to that slice. For shared functions/files,
+stage an intentional complete earlier version through `include --line
+--as-stdin` or `include --file --as-stdin`. Leave future source in the working
+tree, recorded in the current batch, until its slice is ready.
 
-Use the order recorded by Gate 2's exact batch replay. With no repair, apply
-the concern. With a repair, the two documented operations are:
+Inspect `git diff --cached` and `git show :PATH`. The staged version must be
+one coherent increment using only its present prerequisites. Generate valid
+dependency/lock snapshots with the matching package manager; stage them through
+the tool. Use native `git commit` after explicit staging.
 
-```bash
-git-stage-batch apply --from decompose-NN-NAME
-git-stage-batch discard --from decompose-NN-NAME-repair
-```
-
-Run them in the proven order, which may be the reverse of the display above.
-For a newly added file whose earlier version is present, reverse its repair
-first if applying the later version would otherwise be incompatible. Do not
-choose an order from file type alone; compare the resulting tree with the
-approved after snapshot before staging.
-
-Inspect `git diff` and `git diff --cached`. The index should remain empty
-until explicit staging. Compare the restored content with the planned
-before/after patch, including imports, registrations, and absent future
-content. Do not copy a final file version that introduces later concerns.
-
-The default is the one atomic commit already approved for that concern, with
-proof placement governed by repository conventions. Required separate `tests:
-Validate ...` concerns immediately follow the code concerns they validate. Do
-not invent another mandatory mini-series for every batch. If restoration
-exposes independent outcomes absent from the plan, use a targeted boundary
-correction and complete revalidation before committing the affected content.
-Do not silently broaden or subdivide history.
-
-Start/continue a verified workflow session, inspect the review, then stage
-only the approved change using git-stage-batch. For example:
+For each actual commit, write the relevant check specification and execute all
+its checks in one isolated source snapshot:
 
 ```bash
-git-stage-batch status
-git-stage-batch start
-git-stage-batch show --file PATH
-git-stage-batch include --line IDS --no-auto-advance
-git --no-optional-locks diff --cached
+python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD --checks CHECK_SPEC_JSON --evidence-dir "$DECOMPOSE_STATE_DIR/verification" --reuse
 ```
 
-Run `start` only if no session is active. Refresh `show` after each mutation;
-IDs belong to the immediately preceding review. Use whole-file inclusion only
-when every diff region belongs to the approved change. Exact complete
-historical replacements can use `--as-stdin`.
+Use real command arguments, runtime identities, external harness input paths,
+and prerequisites as described in the planning reference. For docs/mechanical
+changes, record inspection rather than create unnecessary tests. A later test
+file or dirty future source cannot prove the current code snapshot.
 
-Verify the staged tree matches the planned after tree before committing.
-Without a separate-proof convention, tests and documentation establishing that
-change normally land in the same commit. With that convention, keep the
-approved code/proof adjacency and `validates` link. Do not group all
-implementation commits first and defer their proof commits to the end.
+The helper records exact tree/command/input/environment/executable/log bindings.
+Setup and checks may create ignored generated assets, but cannot modify tracked
+source or introduce untracked source. Group setup and commands for the snapshot;
+share caches only with pinned identities. Focus browser proof on browser
+contracts and limit simultaneous browser runs under memory pressure.
 
-## Messages and proof
+A matching failed receipt does not trigger another unchanged attempt. Diagnose
+the code, runner, or transient prerequisite and retain a new attempt with
+`--retry` when appropriate. Fix and amend a failed newest commit through
+git-stage-batch before proceeding; record and reverify the corrected snapshot.
 
-Follow repository message conventions and relevant path history. The subject
-names one concrete action. Explain the previous committed state, the reason
-for the patch, and the actual result. Internal APIs are valid outcomes; do not
-claim later callers already use them. Do not fabricate a failure, benchmark,
-or motivation. Feature-level summaries belong to later review requests.
+After each verified commit, checkpoint `--commit HEAD`. A number/message/parent
+change alone does not invalidate a successful result for an identical tree and
+execution inputs. The helper can reuse that evidence; source changes need new
+checks.
 
-Create the commit using native `git commit` after git-stage-batch staging.
-Inspect the resulting committed diff, then run an explicit appropriate command
-against the committed snapshot:
+## Completion and recovery
 
-```bash
-python .agents/skills/refine-history/scripts/verify-head-snapshot.py --ref HEAD -- ACTUAL_CHECK_COMMAND
-```
+Drop the concern/repair only after its full atomic mini-series is committed,
+verified, and recoverable. Mark `completed-batch` and audit any remaining dirty
+source against the current workflow. Stop the session after all batches.
 
-Replace the command placeholder with discovered executable arguments. Honor
-the approved prerequisites; generate ignored assets using the committed
-scripts when needed. Verify source imports come from that checkout. A dirty
-tree containing future changes must never supply passing proof for HEAD.
-Syntax/import checks supplement relevant behavior/build checks. For a
-low-impact docs change, perform the planned inspection. Record proof limits
-and external blockers honestly.
+For an older broken commit, preserve future dirty work with named batches and
+use the companion refine-history workflow to correct the relevant committed
+range. Do not implement a separate rebase engine, leave a later repair commit,
+or mutate unrelated user work. Hook failures before commit creation retry that
+same commit.
 
-After each successful commit:
-
-```bash
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --commit HEAD
-```
-
-Drop a concern and its repair batch only when their content is fully
-committed, verified, and recoverable in history. Record the completed batch:
-
-```bash
-git-stage-batch drop decompose-NN-NAME
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --completed-batch decompose-NN-NAME
-```
-
-Drop the companion repair as well if present. Inspect any remaining unstaged
-content; it must be explained by the current verified workflow state.
-
-## Recovery
-
-A hook failure before commit creation is a retry of the same commit. If a
-newly committed snapshot fails, fix and amend it before continuing; do not
-leave a later repair commit. Stage the fix with git-stage-batch, inspect the
-index, amend, and rerun the exact failed proof. Update evidence for affected
-successors if the fix changes their planned snapshots.
-
-For an older failure, do not rebase over future dirty work. Preserve it using
-the documented workflow recovery mechanism, require a clean tree, and edit the
-first failed commit in the local series. Native `git add` is permitted only
-for conflict-resolution bookkeeping during that rebase. Reverify the repaired
-commit and changed successors. Do not run destructive recovery against user
-work or published history without authorization.
-
-## Handoff
-
-After all batches are committed and dropped, stop the workflow session and
-return to the orchestrator. Compare the final committed tree with the captured
-target, report commits/checks/repairs and blockers, and let the orchestrator
-invoke the required `refine-history` skill. Do not run a separate embedded
-history rewrite here or declare the workflow complete before Gate 3.
+Compare the final committed tree with the original input using
+`decompose-plan.py verify-target INPUT_MANIFEST`. Return subjects, mini-series
+mapping, accepted review findings, verification specifications/receipts,
+repairs, and blockers. The coordinator then invokes the required companion
+refine-history skill. Hand over reusable evidence so its changed-boundary checks
+and final audit do not repeat unchanged behavioral verification.

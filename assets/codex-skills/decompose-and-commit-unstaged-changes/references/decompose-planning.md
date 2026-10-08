@@ -1,219 +1,188 @@
-# Planning from proposed history
+# Preparation, execution, and review
 
-Read this reference in every phase. It defines concern boundaries, evidence,
-and review corrections; worker briefs define the tool operations.
+Read this reference with the current phase brief. Phase 1 prepares boundaries
+and order; Phase 2 preserves source in batches; Phase 3 authors atomic history.
+Constructing a complete history to justify a plan duplicates reconstruction.
 
-## Shape the development story
+## Concerns and atomic slices
 
-Plan a plausible sequence of working slices, not a dependency-layer inventory.
-A slice may take several atomic commits: a provider with direct proof, its
-adoption in a working flow, and a focused scenario. Keep those commits near
-each other when dependencies allow. Shared foundations can land earlier when
-they have their own useful contract; dependencies constrain order but do not
-require every domain module before every UI module. Add integration or browser
-proof near the first usable flow instead of collecting all such checks at the
-end. A later broad regression suite can still be a separate concern.
+Each atomic commit has one reason to exist. A narrow concern can contain a
+small sequence such as an internal contract, its required separate proof,
+and documentation of that contract. Different operations, providers, behavior
+branches, or persisted shapes are candidates for separate concerns. A feature
+can span many concerns. Neither effort nor commit count settles the boundary.
 
-Make the slices real by authoring simpler, complete historical versions when a
-final file combines several flows. Evolve imports, handlers, markup, and
-focused proof with each version so that snapshot works on its own. Reordering
-final-file hunks or adding no-op scaffolding does not establish a working
-slice; the versions must still reach the captured final tree.
+Inspect real changed regions. Several functions can implement one change;
+one function can contain independent changes. Shared files, dependencies,
+syntax, file size, definition counts, and subject punctuation cannot establish
+atomicity. Separate a provider and its adopter when each has a useful contract.
+Keep a transition together when the actual contract requires it.
 
-At Gate 1, inspect the chronology as well as individual patches. Long runs of
-unused providers, controls before their handlers, or delayed proof can reveal
-an unnatural order even when every commit is atomic. Correct the affected
-snapshots and checks without merging independent changes into feature commits.
+Identify independent implementation slices before peeling. A batch cannot be
+a broad holding bucket with a promise to split it later. Reconstruction can
+refine an already narrow concern as its real earlier implementations become
+clear; that discovery updates the local mini-series, not the entire plan.
 
-## What is atomic
+Without a repository convention requiring separate proof, focused tests and
+supporting material establishing the same contract normally accompany it.
+Where tests must be separate `tests: Validate ...` commits, place them
+immediately after their code, before unrelated implementation. Record that
+link in `expected_commits`. Test/docs/mechanical work for existing behavior
+can be an independent concern and need not invent new implementation. A
+verification slice for that case uses `validates: "base:PATH:CONTRACT"`; semantic
+review confirms that the named contract already exists in the recorded base.
 
-A concern is one reviewable change with one reason to exist. It can add an
-internal API, alter a representation, fix an interaction, expose an existing
-operation, change a build step, or document an existing contract. It need not
-finish a feature or expose a new command. Pull requests can group concerns
-into features later. There is no target concern or commit count.
+## Plan the chronology before executing it
 
-Judge the actual patch. Several functions may implement one change; one
-function may contain several changes. Follow repository commit conventions.
-Without a separate-proof convention, source, focused tests, fixtures, and
-documentation establishing the same contract normally belong together. Their
-ability to exist separately does not automatically make them independent
-outcomes.
+Prepare a concise ladder of working milestones from the committed base to the
+intended source. Group related narrow concerns around their first useful flow:
+provider, adopter, and proof near one another when dependencies permit.
+Useful internal contracts can precede consumers. A milestone can span several
+concerns and commits; it is not a feature-sized commit.
 
-When the repository requires separate `tests: Validate ...` commits, plan each
-code change and its proof as adjacent concerns: code first, its tests
-immediately afterward. Give the proof concern `role: "verification"` and
-`validates` naming the code concern number; include that number in
-`depends_on`. The pair establishes one contract, while each concern still
-produces one commit. Do not merge code/proof against that convention or
-collect all tests at the end. A narrow coverage/documentation change for
-existing behavior is also a valid concern.
+Describe what shared functions/imports/registries will need to lose during
+peeling and how they will grow during reconstruction. Final imports inventory
+the target; their presence alone does not require those imports in the first
+historical version. Avoid exposing controls before handlers or loading a later
+provider before its first use. Inspect chronology during Gate 1 to catch long
+avoidable runs of unused modules or delayed integrated proof.
 
-Different operations, providers, interaction behaviors, or persisted shapes
-are candidates for separate commits. Shared files or helpers do not settle the
-boundary. A dependency usually establishes order: a provider can land with
-direct proof before a later adopter. Keep changes together when their contract
-or transition requires the same patch, and explain that relationship. Do not
-manufacture an import failure to justify keeping a feature together.
+Phase 1 describes these versions without writing them. During reconstruction,
+stage simpler complete implementations with `include --line --as-stdin` or
+`include --file --as-stdin`. Generate valid lockfiles for the dependency set
+actually being committed; do not divide generated lockfile lines arbitrarily.
+No placeholders or lazy imports may hide a real missing dependency.
 
-File size, definition count, punctuation, and words such as "shared" are
-review prompts, not rejection rules. A subject should name one concrete
-action, but grammar cannot prove atomicity. Do not split a coherent patch to
-appease a word filter or merge independent changes under an umbrella subject.
+## Preparation plan
 
-## Capture the input once
+`scripts/decompose-plan.py capture` creates a uniquely named input directory
+and state-relative manifest. Its digest binds the plan to that input.
+All nonignored changed paths, including deletions, symlinks, executable modes,
+and gitlinks, need owners. Track dirty submodule work separately. Captured
+blobs and the binary diff preserve input; they are not an alternate staging or
+batch mechanism.
 
-Phase 1 leaves the maintained repository's working tree, index, HEAD, and
-batch refs untouched. Record the base commit, tracked binary diff, untracked
-nonignored paths with content hashes and modes, and submodule gitlinks in an
-input manifest under `DECOMPOSE_STATE_DIR`. Exclude the workflow state itself.
-Record ignored build/download outputs as prerequisites, not owned changes.
-Respect the user's exclusion of generated assets from history.
+Use schema 2. Numbers describe outermost-to-innermost peel order, with providers
+having higher numbers. Stable slugs survive renumbering. The chronological
+ladder is independent of concern count. Example:
 
-Create a disposable Git repository under a uniquely named directory in the
-workflow state directory. A local clone of the maintained repository supplies
-the base objects. Capture the intended final tree there by applying the
-tracked diff and copying only inventoried nonignored new files, including
-deletions, executable bits, symlinks, and gitlinks. Do not copy the whole
-dirty directory: that would bring in caches, downloads, and workflow state.
-Record the captured target commit and compare its tree with the input
-manifest.
+```json
+{
+  "schema": 2,
+  "base": "FULL_BASE_COMMIT_ID",
+  "input_manifest": "decompose-input-RUN_ID/manifest.json",
+  "input_digest": "SHA256_OF_MANIFEST_BYTES",
+  "evolution_ladder": [
+    {"step": 1, "behavior_after": "Decode records directly"},
+    {"step": 2, "behavior_after": "Decode a supplied record from the CLI"}
+  ],
+  "concerns": [
+    {
+      "number": 1,
+      "name": "decompose-01-decode-command",
+      "slug": "decode-command",
+      "purpose": "Decode a record from the CLI",
+      "evolution_step": 2,
+      "depends_on": [2],
+      "dependency_evidence": [
+        {"provider": 2, "anchor": "cli.py: decode command", "contract": "decode(record)"}
+      ],
+      "expected_commits": [
+        {"slug": "command", "purpose": "Expose record decoding", "role": "implementation"},
+        {"slug": "proof", "purpose": "Validate CLI decoding", "role": "verification", "validates": "decode-command/command"}
+      ]
+    },
+    {
+      "number": 2,
+      "name": "decompose-02-record-decoder",
+      "slug": "record-decoder",
+      "purpose": "Decode the documented record format",
+      "evolution_step": 1,
+      "depends_on": [],
+      "dependency_evidence": [],
+      "expected_commits": [
+        {"slug": "decoder", "purpose": "Decode records", "role": "implementation"},
+        {"slug": "proof", "purpose": "Validate record decoding", "role": "verification", "validates": "record-decoder/decoder"}
+      ]
+    }
+  ],
+  "ownership_ledger": [
+    {"path": "decoder.py", "anchor": "decode", "concern": 2, "kind": "owned"},
+    {"path": "test_decoder.py", "anchor": "decoder tests", "concern": 2, "kind": "owned"},
+    {"path": "cli.py", "anchor": "handler/import/registration", "concern": 1, "kind": "owned"},
+    {"path": "test_cli.py", "anchor": "command tests", "concern": 1, "kind": "owned"}
+  ],
+  "peel_order": [1, 2],
+  "rebuild_order": [2, 1]
+}
+```
 
-Native Git staging and temporary commits are permitted only in that disposable
-repository for constructing evidence. They are not final history and are not a
-substitute for git-stage-batch during peeling or rebuilding. Keep the
-disposable repository and evidence until the workflow completes. Do not write
-prototype commits or refs into the maintained repository.
+Adapt proof placement to the repository. Ledger anchors identify actual regions
+once as owned; shared syntax is `kind: "context"` and can recur. Several concerns
+can own distinct regions in a file. The helper checks path coverage, dependency
+order, milestones, and proof adjacency. Semantic review must establish region
+coverage, meaningful boundaries, and real dependency contracts.
 
-Before reusing evidence, compare the base and input manifest with the current
-input. A changed file invalidates its boundaries and any snapshots, callers,
-shared-file successors, or checks that consume the changed content. Unrelated
-accepted boundaries remain useful, subject to the complete gate. Do not call
-an entire rejected draft stale merely because one boundary failed review.
-After peeling starts, compare against the captured target plus recorded batch
-and remaining-tree state; the maintained tree is deliberately smaller then.
+## Local correction and convergence
 
-## Build the actual sequence
+Record findings by stable slug, actual disputed regions/outcomes, and required
+correction. Collect independent findings in one review pass. Accepted boundaries
+remain accepted until changed source, a changed prerequisite, an order inversion,
+or concrete contrary evidence invalidates them. Do not reopen them for a new
+reviewer's preference or regenerate all concerns after one objection.
 
-Inspect changed regions before outlining concerns. Draft small candidate
-changes, then construct their chronological snapshots in the disposable
-repository starting at the base. For each concern retain:
+Save the prior plan before editing. `decompose-plan.py affected OLD NEW` reports
+changed boundaries, order inversions, and dependency/shared-file successors.
+It ignores number/name-only changes. Use that report to scope semantic review;
+run the cheap global structural validator after each plan edit. Complete global
+semantic review at phase boundaries, reusing established findings for unchanged
+regions. If the helper conservatively flags a shared file, inspect the affected
+regions before repeating expensive checks.
 
-- immutable before and after commit IDs;
-- a binary patch between them, relative to the workflow state directory;
-- the observable change and owned regions, separately from shared context;
-- dependencies supported by symbols or contracts used in that snapshot;
-- executed checks, exact commands, prerequisites, exit codes, and log paths;
-- any disputed split experiment and its result.
+For a repeated objection, put the same concrete diff and proposed narrower
+boundary in front of the author and reviewer. Resolve the discrepancy in the
+current phase. Once execution has begun, any necessary experiment uses the
+tool's selection and replacement operations. A schema error needs a schema
+correction; an independent behavior needs a split. A precise tool limitation,
+missing prerequisite, or unresolved unsafe boundary is a blocker. Elapsed
+effort and remaining volume are reasons to continue, not broaden history.
 
-Each after commit has the corresponding before commit as its sole parent.
-Consecutive concern snapshots form a chain; the last tree equals the captured
-target. The commits are prototypes, so their messages need not be final commit
-messages. Keep evidence attached to stable slugs and content hashes, not only
-ordinal concern numbers. Renumbering alone does not invalidate a patch or
-test.
+## Verification and reuse
 
-For shared files, write complete valid earlier versions. A closure can first
-support one screen and later grow another. A validator can first enforce the
-document shell and later add maps. A test file can grow whole tests or classes
-while its imports and fixtures grow with them. Syntax is a constraint on each
-version, not an instruction to commit the final function or file whole.
+Gate 1 reviews preparation. Gate 2 proves actual batch preservation and replay.
+Phase 3 verifies real committed contracts. Final refinement verifies its
+resulting history. Match each check to its claim; syntax/import/collection
+checks cannot establish behavior. Docs/mechanical changes can use inspection.
 
-Evolve imports, exports, parser registrations, dispatch tables, registries,
-and documentation indexes with their actual consumers. Inspect both import and
-call-time paths in each proposed snapshot, across the project's languages. The
-final import graph is useful inventory, not the historical dependency graph.
-Do not use lazy imports, unreachable branches, or placeholders to hide a
-dependency that the introduced behavior actually invokes.
+Use the decompose `scripts/verify-head-snapshot.py` helper for grouped commands
+in one clean detached checkout with immutable logs and receipts. A check
+specification lists `commands` (argument lists), optional `setup` commands,
+`environment` overrides, external file `inputs`, and runtime/dependency
+`prerequisites`. Run setup from the snapshot's own manifests/lockfiles.
+External proof harnesses live outside source and are listed in `inputs`.
+For separate code/test commits, the code check can use the next test's assertions
+only if the harness invokes code and prerequisites already present.
+Allocate checks by atomic slice during preparation. Test discovery for a future
+file can report success with zero tests; require meaningful assertions against
+the present implementation, then run the new test after its proof commit.
 
-Generate lockfiles using the relevant package manager against each proposed
-manifest. Preserve valid lockfile snapshots; assign the manifest/lock change
-to its dependency concern instead of dividing generated lines arbitrarily.
-Apply the same rule to generated configuration whose consistency spans lines.
+Receipts bind the actual tree, commands, runner, executable contents, complete
+environment digest, declared prerequisite identities, external input contents,
+and output logs. Commit IDs or concern numbers alone do not bind execution.
+`--reuse` checks this identity and log integrity, including after rewording.
+Declare every external dependency; if its current identity cannot be established,
+run fresh. A matching failed attempt is reported without blindly rerunning it;
+`--retry "diagnosed reason"` retains a new attempt after a runner correction or
+a verified transient condition. A changed source tree needs new proof.
 
-## Resolve a disputed boundary with a patch
+Run all commands for one snapshot together. Reuse dependency/download caches
+keyed to pinned inputs, while imports come from the isolated source. Generated
+outputs must be ignored; setup/checks may not alter tracked source or introduce
+untracked source. Run focused unit/CLI/build checks for their contracts and real
+browser scenarios where browser behavior needs proof. Limit concurrent browser
+runs under memory pressure. Do not recreate a browser and dependency environment
+for every assertion.
 
-When review identifies independent outcomes, construct the proposed narrower
-before/after versions. Compare a provider-first sequence with its later
-adopter, or separate the relevant behavior branches. Run focused checks on the
-actual versions. A hypothetical sentence about breakage is insufficient.
-
-If both narrower steps have a useful coherent contract, promote them to
-separate concerns and update successors. If they belong to one transition,
-cite the concrete contract and experiment. Tests can prove a provider directly
-without prematurely introducing its eventual UI or CLI consumer.
-
-Do not enumerate every function as a speculative subconcern. Review concrete
-independent outcomes visible in the patch. Straightforward small concerns need
-a patch and relevant proof; a split experiment is required when the boundary
-is disputed or inspection exposes distinct outcomes. Avoid hundreds of
-identical assurance paragraphs asserting that every tiny helper is atomic.
-
-## Proof must match the claim
-
-Run checks in the historical snapshot with only its declared prerequisites.
-Use the installed refine-history `verify-head-snapshot.py` helper with
-`--repo` pointing to the disposable repository and `--ref` set to the after
-commit. Always supply an explicit command. Its default Python compile check
-does not verify JavaScript, behavior, or another project's runtime.
-
-Choose focused unit, parser/decoder, CLI, build, or browser checks appropriate
-to the changed contract. Syntax, module import, and test collection checks are
-supplementary evidence, not behavior proof. A new provider may need a small
-direct test before an adopter's test exists. For code whose repository
-requires a subsequent test commit, execute a retained temporary proof harness
-against the code snapshot or run an equivalent direct check. That harness may
-contain the next commit's test assertions, but must use only code and
-prerequisites present at the code snapshot. Record its path and invocation; do
-not claim the later committed test file exists yet. Do not invent test names,
-commands, environment variables, runners, or source anchors. If a necessary
-proof does not exist, construct and execute it; retained project tests belong
-with or immediately after the behavior they verify, per repository convention.
-For a docs-only or mechanical change, record the relevant inspection instead
-of creating an unnecessary test.
-
-Resolve command executables and dependency setup for the isolated checkout. An
-absolute Python interpreter may be a prerequisite; an installed copy of the
-final package must not replace imports from the historical source. A
-JavaScript checkout may require installation from its own lockfile. Record
-setup separately from checks and prove that it does not alter tracked files.
-
-Generate ignored assets using the scripts/configuration present at that
-snapshot. Record asset versions, network needs, credentials, server startup,
-and ports when applicable. Browser proof must exercise a real scenario with
-those prerequisites met. Run browser checks for changes affecting browser
-behavior or adding a scenario; do not run them mechanically for unrelated
-Python or documentation changes. Missing prerequisites are blockers or proof
-limits, never passing behavior evidence.
-
-Logs belong to a specific snapshot and command. Failed experiments can be
-retained as evidence, but accepted snapshots need successful relevant checks
-or an explicit external blocker. The gates cannot claim success while required
-proof is blocked. Reuse checks only when the snapshot and all relevant inputs
-are unchanged. Later runtime verification still checks the actual commits.
-
-## Review corrections are local
-
-Record a review finding with the concern slug, disputed outcomes, proposed
-patch or dependency correction, and missing evidence. For a failure:
-
-1. Reconstruct the disputed patch and inspect the actual versions.
-2. Correct that boundary or dependency. Rebuild snapshots whose before tree,
-   shared file content, imports/calls, or prerequisites changed.
-3. Update affected ownership, order, narrative, checks, and batch mappings.
-4. Retain unaffected decisions and evidence. Run the complete structural and
-   semantic gate before promoting the plan or continuing to the next phase.
-
-A formatting/schema mistake needs a formatting/schema correction. A semantic
-failure needs a patch correction. Neither is a reason to regenerate every
-concern from prose. Do not silence a finding by renaming a bundled purpose.
-
-If reviewers repeat the same objection after a correction, stop the abstract
-replanning cycle: have the analyzer and reviewer inspect the same proposed
-narrower patches and check output. Resolve the concrete discrepancy. If no
-implementation can satisfy the contract with available prerequisites, report
-that exact blocker; do not keep producing fresh untested plans.
-
-The narrative and evolution ladder summarize the resulting snapshots. They are
-review aids, not inputs from which imaginary code versions are inferred. Keep
-them concise, with pointers to evidence for unusual boundaries.
+Hand verified receipts to final refinement rather than rerun unchanged checks
+by phase name. Reuse does not replace batch replay, final object/ownership
+validation, the final repository checks, or required semantic review.

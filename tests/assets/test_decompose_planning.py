@@ -31,7 +31,7 @@ def _commit(repo: Path, subject: str) -> str:
     return _git(repo, "rev-parse", "HEAD").decode().strip()
 
 
-@pytest.fixture(params=["codex"])
+@pytest.fixture(params=["codex", "claude"])
 def helper(request: pytest.FixtureRequest) -> Path:
     return (
         PROJECT_ROOT
@@ -177,6 +177,7 @@ def _identity(repo: Path) -> tuple:
     )
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_preparation_accepts_multiple_atomic_slices_without_mutation(
     helper: Path,
     repo: Path,
@@ -199,6 +200,7 @@ def test_preparation_accepts_multiple_atomic_slices_without_mutation(
         ).read_bytes()
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [
@@ -242,6 +244,7 @@ def test_invalid_preparation_is_rejected(
     assert message in result.stderr
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_existing_contract_proof_does_not_require_new_implementation(
     helper: Path,
     repo: Path,
@@ -261,6 +264,7 @@ def test_existing_contract_proof_does_not_require_new_implementation(
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize("mutation", ["source", "index", "head", "batch"])
 def test_input_gate_detects_execution_during_preparation(
     helper: Path,
@@ -283,6 +287,7 @@ def test_input_gate_detects_execution_during_preparation(
     assert "changed since input capture" in result.stderr
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_capture_preserves_deletions_modes_symlinks_and_git_filtered_contents(
     helper: Path,
     repo: Path,
@@ -328,6 +333,7 @@ def _affected(helper: Path, repo: Path, state: Path, old: dict, new: dict) -> li
     return json.loads(result.stdout)
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_local_correction_keeps_independent_concern_accepted(
     helper: Path,
     repo: Path,
@@ -343,6 +349,7 @@ def test_local_correction_keeps_independent_concern_accepted(
     ]
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_shared_file_only_invalidates_later_owners(
     helper: Path,
     repo: Path,
@@ -366,6 +373,7 @@ def test_shared_file_only_invalidates_later_owners(
     ]
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_names_and_unrelated_insertion_do_not_reopen_accepted_concerns(
     helper: Path,
     repo: Path,
@@ -415,6 +423,7 @@ def test_names_and_unrelated_insertion_do_not_reopen_accepted_concerns(
     assert _affected(helper, repo, state, old, new) == ["extra-notes"]
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_changed_milestone_invalidates_its_actual_concerns(
     helper: Path,
     repo: Path,
@@ -427,6 +436,7 @@ def test_changed_milestone_invalidates_its_actual_concerns(
     assert _affected(helper, repo, state, old, new) == ["format-notes"]
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_changed_input_invalidates_owners_and_consumers(
     helper: Path,
     repo: Path,
@@ -446,6 +456,7 @@ def test_changed_input_invalidates_owners_and_consumers(
     ]
 
 
+@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize("initialized", [True, False])
 def test_capture_preserves_gitlinks_without_reading_parent_as_submodule(
     helper: Path,

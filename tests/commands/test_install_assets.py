@@ -497,6 +497,8 @@ class TestCommandInstallAssets:
         assert (decompose_dir / "references" / "decompose-analyzer.md").exists()
         assert (decompose_dir / "references" / "decompose-planning.md").is_file()
         assert (decompose_dir / "scripts" / "decompose-checkpoint.py").exists()
+        assert (decompose_dir / "scripts" / "decompose-plan.py").is_file()
+        assert (decompose_dir / "scripts" / "verify-head-snapshot.py").is_file()
         assert (skill_dir / "refine-history" / "SKILL.md").exists()
         assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
         assert (

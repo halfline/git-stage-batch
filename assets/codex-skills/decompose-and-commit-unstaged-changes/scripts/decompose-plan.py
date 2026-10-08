@@ -170,6 +170,23 @@ def inventory(
     return identity, contents
 
 
+def artifact(state: Path, name: str) -> Path:
+    require(isinstance(name, str) and bool(name), "missing artifact path")
+    path = (state / name).resolve()
+    require(
+        path.is_relative_to(state) and path.is_file(),
+        f"missing or external artifact: {name}",
+    )
+    return path
+
+
+def load_input(state: Path, name: str) -> tuple[dict[str, JsonValue], str]:
+    data = artifact(state, name).read_bytes()
+    manifest = json.loads(data)
+    require(manifest.get("schema") == 1, "unsupported input manifest")
+    return manifest, digest(data)
+
+
 def capture(repo: Path, state: Path, revision: str) -> str:
     base = git(repo, "rev-parse", "--verify", f"{revision}^{{commit}}").decode().strip()
     require(
@@ -231,6 +248,9 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     capture_parser = sub.add_parser("capture")
     capture_parser.add_argument("--base", default="HEAD")
+    target_parser = sub.add_parser("verify-target")
+    target_parser.add_argument("manifest")
+    target_parser.add_argument("--ref", default="HEAD")
     args = parser.parse_args()
     repo = Path(
         git(Path(args.repo), "rev-parse", "--show-toplevel").decode().strip()
@@ -238,6 +258,17 @@ def main() -> int:
     state = state_path(repo)
     if args.command == "capture":
         print(capture(repo, state, args.base))
+    else:
+        manifest, _digest = load_input(state, args.manifest)
+        expected = {
+            p: {k: e[k] for k in ("mode", "object")}
+            for p, e in manifest["identity"]["entries"].items()
+        }
+        require(
+            tree(repo, args.ref) == expected,
+            "committed tree differs from captured input",
+        )
+        print("Committed tree matches captured input, including modes and gitlinks.")
     return 0
 
 

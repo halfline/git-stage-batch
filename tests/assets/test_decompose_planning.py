@@ -223,6 +223,12 @@ def test_capture_preserves_deletions_modes_symlinks_and_git_filtered_contents(
     assert (
         entries["filtered.txt"]["raw_sha256"] == hashlib.sha256(b"line\r\n").hexdigest()
     )
+    _commit(repo, "Exact target")
+    result = _run(helper, repo, state, "verify-target", manifest)
+    assert result.returncode == 0, result.stderr
+    (repo / "script").chmod(0o644)
+    _commit(repo, "Wrong mode")
+    assert _run(helper, repo, state, "verify-target", manifest).returncode != 0
 
 
 @pytest.mark.parametrize("initialized", [True, False])
@@ -274,6 +280,9 @@ def test_capture_preserves_gitlinks_without_reading_parent_as_submodule(
         result = _run(helper, repo, state, "capture")
         assert result.returncode != 0 and "dirty submodule: nested" in result.stderr
         _git(nested, "restore", "data")
+    _commit(repo, "Exact target with gitlink")
+    result = _run(helper, repo, state, "verify-target", manifest)
+    assert result.returncode == 0, result.stderr
 
 
 def test_capture_respects_core_filemode_false(

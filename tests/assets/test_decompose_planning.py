@@ -287,7 +287,6 @@ def test_input_gate_detects_execution_during_preparation(
     assert "changed since input capture" in result.stderr
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_capture_preserves_deletions_modes_symlinks_and_git_filtered_contents(
     helper: Path,
     repo: Path,
@@ -456,7 +455,6 @@ def test_changed_input_invalidates_owners_and_consumers(
     ]
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize("initialized", [True, False])
 def test_capture_preserves_gitlinks_without_reading_parent_as_submodule(
     helper: Path,

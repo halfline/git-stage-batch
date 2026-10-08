@@ -286,6 +286,10 @@ class TestCommandInstallAssets:
         ).is_file()
         assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
         assert (skill_dir / "refine-history" / "SKILL.md").exists()
+        for helper in ("decompose-plan.py", "verify-head-snapshot.py"):
+            assert (
+                skill_dir / "decompose-and-commit-unstaged-changes" / "scripts" / helper
+            ).is_file()
         assert (
             skill_dir / "refine-history" / "scripts" / "verify-head-snapshot.py"
         ).exists()

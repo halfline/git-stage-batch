@@ -4,7 +4,7 @@ description: Decompose unstaged working-tree changes into narrow concerns, peel 
 user-invocable: true
 disable-model-invocation: true
 context: fork
-when_to_use: "Use when the user wants to decompose unstaged working-tree changes into a clean commit series by identifying product, workflow, or architectural concerns, peeling them away one by one into concern-named batches, reducing the working tree to a minimal base, and then rebuilding by applying batches in reverse order with fine-grained commits inside each concern. Examples: \"decompose and commit unstaged changes\", \"decompose into a commit series\", \"peel this into layered commits\", \"build this up brick by brick\"."
+when_to_use: "Use when the user wants to decompose unstaged working-tree changes into a clean commit series by identifying product, workflow, or architectural concerns, peeling them away one by one into concern-named batches, reducing the working tree to a minimal base, and then rebuilding by applying batches in reverse order with one atomic commit per concern. Examples: \"decompose and commit unstaged changes\", \"decompose into a commit series\", \"peel this into layered commits\", \"build this up brick by brick\"."
 allowed-tools:
   - Read
   - Grep
@@ -13,19 +13,25 @@ allowed-tools:
   - Agent(decompose-analyzer)
   - Agent(decompose-deconstructor)
   - Agent(decompose-rebuilder)
-  - Bash(git *)
-  - Bash(git-stage-batch *)
-  - Bash(pipx run git-stage-batch *)
-  - Bash(python *)
-  - Bash(mkdir *)
-  - Bash(test *)
-  - Bash(ls *)
+  - Bash
 ---
 
 # Decompose and Commit Unstaged Changes
 
-Orchestrate the decomposition of unstaged working-tree changes into a clean
-commit series through three phases, each delegated to a specialized agent.
+Build an atomic commit series from unstaged work through analysis, peeling,
+and rebuilding. Each concern is one reviewable change; a feature can span many
+concerns. There is no target commit count.
+
+Read `references/decompose-planning.md` before any phase. It defines concrete
+snapshot evidence, atomicity, proof, and targeted corrections. Phase briefs:
+
+- `.claude/agents/decompose-analyzer.md`
+- `.claude/agents/decompose-deconstructor.md`
+- `.claude/agents/decompose-batch-peeler.md`
+- `.claude/agents/decompose-rebuilder.md`
+
+Delegate phases to their named agents. Give Gate 1 reviewers actual patches,
+input evidence, and precise findings rather than an expected conclusion.
 
 ## Usage
 
@@ -36,95 +42,22 @@ commit series through three phases, each delegated to a specialized agent.
 /decompose-and-commit-unstaged-changes resume
 ```
 
-Without an argument, run all three phases end to end. With `deconstruct`,
-run Phases 1-2 only. With `reconstruct`, assume batches already exist and
-run Phase 3 only. With `resume`, inspect the workspace-local workflow state
-directory, batch refs, and the current `HEAD`, then continue from the latest
-phase whose gate can still be proven.
+Default runs all phases; `deconstruct` runs Phases 1–2; `reconstruct` starts
+with existing verified batches at Gate 2; `resume` audits checkpoint state and
+continues from the latest proven gate. Run autonomously within the user's
+authorized scope. Do not require user approval of intermediate plans.
 
-This skill is autonomous and non-interactive. Do not ask the user to review
-intermediate steps.
+## Tools and state
 
-If `git-stage-batch` is available directly in `PATH`, use it. If not, fall
-back to `pipx run git-stage-batch`.
+Use `git-stage-batch` from PATH or `pipx run git-stage-batch`. Before using
+it, read installed top-level and relevant subcommand help. Installed
+documentation is authoritative; do not invent selectors, flags, commands, or
+batch formats. Pass `--no-optional-locks` to read-only Git commands. Keep
+maintained Git/batch mutations sequential. Use git-stage-batch for
+maintained-index staging; native staging is allowed only in disposable
+evidence repositories and for conflict resolution during an authorized rebase.
 
-Before using any `git-stage-batch` command, read the installed command
-documentation for the top-level command and every subcommand you intend to
-use. The installed man pages/help output are the authority. Do not invent
-subcommands, selectors, flags, or argument shapes from memory.
-
-```bash
-git-stage-batch --help
-git-stage-batch start --help
-git-stage-batch show --help
-git-stage-batch status --help
-git-stage-batch include --help
-git-stage-batch discard --help
-git-stage-batch apply --help
-git-stage-batch reset --help
-git-stage-batch again --help
-git-stage-batch stop --help
-git-stage-batch list --help
-git-stage-batch drop --help
-git-stage-batch block-file --help
-git-stage-batch suggest-fixup --help
-```
-
-If a command or option is not shown by the installed documentation, do not use
-it. If the skill text and installed help disagree, follow the installed help
-and report the discrepancy.
-
-Use the checkpoint helper for every mode. First move to the repository root,
-create the workspace-local state directory, and locally block it from
-`git-stage-batch` review:
-
-```bash
-REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
-cd "$REPO_ROOT"
-export DECOMPOSE_STATE_DIR=$(python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir)
-mkdir -p "$DECOMPOSE_STATE_DIR"
-git-stage-batch block-file --local-only .git-stage-batch/
-python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py status
-```
-
-Before a full run or a `deconstruct` run, check for stale batch state:
-
-```bash
-git-stage-batch status
-git-stage-batch list
-```
-
-If a session is active or `git-stage-batch list` shows preexisting
-`decompose-*` batches, stop and report the stale state before Phase 1. Do not
-fold old batches into a new plan. In `reconstruct` mode, existing batches are
-allowed only because they are the requested input, and Gate 2 must still pass.
-In `resume` mode, existing batches are potential checkpoint state, not stale
-by default. They must still pass Gate 2 before Phase 3.
-
-Before a full run or a `deconstruct` run, also treat any existing
-`decompose-plan.json` and `decompose-narrative.md` in the workflow state
-directory as stale output from another attempt. Phase 1 must not read them as
-input. Remove any old candidate and narrative files before analysis; the
-final plan is overwritten only after the candidate passes Gate 1:
-
-The fresh `start` command below performs that scoped cleanup. Do not remove
-the workflow state directory or sibling recovery state directly.
-
-For a fresh full or `deconstruct` run, record the new checkpoint immediately
-after recording the base commit:
-
-```bash
-python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py start --mode full --base "$BASE_SHA"
-```
-
-Use `--mode deconstruct` instead of `--mode full` for a `deconstruct` run.
-
-## Resume Mode
-
-`resume` is conservative. It may reuse artifacts only after re-running the
-gate that proves those artifacts are valid for the current tree.
-
-Start with:
+From the repository root:
 
 ```bash
 REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
@@ -133,1180 +66,264 @@ export DECOMPOSE_STATE_DIR=$(python .claude/skills/decompose-and-commit-unstaged
 mkdir -p "$DECOMPOSE_STATE_DIR"
 git-stage-batch block-file --local-only .git-stage-batch/
 python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py status --json
+git-stage-batch status
+git-stage-batch list
 git --no-optional-locks status --short
-git --no-optional-locks log --oneline -20
+git --no-optional-locks diff --cached
 ```
 
-Then choose the resume point:
+The default state directory is `$REPO_ROOT/.git-stage-batch/`. Keep manifests,
+plans, narrative, patches, logs, and uniquely named prototype repositories
+there. Respect `DECOMPOSE_STATE_DIR` overrides and block the actual state path
+from review. Do not delete sibling recovery state.
 
-1. If `resume_target` is `gate1`, rerun Gate 1 against
-   `$DECOMPOSE_STATE_DIR/decompose-plan.candidate.json`. If Gate 1 passes,
-   promote the plan and continue to Phase 2. If Gate 1 fails, discard the
-   candidate/narrative as stale analysis output and rerun Phase 1.
-2. If `resume_target` is `phase2-after-gate1`, rerun Gate 1 against the
-   current plan. If it passes, continue Phase 2. If it fails, rerun Phase 1.
-3. If `resume_target` is `phase3-after-gate2`, rerun Gate 2 from refs. If it
-   passes, continue Phase 3 with remaining batches. If it fails, return to
-   Phase 2 and fix the batch plan before rebuilding.
-4. If `resume_target` is `gate3-or-manual-audit`, finish the required
-   `refine-history` pass before rerunning Gate 3. Inspect
-   `git-stage-batch rewrite status --porcelain`; invoke `refine-history resume`
-   when a product operation is active, otherwise invoke it with the canonical
-   `base` from the decompose checkpoint. If any batch refs remain, prefer
-   `phase3-after-gate2` instead.
-5. If `resume_target` is `fresh`, run the normal full workflow from Phase 1.
-6. If `resume_target` is `complete`, revalidate the `refine-history`
-   completion gate and Gate 3 before reporting the existing result.
-
-Do not treat a candidate plan plus narrative as sufficient progress by
-itself. Candidate artifacts are resumable only through Gate 1. A failed Gate 1
-means the prior analysis was not a checkpoint; it was a rejected draft.
-Artifacts without a valid decompose checkpoint have no trusted base and must
-route to a fresh run.
-
-After every successful gate or phase transition, run:
+For a fresh full/deconstruct run, an active session, staged work, or
+preexisting `decompose-*` batches is a scope conflict: report the concrete
+state rather than absorbing it. Existing verified batches are expected in
+reconstruct or resume mode. Capture the base and start a fresh checkpoint:
 
 ```bash
-python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase PHASE-NAME
-```
-
-## Operating Contract
-
-These rules override any conflicting behavior. They apply to all phases.
-
-- A concern is a product, workflow, or architectural capability — not an
-  artifact category.
-- The primary deliverable is a believable evolving history where each commit
-  reads like the next step a maintainer could have taken.
-- Before choosing concern boundaries, build a simplified-project evolution
-  ladder. Each ladder step names the smaller product that would exist after
-  that step, the regions/tests that prove it, and the future content that
-  must not appear yet. Concerns and rebuild commits must trace back to this
-  ladder.
-- After drafting concerns, run a concern refinement pass before Gate 1.
-  Inspect every concern as if it were an incoming batch. Expand its
-  `expected_commits`, `internal_slices`, `files_wholly_owned`, and shared
-  regions into plausible smaller concerns. If any smaller concern would be
-  coherent, promote it into the concern list before batching. Do not leave
-  independently useful behaviors hidden inside `expected_commits` or
-  `internal_slices`.
-- Write transient decomposition artifacts under the workspace-local workflow
-  state directory printed by `decompose-checkpoint.py state-dir`. The default
-  is `$REPO_ROOT/.git-stage-batch/`, not `.git`, `.claude`, or `/var/tmp`.
-  At the start of every run, create that directory and run
-  `git-stage-batch block-file --local-only .git-stage-batch/` before writing
-  state. Override with `DECOMPOSE_STATE_DIR` only when needed.
-- Before writing JSON, write `decompose-narrative.md` in that workflow state
-  directory.
-  The narrative must describe the current committed `HEAD` in detail, the
-  final working tree in detail, and how each module, command, test file, docs
-  section, build file, or fixture tree that already exists at `HEAD` evolves.
-  For each new file, it must describe the smallest first version and later
-  growth.
-- The narrative must describe changes, not only additions. For every
-  existing committed code path, command, test, docs section, build file, or
-  fixture surface that is touched, say how the existing thing changes at each
-  relevant step and which final-tree content is still absent.
-- Every intermediate `HEAD` must be coherent. Do not create a commit that
-  knowingly leaves an import, parser, registry, submodule, or tested entry
-  point broken for a later commit to repair.
-- An adopter cannot land before the behavior it adopts. CLI handlers, parser
-  entries, docs sections, examples, and coordinators must not rely on
-  call-time imports, untested branches, placeholders, or future providers to
-  be coherent. High-level user workflows land after the lower operations they
-  invoke.
-- Final module-level imports are not hard dependency constraints. Imports,
-  `__all__` entries, parser registrations, dispatch tables, registry rows,
-  and docs indexes must evolve with the concern that first uses each symbol or
-  entry. Do not force a provider to land early merely because the final file
-  imports it at top level.
-- Shared infrastructure is not a keep-together reason. It is the reason to
-  create an earlier scaffold concern, followed by one consumer, provider,
-  workflow, command branch, or result shape at a time.
-- Do not create broad foundation/core/infrastructure buckets. Independent
-  no-import utilities, model records, enforcement hooks, replay paths, and
-  test groups still land one first-consumer behavior at a time.
-- Every concern batch must also be coherent as a replayable unit. During
-  deconstruction, validate the batch ref itself before moving on; a remaining
-  working tree can be repaired while the batch still contains a partial parser
-  call, partial test, or other unrebuildable slice.
-- Distinguish ownership from shared syntax context. Use `discard --to` for
-  the current concern's owned lines. Use `include --to` to copy shared
-  wrappers, neighboring entries, or aggregation context needed for the batch
-  to parse; copied context does not become part of the concern.
-- Commit subjects must name one action in one clause. If the subject
-  contains `and`, `also`, `as well as`, a semicolon, or two independent
-  actions, the commit must be split.
-- A generic subject is not a loophole. If expanding the staged diff into
-  concrete items reveals multiple independently useful behaviors, split the
-  commit even when the subject itself is short and grammatical.
-- A complete file, module, test suite, coordinator, or docs section is not a
-  concern by default. If it looks like a finished subsystem copied from the
-  final tree, split it into the ladder steps by which the subsystem could
-  have grown.
-- A pipeline, function, module, command, test file, or fixture tree is not a
-  concern by default. First commit the smallest runnable spine that has a
-  coherent product outcome and narrow proof. Later enrichments, variants,
-  adopters, error paths, docs sections, fixtures, and tests land as subsequent
-  commits unless moving them later would immediately break a committed
-  snapshot in a concrete, path-specific way.
-- Do not mention decomposition, batches, repairs, peeling, reconstruction,
-  or process mechanics in commit messages.
-- Scale is not a split criterion. Hundreds of tool calls means the work is
-  large, not that the split should be broadened.
-- Pragmatic shortcuts are false economy. "Good enough for now", broad
-  grouping to save time, shared-region-only ownership, deferred tests, future
-  repair commits, and vague summaries will fail the gates and force the work
-  to be repeated with more context spent. Get the concern boundary, batch
-  boundary, and commit boundary right the first time.
-- `git-stage-batch apply --from BATCH` restores batch content to the
-  working tree only. It does not stage anything. During rebuild, treat the
-  restored content as an unstaged diff, then stage commit-sized slices with
-  the same care used by `commit-unstaged-changes`.
-- The staging primitive for this workflow is `git-stage-batch include`.
-  Do not use Git's native interactive, partial, path, or whole-tree staging
-  to assemble commit slices. Plain `git add` is reserved only for marking
-  manually resolved rebase conflicts, not for ordinary commit construction.
-  When the right historical snapshot is clearer as a rewritten file than as
-  selected original hunks, stage that intentional snapshot with
-  `git-stage-batch include --file PATH --as-stdin`; it is still a
-  `git-stage-batch include` operation and must be audited as one atomic
-  commit.
-- Before choosing `git-stage-batch` syntax, re-check the relevant installed
-  subcommand help. Never use a guessed `git-stage-batch` command, flag, or
-  selector; the command must be present in the help/man page you just read.
-- Do not describe `apply --from` as applying to the index. If a batch should
-  be staged directly, the command family is `include --from`; do not use that
-  shortcut during this workflow unless there is a deliberate reason and the
-  resulting staged diff is still audited as one atomic commit.
-- A fresh end-to-end run must not reuse old `decompose-*` batches or an old
-  `git-stage-batch` session. Stale batches are inputs from another attempt,
-  not evidence for the current decomposition.
-
-## Git Command Concurrency
-
-Always pass `--no-optional-locks` to read-only git commands (`status`,
-`diff`, `log`, `show`, `ls-tree`). Without it, parallel git commands race
-for `.git/index.lock`.
-
-## Phase 1: Analysis
-
-Record the base commit for later reference:
-
-```bash
-BASE_SHA=$(git --no-optional-locks log --format='%H' -1)
+BASE_SHA=$(git --no-optional-locks rev-parse HEAD)
 python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py start --mode full --base "$BASE_SHA"
 ```
 
-For a `deconstruct` run, use `--mode deconstruct`. For a `resume` run that
-reruns Phase 1, use `--mode resume`. The helper preserves the original
-checkpoint `base` and refuses an explicit base that does not match it.
+Use `--mode deconstruct` for that mode. `start` clears only its own plan
+files; uniquely named evidence directories from another run must never be
+silently trusted. A correction within an active run does not call fresh
+`start`.
 
-Spawn `Agent(decompose-analyzer)` with this prompt:
+## Resume
 
-> Analyze the unstaged working tree and produce a structured concern plan.
-> Compute `DECOMPOSE_STATE_DIR` with
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir`.
-> First write `$DECOMPOSE_STATE_DIR/decompose-narrative.md`: a prose
-> evolution narrative from the current committed state to the final working
-> tree. Describe the current committed state in detail, the final working tree
-> in detail, the beginning/middle/end of the history, how each module,
-> command, test file, docs section, build file, or fixture tree that already
-> exists at HEAD evolves, including a required Existing Surface Evolution
-> table for every touched committed path, and the smallest first version of
-> each new file in a required New Surface Growth table. Treat final
-> module-level imports, registries, parser tables, dispatch maps, and docs
-> indexes as evolving surfaces, not fixed constraints from the final tree;
-> describe them in a required Aggregation Evolution table.
-> Then write a simplified-project evolution ladder. Derive concern boundaries
-> from that narrative and ladder instead of from final file/module boundaries.
-> Run a concern refinement pass before writing the final candidate: for every
-> concern, review its expected commits, internal slices, whole-file claims,
-> shared regions, docs, tests, fixtures, and CLI/build/parser changes as
-> possible sub-concerns. Split any independently coherent behavior into a new
-> concern. Write `$DECOMPOSE_STATE_DIR/decompose-refinement.md` with the
-> before/after concern list and the exact immediate breakage for every
-> retained keep-together decision.
-> Do not read any existing `$DECOMPOSE_STATE_DIR/decompose-plan.json` as
-> input. Write only `$DECOMPOSE_STATE_DIR/decompose-plan.candidate.json`;
-> replace that candidate path if it already exists.
-> After writing the narrative and candidate plan, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase1-candidate --note "candidate plan written"`.
-> The current base commit is {BASE_SHA}.
+Inspect checkpoint status, current HEAD, maintained tree, and refs. Use the
+checkpoint's original base. Artifacts without a valid checkpoint/provenance
+need a fresh input audit.
 
-### Concern Refinement Pass
+- `phase1`: continue analysis from the inventoried input and any reusable
+  evidence, then produce a candidate and run Gate 1.
+- `gate1`: inspect the candidate and its input evidence; run Gate 1. Correct
+  affected boundaries on failure, retaining valid unrelated evidence.
+- `phase2-after-gate1`: run Gate 1 against the approved plan and current peel
+  state, then continue only verified remaining concerns.
+- `phase3-after-gate2`: replay Gate 2 from refs, then rebuild remaining batches.
+- `gate3-or-manual-audit`: finish the required refine-history pass, using
+  `refine-history resume` if its rewrite operation is active, then run Gate 3.
+  Remaining batches route through Gate 2 instead.
+- `fresh`: audit input and begin Phase 1.
+- `complete`: revalidate refine-history completion and Gate 3 before reporting.
 
-Before Gate 1 promotion, the candidate must pass a refinement pass. This pass
-prevents broad batches from surviving by hiding smaller behaviors inside
-`expected_commits`, `internal_slices`, or whole-file ownership.
+Changed source or prerequisites invalidate the affected snapshots and their
+consumers, not automatically every planning decision. The complete gate still
+checks the revised set. Never treat elapsed effort or an existing prose plan
+as a passed gate.
 
-Read `$DECOMPOSE_STATE_DIR/decompose-plan.candidate.json` and
-`$DECOMPOSE_STATE_DIR/decompose-narrative.md`, then verify every concern:
+## Phase 1: analysis
 
-1. Expand each `expected_commits` entry into a candidate sub-concern. If two
-   entries would each leave a coherent product state, split the concern.
-2. Expand every `internal_slices` entry into a candidate sub-concern. If a
-   slice has its own proving tests, user-visible result, parser branch,
-   provider variant, fixture path, data record, or docs section, split it.
-3. Treat `files_wholly_owned` as suspicious, not reassuring. Large source,
-   test, docs, coordinator, fixture, and orchestration files must evolve
-   through concerns unless generated or data-only.
-4. For each shared file region, ask whether the region is owned behavior or
-   only syntax context. Owned behavior becomes a concern; context stays
-   `include`-only.
-5. Rewrite the candidate so the concern list, peel order, rebuild order,
-   evolution ladder, dependencies, and narrative milestones reflect the
-   refined concerns.
-6. Write `$DECOMPOSE_STATE_DIR/decompose-refinement.md` with one section per
-   original concern: original purpose, proposed sub-concerns, promoted
-   sub-concerns, retained keep-together decisions, and exact immediate
-   breakage for each retained decision.
+Spawn `Agent(decompose-analyzer)`.
 
-`internal_slices` are allowed only as a scalpel map for one retained concern
-that truly cannot be made coherent as smaller concerns. They are not a
-substitute for concern splitting.
+Provide the base, mode, state directory, and any exact local review findings.
+The worker reads the planning reference, inventories the real diff, captures
+the final target, constructs before/after snapshots with checks, then writes
+the candidate, concise narrative, and refinement evidence. Phase 1 cannot
+change the maintained source, index, HEAD, or batch refs. Native commits in
+the disposable evidence repository are permitted.
 
-### Gate 1: Validate the concern plan
+### Gate 1: proposed history
 
-After Phase 1 completes, read `$DECOMPOSE_STATE_DIR/decompose-narrative.md`
-and `$DECOMPOSE_STATE_DIR/decompose-plan.candidate.json`, then run this
-mechanical validator before doing any subjective review:
-
-Run this validator exactly as written against the candidate path. Do not
-substitute an older validator, a shorter validator, or validation against
-`$DECOMPOSE_STATE_DIR/decompose-plan.json`.
+First perform structural validation. The command below checks actual retained
+refs and patches, not semantic atomicity or successful execution of claimed
+checks. It uses the candidate by default; set `DECOMPOSE_PLAN_PATH` to the
+approved plan when validating it instead. Evidence paths are relative to the
+workflow state directory.
 
 ```bash
 python - <<'PY'
-import json, re, subprocess, sys
-from pathlib import Path
-state_dir = Path(subprocess.check_output(
-    ["python", ".claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py", "state-dir"],
-    text=True,
-).strip())
-narrative_path = state_dir / "decompose-narrative.md"
-if not narrative_path.exists():
-    print(f"- missing {narrative_path}", file=sys.stderr)
-    sys.exit(1)
-narrative = narrative_path.read_text(encoding="utf-8")
-refinement_path = state_dir / "decompose-refinement.md"
-if not refinement_path.exists():
-    print(f"- missing {refinement_path}", file=sys.stderr)
-    sys.exit(1)
-refinement = refinement_path.read_text(encoding="utf-8")
-if len(refinement.strip()) < 200 or not re.search(r"\b(promoted sub-concerns|retained keep-together|expected_commits|internal_slices)\b", refinement, re.I):
-    print(f"- {refinement_path} does not look like a real concern refinement audit", file=sys.stderr)
-    sys.exit(1)
-required_sections = [
-    "Current Committed State",
-    "Final Working Tree State",
-    "Existing Surface Evolution",
-    "New Surface Growth",
-    "Aggregation Evolution",
-    "Beginning",
-    "Middle",
-    "End",
-    "Forbidden Shortcuts Found",
-]
-narrative_bad = [
-    section for section in required_sections
-    if not re.search(rf"^#+\s+{re.escape(section)}\s*$", narrative, re.M)
-]
-if narrative_bad:
-    print(
-        "\n".join(f"- narrative missing section: {section}" for section in narrative_bad),
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-def section_body(text, heading):
-    match = re.search(rf"^#+\s+{re.escape(heading)}\s*$", text, re.M)
-    if match is None:
-        return ""
-    rest = text[match.end():]
-    next_heading = re.search(r"^#+\s+\S.*$", rest, re.M)
-    return rest[: next_heading.start()] if next_heading else rest
-
-existing_surface_section = section_body(narrative, "Existing Surface Evolution")
-new_surface_section = section_body(narrative, "New Surface Growth")
-aggregation_section = section_body(narrative, "Aggregation Evolution")
-middle_section = section_body(narrative, "Middle")
-plan = json.load(open(state_dir / "decompose-plan.candidate.json", encoding="utf-8"))
-plan_text = json.dumps(plan, sort_keys=True)
-bad = []
-try:
-    modified_existing_paths = subprocess.check_output(
-        ["git", "--no-optional-locks", "diff", "--name-only", "--diff-filter=M", "HEAD"],
-        text=True,
-    ).splitlines()
-    added_paths = subprocess.check_output(
-        ["git", "--no-optional-locks", "diff", "--name-only", "--diff-filter=A", "HEAD"],
-        text=True,
-    ).splitlines()
-    untracked_paths = subprocess.check_output(
-        ["git", "--no-optional-locks", "ls-files", "--others", "--exclude-standard", "--directory"],
-        text=True,
-    ).splitlines()
-    added_paths = sorted(set(added_paths + untracked_paths))
-except subprocess.CalledProcessError as exc:
-    bad.append(f"failed to inspect working tree paths: {exc}")
-    modified_existing_paths = []
-    added_paths = []
-
-large_new_code_paths = []
-for path in added_paths:
-    path_obj = Path(path)
-    if path_obj.exists() and path_obj.is_file() and path.endswith((".py", ".pyi")):
-        try:
-            line_count = len(path_obj.read_text(encoding="utf-8", errors="ignore").splitlines())
-        except OSError:
-            line_count = 0
-        if line_count > 600:
-            large_new_code_paths.append((path, line_count))
-
-def is_new_surface_path(path):
-    if path.startswith(".git/"):
-        return False
-    if path == ".gitmodules":
-        return True
-    if path.endswith("/"):
-        return path.startswith(("examples/", "docs/", "src/", "tests/"))
-    return path.endswith((".py", ".md", ".toml", ".json", ".yaml", ".yml"))
-
-for path in modified_existing_paths:
-    if path not in existing_surface_section:
-        bad.append(f"Existing Surface Evolution missing modified HEAD path: {path}")
-for path in added_paths:
-    if path not in new_surface_section and is_new_surface_path(path):
-        bad.append(f"New Surface Growth missing added surface: {path}")
-module_catalog_headings = re.findall(
-    r"^#{3,}\s+.*\.(?:py|md|toml|json|ya?ml)\b",
-    middle_section,
-    re.M,
-)
-if len(module_catalog_headings) >= 5:
-    bad.append("Middle looks like a file/module catalog; make Middle historical-step prose")
-for paragraph in re.split(r"\n\s*\n", middle_section):
-    file_mentions = re.findall(r"\b[\w./-]+\.(?:py|md|toml|json|ya?ml)\b", paragraph)
-    if len(set(file_mentions)) >= 5:
-        bad.append("Middle paragraph bundles too many files; split it into behavior steps")
-    variants = set(re.findall(r"\b(triage|backport|rebase|rebuild)\b", paragraph, re.I))
-    if len(variants) > 1:
-        bad.append("Middle paragraph bundles multiple workflow variants")
-if re.search(
-    r"\b(call[- ]time imports?|imported at call time|lazy imports?|placeholder|"
-    r"untested branches?|future providers?|primary user workflow)\b",
-    narrative + "\n" + plan_text,
-    re.I,
-):
-    bad.append("Plan uses call-time imports, placeholders, untested branches, future providers, or primary-workflow priority as a coherence excuse")
-if re.search(r"\b(foundation|core|infrastructure)\s+(layer|bucket)\b", middle_section, re.I):
-    bad.append("Middle uses a broad foundation/core/infrastructure bucket")
-if modified_existing_paths and "|" not in existing_surface_section:
-    bad.append("Existing Surface Evolution must use a table with step, before, change, and absent columns")
-if added_paths and "|" not in new_surface_section:
-    bad.append("New Surface Growth must use a table with step, smallest version, first consumer/test, and absent columns")
-if "|" not in aggregation_section:
-    bad.append("Aggregation Evolution must use a table for imports, parser registrations, registries, dispatch maps, and docs indexes")
-raw_concerns = plan.get("concerns", [])
-if not isinstance(raw_concerns, list):
-    bad.append("concerns must be a list")
-    raw_concerns = []
-raw_ladder = plan.get("evolution_ladder", [])
-if not isinstance(raw_ladder, list) or not raw_ladder:
-    bad.append("evolution_ladder must be a non-empty list")
-    raw_ladder = []
-ladder_steps = []
-ladder_region_paths = set()
-modified_ladder_paths = set()
-for i, step in enumerate(raw_ladder, 1):
-    if not isinstance(step, dict):
-        bad.append(f"evolution_ladder entry {i} must be an object")
-        continue
-    step_no = step.get("step")
-    if not isinstance(step_no, int):
-        bad.append(f"evolution_ladder entry {i}: step must be an integer")
-    else:
-        ladder_steps.append(step_no)
-    for key in ("behavior_after", "why_next_simplest"):
-        if not isinstance(step.get(key), str) or not step.get(key, "").strip():
-            bad.append(f"evolution_ladder entry {i}: missing {key}")
-    for key in ("regions_introduced_or_evolved", "tests", "must_not_appear_yet"):
-        value = step.get(key)
-        if not isinstance(value, list) or not value:
-            bad.append(f"evolution_ladder entry {i}: {key} must be a non-empty list")
-    regions = step.get("regions_introduced_or_evolved")
-    if isinstance(regions, list):
-        for j, region in enumerate(regions, 1):
-            if not isinstance(region, dict):
-                bad.append(f"evolution_ladder entry {i}: region {j} must be an object")
-                continue
-            for key in ("path", "anchor", "change_kind", "before_state", "after_state", "still_absent"):
-                if key == "still_absent":
-                    if not isinstance(region.get(key), list):
-                        bad.append(f"evolution_ladder entry {i}: region {j} still_absent must be a list")
-                elif not isinstance(region.get(key), str) or not region.get(key, "").strip():
-                    bad.append(f"evolution_ladder entry {i}: region {j} missing {key}")
-            path = region.get("path")
-            if isinstance(path, str):
-                ladder_region_paths.add(path)
-            change_kind = region.get("change_kind")
-            if change_kind not in {"introduced", "modified-from-head", "modified-from-earlier"}:
-                bad.append(f"evolution_ladder entry {i}: region {j} invalid change_kind")
-            elif change_kind.startswith("modified") and isinstance(path, str):
-                modified_ladder_paths.add(path)
-if ladder_steps and sorted(ladder_steps) != list(range(1, len(ladder_steps) + 1)):
-    bad.append("evolution_ladder steps must be unique and contiguous from 1")
-for path in modified_existing_paths:
-    if path not in modified_ladder_paths:
-        bad.append(f"evolution_ladder does not describe modified existing path: {path}")
-ladder_set = set(ladder_steps)
-concerns = []
-for i, concern in enumerate(raw_concerns, 1):
-    if isinstance(concern, dict):
-        concerns.append(concern)
-    else:
-        bad.append(f"concern entry {i} must be an object")
-numbers = [c.get("number") for c in concerns]
-if any(not isinstance(n, int) for n in numbers) or sorted(numbers) != list(range(1, len(numbers) + 1)):
-    bad.append("concern numbers must be unique and contiguous from 1")
-number_set = set(n for n in numbers if isinstance(n, int))
-expected_order = list(range(1, len(concerns) + 1))
-if plan.get("peel_order") != expected_order:
-    bad.append("peel_order must be [1..N] in outermost-to-innermost order")
-if plan.get("rebuild_order") != list(reversed(expected_order)):
-    bad.append("rebuild_order must be the exact reverse of peel_order")
-risky_whole_files = {
-    "cli.py", "README.md", "pyproject.toml", "hatch_build.py",
-    "ymir_workflows.py", "models.py", "validation.py", "collect_case.py",
-    "capture_missing.py", "runner.py", "conftest.py",
-    "test_cli.py", "test_collect_case.py", "test_capture_missing.py",
-    "test_runner.py", "test_ymir_workflows.py",
-}
-invalid_keep_together = re.compile(
-    r"\b(shared|common|duplicate|duplication|same file|same module|same function|"
-    r"unused import|ruff|F401|live together|used together|helper|helpers|"
-    r"infrastructure)\b",
-    re.I,
-)
-proofish_commit = re.compile(
-    r"\b(test|tests|proof|prove|cover|coverage|assert|reject|accept|pin|"
-    r"regression|document|docs?)\b",
-    re.I,
-)
-implementation_commit = re.compile(
-    r"\b(add|implement|wire|register|scaffold|fetch|record|capture|collect|"
-    r"compare|score|validate|run|execute|render|manage|patch|materialize|"
-    r"parse|load|write|resolve|normalize|derive|create|enable|support|handle)\b",
-    re.I,
-)
-for c in concerns:
-    label = c.get("name") or c.get("slug") or f"#{c.get('number')}"
-    purpose = c.get("purpose", "")
-    if not isinstance(purpose, str):
-        bad.append(f"{label}: purpose must be a string")
-        purpose = str(purpose)
-    number = c.get("number")
-    if not isinstance(number, int):
-        bad.append(f"{label}: number must be an integer")
-    evolution_step = c.get("evolution_step")
-    if not isinstance(evolution_step, int):
-        bad.append(f"{label}: evolution_step must be an integer")
-    elif ladder_set and evolution_step not in ladder_set:
-        bad.append(f"{label}: evolution_step {evolution_step} is not in evolution_ladder")
-    milestone = c.get("narrative_milestone")
-    if not isinstance(milestone, str) or not milestone.strip():
-        bad.append(f"{label}: missing narrative_milestone")
-    if re.search(r"\b(and|also)\b|as well as|;|,", purpose, re.I):
-        bad.append(f"{label}: purpose uses a forbidden conjunction or comma list")
-    slug = c.get("slug", "")
-    if not isinstance(slug, str):
-        bad.append(f"{label}: slug must be a string")
-        slug = str(slug)
-    if re.search(r"\b(all|shared|common|mixed|integration|documentation|tests|fixtures|cli-wiring)\b", slug, re.I):
-        bad.append(f"{label}: slug is an artifact or umbrella category")
-    deps = c.get("depends_on", [])
-    if not isinstance(deps, list):
-        bad.append(f"{label}: depends_on must be a list of integer concern numbers")
-        deps = []
-    for dep in deps:
-        if not isinstance(dep, int):
-            bad.append(f"{label}: depends_on entries must be integer concern numbers")
-        elif dep not in number_set:
-            bad.append(f"{label}: depends_on references unknown concern {dep}")
-        elif isinstance(number, int) and dep <= number:
-            bad.append(f"{label}: depends_on must point inward to a higher-numbered concern")
-    ops = c.get("externally_invocable_operations", [])
-    if not isinstance(ops, list):
-        bad.append(f"{label}: externally_invocable_operations must be a list")
-        ops = []
-    if len(ops) > 1:
-        bad.append(f"{label}: multiple externally invocable operations must be split")
-    for op in ops:
-        if not isinstance(op, str):
-            bad.append(f"{label}: externally_invocable_operations entries must be strings")
-            continue
-        if "|" in op or re.search(r",\s*\S", op):
-            bad.append(f"{label}: operation string hides variants: {op}")
-    falsification = c.get("falsification", {})
-    if not isinstance(falsification, dict):
-        bad.append(f"{label}: falsification must be an object")
-        falsification = {}
-    files_wholly_owned = c.get("files_wholly_owned", [])
-    if not isinstance(files_wholly_owned, list):
-        bad.append(f"{label}: files_wholly_owned must be a list")
-        files_wholly_owned = []
-    internal_slices = c.get("internal_slices", [])
-    if internal_slices is not None and not isinstance(internal_slices, list):
-        bad.append(f"{label}: internal_slices must be a list when present")
-        internal_slices = []
-    refinement_audit = c.get("refinement_audit", {})
-    if not isinstance(refinement_audit, dict):
-        bad.append(f"{label}: missing refinement_audit object from concern refinement pass")
-        refinement_audit = {}
-    independent_count = refinement_audit.get("independent_behavior_count")
-    if not isinstance(independent_count, int) or independent_count < 1:
-        bad.append(f"{label}: refinement_audit.independent_behavior_count must be a positive integer")
-    elif independent_count > 1:
-        bad.append(f"{label}: refinement pass found {independent_count} independent behaviors; split the concern")
-    promoted = refinement_audit.get("promoted_subconcerns", [])
-    if promoted:
-        bad.append(f"{label}: promoted_subconcerns is non-empty; rewrite candidate with those sub-concerns promoted")
-    reviewed_slices = refinement_audit.get("reviewed_internal_slices", [])
-    if internal_slices and not isinstance(reviewed_slices, list):
-        bad.append(f"{label}: refinement_audit.reviewed_internal_slices must review every internal slice")
-    elif len(internal_slices) > 1 and len(reviewed_slices) != len(internal_slices):
-        bad.append(f"{label}: refinement pass did not review every internal_slices entry")
-    if len(internal_slices) > 1 and not refinement_audit.get("why_slices_are_not_concerns"):
-        bad.append(f"{label}: multiple internal_slices require why_slices_are_not_concerns")
-    for path in files_wholly_owned:
-        if not isinstance(path, str):
-            bad.append(f"{label}: files_wholly_owned entries must be strings")
-            continue
-        basename = path.rsplit("/", 1)[-1]
-        if basename in risky_whole_files and not internal_slices:
-            bad.append(f"{label}: risky whole file needs narrower concerns: {path}")
-        path_obj = Path(path)
-        if (
-            path_obj.exists()
-            and path_obj.is_file()
-            and path.endswith((".py", ".pyi"))
-            and not re.search(r"\b(generated|fixture|data-only)\b", json.dumps(c), re.I)
-        ):
-            try:
-                line_count = len(path_obj.read_text(encoding="utf-8", errors="ignore").splitlines())
-            except OSError:
-                line_count = 0
-            if line_count > 600:
-                bad.append(f"{label}: large code/test file cannot remain files_wholly_owned; split {path} across refined concerns")
-    split_audit = c.get("split_audit", {})
-    if not isinstance(split_audit, dict):
-        bad.append(f"{label}: split_audit must be an object")
-        split_audit = {}
-    splits = split_audit.get("candidate_splits", [])
-    if not isinstance(splits, list):
-        bad.append(f"{label}: split_audit.candidate_splits must be a list")
-        splits = []
-    if len(splits) == 0:
-        bad.append(f"{label}: missing candidate split audit")
-    for split in splits:
-        if not isinstance(split, dict):
-            bad.append(f"{label}: split_audit entries must be objects with proposal, breakage, verdict")
-            continue
-        for key in ("proposal", "breakage", "verdict"):
-            if not split.get(key):
-                bad.append(f"{label}: split_audit entry missing {key}")
-        breakage_text = " ".join(str(split.get(k, "")) for k in ("proposal", "breakage"))
-        if split.get("verdict") == "keep-together" and invalid_keep_together.search(breakage_text):
-            bad.append(f"{label}: invalid keep-together excuse: {breakage_text}")
-        if split.get("verdict") == "keep-together" and re.search(r"\b(N/A|none|not applicable|later|together)\b", str(split.get("breakage", "")), re.I):
-            bad.append(f"{label}: keep-together split audit lacks exact immediate breakage")
-    if falsification.get("verdict") == "keep-together" and re.search(
-        r"\b(N/A|none|not applicable|later|together)\b",
-        " ".join(str(falsification.get(k, "")) for k in ("narrower_split", "breakage")),
-        re.I,
-    ):
-        bad.append(f"{label}: keep-together falsification lacks exact immediate breakage")
-    falsification_text = " ".join(str(falsification.get(k, "")) for k in ("narrower_split", "breakage"))
-    if falsification.get("verdict") == "keep-together" and invalid_keep_together.search(falsification_text):
-        bad.append(f"{label}: invalid keep-together falsification excuse: {falsification_text}")
-    regions = c.get("shared_file_regions", [])
-    if not isinstance(regions, list):
-        bad.append(f"{label}: shared_file_regions must be a list")
-        regions = []
-    for region in regions:
-        if not isinstance(region, dict):
-            bad.append(f"{label}: shared_file_regions entries must be objects")
-            continue
-        path = region.get("path", "")
-        basename = path.rsplit("/", 1)[-1]
-        anchor = f"{region.get('anchor', '')} {region.get('description', '')}"
-        is_risky = basename in risky_whole_files or path.startswith(("tests/", ".github/", "docs/"))
-        if is_risky and re.search(r"\bwhole file\b|\ball of\b|\bentire file\b", anchor, re.I):
-            bad.append(f"{label}: shared file region claims a whole risky file: {path}")
-        for start, end in re.findall(r"lines?\s+(\d+)\s*-\s*(\d+)", anchor, re.I):
-            if is_risky and int(end) - int(start) + 1 > 180:
-                bad.append(f"{label}: shared file region is too large in {path}: lines {start}-{end}")
-    expected_commits = c.get("expected_commits", [])
-    if not isinstance(expected_commits, list):
-        bad.append(f"{label}: expected_commits must be a list")
-        expected_commits = []
-    reviewed_commits = refinement_audit.get("reviewed_expected_commits", [])
-    if len(expected_commits) > 1:
-        if not isinstance(reviewed_commits, list) or len(reviewed_commits) != len(expected_commits):
-            bad.append(f"{label}: refinement pass must review every expected_commits entry as a possible sub-concern")
-        non_proof_commits = [
-            str(commit) for commit in expected_commits
-            if implementation_commit.search(str(commit)) and not proofish_commit.search(str(commit))
-        ]
-        if len(non_proof_commits) > 1:
-            bad.append(
-                f"{label}: expected_commits contain multiple implementation/adopter slices; "
-                f"promote them to concerns: {non_proof_commits}"
-            )
-    if len(expected_commits) == 2:
-        joined = " ".join(map(str, expected_commits))
-        if re.search(r"\b(implement|implementation|code)\b", joined, re.I) and re.search(r"\b(tests?|cover)\b", joined, re.I):
-            bad.append(f"{label}: expected commits look like implementation-plus-tests instead of behavior slices")
-    if len(expected_commits) >= 4:
-        testish = [
-            bool(re.search(r"\b(tests?|test|proof|prove|cover|coverage|fixture|assert|rejects?|accepts?)\b", str(commit), re.I))
-            for commit in expected_commits
-        ]
-        if any(testish) and not all(testish):
-            first_test = testish.index(True)
-            if first_test >= 2 and all(testish[first_test:]) and len(testish) - first_test >= 2:
-                bad.append(f"{label}: expected commits group implementation before tests; interleave each behavior slice with its proof")
-    for text in [purpose, " ".join(map(str, expected_commits))]:
-        if re.search(r"\ball\b|\bcomplete\b|\bentire\b|\bfull\b|\bshared\b|\bcommon\b|\bmixed\b|\bintegration\b", text, re.I):
-            bad.append(f"{label}: broad wording suggests a dump")
-    expected_joined = " ".join(map(str, expected_commits))
-    if "|" in expected_joined:
-        bad.append(f"{label}: expected commits hide variants with |")
-    if len(re.findall(r"\b(triage|backport|rebase|rebuild)\b", expected_joined, re.I)) > 1:
-        bad.append(f"{label}: expected commits mention multiple workflow variants")
-for path, line_count in large_new_code_paths:
-    plan_mentions = []
-    owning_mentions = []
-    path_specific_slices = 0
-    generated_or_data_only = False
-    for c in concerns:
-        label = c.get("name") or c.get("slug") or f"#{c.get('number')}"
-        ctext = json.dumps(c)
-        if path not in ctext:
-            continue
-        plan_mentions.append(str(label))
-        if path in c.get("files_wholly_owned", []):
-            owning_mentions.append(str(label))
-        if re.search(r"\b(generated|data-only)\b", ctext, re.I):
-            generated_or_data_only = True
-        slices = c.get("internal_slices") or []
-        if isinstance(slices, list):
-            path_specific_slices += sum(1 for item in slices if path in json.dumps(item))
-    if generated_or_data_only:
-        continue
-    if not plan_mentions:
-        bad.append(f"large new code/test file missing from concern plan: {path} has {line_count} lines")
-    elif owning_mentions:
-        bad.append(f"large new code/test file is wholly owned by a concern; split into refined concerns: {path} owners={owning_mentions}")
-    elif len(set(plan_mentions)) < 2:
-        bad.append(f"large new code/test file must evolve across multiple concerns, not only internal_slices: {path} mentions={plan_mentions}")
-    elif path_specific_slices < 2:
-        bad.append(
-            f"large new code/test file needs multiple path-specific internal_slices: "
-            f"{path} has {line_count} lines, mentions={plan_mentions}, slices={path_specific_slices}"
-        )
-if bad:
-    print("\n".join(f"- {item}" for item in bad), file=sys.stderr)
-    sys.exit(1)
-PY
-```
-
-If the validator fails, spawn a **new** `Agent(decompose-analyzer)` with a
-prompt that includes:
-- the exact validator failures and manual check failures;
-- the paths to the existing candidate, narrative, and refinement files;
-- instructions to rewrite those files to fix every reported issue;
-- the `decompose-checkpoint.py mark` command to run after rewriting.
-
-Do not use `SendMessage` to resume a prior analyzer — a new agent is
-resilient to prior connection drops and makes each retry independently
-resumable through the `gate1` checkpoint.
-
-When the new analyzer returns, re-run the Gate 1 validator script and all
-manual checks below against the revised candidate. Repeat this
-spawn-revalidate loop until Gate 1 passes. Do not end your turn or proceed
-to Phase 2 while Gate 1 is failing.
-
-Do not edit the JSON in place to silence the failure. A Gate 1 failure means
-the concern boundaries, schema, order, or falsification evidence are wrong.
-It is not a copy-editing task.
-
-In particular, never replace `and` with a comma to make a purpose look
-single-clause. Commas in purposes are also forbidden because they usually hide
-the same multi-capability concern. Split the concern or rework the dependency
-order instead.
-
-Then check:
-
-1. Every concern has a unique, contiguous number.
-2. Every concern name is a kebab-case capability slug — not an artifact
-   category (`cli-wiring`, `readme`, `docs`, `tests`, `shared`, `mixed`).
-3. Every concern purpose is one clause with no `and`, `also`, `as well as`,
-   semicolon, comma-separated capability list, or vague umbrella noun.
-4. Every `depends_on` entry is an integer concern number, and because
-   concerns are numbered outermost-to-innermost, every dependency points to a
-   higher-numbered concern.
-5. No concern contains multiple externally invocable operations; split
-   external commands, workflows, providers, replay paths, and capture paths.
-6. Submodule entries exist for every `.gitmodules` path, with gitlink
-   ownership assigned.
-7. Every concern has `externally_invocable_operations` and an object-shaped
-   `split_audit` with exact breakage for every keep-together verdict.
-8. The peel order is `[1..N]` and rebuild order is the exact reverse.
-9. The plan has a non-empty `evolution_ladder`, and every concern names the
-   ladder step it implements through `evolution_step`.
-10. Expected commits do not hide sub-concerns. If multiple expected commits
-   are independently useful implementation, adopter, docs, fixture, provider,
-   parser, or build-system slices, split them into sibling concerns before
-   Gate 1. Proof should land with or immediately after the behavior it
-   proves.
-11. `$DECOMPOSE_STATE_DIR/decompose-narrative.md` exists and includes
-    Current Committed State, Final Working Tree State, Existing Surface
-    Evolution, New Surface Growth, Aggregation Evolution, Beginning, Middle,
-    End, and Forbidden Shortcuts Found.
-12. `$DECOMPOSE_STATE_DIR/decompose-refinement.md` exists, and every concern
-    has `refinement_audit` proving the refinement pass reviewed
-    `expected_commits`, `internal_slices`, and whole-file claims as possible
-    sub-concerns.
-13. Every concern has `narrative_milestone`, at most one externally
-    invocable operation, and no operation string hiding variants with `|`.
-14. No keep-together explanation relies on shared helpers, duplicate
-    infrastructure, same file/module/function, unused imports, or linter
-    failures.
-15. The narrative explains how existing committed code and documentation
-    changes across the history, not only which new files are added.
-16. The plan evolves imports, registries, dispatch tables, parser
-    registrations, and docs indexes with their first consumers instead of
-    treating final top-level imports as hard ordering constraints.
-17. Every `evolution_ladder.regions_introduced_or_evolved` entry is an
-    object with path, anchor, change kind, before state, after state, and
-    still-absent future content.
-18. New untracked code, docs, config, build, and fixture surfaces from
-    `git ls-files --others --exclude-standard --directory` are covered by
-    New Surface Growth.
-19. No adopter, docs section, parser entry, or coordinator lands before the
-    behavior it invokes or describes by relying on call-time imports,
-    placeholders, untested branches, or future providers.
-20. Any new code or test file over 600 lines is split across multiple refined
-    concerns unless it is generated or data-only. Listing the file under
-    `shared_file_regions` or `internal_slices` is not enough; the plan must
-    make the file grow through concern boundaries.
-
-If any check fails, spawn a new `Agent(decompose-analyzer)` with the specific
-failures and instructions to rewrite the candidate (same pattern as above).
-When it returns, re-run the Gate 1 validator and all checks. Continue this
-spawn-revalidate loop until every check passes. Do not end your turn or
-proceed to Phase 2 with a failing plan.
-
-After Gate 1 passes, promote the candidate to the final plan path:
-
-```bash
-python - <<'PY'
+import json
+import os
 import subprocess
 from pathlib import Path
-state_dir = Path(subprocess.check_output(
-    ["python", ".claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py", "state-dir"],
-    text=True,
-).strip())
-state_dir.mkdir(parents=True, exist_ok=True)
-src = state_dir / "decompose-plan.candidate.json"
-dst = state_dir / "decompose-plan.json"
-dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+
+state = Path(os.environ['DECOMPOSE_STATE_DIR']).resolve()
+plan_path = Path(os.environ.get('DECOMPOSE_PLAN_PATH', str(state / 'decompose-plan.candidate.json')))
+p = json.loads(plan_path.read_text())
+def require(condition, message):
+    if not condition:
+        raise SystemExit(message)
+def artifact(value):
+    require(isinstance(value, str) and value, 'missing evidence path')
+    path = (state / value).resolve()
+    require(path.is_relative_to(state) and path.exists(), f'missing or external evidence: {value}')
+    return path
+repo = artifact(p['evidence_repo'])
+def git(*args):
+    return subprocess.check_output(['git', '-C', str(repo), '--no-optional-locks', *args])
+def commit(value):
+    actual = git('rev-parse', '--verify', value + '^{commit}').decode().strip()
+    require(value == actual, 'snapshot must use an immutable full commit ID')
+    return actual
+base = commit(p['base'])
+target = commit(p['target_commit'])
+artifact(p['input_manifest'])
+cs = p['concerns']
+require(bool(cs), 'empty concern list')
+numbers = list(range(1, len(cs) + 1))
+require([c['number'] for c in cs] == numbers, 'noncontiguous concern numbers')
+require(p['peel_order'] == numbers and p['rebuild_order'] == numbers[::-1], 'invalid orders')
+require(len({c['slug'] for c in cs}) == len(cs), 'duplicate slug')
+require(len({c['name'] for c in cs}) == len(cs), 'duplicate batch name')
+ladder = p['evolution_ladder']
+require([s['step'] for s in ladder] == numbers, 'invalid chronological ladder')
+current = base
+for step, c in enumerate(reversed(cs), 1):
+    require(c['evolution_step'] == step, 'concern does not match chronological step')
+    require(bool(c['purpose'].strip()), 'empty concern purpose')
+    require(len(c['expected_commits']) == 1, 'promote independent commits to concerns')
+    deps = c['depends_on']
+    require(all(type(d) is int and c['number'] < d <= len(cs) for d in deps), 'invalid dependency order')
+    require(set(deps) == {d['provider'] for d in c['dependency_evidence']}, 'missing dependency evidence')
+    if c.get('role') == 'verification':
+        validates = c.get('validates')
+        require(type(validates) is int and validates == c['number'] + 1 and validates in deps, 'proof must immediately follow the code it validates')
+    s = c['snapshot']
+    before, after = commit(s['before']), commit(s['after'])
+    require(before == current, 'broken snapshot chain')
+    require(git('show', '-s', '--format=%P', after).decode().strip() == before, 'snapshot has wrong parent')
+    require(git('rev-parse', before + '^{tree}') != git('rev-parse', after + '^{tree}'), 'empty concern patch')
+    patch = git('diff', '--binary', '--full-index', '--no-ext-diff', '--no-textconv', before, after)
+    require(artifact(s['patch']).read_bytes() == patch, 'patch differs from retained snapshots')
+    require(isinstance(s['checks'], list), 'missing check records')
+    require(s['checks'] or s.get('inspection'), 'missing proof or inspection')
+    for check in s['checks']:
+        require(check['snapshot'] == after and check['exit_code'] == 0, 'check does not pass on accepted snapshot')
+        require(check['kind'] and isinstance(check['command'], list) and check['command'], 'invalid check command')
+        artifact(check['log'])
+    current = after
+require(git('rev-parse', current + '^{tree}') == git('rev-parse', target + '^{tree}'), 'history does not reach captured target')
+require(bool(p['ownership_ledger']), 'missing ownership ledger')
+require(all(e['concern'] in numbers for e in p['ownership_ledger']), 'unknown ledger owner')
+print('Snapshot structure and retained patches verified; semantic and source audits still required.')
 PY
 ```
 
-Then checkpoint the passed analysis:
+Then independently inspect the patches and relevant check output:
+
+1. The input manifest matches the original base and intended final source,
+   including all nonignored new files, deletions, modes, and gitlinks. On
+   resume/after peeling, account for recorded commits, batches, and repairs.
+2. Each patch has one reason to exist. Whole functions/files and support
+   artifacts follow the atomicity rules in the planning reference. Disputed
+   splits are resolved with narrower concrete snapshots and checks.
+3. Dependencies reflect imports, calls, contracts, and registrations in the
+   historical versions. Providers precede consumers; final imports do not
+   force later features into early patches.
+4. Owned regions cover the intended diff exactly once. Context is separate.
+   Submodule stanzas and gitlinks have owners. Lockfiles/configuration are
+   valid generated snapshots for their manifests.
+5. Repository proof placement is honored, including required immediate
+   `tests: Validate ...` commits with their code/proof links. Relevant checks
+   actually ran in those snapshots with declared prerequisites.
+   Syntax/import/collection output cannot stand in for behavioral proof.
+   Generated ignored assets are built by the snapshot's scripts when required.
+6. The concise narrative/ladder accurately describe the retained history.
+
+A failed review gives precise concern/patch feedback. Apply targeted
+correction as defined in the planning reference; retain valid unrelated
+evidence. Rerun the complete gate. Do not approve a cosmetic rename that
+conceals the same bundled patch, or restart from an untested outline after
+every rejection.
+
+After Gate 1 passes, copy the candidate to `decompose-plan.json` and mark:
 
 ```bash
 python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase1-complete --note "Gate 1 passed"
 ```
 
-## Phase 2: Deconstruction
+## Phase 2: peel
 
-Spawn `Agent(decompose-deconstructor)` with this prompt:
+Spawn `Agent(decompose-deconstructor)`.
 
-> Execute the deconstruction phase using the concern plan at
-> `$DECOMPOSE_STATE_DIR/decompose-plan.json` and the evolution narrative at
-> `$DECOMPOSE_STATE_DIR/decompose-narrative.md`. Compute `DECOMPOSE_STATE_DIR`
-> with the checkpoint helper if it is not already set. Peel concerns from
-> outermost to innermost.
-> Before starting, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase2-running`.
-> For every concern, read its `evolution_step` and the matching
-> `evolution_ladder` entry, plus its `narrative_milestone`, before selecting
-> lines. The batch should contain only the product step described there, with
-> no content the ladder says must not appear yet.
-> If the concern bundles workflow/provider variants, relies on shared helpers
-> as a keep-together reason, or owns a risky whole file without a single
-> behavior slice, split the plan before peeling.
-> If the concern's `expected_commits` or `internal_slices` describe multiple
-> independently coherent behavior slices, stop and split the plan before
-> peeling. Do not create a batch that merely promises to split later during
-> rebuild.
-> Use `git-stage-batch discard --to decompose-NN-NAME --no-auto-advance` for
-> original concern content. Pass `--no-auto-advance` on every mutating
-> `git-stage-batch` command that supports it, then run a fresh `show` before
-> using any line IDs. Do not use `save` to capture concern content.
-> For each concern, draft the one-clause batch note before selecting lines.
-> If no narrow note fits, split the concern. Before the first `discard --to`
-> or `include --to`, run `git-stage-batch new decompose-NN-NAME --note
-> "One-clause purpose"` so the batch never exists as `Auto-created`. Do this
-> before bulk skips, broad traversal, repairs, or verification. Use the note
-> as the selection contract.
-> When a concern owns entries inside a shared import group, registry, parser
-> container, list, table, or Markdown section, copy the shared wrapper/context
-> into the same concern batch with `git-stage-batch include --to
-> decompose-NN-NAME --no-auto-advance`; then discard only the owned entries.
-> Do not discard dependency-owned context from the working tree just to make
-> the batch parse. For modest syntax-fixing replacements, prefer
-> `--as-stdin` over `--as`.
-> When deferring many unrelated files, use `git-stage-batch skip --files
-> PATTERN... --no-auto-advance` with gitignore-style patterns instead of a
-> long one-file skip loop, but only when every matched file is outside the
-> current concern.
-> Each concern batch must be a replayable unit before moving to the next
-> concern: inspect its `refs/git-stage-batch/state/...:batch.json` metadata,
-> materialize every Python file from `refs/git-stage-batch/batches/...`, and
-> run `python -m py_compile` on those materialized files.
-> Checkpoint every concern. Before peeling it, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase2-running --current-batch decompose-NN-NAME`.
-> After its batch and optional repair batch pass audit, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase2-running --completed-batch decompose-NN-NAME`.
-> Peel complete syntactic units, not moving line-range fragments: complete
-> parser calls, complete function/test blocks, complete dispatch branches, and
-> complete Markdown sections.
-> Stop the git-stage-batch session when deconstruction is complete.
+Provide the approved plan, input manifest, snapshots, and current state. Peel
+in ascending concern order. Each batch already represents one atomic change;
+the deconstructor must not defer unresolved splits to the rebuilder.
 
-### Gate 2: Validate the batch list
+### Gate 2: batch replay
 
-After Phase 2 completes:
+Require all of the following:
+
+- every planned batch and recorded optional repair exists with its purpose;
+- the maintained tree equals the recorded base, with a clean index;
+- ref/ownership audits find no missing, unrelated, or partial owned content;
+- actual reverse application in a disposable clone reproduces every approved
+  after snapshot, reversing companion repairs, and reaches the captured target;
+- relevant reconstructed-snapshot checks pass with their prerequisites;
+- plan changes discovered during peeling pass the complete Gate 1;
+- the live session has been stopped and no active/completed session remains.
+
+Batch metadata and syntax checks alone cannot pass this gate. Correct affected
+batches/snapshots on failure; do not rebuild a known-broad or unreplayable
+batch.
 
 ```bash
 git-stage-batch list
 git-stage-batch status
-```
-
-Then inspect batch metadata through git refs only. Do not use
-`git-stage-batch show` for this gate:
-
-```bash
-python - <<'PY'
-import json, pathlib, re, subprocess, sys, tempfile
-refs = subprocess.check_output(
-    ["git", "--no-optional-locks", "for-each-ref", "--format=%(refname)", "refs/git-stage-batch/state"],
-    text=True,
-).splitlines()
-bad = []
-for ref in refs:
-    try:
-        raw = subprocess.check_output(
-            ["git", "--no-optional-locks", "cat-file", "-p", f"{ref}:batch.json"],
-            text=True,
-        )
-    except subprocess.CalledProcessError:
-        continue
-    batch = json.loads(raw)
-    name = batch.get("batch", ref.rsplit("/", 1)[-1])
-    if not name.startswith("decompose-"):
-        continue
-    note = batch.get("note", "")
-    if not note or note == "Auto-created":
-        bad.append(f"{name}: missing deliberate single-purpose note")
-    if re.search(r"\b(all|full|complete|entire|shared|mixed|integration)\b", note, re.I):
-        bad.append(f"{name}: broad batch note: {note}")
-    if re.search(r"\b(and|also)\b|as well as|;", note, re.I):
-        bad.append(f"{name}: batch note has multiple actions: {note}")
-    if "|" in note:
-        bad.append(f"{name}: batch note hides variants with |: {note}")
-    content_ref = batch.get("content_ref") or f"refs/git-stage-batch/batches/{name}"
-    files = batch.get("files", {})
-    for path, meta in files.items():
-        claims = [
-            claim
-            for presence in meta.get("presence_claims", [])
-            for claim in presence.get("source_lines", [])
-        ]
-        if path.endswith((".py", ".md", ".toml", ".yaml", ".yml", ".json")) and any(
-            re.search(r"\b1-\d{3,}\b", claim) for claim in claims
-        ):
-            bad.append(f"{name}: large whole-file claim in {path}: {', '.join(claims)}")
-        if path.endswith(".py"):
-            try:
-                source = subprocess.check_output(
-                    ["git", "--no-optional-locks", "show", f"{content_ref}:{path}"],
-                    text=True,
-                    stderr=subprocess.PIPE,
-                )
-            except subprocess.CalledProcessError as exc:
-                bad.append(f"{name}: cannot read batch Python file {path}: {exc.stderr.strip()}")
-                continue
-            with tempfile.TemporaryDirectory() as tmp:
-                tmp_path = pathlib.Path(tmp) / path.replace("/", "__")
-                tmp_path.write_text(source, encoding="utf-8")
-                proc = subprocess.run(
-                    [sys.executable, "-m", "py_compile", str(tmp_path)],
-                    text=True,
-                    capture_output=True,
-                )
-                if proc.returncode != 0:
-                    lines = (proc.stderr or proc.stdout or "py_compile failed").strip().splitlines()
-                    detail = lines[-1] if lines else "py_compile failed"
-                    bad.append(f"{name}: batch Python file does not compile: {path}: {detail}")
-if bad:
-    print("\n".join(f"- {item}" for item in bad), file=sys.stderr)
-    sys.exit(1)
-PY
-```
-
-Check:
-
-1. Every planned concern has a corresponding `decompose-NN-NAME` batch.
-2. No batch has an artifact-category name.
-3. No unnumbered original-content holding batches exist.
-4. `git-stage-batch status` reports no active or completed session.
-5. The working tree contains only the minimal base.
-6. If Phase 2 changed the plan, `$DECOMPOSE_STATE_DIR/decompose-plan.json` has been
-   updated and Gate 1 passes again against the revised plan.
-
-If any check fails, report the failure. Do not proceed to Phase 3 with
-a known-broad or missing batch.
-
-Then checkpoint the passed deconstruction:
-
-```bash
+git --no-optional-locks status --short
 python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase2-complete --note "Gate 2 passed"
 ```
 
-## Phase 3: Rebuild
+Mark the checkpoint only after all checks pass. `deconstruct` ends here.
 
-Spawn `Agent(decompose-rebuilder)` with this prompt:
+## Phase 3: rebuild
 
-> Rebuild the commit series from the batches. Apply batches in reverse
-> order (innermost first). The base commit is {BASE_SHA}.
-> The concern plan is at `$DECOMPOSE_STATE_DIR/decompose-plan.json`.
-> The evolution narrative is at `$DECOMPOSE_STATE_DIR/decompose-narrative.md`.
-> Compute `DECOMPOSE_STATE_DIR` with the checkpoint helper if it is not
-> already set.
-> Before using git-stage-batch, read the installed help for the top-level
-> command and each subcommand you will use. Use only documented commands,
-> selectors, flags, and argument shapes. If the help output does not show a
-> syntax, do not use it.
-> Before applying any batch, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running`.
-> Read CONTRIBUTING.md and .git/hooks/commit-msg before committing.
-> Read the narrative and the plan's `evolution_ladder` before applying any
-> batch. Each restored concern must be committed as the next believable
-> simplified product state, not as a finished file or module snapshot.
-> Important: `git-stage-batch apply --from BATCH` writes to the working tree
-> only; it does not write to the index. After applying a batch, inspect the
-> unstaged diff and stage one atomic commit at a time using the
-> `commit-unstaged-changes` strategy. Do not treat applying a batch as staging
-> a batch.
-> Commit in behavior/proof pairs: implementation slice, narrow tests or proof,
-> next implementation slice, next narrow proof. Do not create all
-> implementation commits first and all test commits afterward. If a source
-> commit needs several later test commits, split the source commit.
-> Checkpoint rebuild progress. Before applying each batch, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --current-batch decompose-NN-NAME`.
-> After every commit, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --commit HEAD`.
-> After all commits for that batch are complete and the batch is dropped, run
-> `python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --completed-batch decompose-NN-NAME`.
-> Each commit must be verified as the committed snapshot, not through the dirty
-> working tree that still contains future changes. After every commit, run
-> `.claude/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py`
-> through `python` with a check appropriate to the touched surface, starting
-> with `python -m compileall -q src tests` and expanding to relevant pytest
-> subsets or the repository's full test command for behavior, import, packaging,
-> or orchestration changes. If any committed snapshot fails, amend or rewrite
-> the offending commit before continuing. Do not accumulate late repair commits.
-> After all batches are committed and dropped, return control to the
-> coordinator. Do not perform a separate post-rebuild rewrite in this phase;
-> `refine-history` owns the post-rebuild rewrite.
+Spawn `Agent(decompose-rebuilder)`.
 
-After `Agent(decompose-rebuilder)` returns, require the first-class
-`refine-history` skill. Read `.claude/skills/refine-history/SKILL.md`, mark the
-handoff, and execute it with `BASE_SHA`:
+Provide the verified batch set, original base, plan, and replay evidence.
+Restore batches in descending order, explicitly stage the approved change with
+git-stage-batch, and create one atomic commit per concern. Required separate
+`tests: Validate ...` concerns immediately follow their code concerns. Verify
+every actual committed snapshot with an explicit appropriate check using
+`.claude/skills/refine-history/scripts/verify-head-snapshot.py`. Follow
+repository proof placement: include tests with their behavior by default, or
+immediately afterward in the required separate test commit. Verify the code
+snapshot using a retained harness/direct check when its committed test file
+arrives next. Fix failed commits before continuing and record progress with
+the checkpoint helper.
+
+After rebuilding, read and invoke the companion
+`.claude/skills/refine-history/SKILL.md` with the original base. Preserve the
+proposed atomic boundaries unless concrete patch review finds a correction.
+The required refine-history completion gate owns final message cleanup and any
+history rewrite; do not duplicate it in the rebuilder.
 
 ```bash
 python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase refine-history-running --note "handing rebuilt series to refine-history"
 ```
 
-If the skill is not installed, stop with an instruction to install the bundled
-`refine-history` Claude skill; do not silently skip the final history
-refinement or fall back to an embedded copy of that workflow.
+If the companion skill is missing, report that exact installation blocker. Do
+not claim completion or silently skip its gate.
 
-### Gate 3: Definition of Done
+### Gate 3: complete history
 
-After Phase 3 completes, run all of these checks:
+Require a clean maintained tree/index, no workflow batches or active/completed
+session, exact final-tree equality with the captured target, the normal
+repository test command passing, valid submodule gitlinks, and the
+refine-history completion gate for `BASE_SHA..HEAD`. Generated ignored outputs
+are prerequisites rather than unexpected tracked artifacts. Report concrete
+external blockers without claiming the gate passed.
 
 ```bash
 git --no-optional-locks status --short
 git-stage-batch list
 git-stage-batch status
-```
-
-**All must pass:**
-
-1. `git status` has no unexplained tracked or untracked leftovers.
-2. `git-stage-batch list` is empty of every batch created for this workflow.
-   If it prints any `decompose-*` batch, drop it and re-check.
-3. `git-stage-batch status` reports no active or completed session.
-   If it does, stop the session and re-check.
-4. The repository's normal test command passes (or a concrete external
-   blocker is reported).
-5. If `.gitmodules` exists, every listed submodule path appears in
-   `git ls-tree HEAD` with mode `160000`. First list the paths, then
-   substitute every returned path into `ls-tree`; do not use a fixed path
-   list:
-
-```bash
-git config --file .gitmodules --get-regexp '^submodule\..*\.path$'
-git --no-optional-locks ls-tree HEAD PATH_FROM_GITMODULES ...
-```
-
-Do not run the placeholder literally; replace it with every path printed by
-the first command.
-
-6. The `refine-history` completion gate passed for `BASE_SHA..HEAD`, including
-   exact final-tree preservation, committed-snapshot verification, the final
-   split audit, repair integration, and message cleanup.
-
-If any check fails, report the specific failure. Do not report success
-while holding unfinished-work signals.
-
-Then record completion:
-
-```bash
 python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-complete --note "Gate 3 passed"
 ```
 
-## Completion Report
+Mark complete only after the gate. Report concern/commit counts, subjects in
+series order, checks, refine-history result, and material repairs/blockers.
 
-After all gates pass, report:
+## Recovery
 
-- How many concerns were identified
-- How many commits were created
-- The subject line of each commit in series order
-- The `refine-history` completion summary
-- Any manual repairs or plan adjustments that were needed
-
-## Safety and Recovery
-
-### During deconstruction
-
-- If a discard goes wrong: `git-stage-batch undo`
-- If the tree is unrecoverable: `git-stage-batch abort`
-- Always verify coherence after each peel
-
-### During rebuild
-
-- If `apply --from` or `discard --from` fails: inspect the batch and repair
-  the working tree manually
-- If a commit fails before it is created due to a hook: fix and retry the same
-  commit
-- If a committed snapshot fails after creation: amend or rewrite that offending
-  commit before continuing; never leave the breakage for a later repair commit
-- If the tree is inconsistent: repair before committing
-
-#### Rewrite a failed committed snapshot
-
-Do not add a later repair commit. Use one of these command sequences.
-
-If the newest commit fails, amend `HEAD` immediately. This is the expected
-recovery path because Phase 3 verifies after every commit:
-
-```bash
-git --no-optional-locks status --short
-git-stage-batch start
-git-stage-batch show
-git-stage-batch include --line FIX_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git commit --amend --no-edit
-python .claude/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-```
-
-Use `git-stage-batch include --file PATH_WITH_FIX --no-auto-advance` only when
-every change in that path belongs in the failed commit. For modest replacement
-edits, prefer `--as-stdin`:
-
-```bash
-cat <<'EOF' | git-stage-batch include --line FIX_LINE_IDS --as-stdin --no-auto-advance
-replacement text
-EOF
-```
-
-If the subject/body also needs correction, replace `--no-edit` with this form:
-
-```bash
-git commit --amend -m "$(cat <<'EOF'
-prefix: Corrected summary
-
-Corrected body.
-EOF
-)"
-```
-
-If an older commit fails during a final audit, first require a clean working
-tree. Do not start a rebase while future unstaged work is present:
-
-```bash
-git --no-optional-locks status --short
-```
-
-Find the first failing commit:
-
-```bash
-BASE_SHA=PUT_BASE_SHA_HERE
-for c in $(git --no-optional-locks rev-list --reverse "$BASE_SHA"..HEAD); do
-  python .claude/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref "$c" -- python -m compileall -q src tests || { echo "FIRST_BAD=$c"; break; }
-done
-```
-
-Edit that commit with a non-interactive interactive rebase:
-
-```bash
-BAD_SHA=PUT_FIRST_BAD_SHA_HERE
-GIT_SEQUENCE_EDITOR="sed -i '1s/^pick /edit /'" git rebase -i "$BAD_SHA^"
-```
-
-When rebase stops, stage the minimal fix, amend, verify, and continue:
-
-```bash
-git-stage-batch start
-git-stage-batch show
-git-stage-batch include --line FIX_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git commit --amend --no-edit
-python .claude/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-git rebase --continue
-```
-
-If conflicts occur, resolve them, use `git add` only to mark the resolved
-conflict paths, and run `git rebase --continue`. That conflict-resolution
-bookkeeping is not a staging method for ordinary commit slices. After the
-rebase finishes, re-run the verification loop over `BASE_SHA..HEAD` and repeat
-for the next first failing commit if needed.
-
-### Preserving work
-
-- Do not run destructive git commands without checking with the user
-- Batches are the source of truth during rebuild — do not drop them until
-  committed
-
-## Expected Workload
-
-This workflow is intentionally operation-heavy. A correct run may require
-hundreds of `git-stage-batch` operations. That is expected progress, not a
-reason to broaden the decomposition.
+Keep batches until their content is committed and verified. Use installed
+`undo` semantics for a mistaken peel and `abort` only after checking what work
+it will restore/discard. Do not run destructive recovery over user work
+without authorization. A failed newest commit is amended and reverified; older
+failures require preserved dirty work and a clean local rewrite. No later
+repair commit may conceal a broken intermediate snapshot.

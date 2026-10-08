@@ -281,3 +281,32 @@ def test_corrupt_evidence_cannot_be_reused(
     assert failed.returncode != 0
     assert "verification" in failed.stderr
     assert len(counter.read_text().splitlines()) == 2
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_default_syntax_check_needs_no_cache_ignores(
+    helper: Path,
+    repo: Path,
+    invalid: bool,
+) -> None:
+    (repo / ".gitignore").unlink()
+    (repo / "src").mkdir()
+    (repo / "tests").mkdir()
+    (repo / "src/sample.py").write_text("def broken(:\n" if invalid else "value = 1\n")
+    (repo / "tests/test_sample.py").write_text("assert 1 == 1\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "Source without cache ignores")
+    result = subprocess.run(
+        [sys.executable, str(helper), "--repo", str(repo)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    report = json.loads(result.stdout)
+    assert result.returncode == (1 if invalid else 0), result.stderr
+    assert report["passed"] is not invalid
+    if invalid:
+        assert "SyntaxError" in result.stderr
+    assert "introduced nonignored files" not in result.stderr
+    assert not _git(repo, "status", "--porcelain")
+    assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1

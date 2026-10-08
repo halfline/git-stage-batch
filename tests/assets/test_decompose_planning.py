@@ -177,7 +177,6 @@ def _identity(repo: Path) -> tuple:
     )
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_preparation_accepts_multiple_atomic_slices_without_mutation(
     helper: Path,
     repo: Path,
@@ -200,7 +199,6 @@ def test_preparation_accepts_multiple_atomic_slices_without_mutation(
         ).read_bytes()
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize(
     ("mutation", "message"),
     [
@@ -244,7 +242,6 @@ def test_invalid_preparation_is_rejected(
     assert message in result.stderr
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_existing_contract_proof_does_not_require_new_implementation(
     helper: Path,
     repo: Path,

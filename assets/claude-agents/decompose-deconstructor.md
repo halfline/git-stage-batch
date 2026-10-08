@@ -46,7 +46,10 @@ For each concern in `peel_order`:
    operate on the same live session concurrently.
 3. Create the batch with its approved purpose note before selecting lines.
    Peel original owned content with `discard --to`; copy shared wrappers with
-   `include --to`. Use `--as-stdin` for complete earlier syntactic versions.
+   `include --to`. After saving final content, write any needed earlier
+   syntactic version into the remaining working tree and capture it in the
+   companion repair batch. `discard --to --as-stdin` changes saved batch
+   content, so it cannot perform that working-tree repair.
    The peeler brief governs exact selection, ID refresh, and repair capture.
 4. Audit the batch and optional repair refs. Reconstruct the planned snapshot
    from the before state and compare its tracked tree with the approved after
@@ -95,9 +98,14 @@ Audit the full batch set:
   and the final captured target tree.
 
 Run the full replay in a disposable clone with copied required batch/state
-refs, using installed git-stage-batch semantics. Apply each concern, reverse
-its repair, inspect the resulting tree, and compare with the approved after
-snapshot. Temporary native commits are permitted in that clone to establish
+refs, using installed git-stage-batch semantics. For each companion repair,
+try the two legal orders in isolated copies: reverse repair then apply
+concern, or apply concern then reverse repair. Record the order that
+reconstructs the approved after tree for the rebuilder; never assume one
+works for every shared file. A later version of a newly added file can reject
+application while its earlier version is still present. Inspect the resulting
+tree and compare with the approved after snapshot. Temporary native commits
+are permitted in that clone to establish
 each intermediate base; they are verification, not final history. Run checks
 again where the reconstructed snapshot or its prerequisites differ from
 accepted evidence. Comparing batch notes or compiling blobs alone is not Gate

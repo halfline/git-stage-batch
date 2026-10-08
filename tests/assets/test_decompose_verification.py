@@ -122,7 +122,6 @@ def test_grouped_checks_use_one_clean_worktree(
     assert _git(repo, "worktree", "list", "--porcelain").count("worktree ") == 1
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_reworded_commit_reuses_evidence_for_identical_tree(
     helper: Path,
     repo: Path,
@@ -146,7 +145,6 @@ def test_reworded_commit_reuses_evidence_for_identical_tree(
     }
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize(
     "changed", ["tree", "command", "environment", "prerequisite", "harness"]
 )
@@ -181,7 +179,6 @@ def test_changed_check_inputs_invalidate_reuse(
     assert len(counter.read_text().splitlines()) == 4
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_failed_check_is_retained_and_only_retried_with_diagnosis(
     helper: Path,
     repo: Path,
@@ -253,7 +250,6 @@ def test_checks_cannot_claim_success_after_changing_bound_inputs(
     assert not (repo / "new-source.py").exists()
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize(
     "corruption",
     ["changed-log", "missing-log", "inconsistent-receipt", "changed-allocation"],

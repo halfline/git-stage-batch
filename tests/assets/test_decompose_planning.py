@@ -264,7 +264,6 @@ def test_existing_contract_proof_does_not_require_new_implementation(
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 @pytest.mark.parametrize("mutation", ["source", "index", "head", "batch"])
 def test_input_gate_detects_execution_during_preparation(
     helper: Path,

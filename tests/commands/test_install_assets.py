@@ -278,6 +278,12 @@ class TestCommandInstallAssets:
         assert (
             skill_dir / "decompose-and-commit-unstaged-changes" / "SKILL.md"
         ).exists()
+        assert (
+            skill_dir
+            / "decompose-and-commit-unstaged-changes"
+            / "references"
+            / "decompose-planning.md"
+        ).is_file()
         assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
         assert (skill_dir / "refine-history" / "SKILL.md").exists()
         assert (
@@ -489,6 +495,7 @@ class TestCommandInstallAssets:
         assert (decompose_dir / "SKILL.md").exists()
         assert (decompose_dir / "agents" / "openai.yaml").exists()
         assert (decompose_dir / "references" / "decompose-analyzer.md").exists()
+        assert (decompose_dir / "references" / "decompose-planning.md").is_file()
         assert (decompose_dir / "scripts" / "decompose-checkpoint.py").exists()
         assert (skill_dir / "refine-history" / "SKILL.md").exists()
         assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()

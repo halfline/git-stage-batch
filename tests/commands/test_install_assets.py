@@ -278,6 +278,12 @@ class TestCommandInstallAssets:
         assert (
             skill_dir / "decompose-and-commit-unstaged-changes" / "SKILL.md"
         ).exists()
+        assert (
+            skill_dir
+            / "decompose-and-commit-unstaged-changes"
+            / "references"
+            / "decompose-planning.md"
+        ).is_file()
         assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
         assert (skill_dir / "refine-history" / "SKILL.md").exists()
         assert (

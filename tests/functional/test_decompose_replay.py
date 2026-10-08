@@ -83,7 +83,7 @@ def _check_snapshot(bundle: Path, repo: Path, state: Path, expected: str) -> Non
     )
 
 
-@pytest.mark.parametrize("platform", ["codex"])
+@pytest.mark.parametrize("platform", ["codex", "claude"])
 def test_decompose_replay_and_atomic_reconstruction_use_real_batches(
     functional_repo: Path,
     tmp_path: Path,

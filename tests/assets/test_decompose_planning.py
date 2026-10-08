@@ -128,7 +128,7 @@ def _write_plan(state: Path, plan: dict) -> None:
     )
 
 
-@pytest.fixture(params=["claude"])
+@pytest.fixture(params=["codex", "claude"])
 def gate_code(request: pytest.FixtureRequest) -> str:
     """Extract executable instructions, without asserting their prose."""
     skill = PROJECT_ROOT / "assets" / f"{request.param}-skills" / SKILL_NAME / "SKILL.md"

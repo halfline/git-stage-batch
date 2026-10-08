@@ -9,12 +9,11 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
 import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-
 SKILL_NAME = "decompose-and-commit-unstaged-changes"
 
 
@@ -328,7 +327,6 @@ def _affected(helper: Path, repo: Path, state: Path, old: dict, new: dict) -> li
     return json.loads(result.stdout)
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_local_correction_keeps_independent_concern_accepted(
     helper: Path,
     repo: Path,
@@ -344,7 +342,6 @@ def test_local_correction_keeps_independent_concern_accepted(
     ]
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_shared_file_only_invalidates_later_owners(
     helper: Path,
     repo: Path,
@@ -368,7 +365,6 @@ def test_shared_file_only_invalidates_later_owners(
     ]
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_names_and_unrelated_insertion_do_not_reopen_accepted_concerns(
     helper: Path,
     repo: Path,
@@ -418,7 +414,6 @@ def test_names_and_unrelated_insertion_do_not_reopen_accepted_concerns(
     assert _affected(helper, repo, state, old, new) == ["extra-notes"]
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_changed_milestone_invalidates_its_actual_concerns(
     helper: Path,
     repo: Path,
@@ -431,7 +426,6 @@ def test_changed_milestone_invalidates_its_actual_concerns(
     assert _affected(helper, repo, state, old, new) == ["format-notes"]
 
 
-@pytest.mark.parametrize("helper", ["codex"], indirect=True)
 def test_changed_input_invalidates_owners_and_consumers(
     helper: Path,
     repo: Path,

@@ -320,6 +320,132 @@ def test_capture_preserves_deletions_modes_symlinks_and_git_filtered_contents(
     assert _run(helper, repo, state, "verify-target", manifest).returncode != 0
 
 
+def _affected(helper: Path, repo: Path, state: Path, old: dict, new: dict) -> list[str]:
+    before = _write(state, old, "old.json")
+    after = _write(state, new, "new.json")
+    result = _run(helper, repo, state, "affected", str(before), str(after))
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_local_correction_keeps_independent_concern_accepted(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    old = _plan(repo, state, _capture(helper, repo, state))
+    new = copy.deepcopy(old)
+    new["concerns"][2]["purpose"] = "Decode only supported JSON records"
+    assert _affected(helper, repo, state, old, new) == [
+        "record-decoder",
+        "decode-command",
+    ]
+
+
+def test_shared_file_only_invalidates_later_owners(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    old = _plan(repo, state, _capture(helper, repo, state))
+    old["ownership_ledger"].append(
+        {
+            "path": "cli.py",
+            "anchor": "format comment",
+            "concern": 2,
+            "kind": "owned",
+        }
+    )
+    new = copy.deepcopy(old)
+    new["concerns"][1]["purpose"] = "Clarify the format"
+    assert _affected(helper, repo, state, old, new) == [
+        "format-notes",
+        "decode-command",
+    ]
+
+
+def test_names_and_unrelated_insertion_do_not_reopen_accepted_concerns(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    old = _plan(repo, state, _capture(helper, repo, state))
+    new = copy.deepcopy(old)
+    # Add a separate documentation slice. Stable slugs make renumbering harmless.
+    (repo / "EXTRA.md").write_text("An independent note.\n")
+    new["input_manifest"] = _capture(helper, repo, state)
+    new["input_digest"] = hashlib.sha256(
+        (state / new["input_manifest"]).read_bytes()
+    ).hexdigest()
+    for concern in new["concerns"]:
+        concern["number"] += 1
+        concern["name"] = f"renamed-{concern['slug']}"
+        concern["depends_on"] = [n + 1 for n in concern["depends_on"]]
+        for evidence in concern["dependency_evidence"]:
+            evidence["provider"] += 1
+    for entry in new["ownership_ledger"]:
+        entry["concern"] += 1
+    new["concerns"].insert(
+        0,
+        {
+            "number": 1,
+            "slug": "extra-notes",
+            "name": "decompose-extra-notes",
+            "purpose": "Clarify a base comment",
+            "evolution_step": 3,
+            "depends_on": [],
+            "dependency_evidence": [],
+            "expected_commits": [
+                {"slug": "notes", "purpose": "Clarify", "role": "documentation"}
+            ],
+        },
+    )
+    new["ownership_ledger"].append(
+        {
+            "path": "EXTRA.md",
+            "anchor": "independent note",
+            "kind": "owned",
+            "concern": 1,
+        }
+    )
+    new["peel_order"], new["rebuild_order"] = [1, 2, 3, 4], [4, 3, 2, 1]
+    assert _affected(helper, repo, state, old, new) == ["extra-notes"]
+
+
+def test_changed_milestone_invalidates_its_actual_concerns(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    old = _plan(repo, state, _capture(helper, repo, state))
+    new = copy.deepcopy(old)
+    new["evolution_ladder"][1]["behavior_after"] = "Describe a corrected format"
+    assert _affected(helper, repo, state, old, new) == ["format-notes"]
+
+
+def test_changed_input_invalidates_owners_and_consumers(
+    helper: Path,
+    repo: Path,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    old = _plan(repo, state, _capture(helper, repo, state))
+    (repo / "decoder.py").write_text("def decode(value):\n    return value\n")
+    new = copy.deepcopy(old)
+    new["input_manifest"] = _capture(helper, repo, state)
+    new["input_digest"] = hashlib.sha256(
+        (state / new["input_manifest"]).read_bytes()
+    ).hexdigest()
+    assert _affected(helper, repo, state, old, new) == [
+        "record-decoder",
+        "decode-command",
+    ]
+
+
 @pytest.mark.parametrize("initialized", [True, False])
 def test_capture_preserves_gitlinks_without_reading_parent_as_submodule(
     helper: Path,

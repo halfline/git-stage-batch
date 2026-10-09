@@ -619,7 +619,32 @@ def _advanced_source_chunks(
                 workspace,
             )
             try:
-                if saved_replacement_spans:
+                if _run_follows_explicit_saved_prefix(
+                    run,
+                    old_lines=old_lines,
+                    working_lines=working_lines,
+                    required_ranges=required_source_ranges,
+                    presence_lines=presence_lines,
+                    alternatives=advancing_alternatives,
+                ):
+                    assert advancing_alternatives is not None
+                    assert advancing_alternatives.live is not None
+                    live_end = advancing_alternatives.live.span.end.offset
+                    yield from emit_working(run.target_start, live_end)
+                    matching_count = run.target_end - live_end
+                    if matching_count:
+                        yield from emit_matching_source_and_working(
+                            run.source_start,
+                            run.source_start + matching_count - 1,
+                            live_end + 1,
+                            run.target_end,
+                        )
+                    if run.source_start + matching_count <= run.source_end:
+                        yield from emit_source(
+                            run.source_start + matching_count,
+                            run.source_end,
+                        )
+                elif saved_replacement_spans:
                     target_cursor = run.target_start
                     source_emitted = False
                     for span_start, span_end in saved_replacement_spans:
@@ -758,6 +783,54 @@ def _advanced_source_chunks(
                     close()
         finally:
             workspace.close()
+
+
+def _run_follows_explicit_saved_prefix(
+    run: SemanticChangeRun,
+    *,
+    old_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    required_ranges: Sequence[tuple[int, ...]],
+    presence_lines: LineRanges,
+    alternatives: ExplicitReplacementAlternatives | None,
+) -> bool:
+    """Keep a new live side before an adjacent retained replacement.
+
+    Matching may put the saved side in the unchanged span preceding this run,
+    while grouping its new live side with an earlier saved replacement. Exact
+    adjacent saved bytes and a matching source prefix prove the insertion point.
+    """
+    if alternatives is None or alternatives.live is None:
+        return False
+    assert run.source_start is not None
+    assert run.source_end is not None
+    assert run.target_start is not None
+    assert run.target_end is not None
+    saved = alternatives.saved.span
+    live = alternatives.live.span
+    if (
+        not len(saved)
+        or saved.end.offset != run.target_start - 1
+        or live.start.offset != saved.end.offset
+        or live.end.offset > run.target_end
+        or run.source_start <= len(saved)
+        or presence_lines.count(
+            run.source_start - len(saved), run.source_start - 1,
+        )
+        or not _retained_ranges_cover_run(required_ranges, run)
+    ):
+        return False
+    saved_lines = LineRangeView(working_lines, saved.start.offset, saved.end.offset)
+    following_lines = LineRangeView(
+        working_lines, live.end.offset, run.target_end,
+    )
+    return (
+        len(following_lines) <= run.source_end - run.source_start + 1
+        and line_slice_equals(
+            old_lines, run.source_start - len(saved) - 1, saved_lines,
+        )
+        and line_slice_equals(old_lines, run.source_start - 1, following_lines)
+    )
 
 
 def _run_is_explicit_live_alternative(

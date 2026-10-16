@@ -111,10 +111,45 @@ this, use:
 ```text
 prefix: Summary under 72 chars
 
-[The relevant state, actual reason, and exact change, in declarative
-narrative present tense. "This commit ..." marks the change. Combine or
-separate these facts according to the reasoning the reader needs.]
+[A plain-language statement of the changed behavior, followed by the
+concrete old behavior and how the change addresses it. Use declarative
+narrative present tense and the explanation the reader needs.]
 ```
+
+### Explain the Change
+
+Prefer a short opening sentence that says what the commit changes in plain
+language. A reader should understand the outcome before needing the code or
+the rest of the explanation.
+
+Explicitly attribute newly introduced behavior to the current commit, using
+`This commit ...` or an equally clear construction. Describe existing
+behavior in present tense from the state before the patch. Leading with the
+outcome does not change that temporal viewpoint. For example, `This commit
+adds pattern matching to the command` identifies the patch as the cause;
+`The command now accepts patterns` can blur the change with the status quo.
+
+Then explain the old behavior concretely: what data the program uses, what
+it passes or discards, and when the result is wrong. Explain how the new
+behavior addresses that mismatch and any constraints needed to qualify the
+claim. Keep the explanation proportionate. That order is a useful default,
+not a required three-paragraph template.
+
+The summary should make the difference from the status quo apparent, rather
+than merely name a desirable end state. Choose wording from the actual
+before-and-after behavior. For example, `Align statistics with the visible
+sensor crop` implies that the measured and displayed regions differ;
+`Process only the selected files` implies that unselected files are currently
+included. These illustrate how meaning supplies the contrast, not a fixed
+vocabulary or a list of required verbs. Choose the words that best fit the
+specific patch. Use a qualifier such as `only` when the restriction is real;
+do not imply exact exclusion if alignment or rounding can include extra data.
+
+Omit incidental helper extraction, function placement, call structure, and
+test registration details unless they explain a design constraint or are
+the patch's actual outcome. A new internal API can be the outcome of a
+preparatory patch; a behavior fix should explain the corrected behavior.
+Prefer what the program does to a walkthrough of how its code is arranged.
 
 ### Message Rules
 

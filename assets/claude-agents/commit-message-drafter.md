@@ -87,6 +87,41 @@ requires `.git/index.lock`. When Claude Code runs multiple read-only git
 commands in parallel, two stat-refreshing commands race for that lock and
 one fails.
 
+## Explain the Change First
+
+Prefer a short opening sentence that says what the commit changes in plain
+language. A reader should understand the outcome before needing the code or
+the rest of the explanation.
+
+Explicitly attribute newly introduced behavior to the current commit, using
+`This commit ...` or an equally clear construction. Describe existing
+behavior in present tense from the state before the patch. Leading with the
+outcome does not change that temporal viewpoint. For example, `This commit
+adds pattern matching to the command` identifies the patch as the cause;
+`The command now accepts patterns` can blur the change with the status quo.
+
+Then explain the old behavior concretely: what data the program uses, what
+it passes or discards, and when the result is wrong. Explain how the new
+behavior addresses that mismatch and any constraints needed to qualify the
+claim. Keep the explanation proportionate. That order is a useful default,
+not a required three-paragraph template.
+
+The summary should make the difference from the status quo apparent, rather
+than merely name a desirable end state. Choose wording from the actual
+before-and-after behavior. For example, `Align statistics with the visible
+sensor crop` implies that the measured and displayed regions differ;
+`Process only the selected files` implies that unselected files are currently
+included. These illustrate how meaning supplies the contrast, not a fixed
+vocabulary or a list of required verbs. Choose the words that best fit the
+specific patch. Use a qualifier such as `only` when the restriction is real;
+do not imply exact exclusion if alignment or rounding can include extra data.
+
+Omit incidental helper extraction, function placement, call structure, and
+test registration details unless they explain a design constraint or are
+the patch's actual outcome. A new internal API can be the outcome of a
+preparatory patch; a behavior fix should explain the corrected behavior.
+Prefer what the program does to a walkthrough of how its code is arranged.
+
 ## Drafting rules
 
 - Respect the caller's stated split. Series context can explain the larger
@@ -173,6 +208,31 @@ one fails.
   future work from behavior established by the current commit.
 - If the caller supplied wording bans or line-length limits, obey them.
 
+## Example: Explain a Behavior Fix
+
+```text
+software-isp: Align statistics with the visible sensor crop
+
+This commit changes statistics gathering to follow the sensor area
+visible in the GPU output.
+
+The GPU debayer path fills the requested output with a centered crop
+of the sensor image. CPU statistics read the original sensor buffer,
+but their window uses the output dimensions and starts at the buffer's
+origin. A centered origin is calculated but never passed to the
+statistics engine. Metering therefore covers a different sensor region
+when the image is cropped or scaled.
+
+The change derives a centered window in sensor coordinates, accounting
+for Bayer border removal and cropping to the output aspect ratio.
+Changing resolution without changing aspect ratio leaves the rectangle
+unchanged. The statistics engine retains its existing Bayer alignment.
+```
+
+The opening states the change, the middle explains the concrete mismatch,
+and the ending explains the corrected behavior and its remaining alignment
+constraint. A smaller change may need much less explanation.
+
 ## Output format
 
 Return exactly these sections:
@@ -184,7 +244,11 @@ Return exactly these sections:
    Flat bullets covering:
    - chosen prefix
    - whether the summary is single-purpose
+   - whether its wording implies the actual change from the status quo
+   - whether the opening makes the changed behavior clear in plain language
    - whether the detail supplies the reasoning needed without repetition
+   - whether implementation details and absolute claims are necessary and
+     supported by the patch
    - whether runtime claims describe behavior made active by this patch
    - whether the body uses declarative prose and narrative present tense
    - whether the status quo is clear without needless temporal cues

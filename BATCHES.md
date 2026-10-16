@@ -823,6 +823,14 @@ The constructed source is therefore not always identical to the working file.
 The two maps record where every carried or current line came from. Text matching
 is used only when the construction path did not provide one of those maps.
 
+Adjacent transformed discards can leave the new saved side in an unchanged
+span while matching groups its live alternative with an earlier replacement.
+When the preceding source bytes exactly match that unowned saved side, the
+whole source run must be retained, and any following worktree bytes match its
+source prefix, advancement inserts the live alternative before the retained
+run. It records both mappings for the shared prefix so the new alternatives
+remain adjacent without losing the earlier replacement's ownership.
+
 Initial source loading, storage, and caching are split across:
 
 - [`batch/source/buffers.py`](src/git_stage_batch/batch/source/buffers.py) for

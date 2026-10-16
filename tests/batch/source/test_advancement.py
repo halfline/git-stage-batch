@@ -1376,6 +1376,52 @@ def test_advance_source_inserts_new_wording_inside_older_file_alternative():
         assert advanced.lineage.translate_working_line(3) == 7
 
 
+def test_advance_source_keeps_new_alternative_before_adjacent_saved_replacement():
+    """A shared repeated line must not separate the new replacement sides."""
+    path = "file.txt"
+    current = (b"head\n", b"saved\n", b"shared\n", b"old\n", b"tail\n")
+    rewritten = (*current[:2], b"alternative\n", *current[2:])
+    snapshot = content_snapshot(path, rewritten, space=RewrittenWorktreeSpace)
+    edit = ReplacementEditPlan(
+        path=path,
+        baseline_snapshot=content_snapshot(path, (), space=BaselineSpace),
+        worktree_snapshot=content_snapshot(path, current, space=WorktreeSpace),
+        baseline_span=LineSpan(LineBoundary(0), LineBoundary(0)),
+        worktree_span=LineSpan(LineBoundary(1), LineBoundary(2)),
+    ).bind_result(snapshot, replacement_line_count=2)
+    alternatives = ExplicitReplacementAlternatives(
+        edit=edit,
+        saved=SnapshotSpan(snapshot, LineSpan(LineBoundary(1), LineBoundary(2))),
+        live=SnapshotSpan(snapshot, LineSpan(LineBoundary(2), LineBoundary(3))),
+        parent=None,
+        ownership_scope=ReplacementAlternativeOwnership.UNTRACKED_SOURCE,
+    )
+    old_source = b"head\nsaved\nshared\nnew-a\nnew-b\nshared\nold\ntail\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["4-6"],
+        [AbsenceClaim(anchor_line=3, content_lines=[b"old\n"], source_alternative=True)],
+        replacement_units=[ReplacementUnit(["4-6"], [0])],
+    )
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=b"".join(rewritten),
+        ownership=ownership,
+        advancing_working_ranges=LineRanges.from_ranges(((2, 3),)),
+        advancing_alternatives=alternatives,
+    ) as advanced:
+        assert advanced.source_buffer.to_bytes() == (
+            b"head\nsaved\nalternative\nshared\nnew-a\nnew-b\nshared\nold\ntail\n"
+        )
+        assert advanced.lineage.translate_working_range(2, 3) == (2, 3)
+        assert tuple(
+            advanced.lineage.translate_source_line(line) for line in range(3, 9)
+        ) == tuple(range(4, 10))
+        remapped = remap_batch_ownership_with_lineage(ownership, advanced.lineage)
+        assert remapped.presence_line_set().ranges() == ((5, 7),)
+        assert remapped.deletions[0].anchor_line == 4
+
+
 def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
     """Repeated live baseline variants must not replace saved ownership."""
     ownership = BatchOwnership.from_presence_lines(

@@ -99,6 +99,13 @@ Prefer the following order when each part contributes distinct information:
    constraints needed to qualify the claim. Do not repeat the opening or
    attribute another commit's implementation to the current patch.
 
+Explicitly attribute newly introduced behavior to the current commit, using
+`This commit ...` or an equally clear construction. Describe existing
+behavior in present tense from the state before the patch. Leading with the
+outcome does not change that temporal viewpoint. For example, `This commit
+adds pattern matching to the command` identifies the patch as the cause;
+`The command now accepts patterns` can blur the change with the status quo.
+
 Combine parts when separation repeats the same fact. A mechanical change may
 need one sentence; a one-line correctness fix may need several paragraphs.
 Choose depth according to the reasoning the reader needs. Do not restate the

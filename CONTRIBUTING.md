@@ -79,6 +79,8 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Use series context to explain this patch.** Retain prerequisites, design choices, consumer contracts, and intentionally unfinished scope. Put the series-wide overview and recap in the review request or cover letter.
 - **Separate independent series.** A dirty worktree can contain multiple unrelated commit series. Keep their explanations separate instead of forcing one narrative across all unstaged changes.
 - **Explain groundwork where it matters.** Name the later capability that motivates a preparatory patch, regardless of the patch's position in the series.
+- **Lead with the changed behavior.** Prefer a short, plain-language opening that makes the outcome clear before the reader needs the code. Explain the concrete old behavior and the correction afterward.
+- **Make the summary imply the actual change.** Choose words that convey the difference from the status quo and fit the patch. Examples illustrate the principle, not a fixed vocabulary.
 - **Let structure follow the explanation.** State, problem, and solution are questions to answer, not paragraph assignments. Being first or last creates no introduction or conclusion duty.
 - **Keep narrative present tense.** Describe the existing behavior from the viewpoint of the previous commit, then describe what the current commit changes. Prefer `This commit ...` for that transition wherever it belongs.
 - **Use imperative voice only in the summary.** Every body sentence is an indicative, declarative statement. Never instruct the reader in the body.
@@ -104,6 +106,35 @@ Combine them when separation repeats the same fact, and omit background the
 subject or problem already establishes. A mechanical cleanup may need one
 sentence; a one-line correctness fix may need several paragraphs. The topics
 below guide the explanation without assigning paragraphs.
+
+#### Explain the Change First
+
+Prefer a short opening sentence that says what behavior changes in plain
+language. A reader should understand the outcome before needing the code or
+the rest of the explanation. `This commit ...` is a natural opening; use it
+once where it helps, without repeating it in every paragraph.
+
+Then explain the old behavior concretely: what data the program uses, what
+it passes or discards, and when the result is wrong. Explain how the new
+behavior addresses that mismatch and any constraints needed to qualify the
+claim. Keep the explanation proportionate. That order is a useful default,
+not a required three-paragraph template.
+
+The summary should make the difference from the status quo apparent, rather
+than merely name a desirable end state. Choose wording from the actual
+before-and-after behavior. For example, `Align statistics with the visible
+sensor crop` implies that the measured and displayed regions differ;
+`Process only the selected files` implies that unselected files are currently
+included. These illustrate how meaning supplies the contrast, not a fixed
+vocabulary or a list of required verbs. Choose the words that best fit the
+specific patch. Use a qualifier such as `only` when the restriction is real;
+do not imply exact exclusion if alignment or rounding can include extra data.
+
+Omit incidental helper extraction, function placement, call structure, and
+test registration details unless they explain a design constraint or are
+the patch's actual outcome. A new internal API can be the outcome of a
+preparatory patch; a behavior fix should explain the corrected behavior.
+Prefer what the program does to a walkthrough of how its code is arranged.
 
 #### First Line (Summary)
 
@@ -259,6 +290,9 @@ an irrelevant segue useful.
 Before finalizing a commit message, check:
 
 - Does the summary use a fitting prefix and stay under 68 characters?
+- Does its wording imply the actual change from the status quo?
+- Does the opening make the changed behavior clear in plain language?
+- Are implementation details and absolute claims necessary and supported?
 - Does the description of existing behavior match the state before the patch?
 - Is the status quo clear, with temporal cues only where they resolve an
   ambiguity rather than make lasting background sound temporary?
@@ -283,6 +317,32 @@ Before finalizing a commit message, check:
 - Are unfamiliar terms introduced where they first matter, with concise reminders where later messages need them?
 - Does repeated context become more concise while retaining what helps explain the current patch?
 - Do body paragraphs wrap at 75 characters?
+
+### Example: Behavior Fix
+
+```text
+software-isp: Align statistics with the visible sensor crop
+
+This commit changes statistics gathering to follow the sensor area
+visible in the GPU output.
+
+The GPU debayer path fills the requested output with a centered crop
+of the sensor image. CPU statistics read the original sensor buffer,
+but their window uses the output dimensions and starts at the buffer's
+origin. A centered origin is calculated but never passed to the
+statistics engine. Metering therefore covers a different sensor region
+when the image is cropped or scaled.
+
+The window is now derived in sensor coordinates, accounting for Bayer
+border removal and cropping to the output aspect ratio, and centered
+in the sensor buffer. Changing resolution without changing aspect ratio
+leaves the rectangle unchanged. The statistics engine retains its
+existing Bayer alignment.
+```
+
+The opening states the change, the middle explains the concrete mismatch,
+and the ending explains the corrected behavior and its remaining alignment
+constraint. A smaller change may need much less explanation.
 
 ### Example: Single Commit
 

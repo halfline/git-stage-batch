@@ -692,10 +692,16 @@ well. Never refer to maintainers in the third person.
 
 ### Explain the Change
 
-Prefer a short opening sentence that says what behavior changes in plain
+Prefer a short opening sentence that says what the commit changes in plain
 language. A reader should understand the outcome before needing the code or
-the rest of the explanation. `This commit ...` is a natural opening; use it
-once where it helps, without repeating it in every paragraph.
+the rest of the explanation.
+
+Explicitly attribute newly introduced behavior to the current commit, using
+`This commit ...` or an equally clear construction. Describe existing
+behavior in present tense from the state before the patch. Leading with the
+outcome does not change that temporal viewpoint. For example, `This commit
+adds pattern matching to the command` identifies the patch as the cause;
+`The command now accepts patterns` can blur the change with the status quo.
 
 Then explain the old behavior concretely: what data the program uses, what
 it passes or discards, and when the result is wrong. Explain how the new

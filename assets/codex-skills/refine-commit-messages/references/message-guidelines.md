@@ -86,23 +86,39 @@ label established by history. Generic change-type labels such as `fix:` and
 declared type-based format when the repository requires it.
 
 State, problem, and solution are questions to answer, not mandatory paragraphs.
-Use that progression when each part contributes distinct information:
+Prefer the following order when each part contributes distinct information:
 
-1. Establish the relevant project state after the previous commit. Use
-   present tense for state descriptions. If recent work established that
-   state, briefly recount the change in past tense and loosely when it
-   happened.
-2. Explain the underlying limitation from the maintainer or user perspective.
-   Explain the actual reason at the smallest scope that makes it understandable.
-   Internal simplification can be sufficient. Avoid vague judgments such as
-   "cumbersome", "bad", or "hard".
-3. Prefer `This commit ...` to explain precisely what the patch changes.
-   Do not claim work that appears only in another commit.
+1. Open with a short, plain-language statement of the changed behavior.
+   Prefer `This commit ...` when it reads naturally. The outcome should be
+   clear before the reader needs the code or the rest of the explanation.
+2. Explain the old behavior and its concrete limitation. Identify what data
+   the program uses, what it passes or discards, and when the result is wrong.
+   Describe the relevant state after the previous commit in present tense.
+   Internal simplification can be sufficient; do not invent a larger problem.
+3. Explain how the new behavior addresses that mismatch, including any
+   constraints needed to qualify the claim. Do not repeat the opening or
+   attribute another commit's implementation to the current patch.
 
 Combine parts when separation repeats the same fact. A mechanical change may
 need one sentence; a one-line correctness fix may need several paragraphs.
 Choose depth according to the reasoning the reader needs. Do not restate the
 subject just to supply a concluding solution paragraph.
+
+The summary should make the difference from the status quo apparent, rather
+than merely name a desirable end state. Choose wording from the actual
+before-and-after behavior. For example, `Align statistics with the visible
+sensor crop` implies that the measured and displayed regions differ;
+`Process only the selected files` implies that unselected files are currently
+included. These illustrate how meaning supplies the contrast, not a fixed
+vocabulary or a list of required verbs. Choose the words that best fit the
+specific patch. Use a qualifier such as `only` when the restriction is real;
+do not imply exact exclusion if alignment or rounding can include extra data.
+
+Omit incidental helper extraction, function placement, call structure, and
+test registration details unless they explain a design constraint or are
+the patch's actual outcome. A new internal API can be the outcome of a
+preparatory patch; a behavior fix should explain the corrected behavior.
+Prefer what the program does to a walkthrough of how its code is arranged.
 
 Use imperative voice only in the commit summary.
 Write every commit-body sentence as an indicative, declarative statement.
@@ -211,8 +227,9 @@ distinct information, cross-commit context explains this patch, and the
 message follows repository rules and reads naturally. Give a concrete reason.
 
 Use `REWORD` for a named defect: an inaccurate claim, missing necessary
-reasoning, ambiguity, irrelevant or repeated explanation, or a violated
-repository rule. Provide a complete replacement, not isolated edits.
+reasoning, a behavioral change that remains unclear until the code is read,
+ambiguity, irrelevant or repeated explanation, or a violated repository rule.
+Provide a complete replacement, not isolated edits.
 Do not reword solely because another phrasing is possible, the paragraph count
 differs from a usual pattern, or the message lacks a series introduction or
 conclusion.

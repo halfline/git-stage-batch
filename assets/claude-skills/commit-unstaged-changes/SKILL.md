@@ -645,7 +645,10 @@ For each commit:
 ### Message template
 
 Re-read this guidance before writing each commit message in a multi-commit
-series. State, problem, and solution are questions to answer, not paragraphs to
+series. Lead with the changed behavior in plain language, then explain the old
+behavior and the correction. The summary should imply the actual contrast to
+the status quo, using wording that fits the patch rather than a fixed word
+list. State, problem, and solution are questions to answer, not paragraphs to
 fill. Combine them when separation repeats the same fact; a mechanical change
 may need one sentence, while a one-line correctness fix may need several
 paragraphs.
@@ -668,9 +671,9 @@ add new detail where relevant. A standalone commit needs its own context.
 ```text
 prefix: Summary under 68 chars
 
-[The relevant state, actual reason, and exact change, in declarative
-narrative present tense. "This commit ..." marks the change. Combine or
-separate these facts according to the reasoning the reader needs.]
+[A plain-language statement of the changed behavior, followed by the
+concrete old behavior and how the change addresses it. Use declarative
+narrative present tense and the explanation the reader needs.]
 ```
 
 The most common errors are:
@@ -687,6 +690,35 @@ Write for drive-by reviewers with limited context. You are the
 maintainer — write to a casual reader who does not know the codebase
 well. Never refer to maintainers in the third person.
 
+### Explain the Change
+
+Prefer a short opening sentence that says what behavior changes in plain
+language. A reader should understand the outcome before needing the code or
+the rest of the explanation. `This commit ...` is a natural opening; use it
+once where it helps, without repeating it in every paragraph.
+
+Then explain the old behavior concretely: what data the program uses, what
+it passes or discards, and when the result is wrong. Explain how the new
+behavior addresses that mismatch and any constraints needed to qualify the
+claim. Keep the explanation proportionate. That order is a useful default,
+not a required three-paragraph template.
+
+The summary should make the difference from the status quo apparent, rather
+than merely name a desirable end state. Choose wording from the actual
+before-and-after behavior. For example, `Align statistics with the visible
+sensor crop` implies that the measured and displayed regions differ;
+`Process only the selected files` implies that unselected files are currently
+included. These illustrate how meaning supplies the contrast, not a fixed
+vocabulary or a list of required verbs. Choose the words that best fit the
+specific patch. Use a qualifier such as `only` when the restriction is real;
+do not imply exact exclusion if alignment or rounding can include extra data.
+
+Omit incidental helper extraction, function placement, call structure, and
+test registration details unless they explain a design constraint or are
+the patch's actual outcome. A new internal API can be the outcome of a
+preparatory patch; a behavior fix should explain the corrected behavior.
+Prefer what the program does to a walkthrough of how its code is arranged.
+
 ### Structure
 
 Use a concise subject and the explanation the reader needs:
@@ -694,9 +726,9 @@ Use a concise subject and the explanation the reader needs:
 ```text
 prefix: Concise summary of the change
 
-The relevant state, actual reason, and exact change, in declarative narrative
-present tense. "This commit ..." marks the change wherever it fits naturally.
-The explanation determines the number of paragraphs.
+A plain-language statement of the changed behavior, followed by the concrete
+old behavior and how the change addresses it, in declarative narrative present
+tense. The explanation determines the number of paragraphs.
 ```
 
 ### Summary line

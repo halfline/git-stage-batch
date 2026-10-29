@@ -429,6 +429,54 @@ def test_translate_hunk_selection_uses_file_derived_replacement_runs():
     )
 
 
+@pytest.mark.parametrize("select_body_removal", [True, False])
+def test_translate_hunk_selection_keeps_prefix_before_consumed_replacement(
+    select_body_removal,
+):
+    """Consumed old rows preserve coupling; unselected old rows still split it."""
+    lines = [
+        LineEntry(None, " ", 1, 1, text_bytes=b"head", source_line=1),
+        LineEntry(1, "-", 2, None, text_bytes=b"", source_line=1),
+        LineEntry(2, "-", 3, None, text_bytes=b"old method", source_line=1),
+        LineEntry(3, "-", 4, None, text_bytes=b"old body", source_line=1),
+        LineEntry(4, "+", None, 2, text_bytes=b"accessor", source_line=2),
+        LineEntry(5, "+", None, 3, text_bytes=b"", source_line=3),
+        LineEntry(6, "+", None, 4, text_bytes=b"new method", source_line=4),
+        LineEntry(7, "+", None, 5, text_bytes=b"new body", source_line=5),
+        LineEntry(None, " ", 5, 6, text_bytes=b"tail", source_line=6),
+    ]
+    selected_ids = {1, 2, 4, 5, 6, 7}
+    if select_body_removal:
+        selected_ids.add(3)
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        selected_ids,
+        replacement_line_runs=[ReplacementLineRun(3, 4, 4, 5)],
+    )
+
+    assert ownership.presence_line_set() == {2, 3, 4, 5}
+    blank_deletion = next(
+        index
+        for index, claim in enumerate(ownership.deletions)
+        if list(claim.content_lines) == [b"\n"]
+    )
+    prefix_units = [
+        unit
+        for unit in ownership.replacement_units
+        if blank_deletion in unit.deletion_indices
+    ]
+    if select_body_removal:
+        assert prefix_units == [
+            ReplacementUnit(presence_lines=["2-3"], deletion_indices=[blank_deletion]),
+        ]
+    else:
+        assert prefix_units == []
+        assert all(
+            b"old body\n" not in claim.content_lines
+            for claim in ownership.deletions
+        )
+
+
 def test_translate_hunk_selection_pairs_hidden_staged_replacement_by_position():
     """A selected new row replaces its undisplayed staged counterpart."""
     lines = [

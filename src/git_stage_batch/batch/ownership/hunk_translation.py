@@ -293,6 +293,7 @@ def _translate_hunk_selection_with_old_content(
     current_absence_old_start: int | None = None
     current_absence_old_end: int | None = None
     active_replacement_unit: _ReplacementUnitBuilder | None = None
+    pending_replacement_deletion_indices: list[int] = []
 
     def source_line_for(line: LineEntry) -> int | None:
         if source_projection is None:
@@ -346,6 +347,16 @@ def _translate_hunk_selection_with_old_content(
         return [absence_index]
 
     for index, line in enumerate(hunk_lines):
+        if line.kind == "-" and line.id in consumed_replacement_ids:
+            # File-derived replacements can consume the middle of a displayed
+            # deletion run. Keep an earlier selected deletion available for
+            # the remaining additions before the consumed replacement's new
+            # side, rather than treating its old rows as unselected boundaries.
+            pending_replacement_deletion_indices.extend(flush_absence_run())
+            finish_replacement_unit(active_replacement_unit)
+            active_replacement_unit = None
+            continue
+
         is_selected = (
             line.id is not None
             and line.id in selected_display_ids
@@ -354,6 +365,11 @@ def _translate_hunk_selection_with_old_content(
 
         if line.kind in {" ", "+"}:
             flushed_deletion_indices = flush_absence_run()
+            if line.kind == "+":
+                flushed_deletion_indices = (
+                    pending_replacement_deletion_indices + flushed_deletion_indices
+                )
+            pending_replacement_deletion_indices = []
 
             if is_selected:
                 source_line = source_line_for(line)
@@ -393,6 +409,7 @@ def _translate_hunk_selection_with_old_content(
             continue
 
         if line.kind == "-":
+            pending_replacement_deletion_indices = []
             if not is_selected:
                 flush_absence_run()
                 finish_replacement_unit(active_replacement_unit)

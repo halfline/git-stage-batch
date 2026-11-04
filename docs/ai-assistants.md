@@ -126,7 +126,7 @@ git-stage-batch install-assets claude-skills \
 
 Create or update `CLAUDE.md` in your repository root:
 
-```markdown
+````markdown
 ## Commit Workflow
 
 **Commits** should be atomic and well-structured. Each commit should represent one
@@ -175,13 +175,149 @@ may rely on that explanation. Keep useful repetition, but make it a shorter
 reminder rather than repeating the detail. Add new detail where it becomes
 relevant. A standalone commit still needs its own context.
 
-State, problem, and solution are questions to answer, not paragraphs to fill.
-Combine them when separation repeats the same fact. A mechanical cleanup may
-need one sentence; a one-line correctness fix may need several paragraphs.
-Keep narrative present tense and declarative body prose at any length.
+The first body sentence is a longer, non-imperative version of the summary
+line. State the same change in plain language as an indicative, declarative
+sentence, with enough detail to make the outcome clear. Keep that opening
+before the background and reasoning.
+Use "This commit ..." to attribute the change clearly. Explain the relevant
+old behavior and the correction afterward. Keep narrative present tense and
+declarative body prose.
+
+Use straight quotes and apostrophes in commit message prose. Avoid em
+dashes. Use commas, parentheses, or separate sentences where needed.
+
+In prose, prefer periods to semicolons.
+
+After the opening, explain the decision as you would to another
+maintainer who has not investigated the problem. Use ordinary verbs and
+familiar terms, with contractions when they fit. Let the reader follow
+the thought: a reasonable assumption, the catch, and the consequence that
+makes the change worth doing. Include those turns when the reasoning
+needs them; a direct fix may need only its direct reason.
+
+Match the firmness of each claim to its basis. State a demonstrated
+failure, unnecessary restriction, or supported cost plainly. Preserve
+uncertainty about people's behavior, predictions, and design judgments
+where the evidence leaves room. A message can explain the code confidently
+and qualify an inference about its users in the next sentence.
+
+State established behavior directly, with the condition that matters.
+Use "can" or "may" for meaningful capability, contingency, or uncertainty,
+not automatic precision. Check changed implications against the evidence.
+
+Write decisions from inside the project. When relevant context explains
+who made an earlier choice and why, retain that ownership and reasoning.
+"We" can describe a shared decision or need; a component name is often
+clearer for an operation. First person does not establish personal
+experience or project history that the evidence does not supply.
+
+Caller-supplied motivation, observations, assessments, and relevant history
+can explain the change even when absent from the diff. Carry their meaning
+and degree of certainty through the drafting handoff. In the message,
+combine clarifications that explain the same fact. Include history when
+it helps explain the present decision. Keep provenance and
+verification limits outside the commit message. Report contradictions
+with source there and avoid relying on a contradicted account as fact.
+Never claim independent verification merely because context was supplied.
+
+Supplied context establishes meaning, not a list of points to cover. Treat
+a wording clarification as a constraint on the relevant claim. Do not turn
+it into a separate explanation of a hypothetical misunderstanding.
+
+Spend words where the reader's expectation could go wrong. Explain how
+the operation's calls or events fit together before introducing internal
+paths or states. Prefer concrete nouns such as "cleanup code" over labels
+such as "shared cleanup". For an unnamed branch, state its condition and
+action directly. Use a local name as shorthand once its meaning is clear.
+A timing or ownership problem may need a patient walkthrough of why the
+apparent fix fails; an unnecessary requirement may take only a sentence
+to dismiss.
+Follow the chosen mechanism through to its practical consequence so the
+reader understands why it is worth using. Give a judgment or a turn in
+the argument its own sentence or paragraph
+when that helps it land. Keep a brief reminder when it connects the next
+step. Once the reason, decision, and necessary scope are clear, stop;
+additional implementation facts do not create a need for more prose.
+
+The summary should make the difference from the status quo apparent, rather
+than merely name a desirable end state. Choose wording from the actual
+before-and-after behavior. For example, `Align statistics with the visible
+sensor crop` implies that the measured and displayed regions differ;
+`Process only the selected files` implies that unselected files are currently
+included. These illustrate how meaning supplies the contrast, not a fixed
+vocabulary or a list of required verbs. Choose the words that best fit the
+specific patch. Use a qualifier such as `only` when the restriction is real;
+do not imply exact exclusion if alignment or rounding can include extra data.
+
+The expanded opening should state that same concrete action in ordinary
+words, without cataloguing internal operations or unchanged preconditions.
+
+Select technical details for the understanding they give the reader.
+Keep a detail when it explains the problem, why the change works, a
+design choice, or a meaningful limit. A new internal API can be the
+outcome of a preparatory patch; explain its purpose without cataloguing
+all its capabilities. When remaining work matters to the explanation,
+say what still needs to be done. Use active verbs for those actions instead
+of listing missing components or call sites.
+
+For tone, given repeated reads of an unchanged file, "We read the same
+file for every row. Once is enough" explains the judgment more naturally
+than "Repeated file reads represent avoidable overhead". When a field is
+not yet read or forwarded, "We still need to read the field and pass its
+value to the worker" puts the remaining actions in active verbs. "The reader
+and value forwarding still need to be added" leaves them in nouns and
+passive prose. When work remains, use a person or component as the subject
+and say what they still need to do. These illustrate ordinary explanation,
+not phrases to copy or a requirement to use first person.
+
+Keep verification notes outside the commit message. A condition belongs
+in the message when leaving it out would obscure the reasoning or
+materially misstate the claim. The body need not demonstrate every fact
+checked during inspection. Scope the claim accurately and give its
+explanation room.
+
+Make each necessary scope limit qualify the claim it belongs to when
+that reads plainly. Once a clarification is expressed in that claim,
+remove a sentence that only restates the same distinction. Keep a separate
+limit when it explains a stopping point or another consequence. Do not
+append an inventory of operations or unchanged behavior simply to account
+for the patch.
+
+Before accepting the message, read it on its own as an explanation to
+someone who has not inspected the diff. Consider the question each
+paragraph answers at that point in the explanation. Keep the details
+that answer that question; move answers to separate questions raised
+only by inspecting the implementation into review notes outside the message.
+
+Revise in both directions: restore an intermediate step the reader
+needs to understand the consequence, and remove facts whose main purpose
+is to demonstrate thorough inspection. A feature's presence in the patch
+supports its accuracy, but does not by itself explain why the reader
+needs it. Keep the maintainer's supported judgment and the connection
+between ideas when shortening the message.
+
+After drafting or rewording, verify the meaning of the final sentences
+against the selected patch, relevant prior code, and supplied context.
+Check the conditions, timing and effects the message states or implies.
+A simpler phrase can introduce a new claim; an operation's name does not establish
+its effect. Inspect the relevant implementation when that distinction
+matters. Narrow or remove unsupported implications and report any
+remaining uncertainty outside the message. Correct contradictions in the
+affected claim, then remove any caveat or reassurance that only repeats
+its corrected meaning. Repeat the accuracy check after further edits.
+Keep code evidence, supplied context, and inference distinct in review
+notes.
+
+Before using an assistant-written message, edit it into an alternative and
+compare clarity, naturalness and reasoning. Keep the best version so far.
+Make at most three comparisons, including the first, and stop after two
+consecutive comparisons offer no clear improvement. Extra comparisons do
+not require accepting an edit. Fix factual errors and required conventions
+regardless of that prose limit. Keep these review notes out of the commit.
 
 **Format:**
 - **First line**: a concise summary with a lowercase prefix (`module:`, `cli:`, etc.)
+- **Opening**: make the changed behavior clear before the reader needs the code
 - **Relevant state**: establish what the program has or provides when needed
   - If recent work established that state, briefly recount the change in
     past tense and loosely when it happened
@@ -192,9 +328,10 @@ Keep narrative present tense and declarative body prose at any length.
   - Match the state after the previous commit without an unrelated recap
   - Combine the state with the reason or change when that avoids repetition
 - **Reason**: explain the actual reason at the smallest useful scope
-  - Choose perspective: first-person maintainer (internal concerns) or user (external concerns)
+  - Explain internal concerns from inside the project, with supported judgments
+  - Use the user's perspective for external concerns
   - Internal simplification or clarification of a contract can be sufficient
-  - Prefer concrete limitations over vague words like "cumbersome" or "better"
+  - Ground assessments in concrete consequences
 - **Change**: describe precisely what this commit changes
   - Be precise about scope (if it only improves one aspect, say so)
   - Prefer "This commit ..." wherever the explanation turns to the change
@@ -221,8 +358,15 @@ GPU-copy fix merely because that patch comes next.
 - Prefer concrete subsystem prefixes when prefixes are free-form; generic
   `fix:` and `refactor:` labels usually add little signal. Follow Conventional
   Commits or another declared type-based format when the repository requires it.
-- Use facts supported by the patch or repository evidence. Do not invent
-  reported failures, benchmarks, testing history, or rejected alternatives.
+- Distinguish caller-supplied motivation, observations, assessments, and
+  relevant history from independently verified source facts. Preserve their
+  degree of certainty and relevant project decisions through the handoff. Useful supplied context need not
+  occur in the diff; keep it when it explains how an otherwise reasonable
+  earlier change leads to the problem. Include history only where relevant.
+  Report source contradictions outside the message and avoid relying on a
+  contradicted account as established fact. Never claim independent
+  verification merely because context was supplied. Do not invent reported
+  failures, benchmarks, testing history, or rejected alternatives.
 - Put series-wide overviews and recaps in the review request or cover letter.
 - Use "Right now, ...", "Currently, ...", or "As things stand, ..." when it
   resolves a temporal ambiguity, not automatically in the first paragraph.
@@ -241,6 +385,9 @@ GPU-copy fix merely because that patch comes next.
   "parent commit".
 - Use present tense for the change ("This commit returns ...") and future
   tense for work in later commits.
+- A future use for a capability does not establish follow-up commits.
+  Mention later commits only when the supplied series or plan establishes
+  them; otherwise explain the purpose without promising a sequence.
 - Make references to future work in the series explicit: "in a later commit",
   "later commits will ...", or "the final commit will ...", not bare "later".
 - Use "this" only when referring to the commit itself
@@ -253,32 +400,33 @@ GPU-copy fix merely because that patch comes next.
 Add verbose output to the CLI.
 ```
 
-✅ Declarative body sentence in narrative present tense:
+✅ Declarative opening:
 ```
-This commit adds verbose output to the CLI.
+This commit adds a --verbose flag that shows review progress.
 ```
 
-❌ Problem is a symptom:
+❌ Unsupported judgment (reason excerpt):
 ```
 The code is cumbersome to use.
 ```
 
-✅ Problem is a concrete limitation:
+✅ Judgment with a concrete basis (reason excerpt):
 ```
-The code requires repeated command invocation and does not provide
-a continuous workflow.
+We have to run another command for each hunk. That gets tedious over a
+large change.
 ```
 
-❌ Solution overstates scope:
+❌ Overstated scope:
 ```
 This commit solves the discoverability problem.
 ```
 
-✅ Solution is precise about scope:
+✅ Concrete change (opening excerpt):
 ```
-This commit improves discoverability through the man page by...
+This commit adds an interactive review walkthrough to the man page.
 ```
-```
+
+````
 
 ## Codex
 
@@ -398,15 +546,13 @@ git-stage-batch include
 git-stage-batch skip
 # No more hunks
 
-git commit -m "auth: Implement OAuth2 authentication
+git commit -m "auth: Add an OAuth2 flow
 
-Right now, the authentication system uses basic auth with password hashing.
+This commit adds an OAuth2 flow with token refresh and configuration for
+OAuth providers.
 
-OAuth2 is required for integration with third-party services and provides
-better security through token-based authentication.
-
-This commit addresses that by implementing OAuth2 flow with token refresh
-and adding configuration for OAuth providers."
+We need to integrate with services that use OAuth2. The authentication
+code currently supports basic auth only."
 
 # Second commit: Database changes
 git-stage-batch again
@@ -418,13 +564,11 @@ git-stage-batch skip
 
 git commit -m "database: Add connection pooling
 
-Currently, the database module creates a new connection for each query.
+This commit adds a database connection pool with configurable size and
+timeout settings.
 
-This leads to performance issues under load and exhausts connection limits
-when handling conselected requests.
-
-This commit addresses that by implementing connection pooling with configurable
-pool size and timeout settings."
+The database module currently opens a new connection for each query.
+Concurrent requests exhaust the connection limit under load."
 
 # Continue until all changes are committed...
 ```

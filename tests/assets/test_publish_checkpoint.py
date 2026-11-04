@@ -304,9 +304,9 @@ def test_codex_and_claude_workflow_bodies_match() -> None:
         .replace("`/refine-commit-messages", "`$refine-commit-messages")
         .replace(
             '"${CLAUDE_SKILL_DIR}/scripts/publish-checkpoint.py"',
-            ".agents/skills/publish-unpushed-commits/scripts/publish-checkpoint.py",
+            '"$ASSET_ROOT/skills/publish-unpushed-commits/scripts/publish-checkpoint.py"',
         )
-        .replace(".claude/skills/", ".agents/skills/")
+        .replace("`.claude`", "`.agents`")
     )
 
     assert normalized_claude == codex_body

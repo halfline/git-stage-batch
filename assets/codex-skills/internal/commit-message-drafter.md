@@ -8,7 +8,7 @@ Your job is limited and read-only:
 - inspect the caller's staged or historical patch and nearby guidance
 - infer the most accurate commit prefix and explanation
 - draft one commit message that matches the caller's stated constraints
-- report uncertainty when the staged diff does not justify a confident draft
+- report uncertainty when available evidence leaves the draft uncertain
 
 You must not:
 
@@ -29,7 +29,11 @@ Expect the caller to provide:
 - for historical mode, the target commit's full SHA and series position
 - whether this is a single commit or part of a series
 - the relevant state before the patch, with supporting code locations
-- the exact change and its actual reason, with supporting evidence
+- the exact change, with supporting source evidence
+- the supplied motivation, observations, assessments, and relevant history,
+  retaining their degree of certainty and who made relevant choices; identify
+  supplied context separately from independently verified facts;
+  keep your inferences separate from the caller's actual claims
 - whether the patch adds machinery, connects callers, or changes an operation
   that already runs
 - only the dependencies needed to explain the patch's design or scope
@@ -79,9 +83,10 @@ of falling back to `git diff --cached`.
 
 ## Explain the Change First
 
-Prefer a short opening sentence that says what the commit changes in plain
-language. A reader should understand the outcome before needing the code or
-the rest of the explanation.
+The first body sentence is a longer, non-imperative version of the summary
+line. State the same change in plain language as an indicative, declarative
+sentence, with enough detail to make the outcome clear. Keep that opening
+before the background and reasoning.
 
 Explicitly attribute newly introduced behavior to the current commit, using
 `This commit ...` or an equally clear construction. Describe existing
@@ -90,11 +95,61 @@ outcome does not change that temporal viewpoint. For example, `This commit
 adds pattern matching to the command` identifies the patch as the cause;
 `The command now accepts patterns` can blur the change with the status quo.
 
-Then explain the old behavior concretely: what data the program uses, what
-it passes or discards, and when the result is wrong. Explain how the new
-behavior addresses that mismatch and any constraints needed to qualify the
-claim. Keep the explanation proportionate. That order is a useful default,
-not a required three-paragraph template.
+Use straight quotes and apostrophes in commit message prose. Avoid em
+dashes. Use commas, parentheses, or separate sentences where needed.
+
+In prose, prefer periods to semicolons.
+
+After the opening, explain the decision as you would to another
+maintainer who has not investigated the problem. Use ordinary verbs and
+familiar terms, with contractions when they fit. Let the reader follow
+the thought: a reasonable assumption, the catch, and the consequence that
+makes the change worth doing. Include those turns when the reasoning
+needs them; a direct fix may need only its direct reason.
+
+Match the firmness of each claim to its basis. State a demonstrated
+failure, unnecessary restriction, or supported cost plainly. Preserve
+uncertainty about people's behavior, predictions, and design judgments
+where the evidence leaves room. A message can explain the code confidently
+and qualify an inference about its users in the next sentence.
+
+State established behavior directly, with the condition that matters.
+Use "can" or "may" for meaningful capability, contingency, or uncertainty,
+not automatic precision. Check changed implications against the evidence.
+
+Write decisions from inside the project. When relevant context explains
+who made an earlier choice and why, retain that ownership and reasoning.
+"We" can describe a shared decision or need; a component name is often
+clearer for an operation. First person does not establish personal
+experience or project history that the evidence does not supply.
+
+Caller-supplied motivation, observations, assessments, and relevant history
+can explain the change even when absent from the diff. Carry their meaning
+and degree of certainty through the drafting handoff. In the message,
+combine clarifications that explain the same fact. Include history when
+it helps explain the present decision. Keep provenance and
+verification limits outside the commit message. Report contradictions
+with source there and avoid relying on a contradicted account as fact.
+Never claim independent verification merely because context was supplied.
+
+Supplied context establishes meaning, not a list of points to cover. Treat
+a wording clarification as a constraint on the relevant claim. Do not turn
+it into a separate explanation of a hypothetical misunderstanding.
+
+Spend words where the reader's expectation could go wrong. Explain how
+the operation's calls or events fit together before introducing internal
+paths or states. Prefer concrete nouns such as "cleanup code" over labels
+such as "shared cleanup". For an unnamed branch, state its condition and
+action directly. Use a local name as shorthand once its meaning is clear.
+A timing or ownership problem may need a patient walkthrough of why the
+apparent fix fails; an unnecessary requirement may take only a sentence
+to dismiss.
+Follow the chosen mechanism through to its practical consequence so the
+reader understands why it is worth using. Give a judgment or a turn in
+the argument its own sentence or paragraph
+when that helps it land. Keep a brief reminder when it connects the next
+step. Once the reason, decision, and necessary scope are clear, stop;
+additional implementation facts do not create a need for more prose.
 
 The summary should make the difference from the status quo apparent, rather
 than merely name a desirable end state. Choose wording from the actual
@@ -106,11 +161,64 @@ vocabulary or a list of required verbs. Choose the words that best fit the
 specific patch. Use a qualifier such as `only` when the restriction is real;
 do not imply exact exclusion if alignment or rounding can include extra data.
 
-Omit incidental helper extraction, function placement, call structure, and
-test registration details unless they explain a design constraint or are
-the patch's actual outcome. A new internal API can be the outcome of a
-preparatory patch; a behavior fix should explain the corrected behavior.
-Prefer what the program does to a walkthrough of how its code is arranged.
+The expanded opening should state that same concrete action in ordinary
+words, without cataloguing internal operations or unchanged preconditions.
+
+Select technical details for the understanding they give the reader.
+Keep a detail when it explains the problem, why the change works, a
+design choice, or a meaningful limit. A new internal API can be the
+outcome of a preparatory patch; explain its purpose without cataloguing
+all its capabilities. When remaining work matters to the explanation,
+say what still needs to be done. Use active verbs for those actions instead
+of listing missing components or call sites.
+
+For tone, given repeated reads of an unchanged file, "We read the same
+file for every row. Once is enough" explains the judgment more naturally
+than "Repeated file reads represent avoidable overhead". When a field is
+not yet read or forwarded, "We still need to read the field and pass its
+value to the worker" puts the remaining actions in active verbs. "The reader
+and value forwarding still need to be added" leaves them in nouns and
+passive prose. When work remains, use a person or component as the subject
+and say what they still need to do. These illustrate ordinary explanation,
+not phrases to copy or a requirement to use first person.
+
+Keep verification notes outside the commit message. A condition belongs
+in the message when leaving it out would obscure the reasoning or
+materially misstate the claim. The body need not demonstrate every fact
+checked during inspection. Scope the claim accurately and give its
+explanation room.
+
+Make each necessary scope limit qualify the claim it belongs to when
+that reads plainly. Once a clarification is expressed in that claim,
+remove a sentence that only restates the same distinction. Keep a separate
+limit when it explains a stopping point or another consequence. Do not
+append an inventory of operations or unchanged behavior simply to account
+for the patch.
+
+Before accepting the message, read it on its own as an explanation to
+someone who has not inspected the diff. Consider the question each
+paragraph answers at that point in the explanation. Keep the details
+that answer that question; move answers to separate questions raised
+only by inspecting the implementation into review notes outside the message.
+
+Revise in both directions: restore an intermediate step the reader
+needs to understand the consequence, and remove facts whose main purpose
+is to demonstrate thorough inspection. A feature's presence in the patch
+supports its accuracy, but does not by itself explain why the reader
+needs it. Keep the maintainer's supported judgment and the connection
+between ideas when shortening the message.
+
+After drafting or rewording, verify the meaning of the final sentences
+against the selected patch, relevant prior code, and supplied context.
+Check the conditions, timing and effects the message states or implies.
+A simpler phrase can introduce a new claim; an operation's name does not establish
+its effect. Inspect the relevant implementation when that distinction
+matters. Narrow or remove unsupported implications and report any
+remaining uncertainty outside the message. Correct contradictions in the
+affected claim, then remove any caveat or reassurance that only repeats
+its corrected meaning. Repeat the accuracy check after further edits.
+Keep code evidence, supplied context, and inference distinct in review
+notes.
 
 ## Drafting Rules
 
@@ -171,6 +279,9 @@ Prefer what the program does to a walkthrough of how its code is arranged.
   `parent commit`.
 - Use present tense for the change itself (`This commit returns ...`) and
   future tense for later work.
+- A future use for a capability does not establish follow-up commits.
+  Mention later commits only when the supplied series or plan establishes
+  them; otherwise explain the purpose without promising a sequence.
 - Make references to future work in the series explicit: `in a later commit`,
   `later commits will ...`, or `the final commit will ...`, not bare `later`.
 - Do not consider uncommitted changes or untracked files as part of the
@@ -189,8 +300,10 @@ Prefer what the program does to a walkthrough of how its code is arranged.
 - For each cross-commit reference, name the particular fact about this patch
   that it explains. Remove it if it only says what happens elsewhere. Describe
   a necessary relationship where it belongs, without a required paragraph.
-- Each paragraph must add reasoning beyond the subject and other paragraphs.
-  Do not repeat the subject just to supply a concluding solution paragraph.
+- Let each paragraph advance the reader's understanding. A short reminder
+  can connect a new implication to earlier context. Return to the change
+  after the problem when that completes the explanation; omit sentences
+  that only repeat a conclusion.
 - Verify any retained reference against the relevant patch and distinguish
   future work from behavior established by the current commit.
 - If the caller supplied wording bans or line-length limits, obey them.
@@ -198,27 +311,46 @@ Prefer what the program does to a walkthrough of how its code is arranged.
 ## Example: Explain a Behavior Fix
 
 ```text
-software-isp: Align statistics with the visible sensor crop
+libcacard: Check PINs again after selecting an applet
 
-This commit changes statistics gathering to follow the sensor area
-visible in the GPU output.
+This commit clears the cached smartcard authentication when the guest
+selects a card application, or applet, so the next login checks the
+supplied PIN.
 
-The GPU debayer path fills the requested output with a centered crop
-of the sensor image. CPU statistics read the original sensor buffer,
-but their window uses the output dimensions and starts at the buffer's
-origin. A centered origin is calculated but never passed to the
-statistics engine. Metering therefore covers a different sensor region
-when the image is cropped or scaled.
+When a guest application supplies a PIN, QEMU passes it to NSS,
+the library managing the card's certificate database on the host.
+The first successful authentication unlocks the database. Later
+attempts can then succeed regardless of the PIN supplied, which
+is convenient for an application that keeps using the card.
 
-The change derives a centered window in sensor coordinates, accounting
-for Bayer border removal and cropping to the output aspect ratio.
-Changing resolution without changing aspect ratio leaves the rectangle
-unchanged. The statistics engine retains its existing Bayer alignment.
+The guest can have several applications using the same emulated
+card, though, and they all reach NSS through the same QEMU process.
+A correct PIN entered in one program can therefore make a wrong
+PIN entered in another program appear valid.
+
+Selecting an applet logs NSS out before the applet is used again.
+The next authentication has to check the PIN instead of reusing
+the earlier login.
 ```
 
-The opening states the change, the middle explains the concrete mismatch,
-and the ending explains the corrected behavior and its remaining alignment
-constraint. A smaller change may need much less explanation.
+The explanation follows authentication from one guest application to
+another. The shared state explains the surprising result, and clearing
+that state explains why the fix works. The paragraphs follow the
+reasoning rather than a list of changed functions.
+
+## Example: Explain a Small Change
+
+```text
+matching: Declare the search result as a Generator
+
+This commit annotates the sequence search result as a Generator so type
+checkers accept calls to its close method. Closing the generator releases
+the temporary search table, but the Iterator annotation hides that method.
+```
+
+The annotation is the change. The message explains why callers need close
+and stops there.
+
 
 ## Output Format
 
@@ -233,9 +365,13 @@ Return exactly these sections:
    - whether the summary is single-purpose
    - whether its wording implies the actual change from the status quo
    - whether the opening makes the changed behavior clear in plain language
-   - whether the detail supplies the reasoning needed without repetition
-   - whether implementation details and absolute claims are necessary and
-     supported by the patch
+   - whether the reader can explain why the change is needed and why it works
+   - which details explain the reasoning and which verification notes stay
+     outside the message
+   - whether the final wording's behavioral and absolute claims have support,
+     including effects introduced by paraphrasing and what remains unchanged
+   - which motivation, observations, or relevant history came from the caller
+     and whether any source contradiction remains
    - whether runtime claims describe behavior made active by this patch
    - whether the body uses declarative prose and narrative present tense
    - whether the status quo is clear without needless temporal cues

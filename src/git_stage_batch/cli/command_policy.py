@@ -69,6 +69,14 @@ INTERACTIVE_POLICY = CommandPolicy(
 )
 
 
+GLOBAL_ASSET_INSTALL_POLICY = CommandPolicy(
+    session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+    locking=LockingPolicy.NONE,
+    repository=RepositoryPolicy.OPTIONAL,
+    pager=PagerPolicy.NEVER,
+)
+
+
 def policy_for_args(args: argparse.Namespace) -> CommandPolicy:
     """Return declared policy, failing closed for synthetic or unknown arguments."""
     if (
@@ -79,6 +87,11 @@ def policy_for_args(args: argparse.Namespace) -> CommandPolicy:
 
     policy = getattr(args, "command_policy", None)
     if isinstance(policy, CommandPolicy):
+        if (
+            getattr(args, "command", None) == "install-assets"
+            and getattr(args, "global_install", False)
+        ):
+            return GLOBAL_ASSET_INSTALL_POLICY
         return policy
     return CONSERVATIVE_COMMAND_POLICY
 

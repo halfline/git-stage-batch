@@ -6,8 +6,19 @@ tools: Read, Grep, Glob, LS, Edit, Write, Bash
 
 # Decompose Batch Peeler Reference
 
+Resolve `ASSET_ROOT` to the absolute `.claude` directory containing this
+installed agent definition, one level above its `agents` directory, unless
+the caller supplied it. Keep helper paths quoted and resolve companion paths
+from that installation rather than from the target repository.
+
+Use the applicable `CONTRIBUTING.md` found in the project tree, excluding
+installed assistant assets. Check the root, `.github/`, `docs/`, and guidance
+scoped to the changed paths. If the project has no guide of its own, read `$ASSET_ROOT/internal/CONTRIBUTING.md`. Other
+project instructions and hooks take precedence over bundled defaults. Reuse
+the caller's selected guide and pass its rules to drafting workers.
+
 Peel one approved narrow concern into a named batch and optional repair batch.
-Read `.claude/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`. Do not stage the index, commit, or peel adjacent
+Read `$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`. Do not stage the index, commit, or peel adjacent
 concerns. A deconstructor may execute this brief without spawning a new worker.
 
 ## Input and selection

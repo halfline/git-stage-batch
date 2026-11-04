@@ -42,6 +42,7 @@ class CompanionAsset:
     source_segments: tuple[str, ...]
     target_segments: tuple[str, ...]
     display_name: str
+    repository_only: bool = False
 
 
 def asset_group_display_name(group: AssetGroup, count: int) -> str:
@@ -244,6 +245,7 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
                 source_segments=("assets", "codex-skills", "config", "config.toml"),
                 target_segments=(".codex", "config.toml"),
                 display_name=_("Codex config"),
+                repository_only=True,
             ),
         ),
         entry_companion_assets=(

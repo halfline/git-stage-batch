@@ -91,6 +91,13 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
         display_name_singular="Claude agent",
         display_name_plural="Claude agents",
         required_entry="",
+        companion_assets=(
+            CompanionAsset(
+                source_segments=("assets", "common", "CONTRIBUTING.md"),
+                target_segments=(".claude", "internal", "CONTRIBUTING.md"),
+                display_name=_("Default contribution guide"),
+            ),
+        ),
     ),
     "claude-skills": AssetGroup(
         source_segments=("assets", "claude-skills"),

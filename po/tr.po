@@ -1101,10 +1101,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "atmak"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "Birlikte gelen yardımcı kaynaklarını depoya kur"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "Kurulacak birlikte gelen kaynak grubu"
@@ -8551,3 +8547,16 @@ msgstr "Kaydedilmiş yeniden adlandırmanın hedef içeriği eksik."
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "{path!r} dosya girdisinde tutarsız yeniden adlandırma kökeni bilgisi var"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "Birlikte gelen asistan varlıklarını depo veya kullanıcı için kur"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "Depo yerine kullanıcının ev dizinine kur"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "Varsayılan katkı kılavuzu"

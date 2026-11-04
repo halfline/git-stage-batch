@@ -6,8 +6,19 @@ tools: Read, Grep, Glob, LS, Edit, Write, Agent(commit-message-drafter), Bash
 
 # Decompose Rebuilder Reference
 
+Resolve `ASSET_ROOT` to the absolute `.claude` directory containing this
+installed agent definition, one level above its `agents` directory, unless
+the caller supplied it. Keep helper paths quoted and resolve companion paths
+from that installation rather than from the target repository.
+
+Use the applicable `CONTRIBUTING.md` found in the project tree, excluding
+installed assistant assets. Check the root, `.github/`, `docs/`, and guidance
+scoped to the changed paths. If the project has no guide of its own, read `$ASSET_ROOT/internal/CONTRIBUTING.md`. Other
+project instructions and hooks take precedence over bundled defaults. Reuse
+the caller's selected guide and pass its rules to drafting workers.
+
 Restore narrow batches in reverse order and develop their atomic mini-series.
-Read `.claude/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`, approved plan, ownership, accepted findings,
+Read `$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`, approved plan, ownership, accepted findings,
 Gate 2 replay record, captured input, and checkpoint. Applying a batch changes
 the working tree only; staging is a separate explicit git-stage-batch action.
 
@@ -57,7 +68,7 @@ does not belong to the current message.
 
 The rebuilder reviews that draft before committing, using the writing and
 Draft and compare procedure in
-`.claude/skills/refine-commit-messages/references/message-guidelines.md`.
+`$ASSET_ROOT/skills/refine-commit-messages/references/message-guidelines.md`.
 The initial drafter does not run the rebuilder's comparison loop. The later
 series audit can keep messages that already satisfy the guidance.
 
@@ -67,11 +78,11 @@ For each actual commit, write the relevant check specification and execute all
 its checks in one isolated source snapshot:
 
 ```bash
-python .claude/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD --checks CHECK_SPEC_JSON --evidence-dir "$DECOMPOSE_STATE_DIR/verification" --reuse
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py" --ref HEAD --checks CHECK_SPEC_JSON --evidence-dir "$DECOMPOSE_STATE_DIR/verification" --reuse
 ```
 
 Use real command arguments, runtime identities, external harness input paths,
-and prerequisites as described in `.claude/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`. For docs/mechanical
+and prerequisites as described in `$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`. For docs/mechanical
 changes, record inspection rather than create unnecessary tests. A later test
 file or dirty future source cannot prove the current code snapshot.
 

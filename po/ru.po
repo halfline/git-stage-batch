@@ -1128,10 +1128,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "отбросить"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "Установить встроенные ресурсы помощника в репозиторий"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "Группа встроенных ресурсов для установки"
@@ -8750,3 +8746,16 @@ msgstr "Целевое содержимое сохранённого переи�
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "запись файла {path!r} содержит противоречивые сведения о происхождении переименования"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "Установить встроенные ресурсы помощника для репозитория или пользователя"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "Установить в домашний каталог пользователя вместо репозитория"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "Руководство по участию по умолчанию"

@@ -25,7 +25,7 @@ def add_install_assets_subcommand(subparsers: Subparsers) -> None:
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
         ),
-        help=_("Install bundled assistant assets into the repository"),
+        help=_("Install bundled assistant assets for the repository or user"),
     )
     parser_install_assets.add_argument(
         "asset_group",
@@ -43,14 +43,22 @@ def add_install_assets_subcommand(subparsers: Subparsers) -> None:
         ),
     )
     parser_install_assets.add_argument(
+        "--global",
+        dest="global_install",
+        action="store_true",
+        help=_("Install into the user's home directory instead of the repository"),
+    )
+    parser_install_assets.add_argument(
         "--force",
         action="store_true",
         help=_("Overwrite an existing installed asset"),
     )
     parser_install_assets.set_defaults(
+        refresh_prompt_cache_after_command=False,
         func=lambda args: command_install_assets(
             args.asset_group,
             args.filters,
             force=args.force,
+            global_install=args.global_install,
         )
     )

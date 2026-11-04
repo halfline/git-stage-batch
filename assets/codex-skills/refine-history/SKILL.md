@@ -16,6 +16,12 @@ sample of recent commits before drafting messages. The first-class
 `refine-commit-messages` skill owns broad and final message-only passes; one
 explicitly targeted reword may use the fast path below.
 
+Before drafting a new output message or a justified replacement, read
+`.agents/skills/refine-commit-messages/references/message-guidelines.md` and use its writing and bounded review procedure. Apply it only
+to the selected output; preserve exact user-supplied wording and messages
+that the chosen operation must keep. The final series message pass still
+belongs to `refine-commit-messages`.
+
 ## Usage
 
 ```text

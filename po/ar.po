@@ -1131,10 +1131,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "تجاهل"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "ثبّت موارد المساعد المضمّنة في المستودع"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "مجموعة الموارد المضمّنة المراد تثبيتها"
@@ -8730,3 +8726,16 @@ msgstr "محتوى وجهة إعادة التسمية المحفوظة مفقو�
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "إدخال الملف ⁨{path!r}⁩ يحتوي على معلومات غير متسقة عن أصل إعادة التسمية"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "تثبيت موارد المساعد المضمّنة للمستودع أو المستخدم"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "التثبيت في المجلد الرئيسي للمستخدم بدلاً من المستودع"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "دليل المساهمة الافتراضي"

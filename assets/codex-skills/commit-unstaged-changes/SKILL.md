@@ -70,6 +70,23 @@ sandbox blocks writes needed for staging, committing, or batch metadata, rerun
 that command with an escalation request instead of assuming the repository is
 misconfigured or abandoning the workflow.
 
+## Installed resources and project guidance
+
+Set `ASSET_ROOT` to the absolute `.agents` directory containing this installed
+skill, two levels above its skill directory. Resolve it from the loaded
+`SKILL.md` path, whether installed in the repository or the user's home.
+Resolve `references/` and `scripts/` paths relative to this skill directory.
+Keep the working directory in the target repository, quote helper paths in
+shell commands, and pass `ASSET_ROOT` to workers that use companion resources.
+
+Before drafting, search the project tree for `CONTRIBUTING.md`, excluding
+installed assistant assets. Check the repository root, `.github/`, `docs/`,
+and guidance scoped to the changed paths. Read the applicable project guide.
+Only if the project has no contribution guide of its own, read
+`$ASSET_ROOT/internal/CONTRIBUTING.md`. Other project instructions and commit
+hooks still take precedence over bundled defaults. Pass the selected guide's
+path and applicable rules to any drafting worker.
+
 ## Repository-Agnostic Split Policy
 
 Apply the same split logic in every repository. Do not anchor the decision to
@@ -719,10 +736,8 @@ regardless of that limit.
 Write and choose in the main skill's existing review. The comparison is
 internal; use the selected message for the commit.
 
-
 Verify the final wording with the accuracy check in the writing guidance
 below before committing. Repeat that check after any further wording edits.
-
 
 ## `git-stage-batch` Workflow
 

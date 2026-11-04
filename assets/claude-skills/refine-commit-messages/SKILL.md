@@ -101,15 +101,30 @@ verify whether callers use it before claiming runtime behavior. Draft from the
 target patch and its relevant neighboring context, not from the clean staged
 index.
 
+Assess accuracy and prose separately before classifying. Apply the
+guide's naturalness and low-context criteria to the existing message too,
+before deciding that it needs no rewrite. Correct facts alone are not a
+KEEP reason: the explanation must stand on its own without relying on
+what the reviewer learned from the code. A concrete voice defect remains
+an editing reason even when the source makes the intended meaning clear.
+
 Classify every output:
 
-- `KEEP` when the exact message explains the patch accurately and meets the rules.
+- `KEEP` when the exact message explains the patch accurately, meets the rules
+  and reads naturally.
 - `REWORD` for a named defect: an inaccurate claim, missing necessary reasoning,
-  ambiguity, irrelevant or repeated explanation, or a violated repository rule.
+  ambiguity, a concrete voice or pacing defect, irrelevant or repeated
+  explanation, or a violated repository rule.
 
 Do not reword solely because another phrasing is possible, the paragraph count
 differs from a usual pattern, or the message lacks a series introduction or
 conclusion.
+
+Review replacement drafts with the Draft and compare procedure in
+`references/message-guidelines.md` before writing the final plan. The
+comparison budget applies to each message, not to repeated history
+rewrites. Preserve an accepted original as KEEP when no named defect
+remains.
 
 For `REWORD`, edit only `operation`, `message`, optional `encoding`, and a
 concrete `rationale`. Keep all other generated fields exact. Cover every output

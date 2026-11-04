@@ -365,10 +365,12 @@ an oversized GitLab group from being inferred as a native stack despite its
 `ordinary` plan.
 
 Derive each title and body from that review request's direct-base diff. Follow
-the repository template and recent accepted style. Apply the repository's
-complete commit-message guidance at review-request scope rather than copying
-commit bodies. Write for a drive-by reviewer who does not know the local group
-names.
+the repository template and recent accepted style. Reuse the general
+voice, context and accuracy principles in
+`.claude/skills/refine-commit-messages/references/message-guidelines.md` at review-request scope. The review-request template governs
+layout; commit-specific openings, prefixes, wrapping and comparison counts
+do not become PR/MR requirements. Write for a drive-by reviewer who does
+not know the local group names.
 
 Every body must explain the selected state, concrete limitation or motivation,
 the review request's outcome, validation, and any prerequisite. Name a

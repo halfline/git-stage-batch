@@ -1100,10 +1100,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "zahodit"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "Nainstalovat přibalené prostředky asistenta do repozitáře"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "Skupina přibalených prostředků k instalaci"
@@ -8577,3 +8573,16 @@ msgstr "Cílový obsah uloženého přejmenování chybí."
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "položka souboru {path!r} obsahuje nekonzistentní údaje o původu přejmenování"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "Nainstalovat přibalené prostředky asistenta pro repozitář nebo uživatele"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "Nainstalovat do domovského adresáře uživatele místo do repozitáře"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "Výchozí příručka pro přispěvatele"

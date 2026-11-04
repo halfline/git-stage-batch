@@ -244,6 +244,11 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
         required_entry="SKILL.md",
         companion_assets=(
             CompanionAsset(
+                source_segments=("assets", "common", "CONTRIBUTING.md"),
+                target_segments=(".agents", "internal", "CONTRIBUTING.md"),
+                display_name=_("Default contribution guide"),
+            ),
+            CompanionAsset(
                 source_segments=(
                     "assets",
                     "codex-skills",

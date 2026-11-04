@@ -1114,10 +1114,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "verwerpen"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "Meegeleverde assistentbronnen in de repository installeren"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "Te installeren groep meegeleverde bronnen"
@@ -8719,3 +8715,16 @@ msgstr "De doelinhoud van de opgeslagen hernoeming ontbreekt."
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "de bestandsvermelding voor {path!r} bevat inconsistente herkomstgegevens voor de hernoeming"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "Meegeleverde assistentbestanden voor de repository of gebruiker installeren"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "In de persoonlijke map van de gebruiker installeren in plaats van in de repository"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "Standaardbijdragerichtlijnen"

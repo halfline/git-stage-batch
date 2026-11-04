@@ -11,6 +11,28 @@ AI coding assistants often make multiple changes across many files. git-stage-ba
 - ✅ Build a clean, reviewable git history
 - ✅ Stage changes incrementally with fine-grained control
 
+## Install for your user
+
+Use `--global` to make the bundled skills available across repositories:
+
+```bash
+git-stage-batch install-assets --global claude-skills
+git-stage-batch install-assets --global codex-skills
+```
+
+Claude assets go under `~/.claude/skills` and `~/.claude/agents`; Codex
+skills go under `~/.agents/skills`. No Git repository is required. Global
+installation does not create or change Codex configuration or sandbox
+settings, including with `--force`. Omit `--global` for a repository install.
+
+Both installation modes include a portable default contribution guide under
+`.claude/internal/CONTRIBUTING.md` or `.agents/internal/CONTRIBUTING.md`.
+The skills use it only when the target project has no `CONTRIBUTING.md` in
+its tree. Project instructions and hooks still take precedence. The default
+preserves the bundled commit-writing conventions without assuming this
+project's language, build tools, or release process. It is an internal
+resource, so installing assets does not write a project contribution guide.
+
 ## Claude Code
 
 If `git-stage-batch` is available in your environment, you can install the

@@ -12,8 +12,25 @@ tree, patch-unit ownership, author and committer metadata, and the final tree.
 Read `references/message-guidelines.md` completely before auditing. Read the
 repository contribution guide, commit-message hook, documented message
 validators, and representative recent messages. Repository rules override the
-bundled fallback. Use `.agents/internal/commit-message-drafter.md` in its
+bundled fallback. Use `$ASSET_ROOT/internal/commit-message-drafter.md` in its
 historical-commit mode when installed.
+
+## Installed resources and project guidance
+
+Set `ASSET_ROOT` to the absolute `.agents` directory containing this installed
+skill, two levels above its skill directory. Resolve it from the loaded
+`SKILL.md` path, whether installed in the repository or the user's home.
+Resolve `references/` and `scripts/` paths relative to this skill directory.
+Keep the working directory in the target repository, quote helper paths in
+shell commands, and pass `ASSET_ROOT` to workers that use companion resources.
+
+Before drafting, search the project tree for `CONTRIBUTING.md`, excluding
+installed assistant assets. Check the repository root, `.github/`, `docs/`,
+and guidance scoped to the changed paths. Read the applicable project guide.
+Only if the project has no contribution guide of its own, read
+`$ASSET_ROOT/internal/CONTRIBUTING.md`. Other project instructions and commit
+hooks still take precedence over bundled defaults. Pass the selected guide's
+path and applicable rules to any drafting worker.
 
 ## Usage
 

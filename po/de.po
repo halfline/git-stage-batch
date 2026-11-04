@@ -1133,10 +1133,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "verworfen"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "Mitgelieferte Assistentenressourcen im Repository installieren"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "Zu installierende Gruppe mitgelieferter Ressourcen"
@@ -8839,3 +8835,16 @@ msgstr "Der Zielinhalt der gespeicherten Umbenennung fehlt."
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "der Dateieintrag für {path!r} enthält widersprüchliche Herkunftsdaten zur Umbenennung"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "Mitgelieferte Assistentenressourcen für das Repository oder den Benutzer installieren"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "Im persönlichen Verzeichnis des Benutzers statt im Repository installieren"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "Standardbeitragsleitfaden"

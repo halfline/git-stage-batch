@@ -1444,8 +1444,10 @@ assistant can discover them automatically.
 - `GROUP`: Optionally restrict installation to one bundled asset group
 - `--filter PATTERN...`: Install only bundled assets whose entry names match one or more gitignore-style patterns
   - When omitted, installs every bundled asset in the selected group, or in every group if no group is provided
+- `--global`: Install for the current user under `~/.claude/` and `~/.agents/`
+  - Works outside a Git repository and does not create or modify Codex configuration
 - `--force`: Overwrite an existing installed asset
-  - For `codex-skills`, this also replaces the bundled repo-local Codex config
+  - For repository-local `codex-skills` installs, this also replaces the bundled repo-local Codex config
 
 Bundled assets currently include the Claude agent
 `commit-message-drafter`, Claude decomposition agents, the Claude skills
@@ -1498,6 +1500,29 @@ requests, without changing local Git remotes.
 
 Installing `codex-skills` also writes the shared internal drafter brief at
 `.agents/internal/commit-message-drafter.md`.
+
+For skills available across repositories, use:
+
+```bash
+git-stage-batch install-assets --global codex-skills
+git-stage-batch install-assets --global claude-skills
+```
+
+Global installs use `~/.agents/skills`, `~/.claude/skills`, and
+`~/.claude/agents`, with companion resources under the same assistant's
+home directory. Existing assets still require `--force` to replace them.
+User Codex configuration and sandbox settings are left alone, even with
+`--force`.
+
+Every group includes a portable default `CONTRIBUTING.md` under
+`.agents/internal/` or `.claude/internal/` within the installation root.
+The skills search the target project for its own contribution guide first,
+including `.github/`, `docs/`, and guidance scoped to the changed paths.
+Bundled guides inside assistant asset directories are excluded from that search.
+They use the bundled guide only when the project has no `CONTRIBUTING.md`.
+Other project instructions and hooks take precedence over bundled defaults.
+Installation does not create or replace a contribution guide in the project
+root.
 
 ---
 

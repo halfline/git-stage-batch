@@ -44,7 +44,7 @@ dependency/lock snapshots with the matching package manager; stage them through
 the tool.
 
 For each fully staged slice, use
-`.agents/internal/commit-message-drafter.md` in staged mode for the initial
+`$ASSET_ROOT/internal/commit-message-drafter.md` in staged mode for the initial
 message. Supply
 the actual staged change, relevant prior state, caller motivation and
 decisions, and only necessary series context. Future working-tree source
@@ -52,7 +52,7 @@ does not belong to the current message.
 
 The rebuilder reviews that draft before committing, using the writing and
 Draft and compare procedure in
-`.agents/skills/refine-commit-messages/references/message-guidelines.md`.
+`$ASSET_ROOT/skills/refine-commit-messages/references/message-guidelines.md`.
 The initial drafter does not run the rebuilder's comparison loop. The later
 series audit can keep messages that already satisfy the guidance.
 
@@ -62,7 +62,7 @@ For each actual commit, write the relevant check specification and execute all
 its checks in one isolated source snapshot:
 
 ```bash
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD --checks CHECK_SPEC_JSON --evidence-dir "$DECOMPOSE_STATE_DIR/verification" --reuse
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py" --ref HEAD --checks CHECK_SPEC_JSON --evidence-dir "$DECOMPOSE_STATE_DIR/verification" --reuse
 ```
 
 Use real command arguments, runtime identities, external harness input paths,

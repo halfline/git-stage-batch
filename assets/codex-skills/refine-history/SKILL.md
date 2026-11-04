@@ -16,6 +16,29 @@ sample of recent commits before drafting messages. The first-class
 `refine-commit-messages` skill owns broad and final message-only passes; one
 explicitly targeted reword may use the fast path below.
 
+Before drafting a new output message or a justified replacement, read
+`$ASSET_ROOT/skills/refine-commit-messages/references/message-guidelines.md` and use its writing and bounded review procedure. Apply it only
+to the selected output; preserve exact user-supplied wording and messages
+that the chosen operation must keep. The final series message pass still
+belongs to `refine-commit-messages`.
+
+## Installed resources and project guidance
+
+Set `ASSET_ROOT` to the absolute `.agents` directory containing this installed
+skill, two levels above its skill directory. Resolve it from the loaded
+`SKILL.md` path, whether installed in the repository or the user's home.
+Resolve `references/` and `scripts/` paths relative to this skill directory.
+Keep the working directory in the target repository, quote helper paths in
+shell commands, and pass `ASSET_ROOT` to workers that use companion resources.
+
+Before drafting, search the project tree for `CONTRIBUTING.md`, excluding
+installed assistant assets. Check the repository root, `.github/`, `docs/`,
+and guidance scoped to the changed paths. Read the applicable project guide.
+Only if the project has no contribution guide of its own, read
+`$ASSET_ROOT/internal/CONTRIBUTING.md`. Other project instructions and commit
+hooks still take precedence over bundled defaults. Pass the selected guide's
+path and applicable rules to any drafting worker.
+
 ## Usage
 
 ```text

@@ -115,6 +115,11 @@ project: Bump version to <VERSION>
 ```
 
 Follow the commit-message convention in `CONTRIBUTING.md`.
+Keep the prescribed release summary. Before creating the commit, use the
+message drafting and review guidance in
+`.claude/skills/commit-staged-changes/SKILL.md`, including its bounded
+comparison and final accuracy check. Use that guidance for prose only;
+the release steps here still own staging and commit creation.
 
 Prepare the same development and build environment used by the release
 workflow:

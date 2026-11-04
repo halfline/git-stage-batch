@@ -5,10 +5,15 @@ git-stage-batch-install-assets \- install bundled assistant assets
 .B git-stage-batch install-assets
 [\fBclaude-agents\fR|\fBclaude-skills\fR|\fBcodex-skills\fR]
 [\fB\-\-filter\fR \fIPATTERN\fR...]
+[\fB\-\-global\fR]
 [\fB\-\-force\fR]
 .SH DESCRIPTION
 .B install-assets
 installs bundled assistant assets into the current repository.
+With
+.BR \-\-global ,
+install into the user's home directory instead. A global install does not
+require a Git repository.
 .TP
 .B claude-agents
 Install into
@@ -24,6 +29,14 @@ Install into
 .BR .agents/skills/ .
 The shared internal drafter brief is written to
 .BR .agents/internal/commit-message-drafter.md .
+.PP
+All groups include a default contribution guide under
+.B .claude/internal/CONTRIBUTING.md
+or
+.BR .agents/internal/CONTRIBUTING.md .
+Skills use it only when the target project has no CONTRIBUTING.md.
+Project instructions and hooks take precedence. Installation never creates
+or replaces the project's CONTRIBUTING.md.
 .SH OPTIONS
 .TP
 .I GROUP
@@ -31,6 +44,16 @@ Install only one bundled asset group. If omitted, install every group.
 .TP
 .BI "\-\-filter " PATTERN "..."
 Install only bundled assets whose entry names match gitignore-style patterns.
+.TP
+.B \-\-global
+Install skills and their companions under
+.BR ~/.claude/skills/ ,
+.BR ~/.claude/agents/ ,
+and
+.BR ~/.agents/skills/ .
+Internal resources go under the corresponding ~/.claude/internal/ or
+~/.agents/internal/ directory. Global installs do not create or modify
+Codex configuration, including sandbox settings, even with --force.
 .TP
 .B \-\-force
 Overwrite an existing installed asset.

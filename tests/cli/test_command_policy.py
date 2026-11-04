@@ -83,3 +83,23 @@ def test_history_verify_allows_foreign_owner_under_session_lock():
     assert policy.locking is LockingPolicy.SESSION
     assert policy.repository is RepositoryPolicy.REQUIRED
     assert policy_uses_session_lock(policy, args) is True
+
+
+def test_global_asset_install_does_not_join_repository_session():
+    args = _parse("install-assets", "--global")
+    policy = policy_for_args(args)
+
+    assert policy_requires_repository(policy, args) is False
+    assert policy_uses_session_lock(policy, args) is False
+    assert policy.session_ownership is SessionOwnershipPolicy.ALLOW_FOREIGN
+    assert args.refresh_prompt_cache_after_command is False
+
+
+def test_repository_asset_install_keeps_repository_policy():
+    args = _parse("install-assets")
+    policy = policy_for_args(args)
+
+    assert args.global_install is False
+    assert policy_requires_repository(policy, args) is True
+    assert policy_uses_session_lock(policy, args) is True
+    assert policy.session_ownership is SessionOwnershipPolicy.REQUIRE_AVAILABLE

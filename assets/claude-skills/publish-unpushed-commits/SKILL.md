@@ -46,6 +46,23 @@ Read the matching `references/github-publication.md` or
 Use `scripts/publish-checkpoint.py` for every mutating run so partial
 multi-branch publication can be resumed without conversation memory.
 
+## Installed resources and project guidance
+
+Set `ASSET_ROOT` to the absolute `.claude` directory containing this installed
+skill, two levels above its skill directory. Resolve it from the loaded
+`SKILL.md` path, whether installed in the repository or the user's home.
+Resolve `references/` and `scripts/` paths relative to this skill directory.
+Keep the working directory in the target repository, quote helper paths in
+shell commands, and pass `ASSET_ROOT` to workers that use companion resources.
+
+Before drafting, search the project tree for `CONTRIBUTING.md`, excluding
+installed assistant assets. Check the repository root, `.github/`, `docs/`,
+and guidance scoped to the changed paths. Read the applicable project guide.
+Only if the project has no contribution guide of its own, read
+`$ASSET_ROOT/internal/CONTRIBUTING.md`. Other project instructions and commit
+hooks still take precedence over bundled defaults. Pass the selected guide's
+path and applicable rules to any drafting worker.
+
 ## Usage and authority
 
 Invocation arguments: `$ARGUMENTS`
@@ -365,10 +382,12 @@ an oversized GitLab group from being inferred as a native stack despite its
 `ordinary` plan.
 
 Derive each title and body from that review request's direct-base diff. Follow
-the repository template and recent accepted style. Apply the repository's
-complete commit-message guidance at review-request scope rather than copying
-commit bodies. Write for a drive-by reviewer who does not know the local group
-names.
+the repository template and recent accepted style. Reuse the general
+voice, context and accuracy principles in
+`$ASSET_ROOT/skills/refine-commit-messages/references/message-guidelines.md` at review-request scope. The review-request template governs
+layout; commit-specific openings, prefixes, wrapping and comparison counts
+do not become PR/MR requirements. Write for a drive-by reviewer who does
+not know the local group names.
 
 Every body must explain the selected state, concrete limitation or motivation,
 the review request's outcome, validation, and any prerequisite. Name a

@@ -79,7 +79,7 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Use series context to explain this patch.** Retain prerequisites, design choices, consumer contracts, and intentionally unfinished scope. Put the series-wide overview and recap in the review request or cover letter.
 - **Separate independent series.** A dirty worktree can contain multiple unrelated commit series. Keep their explanations separate instead of forcing one narrative across all unstaged changes.
 - **Explain groundwork where it matters.** Name the later capability that motivates a preparatory patch, regardless of the patch's position in the series.
-- **Lead with the changed behavior.** Prefer a short, plain-language opening that makes the outcome clear before the reader needs the code. Explain the concrete old behavior and the correction afterward.
+- **Expand the summary in the first body sentence.** State the same change as a longer, non-imperative sentence before explaining the old behavior and the reason for the change.
 - **Make the summary imply the actual change.** Choose words that convey the difference from the status quo and fit the patch. Examples illustrate the principle, not a fixed vocabulary.
 - **Let structure follow the explanation.** State, problem, and solution are questions to answer, not paragraph assignments. Being first or last creates no introduction or conclusion duty.
 - **Keep narrative present tense.** Describe the existing behavior from the viewpoint of the previous commit, then describe what the current commit changes. Prefer `This commit ...` for that transition wherever it belongs.
@@ -89,7 +89,7 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Be precise about scope.** If a change only improves one aspect of a problem, do not imply it fully solves it. Verify that the patch makes an operation run before describing the program as beginning it. A new helper or internal representation is a legitimate outcome even when callers will adopt it separately.
 - **If the commit is a step toward a larger feature, say so explicitly.** Describe the end goal briefly, then explain how this commit moves toward it.
 - **Name the feature goal in early groundwork commits.** If a commit mainly exists to enable a later user-facing feature, say what that feature is and why it matters instead of presenting the commit as isolated infrastructure work.
-- **Prefer concrete limitations over vague judgments.** Avoid words like "cumbersome", "better", or "improved" without explaining why.
+- **Ground judgments in concrete consequences.** A plain assessment can help explain the choice when the message supplies its basis.
 - **Do not use `Co-Authored-By` for contributions produced by artificial intelligence.** Only use it for human co-authors.
 - **Only use the word `this` when referring to the commit itself.** Use `that` or similar for other contexts.
 - **Wrap body paragraphs at 75 characters.**
@@ -109,9 +109,10 @@ below guide the explanation without assigning paragraphs.
 
 #### Explain the Change First
 
-Prefer a short opening sentence that says what the commit changes in plain
-language. A reader should understand the outcome before needing the code or
-the rest of the explanation.
+The first body sentence is a longer, non-imperative version of the summary
+line. State the same change in plain language as an indicative, declarative
+sentence, with enough detail to make the outcome clear. Keep that opening
+before the background and reasoning.
 
 Explicitly attribute newly introduced behavior to the current commit, using
 `This commit ...` or an equally clear construction. Describe existing
@@ -120,11 +121,61 @@ outcome does not change that temporal viewpoint. For example, `This commit
 adds pattern matching to the command` identifies the patch as the cause;
 `The command now accepts patterns` can blur the change with the status quo.
 
-Then explain the old behavior concretely: what data the program uses, what
-it passes or discards, and when the result is wrong. Explain how the new
-behavior addresses that mismatch and any constraints needed to qualify the
-claim. Keep the explanation proportionate. That order is a useful default,
-not a required three-paragraph template.
+Use straight quotes and apostrophes in commit message prose. Avoid em
+dashes. Use commas, parentheses, or separate sentences where needed.
+
+In prose, prefer periods to semicolons.
+
+After the opening, explain the decision as you would to another
+maintainer who has not investigated the problem. Use ordinary verbs and
+familiar terms, with contractions when they fit. Let the reader follow
+the thought: a reasonable assumption, the catch, and the consequence that
+makes the change worth doing. Include those turns when the reasoning
+needs them; a direct fix may need only its direct reason.
+
+Match the firmness of each claim to its basis. State a demonstrated
+failure, unnecessary restriction, or supported cost plainly. Preserve
+uncertainty about people's behavior, predictions, and design judgments
+where the evidence leaves room. A message can explain the code confidently
+and qualify an inference about its users in the next sentence.
+
+State established behavior directly, with the condition that matters.
+Use "can" or "may" for meaningful capability, contingency, or uncertainty,
+not automatic precision. Check changed implications against the evidence.
+
+Write decisions from inside the project. When relevant context explains
+who made an earlier choice and why, retain that ownership and reasoning.
+"We" can describe a shared decision or need; a component name is often
+clearer for an operation. First person does not establish personal
+experience or project history that the evidence does not supply.
+
+Caller-supplied motivation, observations, assessments, and relevant history
+can explain the change even when absent from the diff. Carry their meaning
+and degree of certainty through the drafting handoff. In the message,
+combine clarifications that explain the same fact. Include history when
+it helps explain the present decision. Keep provenance and
+verification limits outside the commit message. Report contradictions
+with source there and avoid relying on a contradicted account as fact.
+Never claim independent verification merely because context was supplied.
+
+Supplied context establishes meaning, not a list of points to cover. Treat
+a wording clarification as a constraint on the relevant claim. Do not turn
+it into a separate explanation of a hypothetical misunderstanding.
+
+Spend words where the reader's expectation could go wrong. Explain how
+the operation's calls or events fit together before introducing internal
+paths or states. Prefer concrete nouns such as "cleanup code" over labels
+such as "shared cleanup". For an unnamed branch, state its condition and
+action directly. Use a local name as shorthand once its meaning is clear.
+A timing or ownership problem may need a patient walkthrough of why the
+apparent fix fails; an unnecessary requirement may take only a sentence
+to dismiss.
+Follow the chosen mechanism through to its practical consequence so the
+reader understands why it is worth using. Give a judgment or a turn in
+the argument its own sentence or paragraph
+when that helps it land. Keep a brief reminder when it connects the next
+step. Once the reason, decision, and necessary scope are clear, stop;
+additional implementation facts do not create a need for more prose.
 
 The summary should make the difference from the status quo apparent, rather
 than merely name a desirable end state. Choose wording from the actual
@@ -136,11 +187,64 @@ vocabulary or a list of required verbs. Choose the words that best fit the
 specific patch. Use a qualifier such as `only` when the restriction is real;
 do not imply exact exclusion if alignment or rounding can include extra data.
 
-Omit incidental helper extraction, function placement, call structure, and
-test registration details unless they explain a design constraint or are
-the patch's actual outcome. A new internal API can be the outcome of a
-preparatory patch; a behavior fix should explain the corrected behavior.
-Prefer what the program does to a walkthrough of how its code is arranged.
+The expanded opening should state that same concrete action in ordinary
+words, without cataloguing internal operations or unchanged preconditions.
+
+Select technical details for the understanding they give the reader.
+Keep a detail when it explains the problem, why the change works, a
+design choice, or a meaningful limit. A new internal API can be the
+outcome of a preparatory patch; explain its purpose without cataloguing
+all its capabilities. When remaining work matters to the explanation,
+say what still needs to be done. Use active verbs for those actions instead
+of listing missing components or call sites.
+
+For tone, given repeated reads of an unchanged file, "We read the same
+file for every row. Once is enough" explains the judgment more naturally
+than "Repeated file reads represent avoidable overhead". When a field is
+not yet read or forwarded, "We still need to read the field and pass its
+value to the worker" puts the remaining actions in active verbs. "The reader
+and value forwarding still need to be added" leaves them in nouns and
+passive prose. When work remains, use a person or component as the subject
+and say what they still need to do. These illustrate ordinary explanation,
+not phrases to copy or a requirement to use first person.
+
+Keep verification notes outside the commit message. A condition belongs
+in the message when leaving it out would obscure the reasoning or
+materially misstate the claim. The body need not demonstrate every fact
+checked during inspection. Scope the claim accurately and give its
+explanation room.
+
+Make each necessary scope limit qualify the claim it belongs to when
+that reads plainly. Once a clarification is expressed in that claim,
+remove a sentence that only restates the same distinction. Keep a separate
+limit when it explains a stopping point or another consequence. Do not
+append an inventory of operations or unchanged behavior simply to account
+for the patch.
+
+Before accepting the message, read it on its own as an explanation to
+someone who has not inspected the diff. Consider the question each
+paragraph answers at that point in the explanation. Keep the details
+that answer that question; move answers to separate questions raised
+only by inspecting the implementation into review notes outside the message.
+
+Revise in both directions: restore an intermediate step the reader
+needs to understand the consequence, and remove facts whose main purpose
+is to demonstrate thorough inspection. A feature's presence in the patch
+supports its accuracy, but does not by itself explain why the reader
+needs it. Keep the maintainer's supported judgment and the connection
+between ideas when shortening the message.
+
+After drafting or rewording, verify the meaning of the final sentences
+against the selected patch, relevant prior code, and supplied context.
+Check the conditions, timing and effects the message states or implies.
+A simpler phrase can introduce a new claim; an operation's name does not establish
+its effect. Inspect the relevant implementation when that distinction
+matters. Narrow or remove unsupported implications and report any
+remaining uncertainty outside the message. Correct contradictions in the
+affected claim, then remove any caveat or reassurance that only repeats
+its corrected meaning. Repeat the accuracy check after further edits.
+Keep code evidence, supplied context, and inference distinct in review
+notes.
 
 #### First Line (Summary)
 
@@ -218,7 +322,10 @@ would repeat the same fact.
 Explain the underlying problem from the appropriate perspective.
 
 **Choose the perspective based on who experiences the problem:**
-- Use **first-person maintainer perspective** for internal concerns (missing infrastructure, lack of test coverage, missing translations, build system gaps). You are the maintainer — frame as "The program lacks X" or "The project does not provide Y", never as "Maintainers cannot X."
+- Use the maintainer's perspective for internal concerns. Describe the
+  project's needs, choices, and limitations from inside the project; use
+  first person when natural. Keep supported judgments and explain their
+  basis. Never refer to maintainers as outsiders.
 - Use **user perspective** for external concerns (confusing interfaces, missing documentation, poor workflows). Frame as "Users cannot X" or "Users must Y."
 
 Describe what is non-obvious, hard to discover, confusing, missing, or limited
@@ -261,7 +368,10 @@ Use natural prose such as:
 
 A commit message explains its own change. Series context belongs in the
 message when it explains a prerequisite, design choice, contract with a
-consumer, or deliberately unfinished scope.
+consumer, or deliberately unfinished scope. A future use for a capability
+does not establish follow-up commits. Mention later commits only when the
+supplied series or plan establishes them; otherwise explain the purpose
+without promising a sequence.
 
 For each reference, identify the particular fact about this patch it explains.
 Would removing it make the patch's reason, design, or stopping point unclear?
@@ -309,7 +419,7 @@ Before finalizing a commit message, check:
   unrelated earlier work?
 - If the worktree contains multiple independent series, are they split into separate series?
 - Can you name the particular fact about this patch that each cross-commit reference explains?
-- Does the message contain the reasoning needed to understand this patch when encountered in history?
+- Can the reader explain why the change is needed and why it works without reconstructing the reasoning from the diff?
 - Are unrelated roadmaps, recaps, and next-item announcements omitted?
 - Does the explanation use the appropriate perspective (first-person maintainer for internal concerns, user for external concerns)?
 - Does it describe the actual reason without artificially broadening the scope?
@@ -318,7 +428,7 @@ Before finalizing a commit message, check:
 - If this is an incremental step, does it clearly say so?
 - Would removing any cross-commit reference make this patch's reason, design, or stopping point unclear?
 - Is retained series context accurate, brief, and not repeated elsewhere in the message?
-- Does every paragraph add necessary information beyond the subject and other paragraphs?
+- Does every paragraph advance understanding, retaining useful reminders and removing repeated conclusions?
 - Can a newcomer understand the state, limitation, and change without decoding coined shorthand?
 - Are unfamiliar terms introduced where they first matter, with concise reminders where later messages need them?
 - Does repeated context become more concise while retaining what helps explain the current patch?
@@ -327,45 +437,56 @@ Before finalizing a commit message, check:
 ### Example: Behavior Fix
 
 ```text
-software-isp: Align statistics with the visible sensor crop
+libcacard: Check PINs again after selecting an applet
 
-This commit changes statistics gathering to follow the sensor area
-visible in the GPU output.
+This commit clears the cached smartcard authentication when the guest
+selects a card application, or applet, so the next login checks the
+supplied PIN.
 
-The GPU debayer path fills the requested output with a centered crop
-of the sensor image. CPU statistics read the original sensor buffer,
-but their window uses the output dimensions and starts at the buffer's
-origin. A centered origin is calculated but never passed to the
-statistics engine. Metering therefore covers a different sensor region
-when the image is cropped or scaled.
+When a guest application supplies a PIN, QEMU passes it to NSS,
+the library managing the card's certificate database on the host.
+The first successful authentication unlocks the database. Later
+attempts can then succeed regardless of the PIN supplied, which
+is convenient for an application that keeps using the card.
 
-The change derives a centered window in sensor coordinates, accounting
-for Bayer border removal and cropping to the output aspect ratio.
-Changing resolution without changing aspect ratio leaves the rectangle
-unchanged. The statistics engine retains its existing Bayer alignment.
+The guest can have several applications using the same emulated
+card, though, and they all reach NSS through the same QEMU process.
+A correct PIN entered in one program can therefore make a wrong
+PIN entered in another program appear valid.
+
+Selecting an applet logs NSS out before the applet is used again.
+The next authentication has to check the PIN instead of reusing
+the earlier login.
 ```
 
-The opening states the change, the middle explains the concrete mismatch,
-and the ending explains the corrected behavior and its remaining alignment
-constraint. A smaller change may need much less explanation.
+The explanation follows authentication from one guest application to
+another. The shared state explains the surprising result, and clearing
+that state explains why the fix works. The paragraphs follow the
+reasoning rather than a list of changed functions.
+
+### Example: Small Change
+
+```text
+matching: Declare the search result as a Generator
+
+This commit annotates the sequence search result as a Generator so type
+checkers accept calls to its close method. Closing the generator releases
+the temporary search table, but the Iterator annotation hides that method.
+```
+
+The annotation is the change. The message explains why callers need close
+and stops there.
 
 ### Example: Single Commit
 
 ```
-cli: Add --verbose flag for detailed output
+cli: Show review progress with --verbose
 
-Right now, the command-line interface provides minimal feedback during
-operation. It only shows the selected hunk, without any indication of
-progress or internal state.
+This commit adds a --verbose flag showing how many hunks have been
+processed, how many remain, and the selected hunk's position.
 
-Users working with large changesets cannot easily determine how much work
-remains or what has already been processed, making it difficult to gauge
-progress and reason about unexpected behavior.
-
-This commit addresses that lack of visibility by adding a --verbose flag that
-displays additional information including the number of hunks processed, total
-hunks remaining, and the selected hunk's position in the sequence. The flag is
-optional and preserves the existing terse output when not specified.
+The command currently shows the selected hunk, but not how much work is
+left.
 ```
 
 ### Example: Commit Series
@@ -377,20 +498,17 @@ needed. Their positions create no introduction or conclusion duty.
 **Commit 1:**
 
 ```text
-renderer: Represent full redraws with explicit damage
+renderer: Use framebuffer bounds for full redraw damage
 
-Right now, full redraws use an empty damage region to mean "copy
-everything". Rendering and shadow-buffer copies each interpret that
-special value.
+This commit marks full redraws with a region covering the whole
+framebuffer.
 
-Ordinary region operations instead treat an empty region as containing no
-pixels, so the special value cannot describe a full redraw directly.
+Right now, an empty damage region means "copy everything" to the renderer
+and the shadow-copy code. Region operations normally treat an empty region
+as no pixels at all, so both paths have to interpret that special value.
 
-This commit represents full redraws with the framebuffer rectangle,
-allowing region operations to describe the complete update directly.
-
-That representation will let the shadow-copy path remove its empty-region
-special case and use the damage supplied by the renderer.
+In a later commit, the shadow-copy path will use the supplied region
+directly instead of treating an empty region as a full copy.
 ```
 
 **Consumer commit:**
@@ -398,14 +516,13 @@ special case and use the damage supplied by the renderer.
 ```text
 renderer: Use supplied shadow buffer damage
 
+This commit passes the supplied shadow buffer damage directly to the copy
+operation, dropping its special case for empty regions.
+
 The preceding commit changed full redraws to supply a region covering the
-framebuffer.
-
-Shadow buffer copies still translate an empty region into a full copy,
-even though the supplied region already describes all pixels to copy.
-
-This commit passes the supplied region directly to the copy operation,
-removing the special case.
+framebuffer. The shadow-copy code still treats an empty region as a request
+to copy everything, even though the supplied region already identifies
+the pixels to copy.
 ```
 
 By contrast, an unused-argument cleanup does not need "The next commit will
@@ -414,40 +531,37 @@ explaining the cleanup's role, even if both patches touch the same function.
 
 ### Anti-Patterns to Avoid
 
-❌ **Don't write in past tense about the old state:**
+Snippets labelled "excerpt" show only part of a message. Complete examples
+still start with the expanded, non-imperative summary.
+
+❌ **Don't describe the selected state in past tense (state excerpt):**
 ```
 The code used to only show minimal output...
 ```
 
-✅ **Do write in present tense about the selected state:**
+✅ **Do describe the selected state in present tense (state excerpt):**
 ```
-Right now, the code provides minimal output...
+The command currently shows only the selected hunk.
 ```
 
-❌ **Don't use imperative body sentences:**
+❌ **Don't use an imperative body sentence:**
 ```
 Add verbose output to the command-line interface.
 ```
 
-✅ **Do describe the change in narrative present tense:**
+✅ **Do describe the change in narrative present tense (opening excerpt):**
 ```
-This commit adds verbose output to the command-line interface.
-```
-
-❌ **Don't leave a non-obvious reason unexplained:**
-```
-Users reading the man page cannot discover that interactive mode exists.
+This commit adds a --verbose flag that shows review progress.
 ```
 
-✅ **Do explain the relevant consequence:**
+❌ **Don't turn missing documentation into a claim about all users:**
 ```
-Interactive mode is not obvious for a tool that otherwise presents itself as a
-command-line interface.
+Users cannot discover interactive mode.
 ```
 
-✅ **Then describe the narrower gap if relevant:**
+✅ **Do identify the missing explanation (problem excerpt):**
 ```
-The man page does not currently help users discover or understand that mode.
+The man page doesn't explain the interactive review workflow.
 ```
 
 ❌ **Don't invent a broader reason for a local cleanup:**
@@ -456,20 +570,22 @@ Unused parameters prevent the rendering subsystem from evolving.
 ```
 
 ✅ **Do explain the actual reason, even when it is brief:**
-```
-copy_shared_framebuffer_cpu() does not use renderer_gpu_data. This commit
-removes the parameter from the helper and its caller.
+```text
+renderer: Remove the unused renderer_gpu_data argument
+
+This commit removes renderer_gpu_data from copy_shared_framebuffer_cpu()
+and its caller. The helper doesn't use it.
 ```
 
-❌ **Don't use vague value judgments:**
+❌ **Don't leave a judgment unsupported (reason excerpt):**
 ```
 The command-line interface is cumbersome to use.
 ```
 
-✅ **Do describe concrete limitations:**
+✅ **Do give the judgment a concrete basis (reason excerpt):**
 ```
-The command-line interface requires repeated command invocation and does not
-provide a continuous hunk-by-hunk workflow.
+We have to run another command for each hunk. That gets tedious over a
+large change.
 ```
 
 ❌ **Don't overstate the impact of the commit:**
@@ -477,44 +593,28 @@ provide a continuous hunk-by-hunk workflow.
 This commit solves discoverability of interactive mode.
 ```
 
-✅ **Do be precise about scope:**
+✅ **Do name the actual change (opening excerpt):**
 ```
-This commit addresses that by documenting the workflow in the man page.
+This commit adds an interactive review walkthrough to the man page.
 ```
 
-❌ **Don't describe the program's state inaccurately in a series:**
-```
-i18n: Add French translation (fr)
+❌ **Don't describe the selected state too broadly in a series:**
+
+Assume earlier commits have added translations for other languages.
+
+```text
+i18n: Add French translations
 
 The application outputs all user-facing text in English.
-
-Users who speak other languages must work in English...
 ```
 
-✅ **Do describe the relevant state after previous commits:**
-```
-i18n: Add French translation (fr)
+✅ **Do describe the affected locale after the previous commits:**
+```text
+i18n: Add French translations
 
-Currently, the program uses fallback English messages for the French
-locale.
+This commit adds French translations for user-facing messages.
 
-Without French translations, French-speaking users cannot use the
-program in their native language...
-```
-
-❌ **Don't leave the affected state ambiguous:**
-```
-i18n: Add French translation (fr)
-
-Users must work in English regardless of their preference.
-```
-
-✅ **Do describe the program's state:**
-```
-i18n: Add French translation (fr)
-
-Currently, the program uses fallback English messages for the French
-locale.
+The French locale currently falls back to English.
 ```
 
 ## Making Changes

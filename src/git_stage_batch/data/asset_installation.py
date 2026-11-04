@@ -40,18 +40,18 @@ def copy_asset_tree(source: Traversable, destination: Path) -> None:
 def validate_asset_destination_path(
     source: Traversable,
     destination: Path,
-    repo_root: Path,
+    install_root: Path,
 ) -> None:
     """Reject installs that would collide with non-directory path components."""
     for parent in destination.parents:
-        if parent == repo_root.parent:
+        if parent == install_root.parent:
             break
         if not parent.exists():
             continue
         if not parent.is_dir():
             raise CommandError(
                 _("Cannot install bundled assets because '{path}' is not a directory.").format(
-                    path=display_path(str(parent.relative_to(repo_root))),
+                    path=display_path(str(parent.relative_to(install_root))),
                 )
             )
 
@@ -61,12 +61,12 @@ def validate_asset_destination_path(
     if source.is_dir() and not destination.is_dir():
         raise CommandError(
             _("Cannot install bundled assets because '{path}' is not a directory.").format(
-                path=display_path(str(destination.relative_to(repo_root))),
+                path=display_path(str(destination.relative_to(install_root))),
             )
         )
     if source.is_file() and destination.is_dir():
         raise CommandError(
             _("Cannot install bundled assets because '{path}' is a directory.").format(
-                path=display_path(str(destination.relative_to(repo_root))),
+                path=display_path(str(destination.relative_to(install_root))),
             )
         )

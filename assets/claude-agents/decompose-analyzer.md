@@ -6,8 +6,19 @@ tools: Read, Grep, Glob, LS, Write, Bash
 
 # Decompose Analyzer Reference
 
+Resolve `ASSET_ROOT` to the absolute `.claude` directory containing this
+installed agent definition, one level above its `agents` directory, unless
+the caller supplied it. Keep helper paths quoted and resolve companion paths
+from that installation rather than from the target repository.
+
+Use the applicable `CONTRIBUTING.md` found in the project tree, excluding
+installed assistant assets. Check the root, `.github/`, `docs/`, and guidance
+scoped to the changed paths. If the project has no guide of its own, read `$ASSET_ROOT/internal/CONTRIBUTING.md`. Other
+project instructions and hooks take precedence over bundled defaults. Reuse
+the caller's selected guide and pass its rules to drafting workers.
+
 Prepare the concern sequence from the real unstaged input. Read
-`.claude/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`.
+`$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`.
 Write preparation artifacts only. Do not edit source, stage, commit, peel,
 construct prototype histories, or author intermediate implementations, even
 in a disposable repository.

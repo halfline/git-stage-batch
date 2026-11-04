@@ -28,14 +28,14 @@ class PlannedAssetInstall:
 def _validate_overwrite(
     source: Traversable,
     destination: Path,
-    repo_root: Path,
+    install_root: Path,
     *,
     force: bool,
     display_kind: str,
     display_name: str,
 ) -> None:
     """Reject an existing destination unless force mode is active."""
-    validate_asset_destination_path(source, destination, repo_root)
+    validate_asset_destination_path(source, destination, install_root)
     if destination.exists() and not force:
         raise CommandError(
             _("Refusing to overwrite existing {kind} '{name}'. Use --force to replace it.").format(
@@ -47,9 +47,10 @@ def _validate_overwrite(
 
 def plan_asset_installs(
     selected_entries_by_group: Iterable[SelectedAssetGroup],
-    repo_root: Path,
+    install_root: Path,
     *,
     force: bool = False,
+    global_install: bool = False,
 ) -> tuple[PlannedAssetInstall, ...]:
     """Return the packaged asset sources and destinations to install."""
     planned_installs: list[PlannedAssetInstall] = []
@@ -72,13 +73,13 @@ def plan_asset_installs(
                     _(
                         "Bundled assets from different sources target the same "
                         "destination: '{destination}'."
-                    ).format(destination=destination.relative_to(repo_root))
+                    ).format(destination=destination.relative_to(install_root))
                 )
             return
         _validate_overwrite(
             source,
             destination,
-            repo_root,
+            install_root,
             force=force,
             display_kind=display_kind,
             display_name=display_name,
@@ -91,7 +92,7 @@ def plan_asset_installs(
     for selected_group in selected_entries_by_group:
         group = selected_group.group
         selected_entries = selected_group.entries
-        target_root = repo_root.joinpath(*group.target_segments)
+        target_root = install_root.joinpath(*group.target_segments)
         for entry_name, entry in selected_entries.items():
             destination = target_root / (entry.name if entry.is_file() else entry_name)
             append_install(
@@ -102,24 +103,28 @@ def plan_asset_installs(
                 display_name=entry_name,
             )
             for companion in get_entry_companion_assets(group, entry_name):
-                destination = repo_root.joinpath(*companion.target_segments)
+                if global_install and companion.repository_only:
+                    continue
+                destination = install_root.joinpath(*companion.target_segments)
                 companion_source = get_companion_asset_source(companion)
                 append_install(
                     companion_source,
                     destination,
                     source_key=companion.source_segments,
                     display_kind=companion.display_name,
-                    display_name=str(destination.relative_to(repo_root)),
+                    display_name=str(destination.relative_to(install_root)),
                 )
         for companion in group.companion_assets:
-            destination = repo_root.joinpath(*companion.target_segments)
+            if global_install and companion.repository_only:
+                continue
+            destination = install_root.joinpath(*companion.target_segments)
             companion_source = get_companion_asset_source(companion)
             append_install(
                 companion_source,
                 destination,
                 source_key=companion.source_segments,
                 display_kind=companion.display_name,
-                display_name=str(destination.relative_to(repo_root)),
+                display_name=str(destination.relative_to(install_root)),
             )
 
     return tuple(planned_installs)

@@ -76,6 +76,15 @@ def build_wheel(tmp_path_factory):
 
 
 class TestWheelContents:
+    def test_wheel_contains_default_contribution_guide(self, build_wheel):
+        """Both assistant installations need the portable fallback resource."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            guide = whl.read("git_stage_batch/assets/common/CONTRIBUTING.md")
+
+        assert guide == (
+            Path(__file__).resolve().parents[1] / "assets/common/CONTRIBUTING.md"
+        ).read_bytes()
+
     """Test that the wheel package contains expected files."""
 
     def test_wheel_excludes_python_cache_artifacts(self, build_wheel):

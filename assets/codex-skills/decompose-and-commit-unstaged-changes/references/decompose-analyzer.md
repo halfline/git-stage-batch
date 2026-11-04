@@ -1,7 +1,7 @@
 # Decompose Analyzer Reference
 
 Prepare the concern sequence from the real unstaged input. Read
-`.agents/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`.
+`$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/references/decompose-planning.md`.
 Write preparation artifacts only. Do not edit source, stage, commit, peel,
 construct prototype histories, or author intermediate implementations, even
 in a disposable repository.

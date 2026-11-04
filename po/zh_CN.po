@@ -1002,10 +1002,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "丢弃"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "将随附的助手资源安装到仓库中"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "要安装的随附资源组"
@@ -8016,3 +8012,16 @@ msgstr "已保存重命名的目标内容缺失。"
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "{path!r} 的文件条目包含不一致的重命名来源信息"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "为仓库或用户安装捆绑的助手资源"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "安装到用户主目录而非仓库中"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "默认贡献指南"

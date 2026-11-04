@@ -1041,10 +1041,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "버리기"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "함께 제공되는 어시스턴트 자산을 저장소에 설치"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "설치할 기본 제공 자산 그룹"
@@ -8283,3 +8279,16 @@ msgstr "저장된 이름 변경의 대상 내용이 없습니다."
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "{path!r}의 파일 항목에 일관되지 않은 이름 변경 출처 정보가 있습니다"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "저장소 또는 사용자용으로 번들 어시스턴트 자산 설치"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "저장소 대신 사용자 홈 디렉터리에 설치"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "기본 기여 가이드"

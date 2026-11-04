@@ -5,6 +5,7 @@ import sys
 from argparse import Namespace
 from contextlib import contextmanager
 from importlib import import_module
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -24,6 +25,34 @@ def test_main_callable():
     """Test that main is callable."""
     assert main_module.main is not None
     assert callable(main_module.main)
+
+
+def test_main_global_install_outside_repository(tmp_path, monkeypatch):
+    """Real parsing and dispatch must bypass all repository session guards."""
+    home = tmp_path / "user home"
+    home.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(sys, "argv", [
+        "git-stage-batch", "install-assets", "--global", "codex-skills",
+        "--filter", "refine-history",
+    ])
+
+    with (
+        patch.object(main_module, "require_git_repository") as require_repo,
+        patch.object(main_module, "acquire_session_lock") as acquire_lock,
+        patch.object(main_module, "require_no_foreign_session_owner") as require_owner,
+        patch.object(main_module, "_request_status_cache_refresh") as refresh,
+    ):
+        main_module.main()
+
+    require_repo.assert_not_called()
+    acquire_lock.assert_not_called()
+    require_owner.assert_not_called()
+    refresh.assert_not_called()
+    assert (home / ".agents/skills/refine-history/SKILL.md").is_file()
+    assert (home / ".agents/skills/refine-commit-messages/SKILL.md").is_file()
+    assert not (home / ".codex").exists()
 
 
 def test_main_with_no_args():

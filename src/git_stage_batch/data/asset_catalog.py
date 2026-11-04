@@ -42,6 +42,7 @@ class CompanionAsset:
     source_segments: tuple[str, ...]
     target_segments: tuple[str, ...]
     display_name: str
+    repository_only: bool = False
 
 
 def asset_group_display_name(group: AssetGroup, count: int) -> str:
@@ -90,6 +91,13 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
         display_name_singular="Claude agent",
         display_name_plural="Claude agents",
         required_entry="",
+        companion_assets=(
+            CompanionAsset(
+                source_segments=("assets", "common", "CONTRIBUTING.md"),
+                target_segments=(".claude", "internal", "CONTRIBUTING.md"),
+                display_name=_("Default contribution guide"),
+            ),
+        ),
     ),
     "claude-skills": AssetGroup(
         source_segments=("assets", "claude-skills"),
@@ -98,6 +106,11 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
         display_name_plural="Claude skills",
         required_entry="SKILL.md",
         companion_assets=(
+            CompanionAsset(
+                source_segments=("assets", "common", "CONTRIBUTING.md"),
+                target_segments=(".claude", "internal", "CONTRIBUTING.md"),
+                display_name=_("Default contribution guide"),
+            ),
             CompanionAsset(
                 source_segments=(
                     "assets",
@@ -231,6 +244,11 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
         required_entry="SKILL.md",
         companion_assets=(
             CompanionAsset(
+                source_segments=("assets", "common", "CONTRIBUTING.md"),
+                target_segments=(".agents", "internal", "CONTRIBUTING.md"),
+                display_name=_("Default contribution guide"),
+            ),
+            CompanionAsset(
                 source_segments=(
                     "assets",
                     "codex-skills",
@@ -244,6 +262,7 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
                 source_segments=("assets", "codex-skills", "config", "config.toml"),
                 target_segments=(".codex", "config.toml"),
                 display_name=_("Codex config"),
+                repository_only=True,
             ),
         ),
         entry_companion_assets=(

@@ -1,6 +1,9 @@
 """Tests for CLI completion helpers."""
 
 from pathlib import Path
+import subprocess
+
+import pytest
 
 from git_stage_batch.cli.completion import list_file_completion_candidates
 
@@ -56,14 +59,47 @@ def test_list_file_completion_candidates_treats_wildmatch_as_directory_prefix(mo
     assert "src/core/" in candidates
 
 
-def test_bash_completion_covers_journal_command_and_options():
-    """Installed Bash completion should expose diagnostic journal controls."""
+@pytest.mark.parametrize(
+    ("command", "prefix", "expected"),
+    [
+        ("", "jour", ["journal"]),
+        ("journal", "--", ["--path", "--purge", "--all", "--porcelain"]),
+        ("", "install-", ["install-assets"]),
+        ("install-assets", "--g", ["--global"]),
+        ("install-assets", "cod", ["codex-skills"]),
+    ],
+)
+def test_bash_completion_for_assets_and_journal(command, prefix, expected):
+    """Exercise command and option completion through the shipped Bash code."""
     completion = (
         Path(__file__).resolve().parents[2] / "completions" / "git-stage-batch"
-    ).read_text()
+    )
+    script = '''
+source "$1"
+if [[ -n "$2" ]]; then
+    COMP_WORDS=(git-stage-batch "$2" "$3")
+    COMP_CWORD=2
+else
+    COMP_WORDS=(git-stage-batch "$3")
+    COMP_CWORD=1
+fi
+_init_completion() {
+    words=("${COMP_WORDS[@]}")
+    cword=$COMP_CWORD
+    cur=${words[cword]}
+    prev=${words[cword-1]}
+}
+_git_stage_batch
+printf '%s\\n' "${COMPREPLY[@]}"
+'''
+    result = subprocess.run(
+        ["bash", "-c", script, "completion-test", str(completion), command, prefix],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
-    assert 'validate journal"' in completion
-    assert "--path --purge --all --porcelain" in completion
+    assert result.stdout.splitlines() == expected
 
 
 def test_bash_completion_covers_fixup_actions_and_options():

@@ -138,7 +138,9 @@ dimensions beside the command registration:
   leaves locking to interactive mode, or bypasses the lock for shell-prompt
   status.
 - **Repository requirement** says whether the invocation requires a Git
-  repository. Prompt status is deliberately allowed outside one.
+  repository. Prompt status and `install-assets --global` are deliberately
+  allowed outside one. Global asset installation also bypasses repository
+  session locking and ownership checks.
 - **Pager eligibility** says whether human-readable terminal output may use
   Git's configured pager. Porcelain and prompt output still bypass paging.
 - **State changes** describe the most persistent state the command may change:

@@ -1,6 +1,8 @@
-"""Install bundled assistant assets into the current repository."""
+"""Install bundled assistant assets for a repository or user."""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from ..data.asset_install_plan import plan_asset_installs as _plan_asset_installs
 from ..data.asset_installation import copy_asset_tree as _copy_asset_tree
@@ -16,17 +18,22 @@ def command_install_assets(
     filters: list[str] | None = None,
     *,
     force: bool = False,
+    global_install: bool = False,
 ) -> None:
-    """Install bundled assets into the current repository."""
-    require_git_repository()
+    """Install bundled assets into the repository or the user's home directory."""
+    if global_install:
+        install_root = Path.home()
+    else:
+        require_git_repository()
+        install_root = get_git_repository_root_path()
 
     selected_entries_by_group = _select_asset_entries(asset_group_name, filters)
 
-    repo_root = get_git_repository_root_path()
     planned_installs = _plan_asset_installs(
         selected_entries_by_group,
-        repo_root,
+        install_root,
         force=force,
+        global_install=global_install,
     )
 
     for planned_install in planned_installs:

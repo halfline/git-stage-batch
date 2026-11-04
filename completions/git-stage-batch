@@ -49,7 +49,7 @@ _git_stage_batch()
     local cur prev words cword
     _init_completion || return
 
-    local commands="start show include skip discard status again stop abort block-file unblock-file fixup suggest-fixup rewrite new list drop annotate apply reset undo redo validate journal"
+    local commands="start show include skip discard status again stop abort block-file unblock-file fixup suggest-fixup rewrite new list drop annotate apply reset undo redo validate journal install-assets"
 
     # Handle subcommands
     if [[ $cword -eq 1 ]]; then
@@ -60,6 +60,9 @@ _git_stage_batch()
     local command="${words[1]}"
 
     case "$command" in
+        install-assets)
+            COMPREPLY=($(compgen -W "claude-agents claude-skills codex-skills --filter --force --global" -- "$cur"))
+            ;;
         start)
             case "$prev" in
                 -U|--unified)

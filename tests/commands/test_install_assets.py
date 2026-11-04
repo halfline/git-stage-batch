@@ -3,11 +3,80 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from git_stage_batch.commands.install_assets import command_install_assets
 from git_stage_batch.exceptions import CommandError
+
+
+@pytest.fixture
+def user_home(tmp_path, monkeypatch):
+    """Keep user-wide installation tests away from the real home directory."""
+    home = tmp_path / "user home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    return home
+
+
+@pytest.mark.parametrize("group", [None, "claude-agents", "claude-skills", "codex-skills"])
+def test_global_install_without_repository(tmp_path, monkeypatch, user_home, group):
+    """Every global group installs its resources without requiring Git state."""
+    monkeypatch.chdir(tmp_path)
+
+    command_install_assets(group, global_install=True)
+
+    if group in (None, "claude-agents", "claude-skills"):
+        assert (user_home / ".claude/agents/commit-message-drafter.md").is_file()
+        assert (user_home / ".claude/internal/CONTRIBUTING.md").is_file()
+    if group in (None, "claude-skills"):
+        assert (user_home / ".claude/skills/refine-history/SKILL.md").is_file()
+    if group in (None, "codex-skills"):
+        assert (user_home / ".agents/skills/refine-history/SKILL.md").is_file()
+        assert (user_home / ".agents/internal/CONTRIBUTING.md").is_file()
+        assert (user_home / ".agents/internal/commit-message-drafter.md").is_file()
+    assert not (user_home / ".codex").exists()
+    assert not (user_home / "CONTRIBUTING.md").exists()
+    assert not (tmp_path / ".agents").exists()
+    assert not (tmp_path / ".claude").exists()
+
+
+def test_global_force_preserves_user_configuration_and_project_guide(
+    temp_git_repo, user_home,
+):
+    """Even a forced update leaves user config and project guidance alone."""
+    config = user_home / ".codex/config.toml"
+    config.parent.mkdir()
+    config.write_bytes(b'sandbox_mode = "read-only"\n# personal settings\n')
+    guide = temp_git_repo / "CONTRIBUTING.md"
+    guide.write_bytes(b"Project-specific contribution rules\n")
+
+    command_install_assets("codex-skills", ["commit-*"], global_install=True)
+    skill = user_home / ".agents/skills/commit-staged-changes/SKILL.md"
+    skill.write_text("old version\n")
+    command_install_assets(
+        "codex-skills", ["commit-*"], global_install=True, force=True,
+    )
+
+    assert "# Commit Staged Changes" in skill.read_text()
+    assert config.read_bytes() == b'sandbox_mode = "read-only"\n# personal settings\n'
+    assert guide.read_bytes() == b"Project-specific contribution rules\n"
+    assert not (temp_git_repo / ".agents").exists()
+
+
+def test_global_install_preflights_companion_conflicts(tmp_path, monkeypatch, user_home):
+    """A conflicting companion must fail before any selected skill is copied."""
+    monkeypatch.chdir(tmp_path)
+    guide = user_home / ".agents/internal/CONTRIBUTING.md"
+    guide.parent.mkdir(parents=True)
+    guide.write_text("custom default\n")
+
+    with pytest.raises(CommandError, match="Use --force"):
+        command_install_assets("codex-skills", ["commit-staged-changes"], global_install=True)
+
+    assert guide.read_text() == "custom default\n"
+    assert not (user_home / ".agents/skills").exists()
 
 
 @pytest.fixture

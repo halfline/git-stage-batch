@@ -59,7 +59,7 @@ in reverse order:
 After the cumulative replay:
 
 ```bash
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py --repo REPLAY_REPO verify-target INPUT_MANIFEST
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py" --repo REPLAY_REPO verify-target INPUT_MANIFEST
 ```
 
 Use the original `DECOMPOSE_STATE_DIR` and real paths. This checks the complete

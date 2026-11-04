@@ -30,6 +30,7 @@ def test_plan_asset_installs_adds_group_companions(tmp_path):
     planned = plan_asset_installs(selected, repo_root)
 
     assert _relative_destinations(repo_root, planned) == [
+        ".agents/internal/CONTRIBUTING.md",
         ".agents/internal/commit-message-drafter.md",
         ".agents/skills/commit-unstaged-changes",
         ".codex/config.toml",
@@ -53,6 +54,7 @@ def test_plan_asset_installs_adds_entry_companions(tmp_path):
         ".claude/agents/decompose-batch-peeler.md",
         ".claude/agents/decompose-deconstructor.md",
         ".claude/agents/decompose-rebuilder.md",
+        ".claude/internal/CONTRIBUTING.md",
         ".claude/skills/decompose-and-commit-unstaged-changes",
         ".claude/skills/refine-commit-messages",
         ".claude/skills/refine-history",
@@ -69,6 +71,7 @@ def test_plan_refine_history_as_standalone_skill(tmp_path):
 
     assert _relative_destinations(repo_root, planned) == [
         ".claude/agents/commit-message-drafter.md",
+        ".claude/internal/CONTRIBUTING.md",
         ".claude/skills/refine-commit-messages",
         ".claude/skills/refine-history",
     ]
@@ -86,6 +89,7 @@ def test_plan_refine_commit_messages_as_standalone_skill(tmp_path):
     planned = plan_asset_installs(selected, repo_root)
 
     assert _relative_destinations(repo_root, planned) == [
+        ".agents/internal/CONTRIBUTING.md",
         ".agents/internal/commit-message-drafter.md",
         ".agents/skills/refine-commit-messages",
         ".codex/config.toml",

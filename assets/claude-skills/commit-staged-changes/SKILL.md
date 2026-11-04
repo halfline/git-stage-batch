@@ -19,6 +19,23 @@ allowed-tools:
 Use this skill to turn the current **staged** index into one git commit with
 project-compliant commit messaging.
 
+## Installed resources and project guidance
+
+Set `ASSET_ROOT` to the absolute `.claude` directory containing this installed
+skill, two levels above its skill directory. Resolve it from the loaded
+`SKILL.md` path, whether installed in the repository or the user's home.
+Resolve `references/` and `scripts/` paths relative to this skill directory.
+Keep the working directory in the target repository, quote helper paths in
+shell commands, and pass `ASSET_ROOT` to workers that use companion resources.
+
+Before drafting, search the project tree for `CONTRIBUTING.md`, excluding
+installed assistant assets. Check the repository root, `.github/`, `docs/`,
+and guidance scoped to the changed paths. Read the applicable project guide.
+Only if the project has no contribution guide of its own, read
+`$ASSET_ROOT/internal/CONTRIBUTING.md`. Other project instructions and commit
+hooks still take precedence over bundled defaults. Pass the selected guide's
+path and applicable rules to any drafting worker.
+
 ## Usage
 
 ```text
@@ -40,7 +57,7 @@ Always pass `--no-optional-locks` to read-only git commands such as
 `git status`, `git diff`, `git log`, and `git show`. Without this flag,
 git refreshes cached filesystem metadata in the index, which requires
 `.git/index.lock`. When Claude Code runs multiple read-only git commands
-in parallel — which it does by default for concurrency-safe tools — two
+in parallel, which it does by default for concurrency-safe tools, two
 stat-refreshing commands race for that lock and one fails.
 
 Claude Code's own internal git commands already use this flag, but
@@ -53,14 +70,14 @@ git --no-optional-locks diff --cached --stat
 git --no-optional-locks diff --cached
 git --no-optional-locks log --pretty=oneline -- path/to/file
 
-# incorrect — will race when parallelized
+# incorrect: will race when parallelized
 git status --short
 git diff --cached
 ```
 
 This applies to every `git` invocation in the skill that does not need to
-modify the index. Commands that intentionally write to the index — such
-as `git commit`, `git add`, or `git apply --cached` — must not use this
+modify the index. Commands that intentionally write to the index, such
+as `git commit`, `git add`, or `git apply --cached`, must not use this
 flag.
 
 ## Core Workflow
@@ -110,7 +127,11 @@ When the current commit is fully staged, you may use the shared
 - Give it a self-contained briefing that includes:
   - the relevant state before the patch, with supporting code locations
   - whether this is a single commit or part of a series
-  - the exact change and its actual reason, with supporting evidence
+  - the exact change, with supporting source evidence
+  - the supplied motivation, observations, assessments, and relevant history,
+    retaining their degree of certainty and who made relevant choices; identify
+    supplied context separately from independently verified source facts;
+    keep your inferences separate from the caller's actual claims
   - whether the patch adds machinery or makes behavior run in a caller
   - only the dependencies needed to explain the patch's design or scope
   - the series goal as background, without assigning a role to its position
@@ -128,6 +149,47 @@ Review the draft in the main skill before committing. If it no longer matches
 the staged diff or repository rules, fix it in the main skill rather than
 pushing the problem back to the user.
 
+Before committing, edit the draft into one alternative using the same
+source evidence and supplied context. Keep the first body sentence as a
+longer, non-imperative version of the summary. Preserve the intended
+behavior, supported judgments, actual uncertainty, and necessary scope.
+
+Edit the summary and its expanded first sentence too when their wording
+hides the action in an abstract label. Keep the expanded sentence first,
+and use it to state the actual change in ordinary words.
+
+After that opening, edit as if a colleague has asked why we need the
+change. Put the action or need in ordinary verbs. Let a short judgment
+stand on its own. Remove a sentence that merely labels the change or
+repeats a consequence the surrounding prose already makes clear. Keep inspection notes in CHECKS.
+
+Compare the reasoning and how naturally it is expressed. A wording
+improvement may keep every fact and causal step unchanged; it does not
+need a new reason or extra detail to earn its place. Preserve useful
+causal links instead of replacing them with a list of operations. Check
+local references from the prose alone. Unpacking an unexplained reference
+is a real improvement even when it takes more words. A descriptive label
+or a related word used earlier does not establish its meaning. Prefer
+stating the condition and action when that saves the reader from having
+to reconstruct the relationship. Keep the original if the alternative is
+less natural, loses needed reasoning,
+or offers no improvement. Let difficult interactions take room and direct
+reasons stay brief. Length, contractions and first person do not decide
+which version is better.
+
+Repeat the edit-and-compare step using the best version so far. Make at
+most three comparisons in total, including the first. Stop after two
+consecutive comparisons offer no clear improvement. Keep wording that
+already works; an extra comparison does not require accepting an edit.
+Fix factual errors and repository-rule violations before committing,
+regardless of that limit.
+
+Write and choose in the main skill's existing review. The comparison is
+internal; use the selected message for the commit.
+
+Verify the final wording with the accuracy check in the writing guidance
+below before committing. Repeat that check after any further wording edits.
+
 ## Commit Message Shape
 
 Follow repository-specific rules first. If no repository guidance overrides
@@ -143,9 +205,10 @@ narrative present tense and the explanation the reader needs.]
 
 ### Explain the Change
 
-Prefer a short opening sentence that says what the commit changes in plain
-language. A reader should understand the outcome before needing the code or
-the rest of the explanation.
+The first body sentence is a longer, non-imperative version of the summary
+line. State the same change in plain language as an indicative, declarative
+sentence, with enough detail to make the outcome clear. Keep that opening
+before the background and reasoning.
 
 Explicitly attribute newly introduced behavior to the current commit, using
 `This commit ...` or an equally clear construction. Describe existing
@@ -154,11 +217,61 @@ outcome does not change that temporal viewpoint. For example, `This commit
 adds pattern matching to the command` identifies the patch as the cause;
 `The command now accepts patterns` can blur the change with the status quo.
 
-Then explain the old behavior concretely: what data the program uses, what
-it passes or discards, and when the result is wrong. Explain how the new
-behavior addresses that mismatch and any constraints needed to qualify the
-claim. Keep the explanation proportionate. That order is a useful default,
-not a required three-paragraph template.
+Use straight quotes and apostrophes in commit message prose. Avoid em
+dashes. Use commas, parentheses, or separate sentences where needed.
+
+In prose, prefer periods to semicolons.
+
+After the opening, explain the decision as you would to another
+maintainer who has not investigated the problem. Use ordinary verbs and
+familiar terms, with contractions when they fit. Let the reader follow
+the thought: a reasonable assumption, the catch, and the consequence that
+makes the change worth doing. Include those turns when the reasoning
+needs them; a direct fix may need only its direct reason.
+
+Match the firmness of each claim to its basis. State a demonstrated
+failure, unnecessary restriction, or supported cost plainly. Preserve
+uncertainty about people's behavior, predictions, and design judgments
+where the evidence leaves room. A message can explain the code confidently
+and qualify an inference about its users in the next sentence.
+
+State established behavior directly, with the condition that matters.
+Use "can" or "may" for meaningful capability, contingency, or uncertainty,
+not automatic precision. Check changed implications against the evidence.
+
+Write decisions from inside the project. When relevant context explains
+who made an earlier choice and why, retain that ownership and reasoning.
+"We" can describe a shared decision or need; a component name is often
+clearer for an operation. First person does not establish personal
+experience or project history that the evidence does not supply.
+
+Caller-supplied motivation, observations, assessments, and relevant history
+can explain the change even when absent from the diff. Carry their meaning
+and degree of certainty through the drafting handoff. In the message,
+combine clarifications that explain the same fact. Include history when
+it helps explain the present decision. Keep provenance and
+verification limits outside the commit message. Report contradictions
+with source there and avoid relying on a contradicted account as fact.
+Never claim independent verification merely because context was supplied.
+
+Supplied context establishes meaning, not a list of points to cover. Treat
+a wording clarification as a constraint on the relevant claim. Do not turn
+it into a separate explanation of a hypothetical misunderstanding.
+
+Spend words where the reader's expectation could go wrong. Explain how
+the operation's calls or events fit together before introducing internal
+paths or states. Prefer concrete nouns such as "cleanup code" over labels
+such as "shared cleanup". For an unnamed branch, state its condition and
+action directly. Use a local name as shorthand once its meaning is clear.
+A timing or ownership problem may need a patient walkthrough of why the
+apparent fix fails; an unnecessary requirement may take only a sentence
+to dismiss.
+Follow the chosen mechanism through to its practical consequence so the
+reader understands why it is worth using. Give a judgment or a turn in
+the argument its own sentence or paragraph
+when that helps it land. Keep a brief reminder when it connects the next
+step. Once the reason, decision, and necessary scope are clear, stop;
+additional implementation facts do not create a need for more prose.
 
 The summary should make the difference from the status quo apparent, rather
 than merely name a desirable end state. Choose wording from the actual
@@ -170,11 +283,64 @@ vocabulary or a list of required verbs. Choose the words that best fit the
 specific patch. Use a qualifier such as `only` when the restriction is real;
 do not imply exact exclusion if alignment or rounding can include extra data.
 
-Omit incidental helper extraction, function placement, call structure, and
-test registration details unless they explain a design constraint or are
-the patch's actual outcome. A new internal API can be the outcome of a
-preparatory patch; a behavior fix should explain the corrected behavior.
-Prefer what the program does to a walkthrough of how its code is arranged.
+The expanded opening should state that same concrete action in ordinary
+words, without cataloguing internal operations or unchanged preconditions.
+
+Select technical details for the understanding they give the reader.
+Keep a detail when it explains the problem, why the change works, a
+design choice, or a meaningful limit. A new internal API can be the
+outcome of a preparatory patch; explain its purpose without cataloguing
+all its capabilities. When remaining work matters to the explanation,
+say what still needs to be done. Use active verbs for those actions instead
+of listing missing components or call sites.
+
+For tone, given repeated reads of an unchanged file, "We read the same
+file for every row. Once is enough" explains the judgment more naturally
+than "Repeated file reads represent avoidable overhead". When a field is
+not yet read or forwarded, "We still need to read the field and pass its
+value to the worker" puts the remaining actions in active verbs. "The reader
+and value forwarding still need to be added" leaves them in nouns and
+passive prose. When work remains, use a person or component as the subject
+and say what they still need to do. These illustrate ordinary explanation,
+not phrases to copy or a requirement to use first person.
+
+Keep verification notes outside the commit message. A condition belongs
+in the message when leaving it out would obscure the reasoning or
+materially misstate the claim. The body need not demonstrate every fact
+checked during inspection. Scope the claim accurately and give its
+explanation room.
+
+Make each necessary scope limit qualify the claim it belongs to when
+that reads plainly. Once a clarification is expressed in that claim,
+remove a sentence that only restates the same distinction. Keep a separate
+limit when it explains a stopping point or another consequence. Do not
+append an inventory of operations or unchanged behavior simply to account
+for the patch.
+
+Before accepting the message, read it on its own as an explanation to
+someone who has not inspected the diff. Consider the question each
+paragraph answers at that point in the explanation. Keep the details
+that answer that question; move answers to separate questions raised
+only by inspecting the implementation into review notes outside the message.
+
+Revise in both directions: restore an intermediate step the reader
+needs to understand the consequence, and remove facts whose main purpose
+is to demonstrate thorough inspection. A feature's presence in the patch
+supports its accuracy, but does not by itself explain why the reader
+needs it. Keep the maintainer's supported judgment and the connection
+between ideas when shortening the message.
+
+After drafting or rewording, verify the meaning of the final sentences
+against the selected patch, relevant prior code, and supplied context.
+Check the conditions, timing and effects the message states or implies.
+A simpler phrase can introduce a new claim; an operation's name does not establish
+its effect. Inspect the relevant implementation when that distinction
+matters. Narrow or remove unsupported implications and report any
+remaining uncertainty outside the message. Correct contradictions in the
+affected claim, then remove any caveat or reassurance that only repeats
+its corrected meaning. Repeat the accuracy check after further edits.
+Keep code evidence, supplied context, and inference distinct in review
+notes.
 
 ### Message Rules
 
@@ -212,6 +378,9 @@ Prefer what the program does to a walkthrough of how its code is arranged.
   A helper that callers will adopt separately is a legitimate outcome.
 - Keep present tense for the pre-change state and for the change itself;
   describe work in later commits in future tense.
+- A future use for a capability does not establish follow-up commits.
+  Mention later commits only when the supplied series or plan establishes
+  them; otherwise explain the purpose without promising a sequence.
 - Make references to future work in the series explicit: `in a later commit`,
   `later commits will ...`, or `the final commit will ...`, not bare `later`.
 - Match the state after the previous commit without recapping unrelated
@@ -239,7 +408,8 @@ Prefer what the program does to a walkthrough of how its code is arranged.
   work from behavior established here. Omit unrelated recaps and next-item
   announcements.
 - Do not use `this` for anything other than `this commit`.
-- Prefer concrete limitations over vague praise.
+- Ground assessments in concrete behavior. A supported judgment can help
+  explain a design choice.
 
 ## Safety Checks
 

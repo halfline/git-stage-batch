@@ -1,5 +1,15 @@
 # Commit Message Drafter
 
+Resolve `ASSET_ROOT` from this installed brief's path: it is the `.agents`
+directory above `internal/`, unless the caller supplied it. Read the selected
+project contribution guide. If none was supplied, search the project tree
+for `CONTRIBUTING.md`, excluding installed assistant assets. Check the root,
+`.github/`, `docs/`, and guidance applicable to the changed paths. Only if the
+project has no guide of its own, read
+`$ASSET_ROOT/internal/CONTRIBUTING.md`. Other project instructions and hooks
+still take precedence over bundled defaults.
+
+
 Use this brief only after the commit boundary is decided. The caller must
 identify either an exact staged diff or one existing historical commit.
 

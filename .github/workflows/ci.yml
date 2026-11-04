@@ -141,7 +141,8 @@ jobs:
         run: |
           make -C git-source configure
           cd git-source
-          ./configure --prefix="$RUNNER_TEMP/git-${GIT_VERSION}"
+          ./configure --prefix="$RUNNER_TEMP/git-${GIT_VERSION}" \
+            CFLAGS="-g -O2 -std=gnu17"
           make -j2 all NO_GETTEXT=YesPlease NO_TCLTK=YesPlease
           make install NO_GETTEXT=YesPlease NO_TCLTK=YesPlease
           echo "$RUNNER_TEMP/git-${GIT_VERSION}/bin" >> "$GITHUB_PATH"

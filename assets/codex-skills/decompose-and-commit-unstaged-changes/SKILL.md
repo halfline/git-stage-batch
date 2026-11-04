@@ -26,6 +26,23 @@ accumulated findings. The deconstructor can process successive concerns itself;
 do not require a new worker or a full source reread for every concern. Keep
 mutations sequential and gather independent review findings before correcting.
 
+## Installed resources and project guidance
+
+Set `ASSET_ROOT` to the absolute `.agents` directory containing this installed
+skill, two levels above its skill directory. Resolve it from the loaded
+`SKILL.md` path, whether installed in the repository or the user's home.
+Resolve `references/` and `scripts/` paths relative to this skill directory.
+Keep the working directory in the target repository, quote helper paths in
+shell commands, and pass `ASSET_ROOT` to workers that use companion resources.
+
+Before drafting, search the project tree for `CONTRIBUTING.md`, excluding
+installed assistant assets. Check the repository root, `.github/`, `docs/`,
+and guidance scoped to the changed paths. Read the applicable project guide.
+Only if the project has no contribution guide of its own, read
+`$ASSET_ROOT/internal/CONTRIBUTING.md`. Other project instructions and commit
+hooks still take precedence over bundled defaults. Pass the selected guide's
+path and applicable rules to any drafting worker.
+
 ## Modes and tools
 
 ```text
@@ -58,9 +75,9 @@ commit, peel, or construct historical implementations in any repository.
 From the repository root, resolve the checkpoint directory:
 
 ```bash
-export DECOMPOSE_STATE_DIR=$(python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir)
+export DECOMPOSE_STATE_DIR=$(python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py" state-dir)
 mkdir -p "$DECOMPOSE_STATE_DIR"
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py status --json
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py" status --json
 git-stage-batch status
 git-stage-batch list
 git --no-optional-locks status --short
@@ -80,8 +97,8 @@ reconstruct. Capture the current base, start the checkpoint, and capture input:
 
 ```bash
 BASE_SHA=$(git --no-optional-locks rev-parse HEAD)
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py start --mode full --base "$BASE_SHA"
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py capture --base "$BASE_SHA"
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py" start --mode full --base "$BASE_SHA"
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py" capture --base "$BASE_SHA"
 ```
 
 Use `--mode deconstruct` when appropriate. Capture prints an immutable,
@@ -100,8 +117,8 @@ Historical implementations and runtime evidence are produced during execution.
 Run the cheap structural check and confirm Phase 1 preserved input:
 
 ```bash
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py validate "$DECOMPOSE_STATE_DIR/decompose-plan.candidate.json"
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py verify-input INPUT_MANIFEST
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py" validate "$DECOMPOSE_STATE_DIR/decompose-plan.candidate.json"
+python "$ASSET_ROOT/skills/decompose-and-commit-unstaged-changes/scripts/decompose-plan.py" verify-input INPUT_MANIFEST
 ```
 
 Replace `INPUT_MANIFEST` with the captured state-relative path. Independently
@@ -146,7 +163,7 @@ separate test commits where required. Verify each actual committed snapshot
 with relevant grouped checks and content-bound receipts; amend a failed newest
 commit before continuing.
 
-After reconstruction, invoke the companion `.agents/skills/refine-history`
+After reconstruction, invoke the companion `$ASSET_ROOT/skills/refine-history`
 skill with the original base. Hand over the mini-series, accepted findings, and
 verification receipts. That skill owns any final rewrite and message cleanup;
 do not run another embedded rewrite or duplicate unchanged behavioral checks.

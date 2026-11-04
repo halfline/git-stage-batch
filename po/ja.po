@@ -1065,10 +1065,6 @@ msgctxt "submodule action verb"
 msgid "discard"
 msgstr "破棄"
 
-#: src/git_stage_batch/cli/asset_subcommands.py:28
-msgid "Install bundled assistant assets into the repository"
-msgstr "同梱のアシスタント用アセットをリポジトリにインストール"
-
 #: src/git_stage_batch/cli/asset_subcommands.py:34
 msgid "Bundled asset group to install"
 msgstr "インストールする同梱アセットのグループ"
@@ -8386,3 +8382,16 @@ msgstr "保存済みの名前変更の変更先の内容がありません。"
 
 msgid "file entry for {path!r} has inconsistent rename provenance"
 msgstr "{path!r} のファイルエントリにある名前変更の由来情報に不整合があります"
+
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install bundled assistant assets for the repository or user"
+msgstr "同梱のアシスタント用アセットをリポジトリまたはユーザー向けにインストール"
+
+#: src/git_stage_batch/cli/asset_subcommands.py
+msgid "Install into the user's home directory instead of the repository"
+msgstr "リポジトリではなくユーザーのホームディレクトリにインストール"
+
+#: src/git_stage_batch/data/asset_catalog.py
+msgid "Default contribution guide"
+msgstr "既定の貢献ガイド"

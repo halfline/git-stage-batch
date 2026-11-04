@@ -102,7 +102,11 @@ def test_get_entry_companion_assets_returns_entry_specific_assets():
 
 def test_get_companion_asset_source_returns_packaged_file():
     """Companion source lookup should resolve the packaged asset."""
-    companion = ASSET_GROUPS["codex-skills"].companion_assets[1]
+    companion = next(
+        companion
+        for companion in ASSET_GROUPS["codex-skills"].companion_assets
+        if companion.target_segments == (".codex", "config.toml")
+    )
     source = get_companion_asset_source(companion)
 
     assert source.name == "config.toml"

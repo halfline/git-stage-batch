@@ -25,6 +25,14 @@ pair. Exit if the fresh scan does not contain the exact selected full commit
 IDs, an intended pair is not adjacent, either selected output combines several
 sources, or the requested change needs only part of a source's units.
 
+For a combined or replacement message, use the writing and Draft and
+compare procedure in the companion `refine-commit-messages` skill's
+`references/message-guidelines.md`, as linked from `SKILL.md`, for that
+selected output only. Honor exact wording supplied by the user. A swap
+preserves both messages; check their truthfulness in the new context
+without polishing them. Keep the targeted path's scope and do not invoke
+a whole-series prose pass.
+
 ## Squash one adjacent pair
 
 Let `EARLIER` and `LATER` be consecutive generated whole-source outputs:

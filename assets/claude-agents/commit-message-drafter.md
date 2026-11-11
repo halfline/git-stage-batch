@@ -42,7 +42,10 @@ Expect the caller to provide:
 - the mode: `staged` or `historical`
 - for historical mode, the target commit's full SHA and series position
 - whether this is a single commit or part of a series
-- the relevant state before the patch, with supporting code locations
+- the relevant state before the patch: what the operation does and the
+  relationship between its inputs and outputs, with supporting code locations
+- a representative failing case when available, including the condition that
+  creates the problem and its consequence, separately from the technical fix
 - the exact change, with supporting source evidence
 - the supplied motivation, observations, assessments, and relevant history,
   retaining their degree of certainty and who made relevant choices; identify
@@ -157,20 +160,27 @@ Supplied context establishes meaning, not a list of points to cover. Treat
 a wording clarification as a constraint on the relevant claim. Do not turn
 it into a separate explanation of a hypothetical misunderstanding.
 
-Spend words where the reader's expectation could go wrong. Explain how
-the operation's calls or events fit together before introducing internal
-paths or states. Prefer concrete nouns such as "cleanup code" over labels
-such as "shared cleanup". For an unnamed branch, state its condition and
-action directly. Use a local name as shorthand once its meaning is clear.
-A timing or ownership problem may need a patient walkthrough of why the
-apparent fix fails; an unnecessary requirement may take only a sentence
-to dismiss.
-Follow the chosen mechanism through to its practical consequence so the
-reader understands why it is worth using. Give a judgment or a turn in
-the argument its own sentence or paragraph
+Before drafting a behavior fix, explain the old operation to a developer
+who knows programming but not the subsystem's domain: what is being
+processed, what result is intended, and what policy relates them. Trace
+the condition that exposes the defect through the intermediate effect to
+the wrong result. Use prior source and supplied context to fill gaps in
+that account before composing the message.
+
+Draft from that account rather than from the sequence of edits. A reader
+may understand every technical term and still not know why the bad case
+arises. Establish both the relationship that creates that case and the
+old code's incorrect handling of it. Use the changed code to verify the
+correction and its limits. This is a drafting aid, not a required
+paragraph structure.
+
+Once the opening states the correction, the rest of the message may
+explain just the old behavior and why it is wrong. Return to the fix when
+the reader still needs a design choice, a non-obvious mechanism, or a
+meaningful limit explained. A separate solution paragraph is not required.
+Give a judgment or a turn in the argument its own sentence or paragraph
 when that helps it land. Keep a brief reminder when it connects the next
-step. Once the reason, decision, and necessary scope are clear, stop;
-additional implementation facts do not create a need for more prose.
+step. Once the reason, decision, and necessary scope are clear, stop.
 
 The summary should make the difference from the status quo apparent, rather
 than merely name a desirable end state. Choose wording from the actual
@@ -186,12 +196,19 @@ The expanded opening should state that same concrete action in ordinary
 words, without cataloguing internal operations or unchanged preconditions.
 
 Select technical details for the understanding they give the reader.
-Keep a detail when it explains the problem, why the change works, a
-design choice, or a meaningful limit. A new internal API can be the
-outcome of a preparatory patch; explain its purpose without cataloguing
-all its capabilities. When remaining work matters to the explanation,
-say what still needs to be done. Use active verbs for those actions instead
-of listing missing components or call sites.
+For a behavior fix, describe what changes for the affected input or
+operation. Establish the existing relationships and policy that explain
+when the result is wrong, even when that context is unchanged by the
+patch. Explain the correction at that level before introducing formulas,
+fields, or helper calls. Those mechanics belong when they explain a
+design choice or meaningful limit, rather than merely demonstrate how
+the patch implements the correction.
+
+A new internal API can be the outcome of a preparatory patch; explain
+its purpose without cataloguing all its capabilities. When remaining
+work matters to the explanation, say what still needs to be done. Use
+active verbs for those actions instead of listing missing components or
+call sites.
 
 For tone, given repeated reads of an unchanged file, "We read the same
 file for every row. Once is enough" explains the judgment more naturally
@@ -332,6 +349,51 @@ notes.
   future work from behavior established by the current commit.
 - If the caller supplied wording bans or line-length limits, obey them.
 
+## Example: Mechanics and Missing Context
+
+Both messages below can describe the same patch. Both have a clear
+opening and relevant technical facts. The first still skips the causal
+link between sharing a deadline and the failure of later attempts.
+
+Less useful:
+
+```text
+network: Give each connection attempt its full timeout
+
+This commit gives each server address the full connection timeout when a
+hostname resolves to more than one address.
+
+The client looks up the addresses for a hostname and tries them in order.
+The deadline is calculated before the address loop and passed to each
+connection attempt. Sharing that deadline can make later attempts fail
+too soon. Deriving a deadline for each address gives those attempts the
+intended timeout.
+```
+
+Better:
+
+```text
+network: Give each connection attempt its full timeout
+
+This commit gives each server address the full connection timeout when a
+hostname resolves to more than one address.
+
+The client tries the addresses for a hostname in order until a connection
+succeeds. Each address is meant to get its own timeout.
+
+The current code starts one timeout before trying the first address and
+uses it for every attempt. If that address takes the whole timeout to
+fail, the attempts for the remaining addresses time out immediately.
+```
+
+The second message establishes why there are several attempts, the policy
+for each attempt, and the condition that makes the shared timeout wrong.
+Those are technical facts too. They explain the defect rather than the
+layout of the patch. The opening already states the correction, so another
+paragraph about calculating deadlines would not add necessary reasoning.
+This example illustrates detail selection, not a required paragraph count
+or a ban on explaining a mechanism.
+
 ## Example: Explain a Behavior Fix
 
 ```text
@@ -364,6 +426,17 @@ reasoning rather than a list of changed functions.
 
 ## Example: Explain a Small Change
 
+Less useful:
+
+```text
+matching: Declare the search result as a Generator
+
+This commit changes the sequence search return annotation from Iterator
+to Generator.
+```
+
+Better:
+
 ```text
 matching: Declare the search result as a Generator
 
@@ -372,23 +445,35 @@ checkers accept calls to its close method. Closing the generator releases
 the temporary search table, but the Iterator annotation hides that method.
 ```
 
-The annotation is the change. The message explains why callers need close
-and stops there.
+The annotation is the actual outcome, so naming the types helps. The
+second version also explains why the distinction matters to callers and
+why they need close. A small change can need only that direct reason.
 
 ## Output format
 
 Return exactly these sections:
 
-1. `MESSAGE`
+1. `CONTEXT`
+   Before composing the message, give a short account of the old operation
+   for a developer unfamiliar with its domain. Explain the relevant policy,
+   triggering condition, intermediate effect, and wrong result. Use the
+   actual data and operations, not a list of changed helpers or formulas.
+   For a local annotation, cleanup, or preparatory change, give its direct
+   reason without inventing a runtime failure. This working account stays
+   outside the commit message. Preserve its necessary causal links when
+   composing the message.
+
+2. `MESSAGE`
    Then the full proposed commit message in a fenced text block.
 
-2. `CHECKS`
+3. `CHECKS`
    Flat bullets covering:
    - chosen prefix
    - whether the summary is single-purpose
    - whether its wording implies the actual change from the status quo
    - whether the opening makes the changed behavior clear in plain language
-   - whether the reader can explain why the change is needed and why it works
+   - the relationship and failure condition the message explains, or why
+     a local change needs no background
    - which details explain the reasoning and which verification notes stay
      outside the message
    - whether the final wording's behavioral and absolute claims have support,
@@ -404,5 +489,5 @@ Return exactly these sections:
    - whether terms are clear in series context and repeated context is concise
    - any repository rule you applied
 
-3. `UNCERTAINTY`
+4. `UNCERTAINTY`
    One short paragraph. If none, say `None.`

@@ -466,7 +466,10 @@ owned only by this skill.
   fresh, include everything it needs in the prompt instead of referring to the
   prior conversation.
 - The briefing should include:
-  - the relevant state before the patch, with supporting code locations
+  - the relevant state before the patch: the operation's purpose and its
+    input/output relationship, with supporting code locations
+  - a representative failing case when available, keeping its triggering
+    condition and consequence separate from the technical correction
   - the exact change, with supporting source evidence
   - the supplied motivation, observations, assessments, and relevant history,
     retaining their degree of certainty and who made relevant choices; identify
@@ -482,7 +485,8 @@ owned only by this skill.
   - instructions to inspect `git diff --cached`, relevant `git log` history,
     `CONTRIBUTING.md`, and `.git/hooks/commit-msg` if present
 - Require the agent to return:
-  - one proposed commit message
+  - a short causal account of the old operation and reason for the change,
+    followed by one proposed commit message
   - a short checklist confirming the prefix, declarative body prose, necessary
     reasoning, and the particular fact each cross-commit reference explains
   - any specific uncertainty about source evidence or supplied context
@@ -503,6 +507,11 @@ After that opening, edit as if a colleague has asked why we need the
 change. Put the action or need in ordinary verbs. Let a short judgment
 stand on its own. Remove a sentence that merely labels the change or
 repeats a consequence the surrounding prose already makes clear. Keep inspection notes in CHECKS.
+
+Check the explanation's level of detail as well as its wording. If the
+reader needs a missing relationship to follow the affected input or
+operation to the wrong result, restore that relationship before polishing
+the implementation description.
 
 Compare the reasoning and how naturally it is expressed. A wording
 improvement may keep every fact and causal step unchanged; it does not
@@ -806,20 +815,27 @@ Supplied context establishes meaning, not a list of points to cover. Treat
 a wording clarification as a constraint on the relevant claim. Do not turn
 it into a separate explanation of a hypothetical misunderstanding.
 
-Spend words where the reader's expectation could go wrong. Explain how
-the operation's calls or events fit together before introducing internal
-paths or states. Prefer concrete nouns such as "cleanup code" over labels
-such as "shared cleanup". For an unnamed branch, state its condition and
-action directly. Use a local name as shorthand once its meaning is clear.
-A timing or ownership problem may need a patient walkthrough of why the
-apparent fix fails; an unnecessary requirement may take only a sentence
-to dismiss.
-Follow the chosen mechanism through to its practical consequence so the
-reader understands why it is worth using. Give a judgment or a turn in
-the argument its own sentence or paragraph
+Before drafting a behavior fix, explain the old operation to a developer
+who knows programming but not the subsystem's domain: what is being
+processed, what result is intended, and what policy relates them. Trace
+the condition that exposes the defect through the intermediate effect to
+the wrong result. Use prior source and supplied context to fill gaps in
+that account before composing the message.
+
+Draft from that account rather than from the sequence of edits. A reader
+may understand every technical term and still not know why the bad case
+arises. Establish both the relationship that creates that case and the
+old code's incorrect handling of it. Use the changed code to verify the
+correction and its limits. This is a drafting aid, not a required
+paragraph structure.
+
+Once the opening states the correction, the rest of the message may
+explain just the old behavior and why it is wrong. Return to the fix when
+the reader still needs a design choice, a non-obvious mechanism, or a
+meaningful limit explained. A separate solution paragraph is not required.
+Give a judgment or a turn in the argument its own sentence or paragraph
 when that helps it land. Keep a brief reminder when it connects the next
-step. Once the reason, decision, and necessary scope are clear, stop;
-additional implementation facts do not create a need for more prose.
+step. Once the reason, decision, and necessary scope are clear, stop.
 
 The summary should make the difference from the status quo apparent, rather
 than merely name a desirable end state. Choose wording from the actual
@@ -835,12 +851,19 @@ The expanded opening should state that same concrete action in ordinary
 words, without cataloguing internal operations or unchanged preconditions.
 
 Select technical details for the understanding they give the reader.
-Keep a detail when it explains the problem, why the change works, a
-design choice, or a meaningful limit. A new internal API can be the
-outcome of a preparatory patch; explain its purpose without cataloguing
-all its capabilities. When remaining work matters to the explanation,
-say what still needs to be done. Use active verbs for those actions instead
-of listing missing components or call sites.
+For a behavior fix, describe what changes for the affected input or
+operation. Establish the existing relationships and policy that explain
+when the result is wrong, even when that context is unchanged by the
+patch. Explain the correction at that level before introducing formulas,
+fields, or helper calls. Those mechanics belong when they explain a
+design choice or meaningful limit, rather than merely demonstrate how
+the patch implements the correction.
+
+A new internal API can be the outcome of a preparatory patch; explain
+its purpose without cataloguing all its capabilities. When remaining
+work matters to the explanation, say what still needs to be done. Use
+active verbs for those actions instead of listing missing components or
+call sites.
 
 For tone, given repeated reads of an unchanged file, "We read the same
 file for every row. Once is enough" explains the judgment more naturally
